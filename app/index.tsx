@@ -1,32 +1,39 @@
-import { useEffect, useRef } from "react";
+import { useShoppingStore } from "@/state/shoppingStore";
+import { router } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
+  ActivityIndicator,
+  Animated,
   Image,
   StyleSheet,
-  Animated,
-  ActivityIndicator,
+  Text,
+  View,
 } from "react-native";
-import { router } from "expo-router";
 
 export default function SplashScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    const startApp = async () => {
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 1200,
-        useNativeDriver: true,
-      }).start();
-
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
-      router.replace("/(tabs)/shopping");
+    const hydrate = async () => {
+      await useShoppingStore.persist.rehydrate();
+      setIsReady(true);
     };
 
-    startApp();
+    hydrate();
   }, []);
+
+  useEffect(() => {
+    if (!isReady) return;
+
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start(() => {
+      router.replace("/(tabs)/shopping");
+    });
+  }, [isReady]);
 
   return (
     <View style={styles.container}>
@@ -37,9 +44,7 @@ export default function SplashScreen() {
           resizeMode="contain"
         />
         <Text style={styles.title}>Shop</Text>
-        <Text style={styles.subtitle}>
-          Tu lista de compras inteligente
-        </Text>
+        <Text style={styles.subtitle}>Tu lista de compras inteligente</Text>
       </Animated.View>
 
       <ActivityIndicator

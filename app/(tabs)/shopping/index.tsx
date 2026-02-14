@@ -1,21 +1,21 @@
+import { useShoppingStore } from "@/state/shoppingStore";
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useState } from "react";
 import {
-  View,
+  FlatList,
+  StyleSheet,
   Text,
   TextInput,
-  StyleSheet,
-  FlatList,
   TouchableOpacity,
+  View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useShoppingStore } from "@/state/shoppingStore";
 
 export default function ShoppingScreen() {
   const [newList, setNewList] = useState("");
 
   const lists = useShoppingStore((s) => s.lists);
   const addList = useShoppingStore((s) => s.addList);
-  const removeList = useShoppingStore((s) => s.removeList);
 
   const handleAdd = () => {
     if (!newList.trim()) return;
@@ -39,22 +39,18 @@ export default function ShoppingScreen() {
         </TouchableOpacity>
       </View>
 
-      {lists.length === 0 ? (
-        <Text style={styles.empty}>No tienes listas activas 😊</Text>
-      ) : (
-        <FlatList
-          data={lists}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View style={styles.card}>
-              <Text style={styles.cardText}>{item.name}</Text>
-              <TouchableOpacity onPress={() => removeList(item.id)}>
-                <Ionicons name="trash-outline" size={20} color="#c62828" />
-              </TouchableOpacity>
-            </View>
-          )}
-        />
-      )}
+      <FlatList
+        data={lists}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => router.push(`/(tabs)/shopping/${item.id}`)}
+          >
+            <Text style={styles.cardText}>{item.name}</Text>
+          </TouchableOpacity>
+        )}
+      />
     </View>
   );
 }
@@ -88,20 +84,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  empty: {
-    textAlign: "center",
-    marginTop: 40,
-    color: "#999",
-  },
   card: {
     backgroundColor: "#fff",
     padding: 16,
     borderRadius: 16,
     marginBottom: 10,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    elevation: 2,
   },
   cardText: {
     fontSize: 16,
