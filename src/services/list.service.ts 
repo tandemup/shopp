@@ -1,0 +1,64 @@
+import { getDatabase } from "@/db";
+import { makeId } from "@/utils/id";
+
+/* =========================
+   Crear nueva lista
+========================= */
+export const createNewList = async (name: string) => {
+  const db = await getDatabase();
+
+  await db.lists.insert({
+    id: makeId(),
+    name,
+    createdAt: Date.now(),
+    archived: false,
+    items: [],
+    updatedAt: Date.now(),
+  });
+};
+
+/* =========================
+   Añadir item a lista
+========================= */
+export const addItemToList = async (
+  listId: string,
+  itemName: string
+) => {
+  const db = await getDatabase();
+
+  const list = await db.lists.findOne(listId).exec();
+  if (!list) return;
+
+  const current = list.toJSON();
+
+  await list.incrementalPatch({
+    items: [
+      ...current.items,
+      {
+        id: makeId(),
+        name: itemName,
+        quantity: 1,
+        checked: false,
+      },
+    ],
+    updatedAt: Date.now(),
+  });
+};
+
+/* =========================
+   Archivar lista
+========================= */
+export const archiveList = async (
+  listId: string,
+  storeId: string
+) => {
+  const db = await getDatabase();
+  const list = await db.lists.findOne(listId).exec();
+  if (!list) return;
+
+  await list.incrementalPatch({
+    archived: true,
+    storeId,
+    updatedAt: Date.now(),
+  });
+};
