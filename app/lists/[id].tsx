@@ -1,7 +1,7 @@
-import { useLists } from "@/hooks/useLists";
 import { addItemToList } from "@/services/list.service";
 import { useLocalSearchParams } from "expo-router";
 import { Button, Text, View } from "react-native";
+import { useLists } from "../../src/hooks/useLists";
 
 export default function ListDetail() {
   const { id } = useLocalSearchParams();

@@ -1,2 +1,2 @@
-import ListsScreen from "@/screens/ListsScreen";
+import ListsScreen from "../../src/screens/ListsScreen";
 export default ListsScreen;
