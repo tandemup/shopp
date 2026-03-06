@@ -27,12 +27,31 @@ const TabsLayout = () => {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Todos",
+          title: "Cart",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="flash-outline" size={size} color={color} />
+            <Ionicons name="cart" size={size} color={color} />
           ),
         }}
       />
+      <Tabs.Screen
+        name="storefront"
+        options={{
+          title: "Tiendas",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="storefront" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="barcode"
+        options={{
+          title: "Barcode",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="barcode" size={size} color={color} />
+          ),
+        }}
+      />
+
       <Tabs.Screen
         name="settings"
         options={{

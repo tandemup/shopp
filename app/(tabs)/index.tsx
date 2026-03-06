@@ -13,7 +13,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 import { LinearGradient } from "expo-linear-gradient";
 import { useState } from "react";
-
 import {
   FlatList,
   StatusBar,
