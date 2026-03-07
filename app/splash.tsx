@@ -1,5 +1,3 @@
-// app/splash.tsx
-
 import { router } from "expo-router";
 import React, { useEffect, useRef } from "react";
 import {
@@ -26,13 +24,13 @@ export default function SplashScreen() {
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [fadeAnim]);
 
   return (
     <View style={styles.container}>
       <Animated.View style={{ alignItems: "center", opacity: fadeAnim }}>
         <Image
-          source={require("../assets/splash-icon.png")}
+          source={require("../assets/images/splash-icon.png")}
           style={styles.logo}
           resizeMode="contain"
         />
