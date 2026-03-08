@@ -3,6 +3,9 @@
 # dependencies
 node_modules/
 
+# convex
+convex/_generated
+
 # Expo
 .expo/
 dist/
