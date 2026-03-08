@@ -1,5 +1,3 @@
-import { CreateListForm } from "@/components/lists/CreateListForm";
-import { api } from "@/convex/_generated/api";
 import { useQuery } from "convex/react";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -11,6 +9,9 @@ import {
   Text,
   View,
 } from "react-native";
+import { CreateListForm } from "../components/lists/CreateListForm";
+import { SeedStoresButton } from "../components/stores/SeedStoresButton";
+import { api } from "../convex/_generated/api";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -22,6 +23,7 @@ export default function HomeScreen() {
         <Text style={styles.title}>Shopping Lists</Text>
 
         <CreateListForm />
+        <SeedStoresButton />
 
         {!lists && <Text style={styles.info}>Loading lists...</Text>}
 
@@ -51,7 +53,7 @@ export default function HomeScreen() {
                 </Text>
 
                 <Text style={styles.cardMeta}>
-                  Archived: {item.archived ? "Yes" : "No"}
+                  Created: {new Date(item.createdAt).toLocaleDateString()}
                 </Text>
               </Pressable>
             )}
