@@ -1,4 +1,4 @@
-import { createSettingsStyles } from "@/assets/styles/settings.styles";
+/* import { createSettingsStyles } from "@/assets/styles/settings.styles";
 import { alert, confirm } from "@/components/ui/dialog";
 import { api } from "@/convex/_generated/api";
 import useTheme from "@/hooks/useTheme";
@@ -68,3 +68,4 @@ const DangerZone = () => {
 };
 
 export default DangerZone;
+ */

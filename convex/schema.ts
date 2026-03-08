@@ -106,4 +106,9 @@ export default defineSchema({
     selects: v.number(),
     lastSelect: v.string(),
   }).index("by_normalizedName", ["normalizedName"]),
+
+  todos: defineTable({
+    text: v.string(),
+    isCompleted: v.boolean(),
+  }),
 });
