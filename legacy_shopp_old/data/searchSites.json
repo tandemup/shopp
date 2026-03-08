@@ -1,0 +1,22 @@
+[
+  {
+    "id": "1",
+    "name": "Google Shopping",
+    "url": "https://www.google.com/search?tbm=shop&q="
+  },
+  {
+    "id": "2",
+    "name": "Google Search",
+    "url": "https://www.google.com/search?q="
+  },
+  {
+    "id": "3",
+    "name": "Open Food Facts",
+    "url": "https://world.openfoodfacts.org/product/"
+  },
+  {
+    "id": "4",
+    "name": "UPCitemDB",
+    "url": "https://www.upcitemdb.com/upc/"
+  }
+]

@@ -1,0 +1,51 @@
+[
+  {
+    "id": "amazonBooks",
+    "name": "Amazon Books",
+    "baseUrl": "https://www.amazon.com/s?k=",
+    "forBooks": true
+  },
+  {
+    "id": "googleBooks",
+    "name": "Google Books",
+    "baseUrl": "https://books.google.com/books?q=",
+    "forBooks": true
+  },
+  {
+    "id": "googleBooksAi",
+    "name": "Google Books (Modo IA)",
+    "baseUrl": "https://www.google.com/search?udm=2&q=isbn+",
+    "forBooks": true
+  },
+  {
+    "id": "openLibrary",
+    "name": "Open Library",
+    "baseUrl": "https://openlibrary.org/search?q=",
+    "forBooks": true
+  },
+
+  {
+    "id": "google",
+    "name": "Google",
+    "baseUrl": "https://www.google.com/search?q=",
+    "forBooks": false
+  },
+  {
+    "id": "googleAi",
+    "name": "Google (Modo IA)",
+    "baseUrl": "https://www.google.com/search?udm=2&q=",
+    "forBooks": false
+  },
+  {
+    "id": "shopping",
+    "name": "Google Shopping",
+    "baseUrl": "https://www.google.com/search?tbm=shop&q=",
+    "forBooks": false
+  },
+  {
+    "id": "off",
+    "name": "Open Food Facts",
+    "baseUrl": "https://world.openfoodfacts.org/product/",
+    "forBooks": false
+  }
+]

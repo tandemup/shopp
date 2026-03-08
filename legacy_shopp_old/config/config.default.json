@@ -1,0 +1,19 @@
+{
+  "scanner": {
+    "zoom": 0.15,
+    "zoomAuto": true,
+    "barcodeTypes": ["ean13", "ean8", "upc_a", "upc_e"],
+    "autoFocus": true
+  },
+
+  "lookup": {
+    "primary": "openfoodfacts",
+    "fallback": "googleshopping",
+    "searchEnginesEnabled": ["openfoodfacts", "googleshopping", "google"]
+  },
+
+  "ui": {
+    "darkMode": true,
+    "showScanAnimation": true
+  }
+}

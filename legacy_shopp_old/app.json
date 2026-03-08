@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "shop_tipo_1",
+    "slug": "snack-997a9683-b593-49a6-9573-6b25883a74cb",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "shopp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.podemon.snack997a9683b59349a695736b25883a74cb"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.podemon.snack997a9683b59349a695736b25883a74cb"
+    },
+    "web": {
+      "favicon": "./assets/images/favicon.png",
+      "viewport": {
+        "width": "device-width",
+        "initialScale": 1,
+        "maximumScale": 1,
+        "userScalable": false
+      },
+      "bundler": "metro",
+      "display": "standalone",
+      "build": {
+        "minify": false
+      },
+      "devServer": {
+        "strict": false
+      },
+      "meta": {
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "89b89590-be3b-4f2d-99a8-44dd2dc22b6e"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/89b89590-be3b-4f2d-99a8-44dd2dc22b6e"
+    },
+    "plugins": ["expo-asset"]
+  }
+}
