@@ -1,4 +1,4 @@
-import DialogProvider from "@/components/ui/DialogProvider";
+import DialogProvider from "@/components/ui/dialog/DialogProvider";
 import { ThemeProvider } from "@/hooks/useTheme";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { Stack } from "expo-router";
