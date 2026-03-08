@@ -1,9 +1,9 @@
 // PurchaseDetailScreen.js
 
-import React, { useMemo } from "react";
-import { View, Text, StyleSheet, FlatList, Pressable } from "react-native";
-import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation, useRoute } from "@react-navigation/native";
+import { useMemo } from "react";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useLists } from "../context/ListsContext";
 import { useStores } from "../context/StoresContext";

@@ -1,35 +1,35 @@
-import React, { useEffect, useState } from "react";
+import Fontisto from "@expo/vector-icons/Fontisto";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  TouchableOpacity,
   ScrollView,
   StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
-import Fontisto from "@expo/vector-icons/Fontisto";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ROUTES } from "../navigation/ROUTES";
 import { safeAlert } from "../utils/core/safeAlert";
 
 import {
-  clearStorage,
   clearActiveLists,
   clearArchivedLists,
   clearPurchaseHistory,
   clearScannedHistory,
+  clearStorage,
   clearStoresData,
 } from "../utils/storage";
 
 import {
-  getGeneralSearchEngine,
-  setGeneralSearchEngine,
   getBookSearchEngine,
+  getGeneralSearchEngine,
   setBookSearchEngine,
+  setGeneralSearchEngine,
 } from "../utils/config/searchConfig";
 
-import { SEARCH_ENGINES, BOOK_ENGINES } from "../constants/searchEngines";
+import { BOOK_ENGINES, SEARCH_ENGINES } from "../constants/searchEngines";
 const ICON_FAMILIES = {
   Ionicons,
   Fontisto,

@@ -1,28 +1,27 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
   FlatList,
-  TextInput,
-  Pressable,
   Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Entypo from "@expo/vector-icons/Entypo";
 import { useNavigation } from "@react-navigation/native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import getDaysSinceJanuary1 from "../utils/helpers/newListName";
-import validarNombreListaEnTiempoReal from "../utils/validation";
-import { normalizarNombre } from "../utils/normalize";
-import { safeAlert } from "../utils/core/safeAlert";
+import { safeAlert } from "@/src/utils/core/safeAlert";
+import { normalizarNombre } from "@/src/utils/normalize";
+import validarNombreListaEnTiempoReal from "@/src/utils/validation";
 
-import { useLists } from "../context/ListsContext";
-import { ROUTES } from "../navigation/ROUTES";
-import { DEFAULT_CURRENCY } from "../constants/currency";
-import CurrencyBadge from "../components/CurrencyBadge";
+import CurrencyBadge from "@/components/shoppinglist/CurrencyBadge";
+import { DEFAULT_CURRENCY } from "@/constants/currency";
+import { useLists } from "@/context/ListsContext";
+import { ROUTES } from "@/shoppinglist_old/navigation/ROUTES";
 
 /* -------------------------------------------------
    Screen

@@ -1,38 +1,34 @@
-import React, { useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TextInput,
-  Pressable,
-  Linking,
-} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useMemo, useState } from "react";
+import {
+  FlatList,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import { useNavigation } from "@react-navigation/native";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import BarcodeLink from "../components/BarcodeLink";
+import StoreFilterBadges from "../components/StoreFilterBadges";
 import { useLists } from "../context/ListsContext";
 import { useStores } from "../context/StoresContext";
 import { ROUTES } from "../navigation/ROUTES";
-import StoreFilterBadges from "../components/StoreFilterBadges";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { buildPurchaseHistoryFromArchivedLists } from "../utils/buildPurchaseHistoryFromArchivedLists";
-import BarcodeLink from "../components/BarcodeLink";
-import { timeAgo } from "../utils/store/formatters";
-import { Image } from "react-native";
-import { getProductImage } from "../utils/products/getProductImage";
 
 import {
-  queryProducts,
   getStoresFromPurchaseHistory,
+  queryProducts,
 } from "../utils/queries/products";
 
 import {
   joinText,
   priceText,
   purchaseMetaText,
-  formatCurrency,
 } from "../utils/store/formatters";
 
 /* -------------------------------------------------
