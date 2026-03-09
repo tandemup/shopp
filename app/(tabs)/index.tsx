@@ -1,8 +1,7 @@
-import { CreateListForm } from "@/components/lists/CreateListForm";
 import { api } from "@/convex/_generated/api";
 import { useQuery } from "convex/react";
 import { useRouter } from "expo-router";
-import React from "react";
+import { CreateListInline } from "../../components/lists/CreateListInline";
 
 import {
   FlatList,
@@ -22,8 +21,7 @@ export default function HomeScreen() {
       <View style={styles.container}>
         <Text style={styles.title}>Shopping Lists</Text>
 
-        <CreateListForm />
-
+        <CreateListInline />
         {!lists && <Text style={styles.info}>Loading lists...</Text>}
 
         {lists && lists.length === 0 && (
