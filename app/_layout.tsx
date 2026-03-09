@@ -1,24 +1,42 @@
 import DialogProvider from "@/components/ui/dialog/DialogProvider";
+import { ListsProvider } from "@/context/ListsContext";
+import { PurchasesProvider } from "@/context/PurchasesContext";
+import { StoresProvider } from "@/context/StoresContext";
 import { ThemeProvider } from "@/hooks/useTheme";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { Stack } from "expo-router";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 const convex = new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL!);
 
 export default function RootLayout() {
   return (
-    <ConvexProvider client={convex}>
-      <ThemeProvider>
-        <DialogProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
+    <SafeAreaProvider>
+      <ConvexProvider client={convex}>
+        <ThemeProvider>
+          <DialogProvider>
+            <StoresProvider>
+              <ListsProvider>
+                <PurchasesProvider>
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="(tabs)" />
 
-            <Stack.Screen name="list/[id]" options={{ headerShown: true }} />
+                    <Stack.Screen
+                      name="list/[id]"
+                      options={{ headerShown: true }}
+                    />
 
-            <Stack.Screen name="(modals)" options={{ presentation: "modal" }} />
-          </Stack>
-        </DialogProvider>
-      </ThemeProvider>
-    </ConvexProvider>
+                    <Stack.Screen
+                      name="(modals)"
+                      options={{ presentation: "modal" }}
+                    />
+                  </Stack>
+                </PurchasesProvider>
+              </ListsProvider>
+            </StoresProvider>
+          </DialogProvider>
+        </ThemeProvider>
+      </ConvexProvider>
+    </SafeAreaProvider>
   );
 }
