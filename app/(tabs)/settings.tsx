@@ -1,8 +1,8 @@
 import { createSettingsStyles } from "@/assets/styles/settings.styles";
-import DangerZone from "@/components/DangerZone";
-import Preferences from "@/components/Preferences";
-import ProgressStats from "@/components/ProgressStats";
-import useTheme from "@/hooks/useTheme";
+import DangerZone from "@/src/components/DangerZone";
+import Preferences from "@/src/components/Preferences";
+import ProgressStats from "@/src/components/ProgressStats";
+import useTheme from "@/src/hooks/useTheme";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 

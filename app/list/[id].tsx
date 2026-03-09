@@ -1,7 +1,7 @@
-import { AddItemForm } from "@/components/lists/AddItemForm";
+import { AddItemForm } from "@/src/components/lists/AddItemForm";
 import { useMutation, useQuery } from "convex/react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   FlatList,
   Pressable,
@@ -11,8 +11,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { StoreSelector } from "../../components/stores/StoreSelector";
 import { api } from "../../convex/_generated/api";
+import { StoreSelector } from "../../src/components/stores/StoreSelector";
 
 export default function ListDetailScreen() {
   const router = useRouter();

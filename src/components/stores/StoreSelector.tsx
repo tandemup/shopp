@@ -1,7 +1,6 @@
 import { useMutation, useQuery } from "convex/react";
-import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { api } from "../../convex/_generated/api";
+import { api } from "../../../convex/_generated/api";
 
 type StoreSelectorProps = {
   listId: any;

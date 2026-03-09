@@ -1,6 +1,6 @@
 import { createHomeStyles } from "@/assets/styles/home.styles";
 import { api } from "@/convex/_generated/api";
-import useTheme from "@/hooks/useTheme";
+import useTheme from "@/src/hooks/useTheme";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation } from "convex/react";
 import { LinearGradient } from "expo-linear-gradient";

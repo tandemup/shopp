@@ -1,8 +1,8 @@
-import DialogProvider from "@/components/ui/dialog/DialogProvider";
-import { ListsProvider } from "@/context/ListsContext";
-import { PurchasesProvider } from "@/context/PurchasesContext";
-import { StoresProvider } from "@/context/StoresContext";
-import { ThemeProvider } from "@/hooks/useTheme";
+import DialogProvider from "@/src/components/ui/dialog/DialogProvider";
+import { ListsProvider } from "@/src/context/ListsContext";
+import { PurchasesProvider } from "@/src/context/PurchasesContext";
+import { StoresProvider } from "@/src/context/StoresContext";
+import { ThemeProvider } from "@/src/hooks/useTheme";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";

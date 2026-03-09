@@ -1,8 +1,8 @@
 import { useMutation } from "convex/react";
-import React, { useState } from "react";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
-import { api } from "../../convex/_generated/api";
-import { STORES_SEED } from "../../src/seeds/stores";
+import { api } from "../../../convex/_generated/api";
+import { STORES_SEED } from "../../seeds/stores";
 
 export function SeedStoresButton() {
   const seedDefaults = useMutation(api.stores.seedDefaults);

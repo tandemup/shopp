@@ -1,7 +1,7 @@
 import { api } from "@/convex/_generated/api";
 import { useQuery } from "convex/react";
 import { useRouter } from "expo-router";
-import { CreateListInline } from "../../components/lists/CreateListInline";
+import { CreateListInline } from "../../src/components/lists/CreateListInline";
 
 import {
   FlatList,

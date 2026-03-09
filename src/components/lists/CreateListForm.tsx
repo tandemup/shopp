@@ -1,7 +1,7 @@
 import { useMutation } from "convex/react";
-import React, { useState } from "react";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { api } from "../../convex/_generated/api";
+import { api } from "../../../convex/_generated/api";
 
 export function CreateListForm() {
   const [name, setName] = useState("");

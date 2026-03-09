@@ -1,4 +1,4 @@
-import { ColorScheme } from "@/hooks/useTheme";
+import { ColorScheme } from "@/src/hooks/useTheme";
 import { StyleSheet } from "react-native";
 
 export const createHomeStyles = (colors: ColorScheme) => {
