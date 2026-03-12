@@ -1,6 +1,6 @@
 import itemsData from "@/data/items.json";
 import { Item } from "@/src/types/Item";
-// import { create } from "zustand";
+import { create } from "zustand";
 
 interface ItemsState {
   items: Item[];
