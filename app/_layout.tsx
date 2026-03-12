@@ -1,11 +1,12 @@
-import DialogProvider from "@/src/components/ui/dialog/DialogProvider";
-import { ListsProvider } from "@/src/context/ListsContext";
-import { PurchasesProvider } from "@/src/context/PurchasesContext";
-import { StoresProvider } from "@/src/context/StoresContext";
-import { ThemeProvider } from "@/src/hooks/useTheme";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import DialogProvider from "../src/components/ui/dialog/DialogProvider";
+import { ThemeProvider } from "../src/hooks/useTheme";
+
+import { ListsProvider } from "@/src/context/ListsContext";
+import { PurchasesProvider } from "@/src/context/PurchasesContext";
+import { StoresProvider } from "@/src/context/StoresContext";
 
 const convex = new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL!);
 

@@ -1,16 +1,6 @@
-export type GeoPoint = {
-  lat: number;
-  lng: number;
-  source?: string;
-};
-
-export type StoreInput = {
+export interface Store {
+  id: string;
   name: string;
   city?: string;
-  provincia?: string;
-  address: string;
-  zipcode?: string | number;
-  location?: GeoPoint;
-  favorite?: boolean;
-  isActive?: boolean;
-};
+  address?: string;
+}

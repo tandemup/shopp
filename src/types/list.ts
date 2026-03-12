@@ -1,20 +1,9 @@
-import type { PriceInfo } from "./pricing";
+import { Item } from "./Item";
 
-export type ShoppingListInput = {
+export interface List {
+  id: string;
   name: string;
-  currency?: string;
-  storeId?: string | null;
-};
-
-export type ShoppingItemInput = {
-  name: string;
-  quantity?: number;
-  unit?: string;
-  unitPrice?: number;
-  checked?: boolean;
-  promo?: string;
-  barcode?: string;
-  category?: string;
-  note?: string;
-  priceInfo?: PriceInfo;
-};
+  createdAt: number;
+  currency: string;
+  items: Item[];
+}
