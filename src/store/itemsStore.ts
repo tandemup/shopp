@@ -1,19 +1,29 @@
-import itemsData from "../../data/items.json";
+import itemsData from "@/data/items.json";
+import { Item } from "@/src/types/Item";
+// import { create } from "zustand";
 
-let items = [...itemsData];
+interface ItemsState {
+  items: Item[];
 
-export function getItems() {
-  return items;
+  getItem: (id: string) => Item | undefined;
+  updateItem: (item: Item) => void;
+  removeItem: (id: string) => void;
 }
 
-export function getItem(id: string) {
-  return items.find((i) => i.id === id);
-}
+export const useItemsStore = create<ItemsState>((set, get) => ({
+  items: itemsData as Item[],
 
-export function updateItem(updatedItem: any) {
-  items = items.map((i) => (i.id === updatedItem.id ? updatedItem : i));
-}
+  getItem: (id) => {
+    return get().items.find((i) => i.id === id);
+  },
 
-export function removeItem(id: string) {
-  items = items.filter((i) => i.id !== id);
-}
+  updateItem: (item) =>
+    set((state) => ({
+      items: state.items.map((i) => (i.id === item.id ? item : i)),
+    })),
+
+  removeItem: (id) =>
+    set((state) => ({
+      items: state.items.filter((i) => i.id !== id),
+    })),
+}));

@@ -22,19 +22,33 @@ import promotions from "@/data/promotions.json";
 import { getItem, removeItem, updateItem } from "@/src/store/itemsStore";
 
 export default function ItemDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams();
+  const id = params.id as string;
+
   const router = useRouter();
 
   const item = getItem(id);
 
-  const [name, setName] = useState(item?.name ?? "");
-  const [barcode, setBarcode] = useState(item?.barcode ?? "");
-  const [unit, setUnit] = useState(item?.unit ?? "u");
+  if (!item) {
+    return (
+      <SafeAreaView style={{ padding: 20 }}>
+        <Text>Item no encontrado</Text>
+      </SafeAreaView>
+    );
+  }
 
-  const [qty, setQty] = useState(String(item?.quantity ?? 1));
-  const [price, setPrice] = useState(String(item?.unitPrice ?? 0));
+  const [name, setName] = useState(item.name);
+  const [barcode, setBarcode] = useState(item.barcode ?? "");
+  const [unit, setUnit] = useState(item.unit ?? "u");
 
-  const [promo, setPromo] = useState(item?.promo ?? "none");
+  const [qty, setQty] = useState(String(item.quantity ?? 1));
+  const [price, setPrice] = useState(String(item.unitPrice ?? 0));
+
+  const [promo, setPromo] = useState(item.promo ?? "none");
+
+  const quantity = parseFloat(qty) || 0;
+  const unitPrice = parseFloat(price) || 0;
+
   /*
   -----------------------------
   PRICE ENGINE
@@ -56,7 +70,7 @@ export default function ItemDetailScreen() {
   */
 
   const saveItem = () => {
-    const item = {
+    const updatedItem = {
       id,
       name,
       barcode,
@@ -65,14 +79,8 @@ export default function ItemDetailScreen() {
       unitPrice,
       promo,
     };
-    updateItem(item);
 
-    router.back();
-    /*
-    Aquí conectarás con tu store
-
-    updateItem(item)
-    */
+    updateItem(updatedItem);
 
     router.back();
   };
@@ -87,10 +95,7 @@ export default function ItemDetailScreen() {
           text: "Eliminar",
           style: "destructive",
           onPress: () => {
-            console.log("Deleting item:", id);
-
             removeItem(id);
-
             router.back();
           },
         },
@@ -242,13 +247,11 @@ export default function ItemDetailScreen() {
           <View style={styles.buttons}>
             <Pressable style={styles.saveButton} onPress={saveItem}>
               <Ionicons name="save-outline" size={16} color="#fff" />
-
               <Text style={styles.saveText}>Guardar</Text>
             </Pressable>
 
             <Pressable style={styles.deleteButton} onPress={deleteItem}>
               <Ionicons name="trash-outline" size={16} color="#fff" />
-
               <Text style={styles.deleteText}>Eliminar</Text>
             </Pressable>
           </View>
@@ -259,14 +262,9 @@ export default function ItemDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f2f2f2",
-  },
+  container: { flex: 1, backgroundColor: "#f2f2f2" },
 
-  content: {
-    padding: 16,
-  },
+  content: { padding: 16 },
 
   header: {
     flexDirection: "row",
@@ -275,10 +273,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  title: {
-    fontSize: 18,
-    fontWeight: "600",
-  },
+  title: { fontSize: 18, fontWeight: "600" },
 
   label: {
     fontSize: 13,
@@ -295,16 +290,9 @@ const styles = StyleSheet.create({
     borderColor: "#ddd",
   },
 
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
+  row: { flexDirection: "row", alignItems: "center", gap: 8 },
 
-  rowSpace: {
-    flexDirection: "row",
-    gap: 12,
-  },
+  rowSpace: { flexDirection: "row", gap: 12 },
 
   iconButton: {
     width: 38,
@@ -317,10 +305,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
 
-  unitRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
+  unitRow: { flexDirection: "row", gap: 8 },
 
   unitButton: {
     paddingHorizontal: 12,
@@ -336,20 +321,11 @@ const styles = StyleSheet.create({
     borderColor: "#2563eb",
   },
 
-  unitText: {
-    color: "#333",
-  },
+  unitText: { color: "#333" },
 
-  unitTextActive: {
-    color: "#fff",
-    fontWeight: "600",
-  },
+  unitTextActive: { color: "#fff", fontWeight: "600" },
 
-  promoRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
+  promoRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
 
   promoButton: {
     paddingHorizontal: 12,
@@ -358,18 +334,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#e5e5e5",
   },
 
-  promoActive: {
-    backgroundColor: "#22c55e",
-  },
+  promoActive: { backgroundColor: "#22c55e" },
 
-  promoText: {
-    color: "#333",
-  },
+  promoText: { color: "#333" },
 
-  promoTextActive: {
-    color: "#fff",
-    fontWeight: "600",
-  },
+  promoTextActive: { color: "#fff", fontWeight: "600" },
 
   totalCard: {
     backgroundColor: "#e9e9e9",
@@ -378,9 +347,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
 
-  totalLabel: {
-    color: "#555",
-  },
+  totalLabel: { color: "#555" },
 
   totalValue: {
     fontSize: 20,
@@ -422,13 +389,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
 
-  saveText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
+  saveText: { color: "#fff", fontWeight: "600" },
 
-  deleteText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
+  deleteText: { color: "#fff", fontWeight: "600" },
 });
