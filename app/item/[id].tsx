@@ -17,31 +17,24 @@ import {
 import { formatCurrency } from "@/src/utils/pricing/formatCurrency";
 import { calculatePrice } from "@/src/utils/pricing/priceEngine";
 
-const PROMOTIONS = [
-  { id: "none", label: "Sin oferta" },
-  { id: "2x1", label: "2x1" },
-  { id: "3x2", label: "3x2" },
-  { id: "10%", label: "10%" },
-  { id: "20%", label: "20%" },
-];
+import promotions from "@/data/promotions.json";
+
+import { getItem, removeItem, updateItem } from "@/src/store/itemsStore";
 
 export default function ItemDetailScreen() {
-  const { id } = useLocalSearchParams();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
 
-  const [name, setName] = useState("manzanas");
-  const [barcode, setBarcode] = useState("");
+  const item = getItem(id);
 
-  const [unit, setUnit] = useState("kg");
+  const [name, setName] = useState(item?.name ?? "");
+  const [barcode, setBarcode] = useState(item?.barcode ?? "");
+  const [unit, setUnit] = useState(item?.unit ?? "u");
 
-  const [qty, setQty] = useState("2");
-  const [price, setPrice] = useState("3.5");
+  const [qty, setQty] = useState(String(item?.quantity ?? 1));
+  const [price, setPrice] = useState(String(item?.unitPrice ?? 0));
 
-  const [promo, setPromo] = useState("none");
-
-  const quantity = parseFloat(qty) || 0;
-  const unitPrice = parseFloat(price) || 0;
-
+  const [promo, setPromo] = useState(item?.promo ?? "none");
   /*
   -----------------------------
   PRICE ENGINE
@@ -72,9 +65,9 @@ export default function ItemDetailScreen() {
       unitPrice,
       promo,
     };
+    updateItem(item);
 
-    console.log("Saving item:", item);
-
+    router.back();
     /*
     Aquí conectarás con tu store
 
@@ -96,9 +89,7 @@ export default function ItemDetailScreen() {
           onPress: () => {
             console.log("Deleting item:", id);
 
-            /*
-            removeItem(id)
-            */
+            removeItem(id);
 
             router.back();
           },
@@ -210,7 +201,7 @@ export default function ItemDetailScreen() {
           <Text style={styles.label}>Ofertas</Text>
 
           <View style={styles.promoRow}>
-            {PROMOTIONS.map((p) => (
+            {promotions.map((p) => (
               <Pressable
                 key={p.id}
                 style={[

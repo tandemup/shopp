@@ -1,10 +1,10 @@
 export interface Item {
   id: string;
   name: string;
+  barcode?: string;
+  unit: string;
   quantity: number;
   unitPrice: number;
-  unit: string;
   promo?: string;
-  barcode?: string;
   checked?: boolean;
 }

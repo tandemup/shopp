@@ -1,0 +1,7 @@
+[
+  { "id": "none", "label": "Sin oferta" },
+  { "id": "2x1", "label": "2x1" },
+  { "id": "3x2", "label": "3x2" },
+  { "id": "10%", "label": "10%" },
+  { "id": "20%", "label": "20%" }
+]

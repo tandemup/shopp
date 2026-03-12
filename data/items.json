@@ -1,0 +1,20 @@
+[
+  {
+    "id": "1",
+    "name": "Manzanas",
+    "barcode": "",
+    "unit": "kg",
+    "quantity": 2,
+    "unitPrice": 3.5,
+    "promo": "none"
+  },
+  {
+    "id": "2",
+    "name": "Leche",
+    "barcode": "8410123456789",
+    "unit": "l",
+    "quantity": 1,
+    "unitPrice": 1.25,
+    "promo": "10%"
+  }
+]
