@@ -1,26 +1,25 @@
-import { useStore } from "@/src/context/StoreContext";
 import { useRouter } from "expo-router";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, StyleSheet, View } from "react-native";
 
-export default function StoreSelector() {
-  const { store, setCurrentStore } = useStore();
+import StoreRow from "@/src/components/stores/StoreRow";
+import { useStores } from "@/src/context/StoresContext";
+
+export default function StoreSelectScreen() {
+  const { stores, setSelectedStore } = useStores();
   const router = useRouter();
 
-  const handleSelect = (store: any) => {
-    setCurrentStore(store);
+  const handleSelect = (store) => {
+    setSelectedStore(store);
     router.back();
   };
 
   return (
     <View style={styles.container}>
       <FlatList
-        data={store}
+        data={stores}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <Pressable style={styles.card} onPress={() => handleSelect(item)}>
-            <Text style={styles.name}>{item.name}</Text>
-            <Text style={styles.city}>{item.city}</Text>
-          </Pressable>
+          <StoreRow store={item} onPress={() => handleSelect(item)} />
         )}
       />
     </View>
@@ -30,24 +29,7 @@ export default function StoreSelector() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "#f2f2f2",
     padding: 16,
-  },
-
-  card: {
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: "#fff",
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#eee",
-  },
-
-  name: {
-    fontSize: 18,
-    fontWeight: "600",
-  },
-
-  city: {
-    color: "#666",
   },
 });

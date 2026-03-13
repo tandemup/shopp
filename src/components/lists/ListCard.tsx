@@ -1,25 +1,20 @@
 import { List } from "@/src/types/List";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 interface Props {
   list: List;
+  onPress?: () => void;
+  onMenu?: (event?: any) => void;
 }
 
-export default function ListCard({ list }: Props) {
-  const router = useRouter();
-
-  function openList() {
-    router.push(`/list/${list.id}`);
-  }
-
+export default function ListCard({ list, onPress, onMenu }: Props) {
   const itemCount = list.items.length;
 
   return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && { opacity: 0.8 }]}
-      onPress={openList}
+      onPress={onPress}
     >
       <View style={styles.cardTop}>
         <Text style={styles.listName}>{list.name}</Text>
@@ -28,7 +23,7 @@ export default function ListCard({ list }: Props) {
           <Text style={styles.currencyText}>{list.currency}</Text>
         </View>
 
-        <Pressable style={styles.menu}>
+        <Pressable style={styles.menu} onPress={onMenu}>
           <Ionicons name="ellipsis-vertical" size={18} color="#555" />
         </Pressable>
       </View>

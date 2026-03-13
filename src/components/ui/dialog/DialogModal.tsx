@@ -1,4 +1,3 @@
-import React from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function DialogModal({ dialog, onSelect }: any) {
@@ -8,7 +7,7 @@ export default function DialogModal({ dialog, onSelect }: any) {
     <Modal visible transparent animationType="fade">
       <View style={styles.overlay}>
         <View style={styles.box}>
-          <Text style={styles.title}>{dialog.title}</Text>
+          {dialog.title && <Text style={styles.title}>{dialog.title}</Text>}
 
           {dialog.message && (
             <Text style={styles.message}>{dialog.message}</Text>
@@ -16,11 +15,16 @@ export default function DialogModal({ dialog, onSelect }: any) {
 
           <View style={styles.actions}>
             {dialog.buttons?.map((b: any, i: number) => (
-              <Pressable key={i} onPress={() => onSelect(i)}>
+              <Pressable
+                key={i}
+                style={styles.action}
+                onPress={() => onSelect(i)}
+              >
                 <Text
                   style={[
                     styles.button,
                     b.style === "destructive" && styles.destructive,
+                    b.style === "cancel" && styles.cancel,
                   ]}
                 >
                   {b.text}
@@ -43,36 +47,50 @@ const styles = StyleSheet.create({
   },
 
   box: {
-    width: 320,
+    width: "90%",
+    maxWidth: 360,
     backgroundColor: "white",
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 20,
   },
 
   title: {
     fontSize: 18,
     fontWeight: "600",
+    textAlign: "center",
   },
 
   message: {
-    marginTop: 10,
-    color: "#555",
+    marginTop: 8,
+    color: "#666",
+    textAlign: "center",
   },
 
   actions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 16,
+    flexDirection: "column",
+    width: "100%",
     marginTop: 20,
+  },
+
+  action: {
+    width: "100%",
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderColor: "#eee",
   },
 
   button: {
     fontSize: 16,
+    textAlign: "center",
     color: "#007aff",
   },
 
   destructive: {
     color: "#ff3b30",
+    fontWeight: "600",
+  },
+
+  cancel: {
     fontWeight: "600",
   },
 });

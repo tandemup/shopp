@@ -1,11 +1,14 @@
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { FlatList, StyleSheet, Text, View } from "react-native";
 
 import ItemRow from "@/src/components/items/ItemRow";
 import SearchCombinedBar from "@/src/components/shopping/SearchCombinedBar";
 import StoreSelector from "@/src/components/shopping/StoreSelector";
 import TotalBar from "@/src/components/shopping/TotalBar";
+
 import { useLists } from "@/src/context/ListsContext";
+import { useStores } from "@/src/context/StoresContext";
+
 import { Item } from "@/src/types/Item";
 
 function makeNewItem(name: string): Item {
@@ -22,8 +25,11 @@ function makeNewItem(name: string): Item {
 }
 
 export default function ShoppingListScreen() {
+  const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+
   const { getList, addItem, toggleItem } = useLists();
+  const { getStoreById } = useStores();
 
   const list = getList(id);
 
@@ -34,6 +40,17 @@ export default function ShoppingListScreen() {
       </View>
     );
   }
+
+  /* -------------------------------------------------
+     Tienda asignada
+  -------------------------------------------------- */
+
+  const store = list.storeId ? getStoreById(list.storeId) : undefined;
+
+  /* -------------------------------------------------
+     Total
+  -------------------------------------------------- */
+
   const total = list.items
     .filter((item) => item.checked)
     .reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
@@ -42,7 +59,14 @@ export default function ShoppingListScreen() {
     <View style={styles.container}>
       <Text style={styles.header}>{list.name}</Text>
 
-      <StoreSelector />
+      {/* -------- Selector de tienda -------- */}
+
+      <StoreSelector
+        store={store}
+        onPress={() => router.push(`/store/select?listId=${list.id}`)}
+      />
+
+      {/* -------- Barra de búsqueda -------- */}
 
       <SearchCombinedBar
         onAdd={(name) => {
@@ -52,6 +76,8 @@ export default function ShoppingListScreen() {
           addItem(list.id, makeNewItem(trimmed));
         }}
       />
+
+      {/* -------- Lista de productos -------- */}
 
       <FlatList
         data={list.items}
@@ -84,6 +110,8 @@ export default function ShoppingListScreen() {
             : styles.flatListContent
         }
       />
+
+      {/* -------- Total -------- */}
 
       <TotalBar total={total} />
     </View>

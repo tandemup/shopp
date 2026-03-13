@@ -5,11 +5,16 @@ import { List } from "../types/List";
 
 interface ListsContextType {
   lists: List[];
+
   addList: (name: string) => void;
+  deleteList: (id: string) => void;
+  archiveList: (id: string) => void;
+
   addItem: (listId: string, item: Item) => void;
   updateItem: (listId: string, item: Item) => void;
   removeItem: (listId: string, itemId: string) => void;
   toggleItem: (listId: string, itemId: string) => void;
+
   getList: (id: string) => List | undefined;
   getItem: (listId: string, itemId: string) => Item | undefined;
   findItemById: (itemId: string) => { list: List; item: Item } | undefined;
@@ -23,6 +28,7 @@ const initialLists: List[] = [
     name: "Lista principal",
     createdAt: Date.now(),
     currency: "EUR",
+    archived: false,
     items: (itemsData as Item[]).map((item) => ({
       ...item,
       checked: item.checked ?? false,
@@ -37,27 +43,41 @@ function buildId(prefix: string) {
 export function ListsProvider({ children }: { children: React.ReactNode }) {
   const [lists, setLists] = useState<List[]>(initialLists);
 
+  // ---------------------------
+  // LIST MANAGEMENT
+  // ---------------------------
+
   function addList(name: string) {
     const newList: List = {
       id: buildId("list"),
       name: name.trim() || "Nueva lista",
       createdAt: Date.now(),
       currency: "EUR",
+      archived: false,
       items: [],
     };
 
     setLists((prev) => [...prev, newList]);
   }
 
+  function deleteList(id: string) {
+    setLists((prev) => prev.filter((l) => l.id !== id));
+  }
+
+  function archiveList(id: string) {
+    setLists((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, archived: true } : l)),
+    );
+  }
+
+  // ---------------------------
+  // ITEM MANAGEMENT
+  // ---------------------------
+
   function addItem(listId: string, item: Item) {
     setLists((prev) =>
       prev.map((list) =>
-        list.id === listId
-          ? {
-              ...list,
-              items: [...list.items, item],
-            }
-          : list,
+        list.id === listId ? { ...list, items: [...list.items, item] } : list,
       ),
     );
   }
@@ -105,6 +125,10 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // ---------------------------
+  // GETTERS
+  // ---------------------------
+
   function getList(id: string) {
     return lists.find((list) => list.id === id);
   }
@@ -127,11 +151,16 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       lists,
+
       addList,
+      deleteList,
+      archiveList,
+
       addItem,
       updateItem,
       removeItem,
       toggleItem,
+
       getList,
       getItem,
       findItemById,

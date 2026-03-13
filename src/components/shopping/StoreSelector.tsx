@@ -1,11 +1,11 @@
-import { useStore } from "@/src/context/StoreContext";
+import { useStores } from "@/src/context/StoresContext";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function StoreSelector() {
   const router = useRouter();
-  const { currentStore } = useStore();
+  const { currentStore } = useStores();
 
   const handlePress = () => {
     router.push("/store/select");
