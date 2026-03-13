@@ -6,7 +6,7 @@ import { ThemeProvider } from "../src/hooks/useTheme";
 
 import { ListsProvider } from "@/src/context/ListsContext";
 import { PurchasesProvider } from "@/src/context/PurchasesContext";
-import { StoresProvider } from "@/src/context/StoresContext";
+import { StoreProvider } from "@/src/context/StoreContext";
 
 const convex = new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL!);
 
@@ -16,7 +16,7 @@ export default function RootLayout() {
       <ConvexProvider client={convex}>
         <ThemeProvider>
           <DialogProvider>
-            <StoresProvider>
+            <StoreProvider>
               <ListsProvider>
                 <PurchasesProvider>
                   <Stack screenOptions={{ headerShown: false }}>
@@ -34,7 +34,7 @@ export default function RootLayout() {
                   </Stack>
                 </PurchasesProvider>
               </ListsProvider>
-            </StoresProvider>
+            </StoreProvider>
           </DialogProvider>
         </ThemeProvider>
       </ConvexProvider>

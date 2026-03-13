@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState } from "react";
+import itemsData from "@/data/items.json";
+import React, { createContext, useContext, useMemo, useState } from "react";
 import { Item } from "../types/Item";
 import { List } from "../types/List";
 
@@ -11,17 +12,35 @@ interface ListsContextType {
   toggleItem: (listId: string, itemId: string) => void;
   getList: (id: string) => List | undefined;
   getItem: (listId: string, itemId: string) => Item | undefined;
+  findItemById: (itemId: string) => { list: List; item: Item } | undefined;
 }
 
 const ListsContext = createContext<ListsContextType | undefined>(undefined);
 
+const initialLists: List[] = [
+  {
+    id: "default-list",
+    name: "Lista principal",
+    createdAt: Date.now(),
+    currency: "EUR",
+    items: (itemsData as Item[]).map((item) => ({
+      ...item,
+      checked: item.checked ?? false,
+    })),
+  },
+];
+
+function buildId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+}
+
 export function ListsProvider({ children }: { children: React.ReactNode }) {
-  const [lists, setLists] = useState<List[]>([]);
+  const [lists, setLists] = useState<List[]>(initialLists);
 
   function addList(name: string) {
     const newList: List = {
-      id: crypto.randomUUID(),
-      name,
+      id: buildId("list"),
+      name: name.trim() || "Nueva lista",
       createdAt: Date.now(),
       currency: "EUR",
       items: [],
@@ -33,7 +52,12 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
   function addItem(listId: string, item: Item) {
     setLists((prev) =>
       prev.map((list) =>
-        list.id === listId ? { ...list, items: [...list.items, item] } : list,
+        list.id === listId
+          ? {
+              ...list,
+              items: [...list.items, item],
+            }
+          : list,
       ),
     );
   }
@@ -90,21 +114,33 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
     return list?.items.find((i) => i.id === itemId);
   }
 
+  function findItemById(itemId: string) {
+    for (const list of lists) {
+      const item = list.items.find((i) => i.id === itemId);
+      if (item) {
+        return { list, item };
+      }
+    }
+    return undefined;
+  }
+
+  const value = useMemo(
+    () => ({
+      lists,
+      addList,
+      addItem,
+      updateItem,
+      removeItem,
+      toggleItem,
+      getList,
+      getItem,
+      findItemById,
+    }),
+    [lists],
+  );
+
   return (
-    <ListsContext.Provider
-      value={{
-        lists,
-        addList,
-        addItem,
-        updateItem,
-        removeItem,
-        toggleItem,
-        getList,
-        getItem,
-      }}
-    >
-      {children}
-    </ListsContext.Provider>
+    <ListsContext.Provider value={value}>{children}</ListsContext.Provider>
   );
 }
 

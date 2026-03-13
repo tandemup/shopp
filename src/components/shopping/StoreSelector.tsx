@@ -1,14 +1,28 @@
+import { useStore } from "@/src/context/StoreContext";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function StoreSelector() {
-  return (
-    <Pressable style={styles.card}>
-      <Ionicons name="storefront-outline" size={22} color="#2563eb" />
+  const router = useRouter();
+  const { currentStore } = useStore();
 
-      <View style={{ flex: 1, marginLeft: 10 }}>
+  const handlePress = () => {
+    router.push("/store/select");
+  };
+
+  return (
+    <Pressable style={styles.card} onPress={handlePress}>
+      <Ionicons name="storefront-outline" size={22} color="#666" />
+
+      <View style={styles.textContainer}>
         <Text style={styles.label}>Tienda seleccionada</Text>
-        <Text style={styles.value}>Seleccionar tienda</Text>
+
+        <Text style={styles.value}>
+          {currentStore
+            ? `${currentStore.name} · ${currentStore.city ?? ""}`
+            : "Seleccionar tienda"}
+        </Text>
       </View>
 
       <Ionicons name="chevron-forward" size={20} color="#999" />
@@ -20,19 +34,25 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "white",
-    padding: 14,
+    padding: 16,
+    backgroundColor: "#fff",
     borderRadius: 12,
-    marginBottom: 10,
+    marginVertical: 8,
+  },
+
+  textContainer: {
+    flex: 1,
+    marginLeft: 12,
   },
 
   label: {
-    fontSize: 12,
-    color: "#777",
+    fontSize: 13,
+    color: "#888",
   },
 
   value: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "500",
+    color: "#333",
   },
 });

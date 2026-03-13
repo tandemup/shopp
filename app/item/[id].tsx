@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,46 +13,40 @@ import {
   View,
 } from "react-native";
 
+import promotions from "@/data/promotions.json";
+import { alert, confirm } from "@/src/components/ui/dialog/dialog";
+import { useLists } from "@/src/context/ListsContext";
 import { formatCurrency } from "@/src/utils/pricing/formatCurrency";
 import { calculatePrice } from "@/src/utils/pricing/priceEngine";
 
-import promotions from "@/data/promotions.json";
-
-import { getItem, removeItem, updateItem } from "@/src/store/itemsStore";
-
 export default function ItemDetailScreen() {
-  const params = useLocalSearchParams();
-  const id = params.id as string;
+  const params = useLocalSearchParams<{ id: string }>();
+  const id = params.id;
 
   const router = useRouter();
+  const { findItemById, updateItem, removeItem } = useLists();
 
-  const item = getItem(id);
+  const found = findItemById(id);
 
-  if (!item) {
+  if (!found) {
     return (
-      <SafeAreaView style={{ padding: 20 }}>
+      <SafeAreaView style={styles.notFound}>
         <Text>Item no encontrado</Text>
       </SafeAreaView>
     );
   }
 
+  const { list, item } = found;
+
   const [name, setName] = useState(item.name);
   const [barcode, setBarcode] = useState(item.barcode ?? "");
   const [unit, setUnit] = useState(item.unit ?? "u");
-
   const [qty, setQty] = useState(String(item.quantity ?? 1));
   const [price, setPrice] = useState(String(item.unitPrice ?? 0));
-
   const [promo, setPromo] = useState(item.promo ?? "none");
 
-  const quantity = parseFloat(qty) || 0;
-  const unitPrice = parseFloat(price) || 0;
-
-  /*
-  -----------------------------
-  PRICE ENGINE
-  -----------------------------
-  */
+  const quantity = Number(qty.replace(",", ".")) || 1;
+  const unitPrice = Number(price.replace(",", ".")) || 0;
 
   const priceResult = useMemo(() => {
     return calculatePrice({
@@ -63,51 +56,41 @@ export default function ItemDetailScreen() {
     });
   }, [quantity, unitPrice, promo]);
 
-  /*
-  -----------------------------
-  EVENTS
-  -----------------------------
-  */
+  const saveItem = async () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      await alert("Nombre requerido", "Introduce un nombre para el producto.");
+      return;
+    }
 
-  const saveItem = () => {
-    const updatedItem = {
-      id,
-      name,
-      barcode,
+    updateItem(list.id, {
+      ...item,
+      name: trimmedName,
+      barcode: barcode.trim(),
       unit,
       quantity,
       unitPrice,
       promo,
-    };
-
-    updateItem(updatedItem);
+    });
 
     router.back();
   };
 
-  const deleteItem = () => {
-    Alert.alert(
+  const deleteItem = async () => {
+    const r = await confirm(
       "Eliminar producto",
       "¿Seguro que quieres eliminar este producto?",
       [
         { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: () => {
-            removeItem(id);
-            router.back();
-          },
-        },
+        { text: "Eliminar", style: "destructive" },
       ],
     );
-  };
 
-  /*
-  -----------------------------
-  UI
-  -----------------------------
-  */
+    if (r === 1) {
+      removeItem(list.id, item.id);
+      router.back();
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -116,8 +99,6 @@ export default function ItemDetailScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView contentContainerStyle={styles.content}>
-          {/* HEADER */}
-
           <View style={styles.header}>
             <Pressable onPress={() => router.back()}>
               <Ionicons name="arrow-back" size={22} />
@@ -128,16 +109,10 @@ export default function ItemDetailScreen() {
             <View style={{ width: 22 }} />
           </View>
 
-          {/* NOMBRE */}
-
           <Text style={styles.label}>Nombre</Text>
-
           <TextInput style={styles.input} value={name} onChangeText={setName} />
 
-          {/* CODIGO BARRAS */}
-
           <Text style={styles.label}>Código de barras</Text>
-
           <View style={styles.row}>
             <TextInput
               style={[styles.input, { flex: 1 }]}
@@ -155,10 +130,7 @@ export default function ItemDetailScreen() {
             </Pressable>
           </View>
 
-          {/* UNIDAD */}
-
           <Text style={styles.label}>Unidad</Text>
-
           <View style={styles.unitRow}>
             {["u", "kg", "g", "l"].map((u) => (
               <Pressable
@@ -175,38 +147,31 @@ export default function ItemDetailScreen() {
             ))}
           </View>
 
-          {/* CANTIDAD + PRECIO */}
-
           <View style={styles.rowSpace}>
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>Cantidad ({unit})</Text>
-
               <TextInput
                 style={styles.input}
                 value={qty}
                 onChangeText={setQty}
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
               />
             </View>
 
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>Precio/{unit}</Text>
-
               <TextInput
                 style={styles.input}
                 value={price}
                 onChangeText={setPrice}
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
               />
             </View>
           </View>
 
-          {/* OFERTAS */}
-
           <Text style={styles.label}>Ofertas</Text>
-
           <View style={styles.promoRow}>
-            {promotions.map((p) => (
+            {promotions.map((p: { id: string; label: string }) => (
               <Pressable
                 key={p.id}
                 style={[
@@ -226,35 +191,26 @@ export default function ItemDetailScreen() {
             ))}
           </View>
 
-          {/* TOTAL */}
-
-          <View style={styles.totalCard}>
-            <Text style={styles.totalLabel}>Total</Text>
-
-            <Text style={styles.totalValue}>
-              {formatCurrency(priceResult.total)}
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>Resumen</Text>
+            <Text style={styles.summaryLine}>
+              Base: {formatCurrency(priceResult.base)}
             </Text>
-
-            {priceResult.saving > 0 && (
-              <Text style={styles.saving}>
-                Ahorro: {formatCurrency(priceResult.saving)}
-              </Text>
-            )}
+            <Text style={styles.summaryLine}>
+              Ahorro: {formatCurrency(priceResult.saving)}
+            </Text>
+            <Text style={styles.summaryTotal}>
+              Total: {formatCurrency(priceResult.total)}
+            </Text>
           </View>
 
-          {/* BOTONES */}
+          <Pressable style={styles.saveButton} onPress={saveItem}>
+            <Text style={styles.saveText}>Guardar cambios</Text>
+          </Pressable>
 
-          <View style={styles.buttons}>
-            <Pressable style={styles.saveButton} onPress={saveItem}>
-              <Ionicons name="save-outline" size={16} color="#fff" />
-              <Text style={styles.saveText}>Guardar</Text>
-            </Pressable>
-
-            <Pressable style={styles.deleteButton} onPress={deleteItem}>
-              <Ionicons name="trash-outline" size={16} color="#fff" />
-              <Text style={styles.deleteText}>Eliminar</Text>
-            </Pressable>
-          </View>
+          <Pressable style={styles.deleteButton} onPress={deleteItem}>
+            <Text style={styles.deleteText}>Eliminar producto</Text>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -262,9 +218,21 @@ export default function ItemDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f2f2f2" },
+  notFound: {
+    flex: 1,
+    padding: 20,
+    backgroundColor: "#fff",
+  },
 
-  content: { padding: 16 },
+  container: {
+    flex: 1,
+    backgroundColor: "#f7f7f8",
+  },
+
+  content: {
+    padding: 16,
+    paddingBottom: 32,
+  },
 
   header: {
     flexDirection: "row",
@@ -273,47 +241,64 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  title: { fontSize: 18, fontWeight: "600" },
+  title: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
 
   label: {
     fontSize: 13,
-    color: "#666",
-    marginBottom: 4,
-    marginTop: 12,
+    fontWeight: "600",
+    color: "#444",
+    marginBottom: 6,
+    marginTop: 8,
   },
 
   input: {
     backgroundColor: "#fff",
-    borderRadius: 8,
-    padding: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "#e3e3e3",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 15,
   },
 
-  row: { flexDirection: "row", alignItems: "center", gap: 8 },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
 
-  rowSpace: { flexDirection: "row", gap: 12 },
+  rowSpace: {
+    flexDirection: "row",
+    gap: 12,
+  },
 
   iconButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "#e3e3e3",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff",
   },
 
-  unitRow: { flexDirection: "row", gap: 8 },
+  unitRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+  },
 
   unitButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: "#ddd",
-    backgroundColor: "#fff",
   },
 
   unitActive: {
@@ -321,75 +306,101 @@ const styles = StyleSheet.create({
     borderColor: "#2563eb",
   },
 
-  unitText: { color: "#333" },
-
-  unitTextActive: { color: "#fff", fontWeight: "600" },
-
-  promoRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-
-  promoButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: "#e5e5e5",
-  },
-
-  promoActive: { backgroundColor: "#22c55e" },
-
-  promoText: { color: "#333" },
-
-  promoTextActive: { color: "#fff", fontWeight: "600" },
-
-  totalCard: {
-    backgroundColor: "#e9e9e9",
-    borderRadius: 10,
-    padding: 14,
-    marginTop: 16,
-  },
-
-  totalLabel: { color: "#555" },
-
-  totalValue: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginTop: 4,
-  },
-
-  saving: {
-    color: "#22c55e",
-    marginTop: 4,
+  unitText: {
+    color: "#333",
     fontWeight: "500",
   },
 
-  buttons: {
+  unitTextActive: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+
+  promoRow: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 20,
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  promoButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+
+  promoActive: {
+    backgroundColor: "#111827",
+    borderColor: "#111827",
+  },
+
+  promoText: {
+    color: "#333",
+    fontWeight: "500",
+  },
+
+  promoTextActive: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+
+  summaryCard: {
+    marginTop: 18,
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+
+  summaryTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+
+  summaryLine: {
+    fontSize: 14,
+    color: "#4b5563",
+    marginBottom: 4,
+  },
+
+  summaryTotal: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginTop: 6,
+    color: "#16a34a",
   },
 
   saveButton: {
-    flex: 1,
-    backgroundColor: "#22c55e",
-    borderRadius: 8,
-    padding: 12,
-    flexDirection: "row",
-    justifyContent: "center",
+    marginTop: 18,
+    backgroundColor: "#2563eb",
+    borderRadius: 14,
+    paddingVertical: 14,
     alignItems: "center",
-    gap: 6,
+  },
+
+  saveText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
   },
 
   deleteButton: {
-    flex: 1,
-    backgroundColor: "#ef4444",
-    borderRadius: 8,
-    padding: 12,
-    flexDirection: "row",
-    justifyContent: "center",
+    marginTop: 12,
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    paddingVertical: 14,
     alignItems: "center",
-    gap: 6,
+    borderWidth: 1,
+    borderColor: "#ef4444",
   },
 
-  saveText: { color: "#fff", fontWeight: "600" },
-
-  deleteText: { color: "#fff", fontWeight: "600" },
+  deleteText: {
+    color: "#ef4444",
+    fontWeight: "700",
+    fontSize: 16,
+  },
 });
