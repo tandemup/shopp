@@ -17,7 +17,7 @@ import promotions from "@/data/promotions.json";
 import { alert, confirm } from "@/src/components/ui/dialog/dialog";
 import { useLists } from "@/src/context/ListsContext";
 import { formatCurrency } from "@/src/utils/pricing/formatCurrency";
-import { calculatePrice } from "@/src/utils/pricing/priceEngine";
+import { calculatePrice } from "@/src/utils/pricing/pricingEngine";
 
 export default function ItemDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -28,22 +28,15 @@ export default function ItemDetailScreen() {
 
   const found = findItemById(id);
 
-  if (!found) {
-    return (
-      <SafeAreaView style={styles.notFound}>
-        <Text>Item no encontrado</Text>
-      </SafeAreaView>
-    );
-  }
+  const item = found?.item;
+  const list = found?.list;
 
-  const { list, item } = found;
-
-  const [name, setName] = useState(item.name);
-  const [barcode, setBarcode] = useState(item.barcode ?? "");
-  const [unit, setUnit] = useState(item.unit ?? "u");
-  const [qty, setQty] = useState(String(item.quantity ?? 1));
-  const [price, setPrice] = useState(String(item.unitPrice ?? 0));
-  const [promo, setPromo] = useState(item.promo ?? "none");
+  const [name, setName] = useState(item?.name ?? "");
+  const [barcode, setBarcode] = useState(item?.barcode ?? "");
+  const [unit, setUnit] = useState(item?.unit ?? "u");
+  const [qty, setQty] = useState(String(item?.quantity ?? 1));
+  const [price, setPrice] = useState(String(item?.unitPrice ?? 0));
+  const [promo, setPromo] = useState(item?.promo ?? "none");
 
   const quantity = Number(qty.replace(",", ".")) || 1;
   const unitPrice = Number(price.replace(",", ".")) || 0;
@@ -52,10 +45,17 @@ export default function ItemDetailScreen() {
     return calculatePrice({
       quantity,
       unitPrice,
-      promo,
+      offer: promo,
     });
   }, [quantity, unitPrice, promo]);
 
+  if (!found) {
+    return (
+      <SafeAreaView style={styles.notFound}>
+        <Text>Item no encontrado</Text>
+      </SafeAreaView>
+    );
+  }
   const saveItem = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
@@ -197,7 +197,7 @@ export default function ItemDetailScreen() {
               Base: {formatCurrency(priceResult.base)}
             </Text>
             <Text style={styles.summaryLine}>
-              Ahorro: {formatCurrency(priceResult.saving)}
+              Ahorro: {formatCurrency(priceResult.savings)}
             </Text>
             <Text style={styles.summaryTotal}>
               Total: {formatCurrency(priceResult.total)}

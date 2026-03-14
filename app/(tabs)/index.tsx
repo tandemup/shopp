@@ -98,6 +98,7 @@ export default function ShoppingListsScreen() {
         {/* -------- Listado -------- */}
 
         <FlatList
+          keyboardShouldPersistTaps="handled"
           data={sortedLists}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (

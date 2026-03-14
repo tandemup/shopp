@@ -1,5 +1,5 @@
 import storesData from "@/data/stores.json";
-import React, { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState } from "react";
 
 type Store = {
   id: string;
@@ -17,28 +17,28 @@ type StoresContextType = {
 
 const StoresContext = createContext<StoresContextType | undefined>(undefined);
 
-export function StoresProvider({ children }: { children: React.ReactNode }) {
-  const [currentStore, setCurrentStore] = useState<Store | null>(
-    storesData[0] ?? null,
-  );
+export function StoresProvider({ children }) {
+  const [stores, setStores] = useState<Store[]>(storesData);
 
-  const selectStore = (store: Store) => {
-    setCurrentStore(store);
-  };
+  const [currentStore, setCurrentStore] = useState<Store | null>(null);
+
+  function getStoreById(id: string) {
+    return stores.find((s) => s.id === id);
+  }
 
   return (
     <StoresContext.Provider
       value={{
-        stores: storesData,
+        stores,
         currentStore,
-        selectStore,
+        setCurrentStore,
+        getStoreById,
       }}
     >
       {children}
     </StoresContext.Provider>
   );
 }
-
 export function useStores() {
   const context = useContext(StoresContext);
 

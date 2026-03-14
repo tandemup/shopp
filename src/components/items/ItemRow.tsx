@@ -1,131 +1,155 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-type Item = {
-  id: string;
-  name: string;
-  quantity: number;
-  price: number;
-  checked?: boolean;
-  offer?: string;
-};
+import { formatCurrency } from "@/src/utils/pricing/formatCurrency";
+import { calculatePrice } from "@/src/utils/pricing/pricingEngine";
 
-type Props = {
-  item: Item;
-  onToggle?: (id: string) => void;
-};
+interface ItemRowProps {
+  item: any;
+  onToggle: () => void;
+  onPress: () => void;
+}
 
-export default function ItemRow({ item, onToggle }: Props) {
-  const router = useRouter();
+export default function ItemRow({ item, onToggle, onPress }: ItemRowProps) {
+  const price = calculatePrice({
+    quantity: item.quantity ?? 1,
+    unitPrice: item.unitPrice ?? 0,
+    offer: item.promo ?? "none",
+  });
+  const checked = item.checked ?? true;
 
-  function toggle() {
-    onToggle?.(item.id);
-  }
-
-  function openDetail() {
-    router.push(`/item/${item.id}`);
-  }
-
-  const total = item.quantity * item.price;
-
+  const hasPromo = item.promo && item.promo !== "none";
+  const hasSavings = price.savings > 0;
+  console.log(item.promo, price);
   return (
-    <View style={styles.row}>
-      {/* checkbox */}
+    <View style={[styles.card, !checked && styles.cardDisabled]}>
+      {/* ---------- Checkbox ---------- */}
 
-      <Pressable onPress={toggle} style={styles.checkbox}>
+      <Pressable onPress={onToggle} style={styles.checkbox}>
         <Ionicons
-          name={item.checked ? "checkbox" : "square-outline"}
+          name={checked ? "checkbox" : "square-outline"}
           size={22}
-          color="#28c76f"
+          color={checked ? "#22c55e" : "#9ca3af"}
         />
       </Pressable>
 
-      {/* product info */}
+      {/* ---------- Content ---------- */}
 
-      <View style={styles.center}>
-        <Text style={styles.name}>{item.name}</Text>
+      <View style={styles.content}>
+        <View style={styles.nameRow}>
+          <Text style={styles.name}>{item.name}</Text>
 
-        <View style={styles.metaRow}>
-          <Text style={styles.meta}>
-            {item.quantity} × {item.price.toFixed(2)} €
-          </Text>
-
-          {item.offer && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{item.offer}</Text>
+          {hasPromo && (
+            <View style={styles.promoBadge}>
+              <Text style={styles.promoText}>
+                {item.promo}
+                {hasSavings && `  -${formatCurrency(price.savings)}`}
+              </Text>
             </View>
           )}
         </View>
+
+        <Text style={styles.detail}>
+          {item.quantity} x {formatCurrency(item.unitPrice)}
+        </Text>
       </View>
 
-      {/* total */}
+      {/* ---------- Price ---------- */}
 
-      <Text style={styles.total}>{total.toFixed(2)} €</Text>
+      <View style={styles.priceBox}>
+        {hasPromo && (
+          <Text style={styles.basePrice}>{formatCurrency(price.base)}</Text>
+        )}
 
-      {/* chevron */}
+        <Text style={styles.finalPrice}>{formatCurrency(price.total)}</Text>
+      </View>
 
-      <Pressable onPress={openDetail} style={styles.chevron}>
-        <Ionicons name="chevron-forward" size={20} color="#999" />
+      {/* ---------- Chevron ---------- */}
+
+      <Pressable onPress={onPress} style={styles.chevron}>
+        <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
+  card: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "white",
-    padding: 12,
-    borderRadius: 12,
+    padding: 14,
     marginBottom: 8,
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+  },
+
+  cardDisabled: {
+    backgroundColor: "#f3f4f6",
   },
 
   checkbox: {
     marginRight: 10,
   },
 
-  center: {
+  content: {
     flex: 1,
   },
 
-  name: {
-    fontSize: 16,
-    fontWeight: "500",
-  },
-
-  metaRow: {
+  nameRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 2,
+    gap: 6,
   },
 
-  meta: {
-    fontSize: 12,
-    color: "#777",
+  name: {
+    fontSize: 15,
+    fontWeight: "600",
   },
 
-  badge: {
-    backgroundColor: "#ffd400",
+  promoBadge: {
+    backgroundColor: "#fde68a",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
-    marginLeft: 6,
   },
 
-  badgeText: {
+  promoText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#92400e",
+  },
+
+  detail: {
+    fontSize: 12,
+    color: "#6b7280",
+  },
+
+  savings: {
     fontSize: 11,
+    color: "#16a34a",
+    marginTop: 2,
     fontWeight: "600",
   },
 
-  total: {
-    fontWeight: "600",
-    color: "#28c76f",
+  priceBox: {
+    alignItems: "flex-end",
     marginRight: 6,
   },
 
+  basePrice: {
+    fontSize: 11,
+    textDecorationLine: "line-through",
+    color: "#9ca3af",
+  },
+
+  finalPrice: {
+    fontWeight: "700",
+    color: "#22c55e",
+    fontSize: 14,
+  },
+
   chevron: {
-    paddingLeft: 4,
+    paddingLeft: 8,
+    paddingVertical: 4,
   },
 });

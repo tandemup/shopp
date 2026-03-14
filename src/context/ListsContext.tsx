@@ -31,7 +31,7 @@ const initialLists: List[] = [
     archived: false,
     items: (itemsData as Item[]).map((item) => ({
       ...item,
-      checked: item.checked ?? false,
+      checked: item.checked ?? true,
     })),
   },
 ];
@@ -110,20 +110,20 @@ export function ListsProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  function toggleItem(listId: string, itemId: string) {
+  const toggleItem = (listId: string, itemId: string) => {
     setLists((prev) =>
-      prev.map((list) =>
-        list.id === listId
-          ? {
-              ...list,
-              items: list.items.map((item) =>
-                item.id === itemId ? { ...item, checked: !item.checked } : item,
-              ),
-            }
-          : list,
-      ),
+      prev.map((list) => {
+        if (list.id !== listId) return list;
+
+        return {
+          ...list,
+          items: list.items.map((item) =>
+            item.id === itemId ? { ...item, checked: !item.checked } : item,
+          ),
+        };
+      }),
     );
-  }
+  };
 
   // ---------------------------
   // GETTERS
