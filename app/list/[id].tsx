@@ -2,16 +2,15 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { FlatList, StyleSheet, Text, View } from "react-native";
 
 import ItemRow from "@/src/components/items/ItemRow";
+import CheckoutBar from "@/src/components/shopping/CheckoutBar";
 import SearchCombinedBar from "@/src/components/shopping/SearchCombinedBar";
-import TotalBar from "@/src/components/shopping/TotalBar";
 import StoreSelector from "@/src/components/stores/StoreSelector";
 
 import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
 
 import { Item } from "@/src/types/Item";
-
-import { calculateItemPrice } from "@/src/utils/pricing/calculateItemPrice";
+import { calculatePrice } from "@/src/utils/pricing/pricingEngine";
 
 function makeNewItem(name: string): Item {
   return {
@@ -31,8 +30,7 @@ function makeNewItem(name: string): Item {
 export default function ShoppingListScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-
-  const { getList, addItem, toggleItem } = useLists();
+  const { getList, addItem, toggleItem, archiveList } = useLists();
   const { getStoreById } = useStores();
 
   const list = getList(id);
@@ -58,15 +56,38 @@ export default function ShoppingListScreen() {
   const total = list.items
     .filter((item) => item.checked)
     .reduce((sum, item) => {
-      const { total } = calculateItemPrice({
-        quantity: item.quantity,
-        price: item.unitPrice,
-        offer: item.promo !== "none" ? item.promo : undefined,
+      const { total } = calculatePrice({
+        quantity: item.quantity ?? 1,
+        unitPrice: item.unitPrice ?? 0,
+        offer: item.promo ?? "none",
       });
 
       return sum + total;
     }, 0);
 
+  const handleCheckout = () => {
+    if (!list.items.length) {
+      safeAlert("Lista vacía", "No puedes archivar una lista sin productos.", [
+        { text: "Aceptar" },
+      ]);
+      return;
+    }
+
+    safeAlert(
+      "Finalizar compra",
+      "¿Quieres archivar esta lista y guardar el historial de compras?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Confirmar",
+          onPress: () => {
+            archiveList(list.id);
+            router.back();
+          },
+        },
+      ],
+    );
+  };
   return (
     <View style={styles.container}>
       <Text style={styles.header}>{list.name}</Text>
@@ -114,8 +135,11 @@ export default function ShoppingListScreen() {
         }
       />
       {/* ---------- Total ---------- */}
-
-      <TotalBar total={total} />
+      <CheckoutBar
+        total={total}
+        currency={list.currency}
+        onCheckout={handleCheckout}
+      />
     </View>
   );
 }

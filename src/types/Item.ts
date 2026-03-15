@@ -1,10 +1,13 @@
+import { Promotion } from "./Promotion";
+
 export interface Item {
   id: string;
   name: string;
-  barcode?: string;
-  unit: string;
-  quantity: number;
-  unitPrice: number;
-  promo?: string;
+
+  quantity?: number;
+  unitPrice?: number;
+
+  promo?: Promotion;
+
   checked?: boolean;
 }
