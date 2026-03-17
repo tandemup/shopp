@@ -2,7 +2,7 @@ import Feather from "@expo/vector-icons/Feather";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Item } from "@/src/types/Item";
-import { calculatePrice } from "@/src/utils/pricing/pricingEngine";
+import { calculatePrice } from "@/src/utils/pricing/PricingEngine";
 
 type Props = {
   item: Item;

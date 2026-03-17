@@ -10,7 +10,7 @@ import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
 
 import { Item } from "@/src/types/Item";
-import { calculatePrice } from "@/src/utils/pricing/pricingEngine";
+import { calculatePrice } from "@/src/utils/pricing/PricingEngine";
 
 function makeNewItem(name: string): Item {
   return {
