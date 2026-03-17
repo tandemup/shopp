@@ -2,15 +2,15 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { FlatList, StyleSheet, Text, View } from "react-native";
 
 import ItemRow from "@/src/components/items/ItemRow";
-import CheckoutBar from "@/src/components/shopping/CheckoutBar";
 import SearchCombinedBar from "@/src/components/shopping/SearchCombinedBar";
 import StoreSelector from "@/src/components/stores/StoreSelector";
 
 import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
 
+import FooterTotal from "@/src/components/shopping/FooterTotal";
 import { Item } from "@/src/types/Item";
-import { calculatePrice } from "@/src/utils/pricing/PricingEngine";
+import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
 
 function makeNewItem(name: string): Item {
   return {
@@ -18,11 +18,9 @@ function makeNewItem(name: string): Item {
     name,
     barcode: "",
     unit: "u",
-    quantity: 1,
-    unitPrice: 0,
-    promo: "none",
-
-    // el item cuenta por defecto
+    quantity: number,
+    unitPrice: number,
+    promo: undefined,
     checked: true,
   };
 }
@@ -53,17 +51,19 @@ export default function ShoppingListScreen() {
      Total con promociones
   -------------------------------- */
 
-  const total = list.items
+  const totals = list.items
     .filter((item) => item.checked)
-    .reduce((sum, item) => {
-      const { total } = calculatePrice({
-        quantity: item.quantity ?? 1,
-        unitPrice: item.unitPrice ?? 0,
-        offer: item.promo ?? "none",
-      });
+    .reduce(
+      (acc, item) => {
+        const price = calculateItemPrice(item);
 
-      return sum + total;
-    }, 0);
+        acc.total += price.finalTotal;
+        acc.savings += price.savings;
+
+        return acc;
+      },
+      { total: 0, savings: 0 },
+    );
 
   const handleCheckout = () => {
     if (!list.items.length) {
@@ -91,16 +91,12 @@ export default function ShoppingListScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.header}>{list.name}</Text>
-
       {/* ---------- Store selector ---------- */}
-
       <StoreSelector
         store={store}
         onPress={() => router.push(`/store/select?listId=${list.id}`)}
       />
-
       {/* ---------- Search bar ---------- */}
-
       <SearchCombinedBar
         onAdd={(name) => {
           const trimmed = name.trim();
@@ -110,7 +106,6 @@ export default function ShoppingListScreen() {
           addItem(list.id, makeNewItem(trimmed));
         }}
       />
-
       {/* ---------- Items list ---------- */}
       <FlatList
         data={list.items}
@@ -135,10 +130,12 @@ export default function ShoppingListScreen() {
         }
       />
       {/* ---------- Total ---------- */}
-      <CheckoutBar
-        total={total}
-        currency={list.currency}
-        onCheckout={handleCheckout}
+      <FooterTotal
+        total={totals.total}
+        savings={totals.savings}
+        onCheckout={() => {
+          console.log("checkout");
+        }}
       />
     </View>
   );

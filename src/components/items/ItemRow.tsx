@@ -2,7 +2,7 @@ import Feather from "@expo/vector-icons/Feather";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Item } from "@/src/types/Item";
-import { calculatePrice } from "@/src/utils/pricing/PricingEngine";
+import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
 
 type Props = {
   item: Item;
@@ -10,18 +10,43 @@ type Props = {
   onPress: () => void;
 };
 
-export default function ItemRow({ item, onToggle, onPress }: Props) {
-  const { total, savings } = calculatePrice({
-    quantity: item.quantity ?? 1,
-    unitPrice: item.unitPrice ?? 0,
-    offer: item.promo ?? "none",
-  });
+/* -------------------------------------------------
+   Helpers
+-------------------------------------------------- */
 
-  const unitInfo = `${item.quantity ?? 1} x ${(item.unitPrice ?? 0).toFixed(
-    2,
-  )} €`;
+function getPromoLabel(promo?: Item["promo"]) {
+  if (!promo) return null;
+
+  switch (promo.type) {
+    case "percent":
+      return `${promo.value}%`;
+
+    case "multi":
+      return `${promo.buy}x${promo.pay}`;
+
+    default:
+      return null;
+  }
+}
+
+/* -------------------------------------------------
+   Component
+-------------------------------------------------- */
+
+export default function ItemRow({ item, onToggle, onPress }: Props) {
+  const price = calculateItemPrice(item);
+
+  const total = price.finalTotal;
+  const savings = price.savings;
+
+  const quantity = item.quantity ?? 1;
+  const unitPrice = item.unitPrice ?? 0;
+
+  const unitInfo = `${quantity} x ${unitPrice.toFixed(2)} €`;
 
   const disabled = !item.checked;
+
+  const promoLabel = getPromoLabel(item.promo);
 
   return (
     <View style={[styles.container, disabled && styles.containerDisabled]}>
@@ -45,10 +70,10 @@ export default function ItemRow({ item, onToggle, onPress }: Props) {
             {unitInfo}
           </Text>
 
-          {/* BADGE OFERTA */}
-          {item.promo !== "none" && (
+          {/* BADGE PROMO */}
+          {!disabled && promoLabel && (
             <View style={styles.badge}>
-              <Text style={styles.badgeText}>{item.promo}</Text>
+              <Text style={styles.badgeText}>{promoLabel}</Text>
             </View>
           )}
 
@@ -61,9 +86,15 @@ export default function ItemRow({ item, onToggle, onPress }: Props) {
 
       {/* PRECIO */}
       <View style={styles.priceBox}>
+        {/* PRECIO FINAL */}
         <Text style={[styles.price, disabled && styles.priceDisabled]}>
           {total.toFixed(2)} €
         </Text>
+
+        {/* PRECIO ORIGINAL */}
+        {savings > 0 && !disabled && (
+          <Text style={styles.oldPrice}>{price.baseTotal.toFixed(2)} €</Text>
+        )}
       </View>
 
       {/* CHEVRON */}
@@ -73,6 +104,10 @@ export default function ItemRow({ item, onToggle, onPress }: Props) {
     </View>
   );
 }
+
+/* -------------------------------------------------
+   Styles
+-------------------------------------------------- */
 
 const styles = StyleSheet.create({
   container: {
@@ -142,12 +177,19 @@ const styles = StyleSheet.create({
 
   priceBox: {
     marginRight: 6,
+    alignItems: "flex-end",
   },
 
   price: {
     fontSize: 16,
     fontWeight: "600",
     color: "#16a34a",
+  },
+
+  oldPrice: {
+    fontSize: 12,
+    color: "#9ca3af",
+    textDecorationLine: "line-through",
   },
 
   priceDisabled: {

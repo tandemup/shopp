@@ -6,7 +6,9 @@ export default function TabsLayout() {
     <Tabs
       initialRouteName="index"
       screenOptions={{
-        headerShown: false,
+        headerShown: false, // 👈 activar header
+        headerTitle: "Shopp", // 👈 nombre app
+        headerTitleAlign: "center", // opcional
         tabBarActiveTintColor: "#22c55e",
       }}
     >

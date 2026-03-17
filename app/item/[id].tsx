@@ -17,7 +17,7 @@ import promotions from "@/data/promotions.json";
 import { alert, confirm } from "@/src/components/ui/dialog/dialog";
 import { useLists } from "@/src/context/ListsContext";
 import { formatCurrency } from "@/src/utils/pricing/formatCurrency";
-import { calculatePrice } from "@/src/utils/pricing/PricingEngine";
+import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
 
 export default function ItemDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -42,7 +42,7 @@ export default function ItemDetailScreen() {
   const unitPrice = Number(price.replace(",", ".")) || 0;
 
   const priceResult = useMemo(() => {
-    return calculatePrice({
+    return calculateItemPrice({
       quantity,
       unitPrice,
       offer: promo,
