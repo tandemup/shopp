@@ -16,10 +16,9 @@ function makeNewItem(name: string): Item {
   return {
     id: `item-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
     name,
-    barcode: "",
     unit: "u",
-    quantity: number,
-    unitPrice: number,
+    quantity: 1,
+    unitPrice: 0,
     promo: undefined,
     checked: true,
   };

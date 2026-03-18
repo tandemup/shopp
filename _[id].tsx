@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -19,29 +19,6 @@ import { useLists } from "@/src/context/ListsContext";
 import { formatCurrency } from "@/src/utils/pricing/formatCurrency";
 import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
 
-const UNITS = ["u", "kg", "g", "l"];
-
-const parseNumber = (v: string, fallback = 0) =>
-  Number(v.replace(",", ".")) || fallback;
-
-function mapPromo(promo: string) {
-  switch (promo) {
-    case "2x1":
-      return { type: "multi", buy: 2, pay: 1 };
-
-    case "3x2":
-      return { type: "multi", buy: 3, pay: 2 };
-
-    case "10%":
-      return { type: "percent", value: 10 };
-
-    case "20%":
-      return { type: "percent", value: 20 };
-
-    default:
-      return { type: "none" };
-  }
-}
 export default function ItemDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = params.id;
@@ -50,64 +27,37 @@ export default function ItemDetailScreen() {
   const { findItemById, updateItem, removeItem } = useLists();
 
   const found = findItemById(id);
+
   const item = found?.item;
   const list = found?.list;
 
-  // STATE
-  const [name, setName] = useState("");
-  const [barcode, setBarcode] = useState("");
-  const [unit, setUnit] = useState("u");
-  const [qty, setQty] = useState("1");
-  const [price, setPrice] = useState("0");
-  const [promo, setPromo] = useState("none");
+  const [name, setName] = useState(item?.name ?? "");
+  const [barcode, setBarcode] = useState(item?.barcode ?? "");
+  const [unit, setUnit] = useState(item?.unit ?? "u");
+  const [qty, setQty] = useState(String(item?.quantity ?? 1));
+  const [price, setPrice] = useState(String(item?.unitPrice ?? 0));
+  const [promo, setPromo] = useState(item?.promo ?? "none");
 
-  // 🔥 Sincronizar estado con item
-  useEffect(() => {
-    if (item) {
-      setName(item.name ?? "");
-      setBarcode(item.barcode ?? "");
-      setUnit(item.unit ?? "u");
-      setQty(String(item.quantity ?? 1));
-      setPrice(String(item.unitPrice ?? 0));
-      setPromo(item.promo ?? "none");
-    }
-  }, [item]);
+  const quantity = Number(qty.replace(",", ".")) || 1;
+  const unitPrice = Number(price.replace(",", ".")) || 0;
 
-  // PARSE
-  const quantity = parseNumber(qty, 1);
-  const unitPrice = parseNumber(price, 0);
-
-  // PRICE
   const priceResult = useMemo(() => {
-    if (!item) {
-      return {
-        baseTotal: 0,
-        finalTotal: 0,
-        savings: 0,
-        effectiveUnitPrice: 0,
-      };
-    }
-
     return calculateItemPrice({
-      ...item,
       quantity,
       unitPrice,
-      promo: mapPromo(promo), // 🔥 clave
+      offer: promo,
     });
-  }, [item, quantity, unitPrice, promo]);
-  // NOT FOUND
-  if (!item || !list) {
+  }, [quantity, unitPrice, promo]);
+
+  if (!found) {
     return (
       <SafeAreaView style={styles.notFound}>
         <Text>Item no encontrado</Text>
       </SafeAreaView>
     );
   }
-
-  // SAVE
   const saveItem = async () => {
     const trimmedName = name.trim();
-
     if (!trimmedName) {
       await alert("Nombre requerido", "Introduce un nombre para el producto.");
       return;
@@ -123,11 +73,9 @@ export default function ItemDetailScreen() {
       promo,
     });
 
-    await alert("Guardado", "Producto actualizado correctamente");
     router.back();
   };
 
-  // DELETE
   const deleteItem = async () => {
     const r = await confirm(
       "Eliminar producto",
@@ -148,10 +96,9 @@ export default function ItemDetailScreen() {
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView contentContainerStyle={styles.content}>
-          {/* HEADER */}
           <View style={styles.header}>
             <Pressable onPress={() => router.back()}>
               <Ionicons name="arrow-back" size={22} />
@@ -162,11 +109,9 @@ export default function ItemDetailScreen() {
             <View style={{ width: 22 }} />
           </View>
 
-          {/* NAME */}
           <Text style={styles.label}>Nombre</Text>
           <TextInput style={styles.input} value={name} onChangeText={setName} />
 
-          {/* BARCODE */}
           <Text style={styles.label}>Código de barras</Text>
           <View style={styles.row}>
             <TextInput
@@ -185,10 +130,9 @@ export default function ItemDetailScreen() {
             </Pressable>
           </View>
 
-          {/* UNIT */}
           <Text style={styles.label}>Unidad</Text>
           <View style={styles.unitRow}>
-            {UNITS.map((u) => (
+            {["u", "kg", "g", "l"].map((u) => (
               <Pressable
                 key={u}
                 style={[styles.unitButton, unit === u && styles.unitActive]}
@@ -203,7 +147,6 @@ export default function ItemDetailScreen() {
             ))}
           </View>
 
-          {/* QTY + PRICE */}
           <View style={styles.rowSpace}>
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>Cantidad ({unit})</Text>
@@ -226,7 +169,6 @@ export default function ItemDetailScreen() {
             </View>
           </View>
 
-          {/* PROMOS */}
           <Text style={styles.label}>Ofertas</Text>
           <View style={styles.promoRow}>
             {promotions.map((p: { id: string; label: string }) => (
@@ -249,24 +191,19 @@ export default function ItemDetailScreen() {
             ))}
           </View>
 
-          {/* SUMMARY */}
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>Resumen</Text>
-
             <Text style={styles.summaryLine}>
-              Base: {formatCurrency(priceResult.baseTotal)}{" "}
+              Base: {formatCurrency(priceResult.base)}
             </Text>
-
             <Text style={styles.summaryLine}>
               Ahorro: {formatCurrency(priceResult.savings)}
             </Text>
-
             <Text style={styles.summaryTotal}>
-              Total: {formatCurrency(priceResult.finalTotal)}
+              Total: {formatCurrency(priceResult.total)}
             </Text>
           </View>
 
-          {/* ACTIONS */}
           <Pressable style={styles.saveButton} onPress={saveItem}>
             <Text style={styles.saveText}>Guardar cambios</Text>
           </Pressable>
@@ -294,7 +231,7 @@ const styles = StyleSheet.create({
 
   content: {
     padding: 16,
-    paddingBottom: 80, // 🔥 FIX scroll
+    paddingBottom: 32,
   },
 
   header: {
@@ -435,7 +372,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 6,
     color: "#16a34a",
-    textAlign: "right", // 🔥 mejora visual
   },
 
   saveButton: {
