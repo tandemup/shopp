@@ -1,184 +1,179 @@
-import itemsData from "@/data/items.json";
-import React, { createContext, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  ReactNode,
+  useCallback,
+  useContext,
+  useState,
+} from "react";
+
 import { Item } from "../types/Item";
 import { List } from "../types/List";
 
-interface ListsContextType {
+/* =========================
+   CONTEXT TYPE
+========================= */
+
+type ListsContextType = {
   lists: List[];
 
+  // Lists
   addList: (name: string) => void;
   deleteList: (id: string) => void;
   archiveList: (id: string) => void;
+  getList: (id: string) => List | null;
 
+  // Items
   addItem: (listId: string, item: Item) => void;
-  updateItem: (listId: string, item: Item) => void;
-  removeItem: (listId: string, itemId: string) => void;
-  toggleItem: (listId: string, itemId: string) => void;
+  updateItem: (itemId: string, updates: Partial<Item>) => void;
+  removeItem: (itemId: string) => void;
+  findItemById: (id: string) => { item: Item; list: List } | null;
 
-  getList: (id: string) => List | undefined;
-  getItem: (listId: string, itemId: string) => Item | undefined;
-  findItemById: (itemId: string) => { list: List; item: Item } | undefined;
-}
+  // Stores
+  assignStoreToList: (listId: string, storeId: string) => void;
+};
 
-const ListsContext = createContext<ListsContextType | undefined>(undefined);
+/* =========================
+   CONTEXT
+========================= */
 
-const initialLists: List[] = [
-  {
-    id: "default-list",
-    name: "Lista principal",
-    createdAt: Date.now(),
-    currency: "EUR",
-    archived: false,
-    items: (itemsData as Item[]).map((item) => ({
-      ...item,
-      checked: item.checked ?? true,
-    })),
-  },
-];
+const ListsContext = createContext<ListsContextType | null>(null);
 
-function buildId(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-}
+/* =========================
+   PROVIDER
+========================= */
 
-export function ListsProvider({ children }: { children: React.ReactNode }) {
-  const [lists, setLists] = useState<List[]>(initialLists);
+export function ListsProvider({ children }: { children: ReactNode }) {
+  const [lists, setLists] = useState<List[]>([]);
 
-  // ---------------------------
-  // LIST MANAGEMENT
-  // ---------------------------
+  /* =========================
+     LIST OPERATIONS
+  ========================= */
 
-  function addList(name: string) {
+  const addList = (name: string) => {
     const newList: List = {
-      id: buildId("list"),
-      name: name.trim() || "Nueva lista",
-      createdAt: Date.now(),
-      currency: "EUR",
-      archived: false,
+      id: Date.now().toString(),
+      name,
       items: [],
     };
-
     setLists((prev) => [...prev, newList]);
-  }
+  };
 
-  function deleteList(id: string) {
+  const deleteList = (id: string) => {
     setLists((prev) => prev.filter((l) => l.id !== id));
-  }
+  };
 
-  function archiveList(id: string) {
+  const archiveList = (id: string) => {
     setLists((prev) =>
       prev.map((l) => (l.id === id ? { ...l, archived: true } : l)),
     );
-  }
+  };
 
-  // ---------------------------
-  // ITEM MANAGEMENT
-  // ---------------------------
+  const getList = useCallback(
+    (id: string) => {
+      return lists.find((l) => l.id === id) || null;
+    },
+    [lists],
+  );
 
-  function addItem(listId: string, item: Item) {
+  /* =========================
+     ITEM OPERATIONS
+  ========================= */
+
+  const addItem = (listId: string, item: Item) => {
     setLists((prev) =>
-      prev.map((list) =>
-        list.id === listId ? { ...list, items: [...list.items, item] } : list,
+      prev.map((l) =>
+        l.id === listId ? { ...l, items: [...l.items, item] } : l,
       ),
     );
-  }
+  };
 
-  function updateItem(listId: string, updatedItem: Item) {
-    setLists((prev) =>
-      prev.map((list) =>
-        list.id === listId
-          ? {
-              ...list,
-              items: list.items.map((item) =>
-                item.id === updatedItem.id ? updatedItem : item,
-              ),
-            }
-          : list,
-      ),
-    );
-  }
-
-  function removeItem(listId: string, itemId: string) {
-    setLists((prev) =>
-      prev.map((list) =>
-        list.id === listId
-          ? {
-              ...list,
-              items: list.items.filter((item) => item.id !== itemId),
-            }
-          : list,
-      ),
-    );
-  }
-
-  const toggleItem = (listId: string, itemId: string) => {
+  const updateItem = (itemId: string, updates: Partial<Item>) => {
     setLists((prev) =>
       prev.map((list) => {
-        if (list.id !== listId) return list;
+        const hasItem = list.items.some((i) => i.id === itemId);
+
+        if (!hasItem) return list;
 
         return {
           ...list,
           items: list.items.map((item) =>
-            item.id === itemId ? { ...item, checked: !item.checked } : item,
+            item.id === itemId ? { ...item, ...updates } : item,
           ),
         };
       }),
     );
   };
 
-  // ---------------------------
-  // GETTERS
-  // ---------------------------
+  const removeItem = (itemId: string) => {
+    setLists((prev) =>
+      prev.map((list) => ({
+        ...list,
+        items: list.items.filter((item) => item.id !== itemId),
+      })),
+    );
+  };
 
-  function getList(id: string) {
-    return lists.find((list) => list.id === id);
-  }
-
-  function getItem(listId: string, itemId: string) {
-    const list = lists.find((l) => l.id === listId);
-    return list?.items.find((i) => i.id === itemId);
-  }
-
-  function findItemById(itemId: string) {
-    for (const list of lists) {
-      const item = list.items.find((i) => i.id === itemId);
-      if (item) {
-        return { list, item };
+  const findItemById = useCallback(
+    (id: string) => {
+      for (const list of lists) {
+        const item = list.items.find((i) => i.id === id);
+        if (item) {
+          return { item, list };
+        }
       }
-    }
-    return undefined;
-  }
-
-  const value = useMemo(
-    () => ({
-      lists,
-
-      addList,
-      deleteList,
-      archiveList,
-
-      addItem,
-      updateItem,
-      removeItem,
-      toggleItem,
-
-      getList,
-      getItem,
-      findItemById,
-    }),
+      return null;
+    },
     [lists],
   );
 
+  /* =========================
+     STORE OPERATIONS
+  ========================= */
+
+  const assignStoreToList = (listId: string, storeId: string) => {
+    setLists((prev) =>
+      prev.map((list) => (list.id === listId ? { ...list, storeId } : list)),
+    );
+  };
+
+  /* =========================
+     PROVIDER VALUE
+  ========================= */
+
   return (
-    <ListsContext.Provider value={value}>{children}</ListsContext.Provider>
+    <ListsContext.Provider
+      value={{
+        lists,
+
+        // Lists
+        addList,
+        deleteList,
+        archiveList,
+        getList,
+
+        // Items
+        addItem,
+        updateItem,
+        removeItem,
+        findItemById,
+
+        // Stores
+        assignStoreToList,
+      }}
+    >
+      {children}
+    </ListsContext.Provider>
   );
 }
 
+/* =========================
+   HOOK
+========================= */
+
 export function useLists() {
-  const context = useContext(ListsContext);
-
-  if (!context) {
-    throw new Error("useLists must be used inside ListsProvider");
+  const ctx = useContext(ListsContext);
+  if (!ctx) {
+    throw new Error("useLists must be used within ListsProvider");
   }
-
-  return context;
+  return ctx;
 }

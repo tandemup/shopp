@@ -5,6 +5,7 @@ import DialogProvider from "../src/components/ui/dialog/DialogProvider";
 import { ThemeProvider } from "../src/hooks/useTheme";
 
 import { ListsProvider } from "@/src/context/ListsContext";
+import { LocationProvider } from "@/src/context/LocationContext";
 import { PurchasesProvider } from "@/src/context/PurchasesContext";
 import { StoresProvider } from "@/src/context/StoresContext";
 
@@ -15,27 +16,29 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ConvexProvider client={convex}>
         <ThemeProvider>
-          <DialogProvider>
-            <StoresProvider>
-              <ListsProvider>
-                <PurchasesProvider>
-                  <Stack screenOptions={{ headerShown: false }}>
-                    <Stack.Screen name="(tabs)" />
+          <LocationProvider>
+            <DialogProvider>
+              <StoresProvider>
+                <ListsProvider>
+                  <PurchasesProvider>
+                    <Stack screenOptions={{ headerShown: false }}>
+                      <Stack.Screen name="(tabs)" />
 
-                    <Stack.Screen
-                      name="list/[id]"
-                      options={{ headerShown: true }}
-                    />
+                      <Stack.Screen
+                        name="list/[id]"
+                        options={{ headerShown: true }}
+                      />
 
-                    <Stack.Screen
-                      name="(modals)"
-                      options={{ presentation: "modal" }}
-                    />
-                  </Stack>
-                </PurchasesProvider>
-              </ListsProvider>
-            </StoresProvider>
-          </DialogProvider>
+                      <Stack.Screen
+                        name="(modals)"
+                        options={{ presentation: "modal" }}
+                      />
+                    </Stack>
+                  </PurchasesProvider>
+                </ListsProvider>
+              </StoresProvider>
+            </DialogProvider>
+          </LocationProvider>
         </ThemeProvider>
       </ConvexProvider>
     </SafeAreaProvider>

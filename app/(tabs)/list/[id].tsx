@@ -1,9 +1,8 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { FlatList, StyleSheet, Text, View } from "react-native";
-
 import ItemRow from "@/src/components/items/ItemRow";
 import SearchCombinedBar from "@/src/components/shopping/SearchCombinedBar";
 import StoreSelector from "@/src/components/stores/StoreSelector";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { FlatList, StyleSheet, Text, View } from "react-native";
 
 import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
@@ -64,36 +63,21 @@ export default function ShoppingListScreen() {
       { total: 0, savings: 0 },
     );
 
-  const handleCheckout = () => {
-    if (!list.items.length) {
-      safeAlert("Lista vacía", "No puedes archivar una lista sin productos.", [
-        { text: "Aceptar" },
-      ]);
-      return;
-    }
-
-    safeAlert(
-      "Finalizar compra",
-      "¿Quieres archivar esta lista y guardar el historial de compras?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Confirmar",
-          onPress: () => {
-            archiveList(list.id);
-            router.back();
-          },
-        },
-      ],
-    );
-  };
   return (
     <View style={styles.container}>
       <Text style={styles.header}>{list.name}</Text>
       {/* ---------- Store selector ---------- */}
       <StoreSelector
         store={store}
-        onPress={() => router.push(`/store/select?listId=${list.id}`)}
+        onPress={() =>
+          router.push({
+            pathname: "/storefront/favorites",
+            params: {
+              mode: "select",
+              selectForListId: list.id,
+            },
+          })
+        }
       />
       {/* ---------- Search bar ---------- */}
       <SearchCombinedBar

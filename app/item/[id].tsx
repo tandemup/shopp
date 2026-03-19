@@ -48,10 +48,7 @@ export default function ItemDetailScreen() {
 
   const router = useRouter();
   const { findItemById, updateItem, removeItem } = useLists();
-
   const found = findItemById(id);
-  const item = found?.item;
-  const list = found?.list;
 
   // STATE
   const [name, setName] = useState("");
@@ -60,6 +57,11 @@ export default function ItemDetailScreen() {
   const [qty, setQty] = useState("1");
   const [price, setPrice] = useState("0");
   const [promo, setPromo] = useState("none");
+
+  if (!found) {
+    return <Text>Item no encontrado</Text>;
+  }
+  const { item, list } = found;
 
   // 🔥 Sincronizar estado con item
   useEffect(() => {
@@ -113,17 +115,16 @@ export default function ItemDetailScreen() {
       return;
     }
 
-    updateItem(list.id, {
-      ...item,
+    updateItem(item.id, {
       name: trimmedName,
       barcode: barcode.trim(),
       unit,
       quantity,
       unitPrice,
-      promo,
+      promo: mapPromo(promo),
     });
 
-    await alert("Guardado", "Producto actualizado correctamente");
+    // await alert("Guardado", "Producto actualizado correctamente");
     router.back();
   };
 

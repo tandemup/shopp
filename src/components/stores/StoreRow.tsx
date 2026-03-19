@@ -1,18 +1,33 @@
+import { useStores } from "@/src/context/StoresContext";
+import { Store } from "@/src/types/Store";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-export default function StoreRow({ store, onPress }) {
+type Props = {
+  store: Store;
+  onPress?: () => void;
+};
+
+export default function StoreRow({ store, onPress }: Props) {
+  const { toggleFavorite } = useStores();
+
   return (
-    <Pressable onPress={onPress} style={styles.container}>
-      <View style={styles.textContainer}>
-        <Text style={styles.name}>{store.name}</Text>
+    <Pressable onPress={onPress} style={{ padding: 12 }}>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontWeight: "600" }}>{store.name}</Text>
 
-        <Text style={styles.address}>{store.address}</Text>
+          <Text style={{ color: "#666" }}>{store.address}</Text>
+        </View>
 
-        <Text style={styles.city}>{store.city}</Text>
+        <Pressable onPress={() => toggleFavorite(store.id)}>
+          <Ionicons
+            name={store.isFavorite ? "star" : "star-outline"}
+            size={20}
+            color="#f1c40f"
+          />
+        </Pressable>
       </View>
-
-      <Ionicons name="chevron-forward" size={20} color="#999" />
     </Pressable>
   );
 }

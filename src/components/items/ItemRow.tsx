@@ -1,7 +1,7 @@
-import Feather from "@expo/vector-icons/Feather";
+import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { Item } from "@/src/types/Item";
+import { Item } from "@/src/context/ListsContext";
 import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
 
 type Props = {
@@ -10,194 +10,122 @@ type Props = {
   onPress: () => void;
 };
 
-/* -------------------------------------------------
-   Helpers
--------------------------------------------------- */
-
-function getPromoLabel(promo?: Item["promo"]) {
-  if (!promo) return null;
-
-  switch (promo.type) {
-    case "percent":
-      return `${promo.value}%`;
-
-    case "multi":
-      return `${promo.buy}x${promo.pay}`;
-
-    default:
-      return null;
-  }
-}
-
-/* -------------------------------------------------
-   Component
--------------------------------------------------- */
-
 export default function ItemRow({ item, onToggle, onPress }: Props) {
   const price = calculateItemPrice(item);
 
-  const total = price.finalTotal;
-  const savings = price.savings;
-
-  const quantity = item.quantity ?? 1;
-  const unitPrice = item.unitPrice ?? 0;
-
-  const unitInfo = `${quantity} x ${unitPrice.toFixed(2)} €`;
+  const total = price.finalTotal ?? 0;
+  const savings = price.savings ?? 0;
 
   const disabled = !item.checked;
-
-  const promoLabel = getPromoLabel(item.promo);
 
   return (
     <View style={[styles.container, disabled && styles.containerDisabled]}>
       {/* CHECKBOX */}
       <Pressable onPress={onToggle} style={styles.checkbox}>
-        <Feather
-          name={item.checked ? "check-square" : "square"}
-          size={20}
-          color={item.checked ? "#22C55E" : "#bbb"}
+        <Ionicons
+          name={item.checked ? "checkbox" : "square-outline"}
+          size={22}
+          color={item.checked ? "#27ae60" : "#999"}
         />
       </Pressable>
 
-      {/* INFO */}
-      <View style={styles.info}>
-        <Text style={[styles.name, disabled && styles.textDisabled]}>
+      {/* CENTER */}
+      <View style={styles.center}>
+        <Text style={[styles.name, disabled && styles.nameDisabled]}>
           {item.name}
         </Text>
 
-        <View style={styles.metaRow}>
-          <Text style={[styles.unit, disabled && styles.textDisabled]}>
-            {unitInfo}
-          </Text>
-
-          {/* BADGE PROMO */}
-          {!disabled && promoLabel && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{promoLabel}</Text>
-            </View>
-          )}
-
-          {/* AHORRO */}
-          {savings > 0 && !disabled && (
-            <Text style={styles.savings}>-{savings.toFixed(2)} €</Text>
-          )}
-        </View>
-      </View>
-
-      {/* PRECIO */}
-      <View style={styles.priceBox}>
-        {/* PRECIO FINAL */}
-        <Text style={[styles.price, disabled && styles.priceDisabled]}>
-          {total.toFixed(2)} €
+        <Text style={styles.unit}>
+          {item.quantity ?? 1} x {(item.unitPrice ?? 0).toFixed(2)} €
         </Text>
 
-        {/* PRECIO ORIGINAL */}
-        {savings > 0 && !disabled && (
-          <Text style={styles.oldPrice}>{price.baseTotal.toFixed(2)} €</Text>
+        {savings > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>
+              Oferta · -{savings.toFixed(2)} €
+            </Text>
+          </View>
         )}
       </View>
 
+      {/* PRICE */}
+      <Text style={styles.price}>{total.toFixed(2)} €</Text>
+
       {/* CHEVRON */}
       <Pressable onPress={onPress} style={styles.chevron}>
-        <Feather name="chevron-right" size={18} color="#999" />
+        <Ionicons name="chevron-forward" size={20} color="#999" />
       </Pressable>
     </View>
   );
 }
 
-/* -------------------------------------------------
-   Styles
--------------------------------------------------- */
+/* =========================
+   STYLES
+========================= */
 
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
-    backgroundColor: "#ffffff",
-    borderRadius: 14,
-    padding: 14,
-    marginTop: 8,
     alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderColor: "#eee",
+    backgroundColor: "#fff",
   },
 
   containerDisabled: {
-    backgroundColor: "#f3f4f6",
-    opacity: 0.75,
+    opacity: 0.5,
   },
 
   checkbox: {
-    paddingRight: 10,
-    paddingVertical: 6,
+    marginRight: 12,
   },
 
-  info: {
+  center: {
     flex: 1,
   },
 
   name: {
     fontSize: 16,
     fontWeight: "500",
+    color: "#222",
   },
 
-  textDisabled: {
-    color: "#9ca3af",
-  },
-
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 2,
+  nameDisabled: {
+    color: "#888",
   },
 
   unit: {
     fontSize: 12,
     color: "#666",
+    marginTop: 2,
   },
 
   badge: {
-    backgroundColor: "#facc15",
+    marginTop: 6,
+    alignSelf: "flex-start",
+    backgroundColor: "#ffeaa7",
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 6,
+    borderRadius: 4,
   },
 
   badgeText: {
     fontSize: 11,
+    color: "#b7791f",
     fontWeight: "600",
-  },
-
-  savings: {
-    fontSize: 12,
-    color: "#16a34a",
-    fontWeight: "600",
-  },
-
-  priceBox: {
-    marginRight: 6,
-    alignItems: "flex-end",
   },
 
   price: {
-    fontSize: 16,
+    width: 70,
+    textAlign: "right",
+    fontSize: 15,
     fontWeight: "600",
-    color: "#16a34a",
-  },
-
-  oldPrice: {
-    fontSize: 12,
-    color: "#9ca3af",
-    textDecorationLine: "line-through",
-  },
-
-  priceDisabled: {
-    color: "#9ca3af",
+    color: "#000",
   },
 
   chevron: {
-    paddingLeft: 10,
-    paddingVertical: 6,
+    marginLeft: 10,
   },
 });

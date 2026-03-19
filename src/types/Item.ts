@@ -1,8 +1,12 @@
 import { Promotion } from "./Promotion";
 
-export interface Item {
+export type Item = {
   id: string;
   name: string;
+
+  barcode?: string;
+
+  unit?: "u" | "kg" | "g" | "l";
 
   quantity?: number;
   unitPrice?: number;
@@ -10,4 +14,4 @@ export interface Item {
   promo?: Promotion;
 
   checked?: boolean;
-}
+};

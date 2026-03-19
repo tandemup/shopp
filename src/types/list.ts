@@ -9,4 +9,5 @@ export interface List {
   currency: Currency["code"];
   items: Item[];
   storeId?: string;
+  archived?: boolean;
 }

@@ -1,14 +1,18 @@
-export interface Store {
+export type Store = {
   id: string;
+
   name: string;
-  city?: string;
-  provincia?: string;
+  brand?: string;
+
   address?: string;
-  zipcode?: number;
-  favorite?: boolean;
-  location?: {
-    lat: number;
-    lng: number;
-    source?: string;
-  };
-}
+  city?: string;
+  province?: string;
+
+  lat?: number;
+  lng?: number;
+
+  isFavorite?: boolean;
+
+  createdAt?: number;
+  updatedAt?: number;
+};
