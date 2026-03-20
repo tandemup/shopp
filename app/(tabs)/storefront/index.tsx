@@ -55,20 +55,6 @@ export default function StorefrontHomeScreen() {
         subtitle="Acceso rápido a tus tiendas habituales"
         onPress={() => router.push("/storefront/favorites")}
       />
-
-      <MenuItem
-        icon="map-outline"
-        title="Tiendas cercanas"
-        subtitle="Ordenadas por distancia"
-        onPress={() => router.push("/storefront/nearby")}
-      />
-
-      <MenuItem
-        icon="information-circle-outline"
-        title="Información de tiendas"
-        subtitle="Horarios, direcciones y estado"
-        onPress={() => router.push("/storefront/info")}
-      />
     </ScrollView>
   );
 }

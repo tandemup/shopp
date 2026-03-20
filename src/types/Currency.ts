@@ -1,5 +1,7 @@
-export interface Currency {
-  code: string;
+export type Currency = "EUR" | "USD" | "GBP";
+
+export type CurrencyConfig = {
+  code: Currency;
   symbol: string;
-  decimals: number;
-}
+  locale: string;
+};

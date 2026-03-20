@@ -1,17 +1,12 @@
-import {
-  createContext,
-  ReactNode,
-  useCallback,
-  useContext,
-  useState,
-} from "react";
+import { DEFAULT_CURRENCY } from "@/src/constants/currencies";
+import { Item } from "@/src/types/Item";
+import { List } from "@/src/types/List";
+import { generateId } from "@/src/utils/generateId";
+import { createContext, useContext, useState } from "react";
 
-import { Item } from "../types/Item";
-import { List } from "../types/List";
-
-/* =========================
-   CONTEXT TYPE
-========================= */
+/* =====================================================
+   TYPES
+===================================================== */
 
 type ListsContextType = {
   lists: List[];
@@ -23,39 +18,44 @@ type ListsContextType = {
   getList: (id: string) => List | null;
 
   // Items
-  addItem: (listId: string, item: Item) => void;
-  updateItem: (itemId: string, updates: Partial<Item>) => void;
-  removeItem: (itemId: string) => void;
-  findItemById: (id: string) => { item: Item; list: List } | null;
+  addItem: (listId: string, item: Partial<Item>) => void;
+  updateItem: (listId: string, itemId: string, updates: Partial<Item>) => void;
+  removeItem: (listId: string, itemId: string) => void;
+
+  // Helpers
+  findItemById: (itemId: string) => { list: List; item: Item } | null;
 
   // Stores
   assignStoreToList: (listId: string, storeId: string) => void;
 };
 
-/* =========================
+/* =====================================================
    CONTEXT
-========================= */
+===================================================== */
 
-const ListsContext = createContext<ListsContextType | null>(null);
+const ListsContext = createContext<ListsContextType | undefined>(undefined);
 
-/* =========================
+/* =====================================================
    PROVIDER
-========================= */
+===================================================== */
 
-export function ListsProvider({ children }: { children: ReactNode }) {
+export function ListsProvider({ children }: { children: React.ReactNode }) {
   const [lists, setLists] = useState<List[]>([]);
 
   /* =========================
-     LIST OPERATIONS
+     LISTS
   ========================= */
 
   const addList = (name: string) => {
     const newList: List = {
-      id: Date.now().toString(),
+      id: generateId("list"),
       name,
+      createdAt: Date.now(),
+      currency: DEFAULT_CURRENCY,
       items: [],
     };
-    setLists((prev) => [...prev, newList]);
+
+    setLists((prev) => [newList, ...prev]);
   };
 
   const deleteList = (id: string) => {
@@ -68,71 +68,86 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const getList = useCallback(
-    (id: string) => {
-      return lists.find((l) => l.id === id) || null;
-    },
-    [lists],
-  );
+  const getList = (id: string) => {
+    return lists.find((l) => l.id === id) ?? null;
+  };
 
   /* =========================
-     ITEM OPERATIONS
+     ITEMS
   ========================= */
 
-  const addItem = (listId: string, item: Item) => {
+  const addItem = (listId: string, item: Partial<Item>) => {
+    const newItem: Item = {
+      id: generateId("item"),
+      name: item.name ?? "Nuevo producto",
+      quantity: item.quantity ?? 1,
+      unit: item.unit ?? "u",
+      unitPrice: item.unitPrice ?? 0,
+      checked: item.checked ?? true,
+      promo: item.promo ?? "none",
+      ...item,
+    };
+
     setLists((prev) =>
-      prev.map((l) =>
-        l.id === listId ? { ...l, items: [...l.items, item] } : l,
+      prev.map((list) =>
+        list.id === listId
+          ? { ...list, items: [...list.items, newItem] }
+          : list,
       ),
     );
   };
 
-  const updateItem = (itemId: string, updates: Partial<Item>) => {
+  const updateItem = (
+    listId: string,
+    itemId: string,
+    updates: Partial<Item>,
+  ) => {
     setLists((prev) =>
-      prev.map((list) => {
-        const hasItem = list.items.some((i) => i.id === itemId);
-
-        if (!hasItem) return list;
-
-        return {
-          ...list,
-          items: list.items.map((item) =>
-            item.id === itemId ? { ...item, ...updates } : item,
-          ),
-        };
-      }),
+      prev.map((list) =>
+        list.id === listId
+          ? {
+              ...list,
+              items: list.items.map((item) =>
+                item.id === itemId ? { ...item, ...updates } : item,
+              ),
+            }
+          : list,
+      ),
     );
   };
 
-  const removeItem = (itemId: string) => {
+  const removeItem = (listId: string, itemId: string) => {
     setLists((prev) =>
-      prev.map((list) => ({
-        ...list,
-        items: list.items.filter((item) => item.id !== itemId),
-      })),
+      prev.map((list) =>
+        list.id === listId
+          ? {
+              ...list,
+              items: list.items.filter((item) => item.id !== itemId),
+            }
+          : list,
+      ),
     );
   };
-
-  const findItemById = useCallback(
-    (id: string) => {
-      for (const list of lists) {
-        const item = list.items.find((i) => i.id === id);
-        if (item) {
-          return { item, list };
-        }
-      }
-      return null;
-    },
-    [lists],
-  );
 
   /* =========================
-     STORE OPERATIONS
+     HELPERS
+  ========================= */
+
+  const findItemById = (itemId: string) => {
+    for (const list of lists) {
+      const item = list.items.find((i) => i.id === itemId);
+      if (item) return { list, item };
+    }
+    return null;
+  };
+
+  /* =========================
+     STORES
   ========================= */
 
   const assignStoreToList = (listId: string, storeId: string) => {
     setLists((prev) =>
-      prev.map((list) => (list.id === listId ? { ...list, storeId } : list)),
+      prev.map((l) => (l.id === listId ? { ...l, storeId } : l)),
     );
   };
 
@@ -155,6 +170,8 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         addItem,
         updateItem,
         removeItem,
+
+        // Helpers
         findItemById,
 
         // Stores
@@ -166,9 +183,9 @@ export function ListsProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/* =========================
+/* =====================================================
    HOOK
-========================= */
+===================================================== */
 
 export function useLists() {
   const ctx = useContext(ListsContext);

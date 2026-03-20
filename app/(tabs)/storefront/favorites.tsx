@@ -2,13 +2,15 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
 import { useStoreSelection } from "@/src/hooks/useStoreSelection";
 
 export default function StoreFavoritesScreen() {
   const router = useRouter();
-
-  const { selectForListId } = useLocalSearchParams<{
+  const { assignStoreToList } = useLists();
+  const { mode, selectForListId } = useLocalSearchParams<{
+    mode?: string;
     selectForListId?: string;
   }>();
 
@@ -35,7 +37,19 @@ export default function StoreFavoritesScreen() {
      Render item
   -------------------------------- */
   const renderItem = ({ item }: any) => (
-    <Pressable style={styles.card} onPress={() => handleSelectStore(item.id)}>
+    <Pressable
+      style={styles.card}
+      onPress={() => {
+        if (mode === "select" && selectForListId) {
+          assignStoreToList(String(selectForListId), item.id);
+
+          router.replace(`/list/${selectForListId}`);
+          return;
+        }
+
+        handleSelectStore(item.id);
+      }}
+    >
       <View style={styles.row}>
         <View style={styles.textContainer}>
           <Text style={styles.name}>{item.name}</Text>

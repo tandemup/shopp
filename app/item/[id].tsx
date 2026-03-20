@@ -1,3 +1,8 @@
+import promotions from "@/data/promotions.json";
+import { alert, confirm } from "@/src/components/ui/dialog/dialog";
+import { useLists } from "@/src/context/ListsContext";
+import { formatCurrency } from "@/src/utils/pricing/formatCurrency";
+import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
@@ -13,40 +18,17 @@ import {
   View,
 } from "react-native";
 
-import promotions from "@/data/promotions.json";
-import { alert, confirm } from "@/src/components/ui/dialog/dialog";
-import { useLists } from "@/src/context/ListsContext";
-import { formatCurrency } from "@/src/utils/pricing/formatCurrency";
-import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
-
 const UNITS = ["u", "kg", "g", "l"];
 
-const parseNumber = (v: string, fallback = 0) =>
-  Number(v.replace(",", ".")) || fallback;
+const parseNumber = (v: string, fallback = 0) => {
+  const n = Number(v.replace(",", "."));
+  return isNaN(n) ? fallback : n;
+};
 
-function mapPromo(promo: string) {
-  switch (promo) {
-    case "2x1":
-      return { type: "multi", buy: 2, pay: 1 };
-
-    case "3x2":
-      return { type: "multi", buy: 3, pay: 2 };
-
-    case "10%":
-      return { type: "percent", value: 10 };
-
-    case "20%":
-      return { type: "percent", value: 20 };
-
-    default:
-      return { type: "none" };
-  }
-}
 export default function ItemDetailScreen() {
-  const params = useLocalSearchParams<{ id: string }>();
-  const id = params.id;
-
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+
   const { findItemById, updateItem, removeItem } = useLists();
   const found = findItemById(id);
 
@@ -56,55 +38,44 @@ export default function ItemDetailScreen() {
   const [unit, setUnit] = useState("u");
   const [qty, setQty] = useState("1");
   const [price, setPrice] = useState("0");
-  const [promo, setPromo] = useState("none");
+  //const [promo, setPromo] = useState("none"); // 🔥 string SIEMPRE
+  //const [promo, setPromo] = useState<Promotion>({ type: "none" });
+  const [promo, setPromo] = useState<string>("none");
 
-  if (!found) {
-    return <Text>Item no encontrado</Text>;
-  }
-  const { item, list } = found;
-
-  // 🔥 Sincronizar estado con item
-  useEffect(() => {
-    if (item) {
-      setName(item.name ?? "");
-      setBarcode(item.barcode ?? "");
-      setUnit(item.unit ?? "u");
-      setQty(String(item.quantity ?? 1));
-      setPrice(String(item.unitPrice ?? 0));
-      setPromo(item.promo ?? "none");
-    }
-  }, [item]);
-
-  // PARSE
-  const quantity = parseNumber(qty, 1);
-  const unitPrice = parseNumber(price, 0);
-
-  // PRICE
-  const priceResult = useMemo(() => {
-    if (!item) {
-      return {
-        baseTotal: 0,
-        finalTotal: 0,
-        savings: 0,
-        effectiveUnitPrice: 0,
-      };
-    }
-
-    return calculateItemPrice({
-      ...item,
-      quantity,
-      unitPrice,
-      promo: mapPromo(promo), // 🔥 clave
-    });
-  }, [item, quantity, unitPrice, promo]);
-  // NOT FOUND
-  if (!item || !list) {
+  // 🔒 Guard único
+  if (!found?.item || !found?.list) {
     return (
       <SafeAreaView style={styles.notFound}>
         <Text>Item no encontrado</Text>
       </SafeAreaView>
     );
   }
+
+  const { item, list } = found;
+
+  // Sync item → state
+  useEffect(() => {
+    setName(item.name ?? "");
+    setBarcode(item.barcode ?? "");
+    setUnit(item.unit ?? "u");
+    setQty(String(item.quantity ?? 1));
+    setPrice(String(item.unitPrice ?? 0));
+    setPromo(item.promo ?? "none");
+  }, [item]);
+
+  // Parse
+  const quantity = parseNumber(qty, 1);
+  const unitPrice = parseNumber(price, 0);
+
+  // Pricing (engine gestiona promo)
+  const priceResult = useMemo(() => {
+    return calculateItemPrice({
+      ...item,
+      quantity,
+      unitPrice,
+      promo, // 🔥 string → engine decide
+    });
+  }, [item.id, quantity, unitPrice, promo]);
 
   // SAVE
   const saveItem = async () => {
@@ -115,16 +86,16 @@ export default function ItemDetailScreen() {
       return;
     }
 
-    updateItem(item.id, {
+    updateItem(list.id, item.id, {
       name: trimmedName,
       barcode: barcode.trim(),
       unit,
       quantity,
       unitPrice,
-      promo: mapPromo(promo),
+      promo, // 🔥 string consistente
     });
 
-    // await alert("Guardado", "Producto actualizado correctamente");
+    await alert("Guardado", "Producto actualizado correctamente");
     router.back();
   };
 
@@ -255,7 +226,7 @@ export default function ItemDetailScreen() {
             <Text style={styles.summaryTitle}>Resumen</Text>
 
             <Text style={styles.summaryLine}>
-              Base: {formatCurrency(priceResult.baseTotal)}{" "}
+              Base: {formatCurrency(priceResult.baseTotal)}
             </Text>
 
             <Text style={styles.summaryLine}>
@@ -295,7 +266,7 @@ const styles = StyleSheet.create({
 
   content: {
     padding: 16,
-    paddingBottom: 80, // 🔥 FIX scroll
+    paddingBottom: 80,
   },
 
   header: {
@@ -436,7 +407,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 6,
     color: "#16a34a",
-    textAlign: "right", // 🔥 mejora visual
+    textAlign: "right",
   },
 
   saveButton: {

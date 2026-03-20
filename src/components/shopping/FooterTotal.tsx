@@ -97,10 +97,20 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  button: {
+  button1: {
     backgroundColor: "#22c55e",
     paddingVertical: 12,
     borderRadius: 10,
+    alignItems: "center",
+  },
+
+  button: {
+    flexDirection: "row",
+    gap: 6,
+    backgroundColor: "#22C55E",
+    paddingVertical: 14,
+    borderRadius: 10,
+    justifyContent: "center",
     alignItems: "center",
   },
 
@@ -111,5 +121,6 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "#fff",
     fontWeight: "600",
+    fontSize: 20,
   },
 });

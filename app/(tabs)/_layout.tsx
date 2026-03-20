@@ -21,7 +21,6 @@ export default function TabsLayout() {
           ),
         }}
       />
-
       <Tabs.Screen
         name="storefront"
         options={{
@@ -49,12 +48,6 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="settings" size={size} color={color} />
           ),
-        }}
-      />
-      <Tabs.Screen
-        name="list"
-        options={{
-          href: null,
         }}
       />
     </Tabs>

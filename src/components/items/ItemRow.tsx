@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { Item } from "@/src/context/ListsContext";
+import { useConfig } from "@/src/context/ConfigContext";
+import { Item } from "@/src/types/Item";
+import { formatCurrencyCompact } from "@/src/utils/currency/formatCurrencyCompact";
 import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
 
 type Props = {
@@ -11,45 +13,77 @@ type Props = {
 };
 
 export default function ItemRow({ item, onToggle, onPress }: Props) {
+  const { currency } = useConfig();
+
   const price = calculateItemPrice(item);
 
-  const total = price.finalTotal ?? 0;
-  const savings = price.savings ?? 0;
+  const base = price.baseTotal;
+  const total = price.finalTotal;
+  const savings = price.savings;
 
-  const disabled = !item.checked;
+  const checked = item.checked ?? true;
+  const hasPromo = savings > 0;
+
+  const qty = item.quantity ?? 1;
+  const unitPrice = item.unitPrice ?? 0;
+
+  const promoLabel = getPromoLabel(item);
 
   return (
-    <View style={[styles.container, disabled && styles.containerDisabled]}>
+    <View style={[styles.container, !checked && styles.containerDisabled]}>
       {/* CHECKBOX */}
       <Pressable onPress={onToggle} style={styles.checkbox}>
         <Ionicons
-          name={item.checked ? "checkbox" : "square-outline"}
+          name={checked ? "checkbox" : "square-outline"}
           size={22}
-          color={item.checked ? "#27ae60" : "#999"}
+          color={checked ? "#27ae60" : "#999"}
         />
       </Pressable>
 
-      {/* CENTER */}
-      <View style={styles.center}>
-        <Text style={[styles.name, disabled && styles.nameDisabled]}>
-          {item.name}
-        </Text>
+      {/* CONTENT */}
+      <View style={styles.content}>
+        {/* LEFT COLUMN */}
+        <View style={styles.left}>
+          {/* NAME + PROMO + SAVINGS */}
+          <View style={styles.rowTop}>
+            <Text style={[styles.name, !checked && styles.nameDisabled]}>
+              {item.name}
+            </Text>
 
-        <Text style={styles.unit}>
-          {item.quantity ?? 1} x {(item.unitPrice ?? 0).toFixed(2)} €
-        </Text>
+            {hasPromo && (
+              <View style={styles.promoRow}>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{promoLabel}</Text>
+                </View>
 
-        {savings > 0 && (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>
-              Oferta · -{savings.toFixed(2)} €
+                <Text style={styles.savingsInline}>
+                  {formatCurrencyCompact(savings, currency)}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* QTY x UNIT */}
+          <Text style={styles.unitInfo}>
+            {qty} x {formatCurrencyCompact(unitPrice, currency)}
+          </Text>
+        </View>
+
+        {/* RIGHT COLUMN */}
+        <View style={styles.right}>
+          <View style={styles.priceRow}>
+            {hasPromo && (
+              <Text style={styles.basePrice}>
+                {formatCurrencyCompact(base, currency)}
+              </Text>
+            )}
+
+            <Text style={styles.finalPrice}>
+              {formatCurrencyCompact(total, currency)}
             </Text>
           </View>
-        )}
+        </View>
       </View>
-
-      {/* PRICE */}
-      <Text style={styles.price}>{total.toFixed(2)} €</Text>
 
       {/* CHEVRON */}
       <Pressable onPress={onPress} style={styles.chevron}>
@@ -59,16 +93,37 @@ export default function ItemRow({ item, onToggle, onPress }: Props) {
   );
 }
 
-/* =========================
+/* =================================================
+   HELPERS
+================================================= */
+
+function getPromoLabel(item: Item): string {
+  const promo = item.promo;
+
+  if (!promo) return "";
+
+  if (typeof promo === "string") return promo;
+
+  if (promo.type === "percent") return `-${promo.value}%`;
+
+  if (promo.type === "multi") return `${promo.buy}x${promo.pay}`;
+
+  if (promo.type === "2x1") return "2x1";
+  if (promo.type === "3x2") return "3x2";
+
+  return "Promo";
+}
+
+/* =================================================
    STYLES
-========================= */
+================================================= */
 
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
     borderBottomWidth: 1,
     borderColor: "#eee",
     backgroundColor: "#fff",
@@ -79,33 +134,46 @@ const styles = StyleSheet.create({
   },
 
   checkbox: {
-    marginRight: 12,
+    marginRight: 10,
   },
 
-  center: {
+  content: {
     flex: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+
+  /* LEFT */
+  left: {
+    flex: 1,
+    paddingRight: 8,
+  },
+
+  rowTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
   },
 
   name: {
     fontSize: 16,
-    fontWeight: "500",
+    fontWeight: "600",
     color: "#222",
   },
 
   nameDisabled: {
-    color: "#888",
+    color: "#999",
   },
 
-  unit: {
-    fontSize: 12,
-    color: "#666",
-    marginTop: 2,
+  promoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
 
   badge: {
-    marginTop: 6,
-    alignSelf: "flex-start",
-    backgroundColor: "#ffeaa7",
+    backgroundColor: "#FFD600",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -113,19 +181,48 @@ const styles = StyleSheet.create({
 
   badgeText: {
     fontSize: 11,
-    color: "#b7791f",
+    fontWeight: "700",
+    color: "#222",
+  },
+
+  savingsInline: {
+    fontSize: 12,
+    color: "#27ae60",
     fontWeight: "600",
   },
 
-  price: {
-    width: 70,
-    textAlign: "right",
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#000",
+  unitInfo: {
+    fontSize: 13,
+    color: "#666",
+    marginTop: 2,
+  },
+
+  /* RIGHT */
+  right: {
+    alignItems: "flex-end",
+    justifyContent: "center",
+    minWidth: 90,
+  },
+
+  priceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  basePrice: {
+    fontSize: 13,
+    color: "#999",
+    textDecorationLine: "line-through",
+  },
+
+  finalPrice: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#222",
   },
 
   chevron: {
-    marginLeft: 10,
+    paddingLeft: 6,
   },
 });
