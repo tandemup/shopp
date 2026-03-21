@@ -1,4 +1,4 @@
-import { List } from "@/src/types/list";
+import { List } from "@/src/types/List";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 

@@ -2,8 +2,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { useLists } from "@/src/context/listsContext";
-import { useStores } from "@/src/context/storesContext";
+import { useLists } from "@/src/context/ListsContext";
+import { useStores } from "@/src/context/StoresContext";
 import { useStoreSelection } from "@/src/hooks/useStoreSelection";
 
 export default function StoreFavoritesScreen() {

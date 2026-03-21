@@ -1,4 +1,4 @@
-import { Currency } from "@/src/types/currency";
+import { Currency } from "@/src/types/Currency";
 import { createContext, useContext, useState } from "react";
 
 type Config = {

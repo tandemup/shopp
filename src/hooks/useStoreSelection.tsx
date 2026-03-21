@@ -1,4 +1,4 @@
-import { useLists } from "@/src/context/listsContext";
+import { useLists } from "@/src/context/ListsContext";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 export function useStoreSelection() {

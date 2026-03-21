@@ -1,9 +1,8 @@
 import { DEFAULT_CURRENCY } from "@/src/constants/currencies";
-import { Item } from "@/src/types/item";
-import { List } from "@/src/types/list";
+import { Item } from "@/src/types/Item";
+import { List } from "@/src/types/List";
 import { generateId } from "@/src/utils/generateId";
-import { createContext, useContext, useState } from "react";
-
+import { ReactNode, createContext, useContext, useState } from "react";
 /* =====================================================
    TYPES
 ===================================================== */
@@ -39,7 +38,7 @@ const ListsContext = createContext<ListsContextType | undefined>(undefined);
    PROVIDER
 ===================================================== */
 
-export function ListsProvider({ children }: { children: React.ReactNode }) {
+export function ListsProvider({ children }: { children: ReactNode }) {
   const [lists, setLists] = useState<List[]>([]);
 
   /* =========================

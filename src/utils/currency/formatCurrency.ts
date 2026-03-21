@@ -1,5 +1,5 @@
 import { CURRENCIES } from "@/src/constants/currencies";
-import { Currency } from "@/src/types/currency";
+import { Currency } from "@/src/types/Currency";
 
 export function formatCurrency(
   value: number,

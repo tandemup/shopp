@@ -1,6 +1,6 @@
-import { Item } from "./item";
+import { Item } from "./Item";
 
-import { Currency } from "./currency";
+import { Currency } from "./Currency";
 
 export interface List {
   id: string;
