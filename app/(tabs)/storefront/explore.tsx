@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 
-import { useStores } from "@/src/context/StoresContext";
+import { useStores } from "@/src/context/storesContext";
 import { useStoreSelection } from "@/src/hooks/useStoreSelection";
 
 export default function StoreExploreScreen() {

@@ -1,4 +1,4 @@
-import { CurrencyConfig } from "@/src/types/Currency";
+import { CurrencyConfig } from "@/src/types/currency";
 
 export const CURRENCIES: Record<string, CurrencyConfig> = {
   EUR: {

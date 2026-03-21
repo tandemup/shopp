@@ -4,12 +4,12 @@ import StoreSelector from "@/src/components/stores/StoreSelector";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { FlatList, StyleSheet, Text, View } from "react-native";
 
-import { useLists } from "@/src/context/ListsContext";
-import { useStores } from "@/src/context/StoresContext";
+import { useLists } from "@/src/context/listsContext";
+import { useStores } from "@/src/context/storesContext";
 
 import FooterTotal from "@/src/components/shopping/FooterTotal";
-import { Item } from "@/src/types/Item";
-import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
+import { Item } from "@/src/types/item";
+import { calculateItemPrice } from "@/src/utils/pricing/pricingEngine";
 
 function makeNewItem(name: string): Item {
   return {

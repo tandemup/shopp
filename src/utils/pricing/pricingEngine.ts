@@ -1,4 +1,4 @@
-import { Item } from "@/src/types/Item";
+import { Item } from "@/src/types/item";
 import { PriceResult } from "@/src/types/PriceResult";
 
 /* -------------------------------------------------

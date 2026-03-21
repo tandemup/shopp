@@ -1,6 +1,6 @@
 import { DEFAULT_CURRENCY } from "@/src/constants/currencies";
-import { Item } from "@/src/types/Item";
-import { List } from "@/src/types/List";
+import { Item } from "@/src/types/item";
+import { List } from "@/src/types/list";
 import { generateId } from "@/src/utils/generateId";
 import { createContext, useContext, useState } from "react";
 

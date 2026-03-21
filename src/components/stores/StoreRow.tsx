@@ -1,5 +1,5 @@
-import { useStores } from "@/src/context/StoresContext";
-import { Store } from "@/src/types/Store";
+import { useStores } from "@/src/context/storesContext";
+import { Store } from "@/src/types/store";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 

@@ -1,8 +1,8 @@
 import promotions from "@/data/promotions.json";
 import { alert, confirm } from "@/src/components/ui/dialog/dialog";
-import { useLists } from "@/src/context/ListsContext";
+import { useLists } from "@/src/context/listsContext";
 import { formatCurrency } from "@/src/utils/pricing/formatCurrency";
-import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
+import { calculateItemPrice } from "@/src/utils/pricing/pricingEngine";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";

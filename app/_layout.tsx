@@ -4,11 +4,11 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import DialogProvider from "../src/components/ui/dialog/DialogProvider";
 import { ThemeProvider } from "../src/hooks/useTheme";
 
-import { ConfigProvider } from "@/src/context/ConfigContext";
-import { ListsProvider } from "@/src/context/ListsContext";
-import { LocationProvider } from "@/src/context/LocationContext";
-import { PurchasesProvider } from "@/src/context/PurchasesContext";
-import { StoresProvider } from "@/src/context/StoresContext";
+import { ConfigProvider } from "@/src/context/configContext";
+import { ListsProvider } from "@/src/context/listsContext";
+import { LocationProvider } from "@/src/context/locationContext";
+import { PurchasesProvider } from "@/src/context/purchasesContext";
+import { StoresProvider } from "@/src/context/storesContext";
 
 const convex = new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL!);
 

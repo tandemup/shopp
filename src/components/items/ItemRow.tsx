@@ -1,10 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { useConfig } from "@/src/context/ConfigContext";
-import { Item } from "@/src/types/Item";
+import { useConfig } from "@/src/context/configContext";
+import { Item } from "@/src/types/item";
 import { formatCurrencyCompact } from "@/src/utils/currency/formatCurrencyCompact";
-import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
+import { calculateItemPrice } from "@/src/utils/pricing/pricingEngine";
 
 type Props = {
   item: Item;
