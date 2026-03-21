@@ -1,5 +1,5 @@
 import { Item } from "@/src/types/item";
-import { PriceResult } from "@/src/types/PriceResult";
+import { PriceResult } from "@/src/types/priceResult";
 
 /* -------------------------------------------------
    Types (recomendado)

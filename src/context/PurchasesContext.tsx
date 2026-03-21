@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from "react";
-import { Purchase } from "../types/Purchase";
+import { Purchase } from "../types/purchase";
 
 type PurchasesContextType = {
   purchases: Purchase[];
