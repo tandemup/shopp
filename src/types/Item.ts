@@ -1,17 +1,10 @@
-import { Promotion } from "./Promotion";
-
 export type Item = {
   id: string;
   name: string;
-
   barcode?: string;
-
-  unit?: "u" | "kg" | "g" | "l";
-
+  unit?: string;
   quantity?: number;
   unitPrice?: number;
-
-  promo?: Promotion;
-
+  promo?: string;
   checked?: boolean;
 };

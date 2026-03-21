@@ -61,26 +61,28 @@ export default function ListCard({ list, onPress, onMenu }: Props) {
             <Text style={styles.listName}>{list.name}</Text>
 
             <View style={styles.currencyBadge}>
-              <Text style={styles.currencyText}>{currency.symbol}</Text>
+              <Text style={styles.currencyText}>{currency.code}</Text>
             </View>
           </View>
-
-          <Text style={styles.meta}>
-            {formattedDate} · {itemCount}{" "}
-            {itemCount === 1 ? "producto" : "productos"}
-          </Text>
+          <View style={styles.date}>
+            <Text style={styles.meta}>
+              {formattedDate} . {itemCount} items
+            </Text>
+          </View>
         </View>
 
         {/* RIGHT */}
         <View style={styles.right}>
+          {/* MENU ARRIBA */}
+          <Pressable onPress={onMenu} style={styles.menu}>
+            <Ionicons name="ellipsis-vertical" size={18} color="#555" />
+          </Pressable>
+
+          {/* PRECIO ABAJO */}
           <View style={styles.totalRow}>
             <Text style={styles.totalValue}>{formattedTotal}</Text>
             <Text style={styles.totalCurrency}>{currency.symbol}</Text>
           </View>
-
-          <Pressable onPress={onMenu} style={styles.menu}>
-            <Ionicons name="ellipsis-vertical" size={18} color="#555" />
-          </Pressable>
         </View>
       </View>
 
@@ -144,9 +146,8 @@ const styles = StyleSheet.create({
   },
 
   menu: {
-    marginTop: 6,
+    padding: 4,
   },
-
   /* ---------- TOTAL ---------- */
 
   totalRow: {
@@ -167,7 +168,11 @@ const styles = StyleSheet.create({
   },
 
   /* ---------- META ---------- */
-
+  date: {
+    flex: 1,
+    flexDirection: "row",
+    marginTop: 5,
+  },
   meta: {
     fontSize: 12,
     color: "#666",
@@ -189,6 +194,7 @@ const styles = StyleSheet.create({
   right: {
     alignItems: "flex-end",
     justifyContent: "space-between",
+    height: "100%", // 🔥 importante para separar arriba/abajo
   },
 
   nameRow: {

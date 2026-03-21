@@ -31,30 +31,23 @@ export default function ItemDetailScreen() {
 
   const { findItemById, updateItem, removeItem } = useLists();
   const found = findItemById(id);
-
+  console.log("found: ", found);
   // STATE
   const [name, setName] = useState("");
   const [barcode, setBarcode] = useState("");
   const [unit, setUnit] = useState("u");
   const [qty, setQty] = useState("1");
   const [price, setPrice] = useState("0");
-  //const [promo, setPromo] = useState("none"); // 🔥 string SIEMPRE
-  //const [promo, setPromo] = useState<Promotion>({ type: "none" });
   const [promo, setPromo] = useState<string>("none");
 
-  // 🔒 Guard único
-  if (!found?.item || !found?.list) {
-    return (
-      <SafeAreaView style={styles.notFound}>
-        <Text>Item no encontrado</Text>
-      </SafeAreaView>
-    );
-  }
+  // ⚠️ IMPORTANTE: derivar item de forma segura
+  const item = found?.item;
+  const list = found?.list;
 
-  const { item, list } = found;
-
-  // Sync item → state
+  // ✅ useEffect SIEMPRE se ejecuta
   useEffect(() => {
+    if (!item) return;
+
     setName(item.name ?? "");
     setBarcode(item.barcode ?? "");
     setUnit(item.unit ?? "u");
@@ -67,15 +60,28 @@ export default function ItemDetailScreen() {
   const quantity = parseNumber(qty, 1);
   const unitPrice = parseNumber(price, 0);
 
-  // Pricing (engine gestiona promo)
+  // Pricing seguro
   const priceResult = useMemo(() => {
+    if (!item) {
+      return { baseTotal: 0, savings: 0, finalTotal: 0 };
+    }
+
     return calculateItemPrice({
       ...item,
       quantity,
       unitPrice,
-      promo, // 🔥 string → engine decide
+      promo,
     });
-  }, [item.id, quantity, unitPrice, promo]);
+  }, [item, quantity, unitPrice, promo]);
+
+  // ✅ GUARD AQUÍ (después de hooks)
+  if (!item || !list) {
+    return (
+      <SafeAreaView style={styles.notFound}>
+        <Text>Item no encontrado</Text>
+      </SafeAreaView>
+    );
+  }
 
   // SAVE
   const saveItem = async () => {
