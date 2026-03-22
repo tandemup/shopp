@@ -1,18 +1,31 @@
-import { CURRENCIES } from "@/src/constants/currencies";
-import { Currency } from "@/src/types/Currency";
+import { getCurrencySymbol } from "./getCurrencySymbol";
+import { CurrencyCode } from "./types";
 
-export function formatCurrency(
-  value: number,
-  currency: Currency = "EUR",
-): string {
-  const config = CURRENCIES[currency];
+type Options = {
+  compact?: boolean;
+  currency?: CurrencyCode;
+  locale?: string;
+};
 
-  if (!config) {
-    return `${value.toFixed(2)} ${currency}`;
+export function formatCurrency(value: number, options?: Options): string {
+  const { compact = false, currency = "EUR", locale = "es-ES" } = options || {};
+
+  if (compact) {
+    const symbol = getCurrencySymbol(currency);
+
+    if (value >= 1000) {
+      return `${(value / 1000).toFixed(1)}k${symbol}`;
+    }
+
+    if (value >= 100) {
+      return `${Math.round(value)}${symbol}`;
+    }
+
+    return `${value.toFixed(2)}${symbol}`;
   }
 
-  return new Intl.NumberFormat(config.locale, {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
-    currency: config.code,
+    currency,
   }).format(value);
 }

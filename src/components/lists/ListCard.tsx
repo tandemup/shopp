@@ -2,7 +2,7 @@ import { List } from "@/src/types/List";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { getCurrency } from "@/src/utils/currency/getCurrency";
+import { getCurrency } from "@/src/utils/currency/currencyUtils";
 import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
 
 interface Props {
@@ -40,7 +40,7 @@ export default function ListCard({ list, onPress, onMenu }: Props) {
 
   const formattedTotal = total.toFixed(currency.decimals);
   const formattedSavings = savings.toFixed(currency.decimals);
-
+  const totalText = formatCurrency(listTotal);
   const itemCount = list.items.length;
 
   /* --------------------------------------------

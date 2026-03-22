@@ -38,8 +38,9 @@ export default function ItemDetailScreen() {
   const [unit, setUnit] = useState("u");
   const [qty, setQty] = useState("1");
   const [price, setPrice] = useState("0");
-  const [promo, setPromo] = useState<string>("none");
+  const [promoId, setPromoId] = useState<string>("none");
 
+  const promo = useMemo(() => toPromotion(promoId), [promoId]);
   // ⚠️ IMPORTANTE: derivar item de forma segura
   const item = found?.item;
   const list = found?.list;

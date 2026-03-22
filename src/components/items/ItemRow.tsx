@@ -1,9 +1,10 @@
+import { getPromotionLabel } from "@/src/utils/pricing/promotionUtils";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useConfig } from "@/src/context/ConfigContext";
 import { Item } from "@/src/types/Item";
-import { formatCurrencyCompact } from "@/src/utils/currency/formatCurrencyCompact";
+import { formatCurrency } from "@/src/utils/currency";
 import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
 
 type Props = {
@@ -28,7 +29,9 @@ export default function ItemRow({ item, onToggle, onPress }: Props) {
   const unitPrice = item.unitPrice ?? 0;
 
   const promoLabel = getPromoLabel(item);
-
+  const label = getPromotionLabel(item.promo);
+  const totalText = formatCurrency(total, { compact: true });
+  const unitText = formatCurrency(item.unitPrice ?? 0);
   return (
     <View style={[styles.container, !checked && styles.containerDisabled]}>
       {/* CHECKBOX */}
@@ -57,7 +60,7 @@ export default function ItemRow({ item, onToggle, onPress }: Props) {
                 </View>
 
                 <Text style={styles.savingsInline}>
-                  {formatCurrencyCompact(savings, currency)}
+                  {formatCurrency(savings, currency)}
                 </Text>
               </View>
             )}
@@ -65,7 +68,7 @@ export default function ItemRow({ item, onToggle, onPress }: Props) {
 
           {/* QTY x UNIT */}
           <Text style={styles.unitInfo}>
-            {qty} x {formatCurrencyCompact(unitPrice, currency)}
+            {qty} x {formatCurrency(unitPrice, currency)}
           </Text>
         </View>
 
@@ -74,12 +77,12 @@ export default function ItemRow({ item, onToggle, onPress }: Props) {
           <View style={styles.priceRow}>
             {hasPromo && (
               <Text style={styles.basePrice}>
-                {formatCurrencyCompact(base, currency)}
+                {formatCurrency(base, currency)}
               </Text>
             )}
 
             <Text style={styles.finalPrice}>
-              {formatCurrencyCompact(total, currency)}
+              {formatCurrency(total, currency)}
             </Text>
           </View>
         </View>

@@ -1,6 +1,6 @@
 import { Item } from "@/src/types/Item";
 import { PriceResult } from "@/src/types/PriceResult";
-import { Promotion } from "./Promotion";
+import { normalizePromotion } from "./promotionUtils";
 
 function round(value: number): number {
   return Math.round(value * 100) / 100;
@@ -12,13 +12,17 @@ export function calculateItemPrice(item: Item): PriceResult {
 
   const baseTotal = round(qty * unitPrice);
 
-  const promo: Promotion = item.promo ?? { type: "none" };
+  const promo = normalizePromotion(item.promo);
 
   let finalTotal = baseTotal;
 
   switch (promo.type) {
     case "percent":
       finalTotal = baseTotal * (1 - promo.value / 100);
+      break;
+
+    case "discount":
+      finalTotal = baseTotal - promo.value;
       break;
 
     case "multi": {
@@ -34,7 +38,7 @@ export function calculateItemPrice(item: Item): PriceResult {
       finalTotal = baseTotal;
   }
 
-  finalTotal = round(finalTotal);
+  finalTotal = Math.max(0, round(finalTotal));
 
   return {
     baseTotal,
