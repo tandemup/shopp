@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useConfig } from "@/src/context/ConfigContext";
 import { Item } from "@/src/types/Item";
 import { formatCurrency } from "@/src/utils/currency";
-import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
+import { calculateItemPrice } from "@/src/utils/pricing/pricingEngine";
 
 type Props = {
   item: Item;
