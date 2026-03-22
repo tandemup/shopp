@@ -21,7 +21,7 @@ export function useStoreSelection() {
 
     // fallback (browse mode)
     router.push({
-      pathname: "/store/[id]", // ⚠️ solo si creas esta ruta
+      pathname: "/store/[id]",
       params: { id: storeId },
     });
   };

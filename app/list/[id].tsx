@@ -9,7 +9,7 @@ import { useStores } from "@/src/context/StoresContext";
 
 import FooterTotal from "@/src/components/shopping/FooterTotal";
 import { Item } from "@/src/types/Item";
-import { calculateItemPrice } from "@/src/utils/pricing/pricingEngine";
+import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
 
 function makeNewItem(name: string): Item {
   return {

@@ -20,6 +20,7 @@ type ListsContextType = {
   addItem: (listId: string, item: Partial<Item>) => void;
   updateItem: (listId: string, itemId: string, updates: Partial<Item>) => void;
   removeItem: (listId: string, itemId: string) => void;
+  toggleItem: (listId: string, itemId: string) => void;
 
   // Helpers
   findItemById: (itemId: string) => { list: List; item: Item } | null;
@@ -128,6 +129,22 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const toggleItem = (listId: string, itemId: string) => {
+    setLists((prev) =>
+      prev.map((list) =>
+        list.id === listId
+          ? {
+              ...list,
+              items: list.items.map((item) =>
+                item.id === itemId
+                  ? { ...item, checked: !(item.checked ?? true) }
+                  : item,
+              ),
+            }
+          : list,
+      ),
+    );
+  };
   /* =========================
      HELPERS
   ========================= */
@@ -169,6 +186,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         addItem,
         updateItem,
         removeItem,
+        toggleItem,
 
         // Helpers
         findItemById,

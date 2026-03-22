@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { getCurrency } from "@/src/utils/currency/getCurrency";
-import { calculateItemPrice } from "@/src/utils/pricing/pricingEngine";
+import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
 
 interface Props {
   list: List;
