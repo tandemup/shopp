@@ -1,6 +1,7 @@
 export type Promotion =
   | { type: "none" }
   | { type: "percent"; value: number }
+  | { type: "discount"; value: number }
   | { type: "multi"; buy: number; pay: number };
 
 // helpers oficiales

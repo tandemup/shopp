@@ -24,32 +24,26 @@ export function normalizePromotion(promo?: Promotion): Promotion {
    STRING → Promotion (UI → lógica)
 ========================================================= */
 
-export function toPromotion(id: string): Promotion {
-  switch (id) {
-    case "2x1":
-      return { type: "2x1" };
+export const toPromotion = (id: string): Promotion => {
+  if (id === "none") return { type: "none" };
 
-    case "3x2":
-      return { type: "3x2" };
+  if (id === "2x1") return { type: "2x1" };
+  if (id === "3x2") return { type: "3x2" };
 
-    case "discount5":
-      return { type: "discount", value: 5 };
-
-    case "discount10":
-      return { type: "discount", value: 10 };
-
-    case "percent10":
-      return { type: "percent", value: 10 };
-
-    case "percent20":
-      return { type: "percent", value: 20 };
-
-    case "none":
-    default:
-      return { type: "none" };
+  // 💥 DESCUENTO FIJO
+  if (id.startsWith("discount")) {
+    const value = Number(id.replace("discount", ""));
+    return { type: "discount", value };
   }
-}
 
+  // 💥 PORCENTAJE (AQUÍ ESTÁ EL BUG)
+  if (id.startsWith("percent")) {
+    const value = Number(id.replace("percent", ""));
+    return { type: "percent", value };
+  }
+
+  return { type: "none" };
+};
 /* =========================================================
    Promotion → string (persistencia / selects)
 ========================================================= */

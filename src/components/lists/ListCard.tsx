@@ -1,9 +1,10 @@
+import { useConfig } from "@/src/context/ConfigContext";
 import { List } from "@/src/types/List";
+import { formatCurrency } from "@/src/utils/currency";
+import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-
-import { getCurrency } from "@/src/utils/currency/currencyUtils";
-import { calculateItemPrice } from "@/src/utils/pricing/pricingEngine";
+import { useMemo, useRef } from "react";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 
 interface Props {
   list: List;
@@ -12,10 +13,31 @@ interface Props {
 }
 
 export default function ListCard({ list, onPress, onMenu }: Props) {
-  const currency = getCurrency(list.currency);
+  const { currency } = useConfig();
+  //  const currency = getCurrency(list.currency);
 
   /* --------------------------------------------
-     Fecha segura
+     Animación press
+  --------------------------------------------- */
+
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.97,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  /* --------------------------------------------
+     Fecha
   --------------------------------------------- */
 
   const createdAt =
@@ -26,74 +48,75 @@ export default function ListCard({ list, onPress, onMenu }: Props) {
   const formattedDate = createdAt.toLocaleDateString();
 
   /* --------------------------------------------
-     Totales (pricing engine)
+     Totales optimizados
   --------------------------------------------- */
 
-  let total = 0;
-  let savings = 0;
+  const { total, savings } = useMemo(() => {
+    let total = 0;
+    let savings = 0;
 
-  list.items.forEach((item) => {
-    const price = calculateItemPrice(item);
-    total += price.finalTotal;
-    savings += price.savings;
-  });
+    list.items.forEach((item) => {
+      const price = calculateItemPrice(item);
+      total += price.finalTotal;
+      savings += price.savings;
+    });
 
-  const formattedTotal = total.toFixed(currency.decimals);
-  const formattedSavings = savings.toFixed(currency.decimals);
-  const totalText = formatCurrency(listTotal);
+    return {
+      total: Math.round(total * 100) / 100,
+      savings: Math.round(savings * 100) / 100,
+    };
+  }, [list.items]);
+
+  const formattedTotal = formatCurrency(total, currency);
+  const formattedSavings = formatCurrency(savings, currency);
+
   const itemCount = list.items.length;
+  const hasSavings = savings > 0;
 
   /* --------------------------------------------
      Render
   --------------------------------------------- */
 
   return (
-    <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-      onPress={onPress}
-    >
-      {/* ---------- HEADER ---------- */}
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={[styles.card, hasSavings && styles.cardHighlight]}
+      >
+        <View style={styles.header}>
+          {/* LEFT */}
+          <View style={styles.left}>
+            <View style={styles.nameRow}>
+              <Text style={styles.listName}>{list.name}</Text>
 
-      <View style={styles.header}>
-        {/* LEFT */}
-        <View style={styles.left}>
-          <View style={styles.nameRow}>
-            <Text style={styles.listName}>{list.name}</Text>
-
-            <View style={styles.currencyBadge}>
-              <Text style={styles.currencyText}>{currency.code}</Text>
+              <View style={styles.currencyBadge}>
+                <Text style={styles.currencyText}>{currency}</Text>
+              </View>
             </View>
-          </View>
-          <View style={styles.date}>
+
             <Text style={styles.meta}>
-              {formattedDate} . {itemCount} items
+              {formattedDate} · {itemCount} items
             </Text>
           </View>
-        </View>
 
-        {/* RIGHT */}
-        <View style={styles.right}>
-          {/* MENU ARRIBA */}
-          <Pressable onPress={onMenu} style={styles.menu}>
-            <Ionicons name="ellipsis-vertical" size={18} color="#555" />
-          </Pressable>
+          {/* RIGHT */}
+          <View style={styles.right}>
+            <Pressable onPress={onMenu} style={styles.menu}>
+              <Ionicons name="ellipsis-vertical" size={18} color="#555" />
+            </Pressable>
 
-          {/* PRECIO ABAJO */}
-          <View style={styles.totalRow}>
             <Text style={styles.totalValue}>{formattedTotal}</Text>
-            <Text style={styles.totalCurrency}>{currency.symbol}</Text>
           </View>
         </View>
-      </View>
 
-      {/* ---------- SAVINGS ---------- */}
-
-      {savings > 0 && (
-        <Text style={styles.savings}>
-          Ahorro {formattedSavings} {currency.symbol}
-        </Text>
-      )}
-    </Pressable>
+        {/* SAVINGS */}
+        {hasSavings && (
+          <Text style={styles.savings}>💸 Ahorro {formattedSavings}</Text>
+        )}
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -109,98 +132,80 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: "#e5e7eb",
+
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
 
-  pressed: {
-    opacity: 0.85,
+  cardHighlight: {
+    borderColor: "#bbf7d0",
+    backgroundColor: "#f0fdf4",
   },
 
-  /* ---------- TOP ---------- */
-
-  cardTop: {
+  header: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 6,
   },
 
   left: {
     flex: 1,
   },
 
+  /* 🔥 CORRECTO: agrupado, no separado */
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 4,
+  },
+
   listName: {
-    fontSize: 18, // ⬆️ más grande
+    fontSize: 18,
     fontWeight: "700",
+    flexShrink: 1,
   },
 
   currencyBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: "#eef0ff",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: "#eef2ff",
   },
 
   currencyText: {
-    fontSize: 13, // ⬆️ más grande
-    color: "#4b5bdc",
+    fontSize: 11,
+    color: "#3730a3",
     fontWeight: "700",
   },
 
-  menu: {
-    padding: 4,
-  },
-  /* ---------- TOTAL ---------- */
-
-  totalRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-  },
-
-  totalValue: {
-    fontSize: 22, // ⬆️ más protagonista
-    fontWeight: "800",
-  },
-
-  totalCurrency: {
-    fontSize: 13,
-    marginLeft: 4,
-    marginBottom: 3,
-    color: "#666",
-  },
-
-  /* ---------- META ---------- */
-  date: {
-    flex: 1,
-    flexDirection: "row",
-    marginTop: 5,
-  },
   meta: {
     fontSize: 12,
     color: "#666",
   },
 
-  /* ---------- SAVINGS ---------- */
-
-  savings: {
-    marginTop: 4,
-    fontSize: 12,
-    color: "#16a34a",
-    fontWeight: "500",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-
   right: {
     alignItems: "flex-end",
     justifyContent: "space-between",
-    height: "100%", // 🔥 importante para separar arriba/abajo
   },
 
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 4,
+  menu: {
+    padding: 4,
+    marginBottom: 8,
+  },
+
+  totalValue: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#111",
+  },
+
+  savings: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#16a34a",
+    fontWeight: "700",
   },
 });

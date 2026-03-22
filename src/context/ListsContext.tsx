@@ -14,6 +14,7 @@ type ListsContextType = {
   addList: (name: string) => void;
   deleteList: (id: string) => void;
   archiveList: (id: string) => void;
+  updateList: (id: string, updates: Partial<List>) => void;
   getList: (id: string) => List | null;
 
   // Items
@@ -65,6 +66,11 @@ export function ListsProvider({ children }: { children: ReactNode }) {
   const archiveList = (id: string) => {
     setLists((prev) =>
       prev.map((l) => (l.id === id ? { ...l, archived: true } : l)),
+    );
+  };
+  const updateList = (id: string, updates: Partial<List>) => {
+    setLists((prev) =>
+      prev.map((list) => (list.id === id ? { ...list, ...updates } : list)),
     );
   };
 
@@ -180,6 +186,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
         addList,
         deleteList,
         archiveList,
+        updateList,
         getList,
 
         // Items

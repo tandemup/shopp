@@ -18,7 +18,7 @@ import { useLists } from "@/src/context/ListsContext";
 
 export default function ShoppingListsScreen() {
   const router = useRouter();
-  const { lists, addList, deleteList, archiveList } = useLists();
+  const { lists, addList, deleteList, archiveList, updateList } = useLists();
   const [name, setName] = useState("");
 
   /* -------------------------------------------------
@@ -41,15 +41,31 @@ export default function ShoppingListsScreen() {
   };
 
   /* -------------------------------------------------
+     Editar lista
+  -------------------------------------------------- */
+  const handleEditList = async (list: any) => {
+    const newName = await prompt(
+      "Editar nombre",
+      "Introduce el nuevo nombre",
+      list.name,
+    );
+
+    if (!newName || !newName.trim()) return;
+
+    updateList(list.id, {
+      name: newName.trim(),
+    });
+  };
+  /* -------------------------------------------------
      Menú contextual
   -------------------------------------------------- */
-
   const openMenu = async (list: any) => {
     const index = await actionSheet(list.name, [
-      { text: "Abrir" },
-      { text: "Archivar" },
-      { text: "Eliminar", style: "destructive" },
-      { text: "Cancelar", style: "cancel" },
+      { text: "Abrir" }, // 0
+      { text: "Archivar" }, // 1
+      { text: "Editar nombre" }, // 2
+      { text: "Eliminar", style: "destructive" }, // 3
+      { text: "Cancelar", style: "cancel" }, // 4
     ]);
 
     if (index === 0) {
@@ -57,6 +73,8 @@ export default function ShoppingListsScreen() {
     } else if (index === 1) {
       archiveList?.(list.id);
     } else if (index === 2) {
+      handleEditList(list);
+    } else if (index === 3) {
       deleteList?.(list.id);
     }
   };

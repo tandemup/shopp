@@ -1,8 +1,13 @@
 import promotions from "@/data/promotions.json";
 import { alert, confirm } from "@/src/components/ui/dialog/dialog";
 import { useLists } from "@/src/context/ListsContext";
-import { formatCurrency } from "@/src/utils/pricing/formatCurrency";
+import { formatCurrency } from "@/src/utils/currency";
 import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
+import {
+  fromPromotion,
+  isPromotionValid,
+  toPromotion,
+} from "@/src/utils/pricing/promotionUtils";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
@@ -17,7 +22,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-
 const UNITS = ["u", "kg", "g", "l"];
 
 const parseNumber = (v: string, fallback = 0) => {
@@ -31,7 +35,6 @@ export default function ItemDetailScreen() {
 
   const { findItemById, updateItem, removeItem } = useLists();
   const found = findItemById(id);
-  console.log("found: ", found);
   // STATE
   const [name, setName] = useState("");
   const [barcode, setBarcode] = useState("");
@@ -40,7 +43,14 @@ export default function ItemDetailScreen() {
   const [price, setPrice] = useState("0");
   const [promoId, setPromoId] = useState<string>("none");
 
-  const promo = useMemo(() => toPromotion(promoId), [promoId]);
+  const promo = useMemo(() => {
+    const p = toPromotion(promoId);
+
+    if (!isPromotionValid(p)) return { type: "none" };
+
+    return p;
+  }, [promoId]);
+
   // ⚠️ IMPORTANTE: derivar item de forma segura
   const item = found?.item;
   const list = found?.list;
@@ -54,7 +64,7 @@ export default function ItemDetailScreen() {
     setUnit(item.unit ?? "u");
     setQty(String(item.quantity ?? 1));
     setPrice(String(item.unitPrice ?? 0));
-    setPromo(item.promo ?? "none");
+    setPromoId(fromPromotion(item.promo ?? { type: "none" }));
   }, [item]);
 
   // Parse
@@ -99,7 +109,7 @@ export default function ItemDetailScreen() {
       unit,
       quantity,
       unitPrice,
-      promo, // 🔥 string consistente
+      promo,
     });
 
     await alert("Guardado", "Producto actualizado correctamente");
@@ -213,13 +223,13 @@ export default function ItemDetailScreen() {
                 key={p.id}
                 style={[
                   styles.promoButton,
-                  promo === p.id && styles.promoActive,
+                  promoId === p.id && styles.promoActive,
                 ]}
-                onPress={() => setPromo(p.id)}
+                onPress={() => setPromoId(p.id)}
               >
                 <Text
                   style={
-                    promo === p.id ? styles.promoTextActive : styles.promoText
+                    promoId === p.id ? styles.promoTextActive : styles.promoText
                   }
                 >
                   {p.label}
