@@ -1,13 +1,9 @@
 import promotions from "@/data/promotions.json";
 import { alert, confirm } from "@/src/components/ui/dialog/dialog";
 import { useLists } from "@/src/context/ListsContext";
+import { usePromo } from "@/src/hooks/usePromo";
 import { formatCurrency } from "@/src/utils/currency";
 import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
-import {
-  fromPromotion,
-  isPromotionValid,
-  toPromotion,
-} from "@/src/utils/pricing/promotionUtils";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
@@ -32,7 +28,6 @@ const parseNumber = (v: string, fallback = 0) => {
 export default function ItemDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-
   const { findItemById, updateItem, removeItem } = useLists();
   const found = findItemById(id);
   // STATE
@@ -41,19 +36,11 @@ export default function ItemDetailScreen() {
   const [unit, setUnit] = useState("u");
   const [qty, setQty] = useState("1");
   const [price, setPrice] = useState("0");
-  const [promoId, setPromoId] = useState<string>("none");
-
-  const promo = useMemo(() => {
-    const p = toPromotion(promoId);
-
-    if (!isPromotionValid(p)) return { type: "none" };
-
-    return p;
-  }, [promoId]);
 
   // ⚠️ IMPORTANTE: derivar item de forma segura
   const item = found?.item;
   const list = found?.list;
+  const { promo, setPromoFromString, promoString } = usePromo(item?.promo);
 
   // ✅ useEffect SIEMPRE se ejecuta
   useEffect(() => {
@@ -64,7 +51,11 @@ export default function ItemDetailScreen() {
     setUnit(item.unit ?? "u");
     setQty(String(item.quantity ?? 1));
     setPrice(String(item.unitPrice ?? 0));
-    setPromoId(fromPromotion(item.promo ?? { type: "none" }));
+  }, [item]);
+
+  useEffect(() => {
+    if (!item) return;
+    setPromoFromString(item.promo ?? "none");
   }, [item]);
 
   // Parse
@@ -109,7 +100,7 @@ export default function ItemDetailScreen() {
       unit,
       quantity,
       unitPrice,
-      promo,
+      promo: promoString,
     });
 
     await alert("Guardado", "Producto actualizado correctamente");
@@ -150,11 +141,9 @@ export default function ItemDetailScreen() {
 
             <View style={{ width: 22 }} />
           </View>
-
           {/* NAME */}
           <Text style={styles.label}>Nombre</Text>
           <TextInput style={styles.input} value={name} onChangeText={setName} />
-
           {/* BARCODE */}
           <Text style={styles.label}>Código de barras</Text>
           <View style={styles.row}>
@@ -173,7 +162,6 @@ export default function ItemDetailScreen() {
               <Ionicons name="search-outline" size={18} />
             </Pressable>
           </View>
-
           {/* UNIT */}
           <Text style={styles.label}>Unidad</Text>
           <View style={styles.unitRow}>
@@ -191,7 +179,6 @@ export default function ItemDetailScreen() {
               </Pressable>
             ))}
           </View>
-
           {/* QTY + PRICE */}
           <View style={styles.rowSpace}>
             <View style={{ flex: 1 }}>
@@ -214,30 +201,27 @@ export default function ItemDetailScreen() {
               />
             </View>
           </View>
-
           {/* PROMOS */}
           <Text style={styles.label}>Ofertas</Text>
           <View style={styles.promoRow}>
-            {promotions.map((p: { id: string; label: string }) => (
-              <Pressable
-                key={p.id}
-                style={[
-                  styles.promoButton,
-                  promoId === p.id && styles.promoActive,
-                ]}
-                onPress={() => setPromoId(p.id)}
-              >
-                <Text
-                  style={
-                    promoId === p.id ? styles.promoTextActive : styles.promoText
-                  }
-                >
-                  {p.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+            {promotions.map((p: { id: string; label: string }) => {
+              const isActive = promoString === p.id;
 
+              return (
+                <Pressable
+                  key={p.id}
+                  style={[styles.promoButton, isActive && styles.promoActive]}
+                  onPress={() => setPromoFromString(p.id)}
+                >
+                  <Text
+                    style={isActive ? styles.promoTextActive : styles.promoText}
+                  >
+                    {p.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>{" "}
           {/* SUMMARY */}
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>Resumen</Text>
@@ -254,12 +238,10 @@ export default function ItemDetailScreen() {
               Total: {formatCurrency(priceResult.finalTotal)}
             </Text>
           </View>
-
           {/* ACTIONS */}
           <Pressable style={styles.saveButton} onPress={saveItem}>
             <Text style={styles.saveText}>Guardar cambios</Text>
           </Pressable>
-
           <Pressable style={styles.deleteButton} onPress={deleteItem}>
             <Text style={styles.deleteText}>Eliminar producto</Text>
           </Pressable>

@@ -4,10 +4,13 @@ import {
   ReactNode,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
-// AsyncStorage is React Native’s simple, promise-based API for persisting small bits of data on a user’s device. Think of it as the mobile-app equivalent of the browser’s localStorage, but asynchronous and cross-platform.
+/* ================================
+   Types
+================================ */
 
 export interface ColorScheme {
   bg: string;
@@ -37,6 +40,16 @@ export interface ColorScheme {
   statusBarStyle: "light-content" | "dark-content";
 }
 
+/* ================================
+   Constants
+================================ */
+
+const STORAGE_KEY = "darkMode";
+
+/* ================================
+   Themes
+================================ */
+
 const lightColors: ColorScheme = {
   bg: "#f8fafc",
   surface: "#ffffff",
@@ -62,7 +75,7 @@ const lightColors: ColorScheme = {
     input: "#ffffff",
     editInput: "#ffffff",
   },
-  statusBarStyle: "dark-content" as const,
+  statusBarStyle: "dark-content",
 };
 
 const darkColors: ColorScheme = {
@@ -90,8 +103,12 @@ const darkColors: ColorScheme = {
     input: "#1e293b",
     editInput: "#0f172a",
   },
-  statusBarStyle: "light-content" as const,
+  statusBarStyle: "light-content",
 };
+
+/* ================================
+   Context
+================================ */
 
 interface ThemeContextType {
   isDarkMode: boolean;
@@ -99,25 +116,36 @@ interface ThemeContextType {
   colors: ColorScheme;
 }
 
-const ThemeContext = createContext<undefined | ThemeContextType>(undefined);
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+
+/* ================================
+   Provider
+================================ */
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    // get the user's choice
-    AsyncStorage.getItem("darkMode").then((value) => {
+    AsyncStorage.getItem(STORAGE_KEY).then((value) => {
       if (value) setIsDarkMode(JSON.parse(value));
+      setIsLoaded(true);
     });
   }, []);
 
   const toggleDarkMode = async () => {
     const newMode = !isDarkMode;
     setIsDarkMode(newMode);
-    await AsyncStorage.setItem("darkMode", JSON.stringify(newMode));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newMode));
   };
 
-  const colors = isDarkMode ? darkColors : lightColors;
+  const colors = useMemo(
+    () => (isDarkMode ? darkColors : lightColors),
+    [isDarkMode]
+  );
+
+  // 🚫 Evita flash de tema incorrecto
+  if (!isLoaded) return null;
 
   return (
     <ThemeContext.Provider value={{ isDarkMode, toggleDarkMode, colors }}>
@@ -126,9 +154,14 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
+/* ================================
+   Hook
+================================ */
+
 const useTheme = () => {
   const context = useContext(ThemeContext);
-  if (context === undefined) {
+
+  if (!context) {
     throw new Error("useTheme must be used within a ThemeProvider");
   }
 

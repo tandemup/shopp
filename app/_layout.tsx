@@ -1,8 +1,8 @@
+import DialogProvider from "@/src/components/ui/dialog/DialogProvider";
+import { ThemeProvider } from "@/src/hooks/useTheme";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import DialogProvider from "../src/components/ui/dialog/DialogProvider";
-import { ThemeProvider } from "../src/hooks/useTheme";
 
 import { ConfigProvider } from "@/src/context/ConfigContext";
 import { ListsProvider } from "@/src/context/ListsContext";

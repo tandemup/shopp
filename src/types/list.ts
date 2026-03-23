@@ -1,5 +1,4 @@
 import { Item } from "./Item";
-
 //import { Currency } from "./Currency";
 
 export interface List {

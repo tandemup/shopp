@@ -23,58 +23,36 @@ export function normalizePromotion(promo?: Promotion): Promotion {
 /* =========================================================
    STRING → Promotion (UI → lógica)
 ========================================================= */
-
 export const toPromotion = (id: string): Promotion => {
   if (id === "none") return { type: "none" };
 
-  if (id === "2x1") return { type: "2x1" };
-  if (id === "3x2") return { type: "3x2" };
+  if (id === "2x1") return { type: "multi", buy: 2, pay: 1 };
+  if (id === "3x2") return { type: "multi", buy: 3, pay: 2 };
 
-  // 💥 DESCUENTO FIJO
-  if (id.startsWith("discount")) {
-    const value = Number(id.replace("discount", ""));
-    return { type: "discount", value };
-  }
+  const [type, raw] = id.split(":");
+  const value = Number(raw);
 
-  // 💥 PORCENTAJE (AQUÍ ESTÁ EL BUG)
-  if (id.startsWith("percent")) {
-    const value = Number(id.replace("percent", ""));
-    return { type: "percent", value };
-  }
+  if (type === "discount") return { type: "discount", value };
+  if (type === "percent") return { type: "percent", value };
 
   return { type: "none" };
 };
+
 /* =========================================================
    Promotion → string (persistencia / selects)
 ========================================================= */
-
-export function fromPromotion(promo?: Promotion): string {
-  if (!promo) return "none";
-
+export const fromPromotion = (promo: Promotion): string => {
   switch (promo.type) {
-    case "2x1":
-      return "2x1";
-
-    case "3x2":
-      return "3x2";
-
-    case "discount":
-      return `discount${promo.value}`;
-
-    case "percent":
-      return `percent${promo.value}`;
-
-    case "multi":
-      // opcional: mapear a conocidos
-      if (promo.buy === 2 && promo.pay === 1) return "2x1";
-      if (promo.buy === 3 && promo.pay === 2) return "3x2";
-      return `multi_${promo.buy}x${promo.pay}`;
-
     case "none":
-    default:
       return "none";
+    case "multi":
+      return `${promo.buy}x${promo.pay}`;
+    case "discount":
+      return `discount:${promo.value}`;
+    case "percent":
+      return `percent:${promo.value}`;
   }
-}
+};
 
 /* =========================================================
    LABEL PARA UI (badge)

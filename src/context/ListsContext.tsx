@@ -1,11 +1,16 @@
-import { DEFAULT_CURRENCY } from "@/src/constants/currencies";
 import { Item } from "@/src/types/Item";
 import { List } from "@/src/types/List";
-import { generateId } from "@/src/utils/generateId";
-import { ReactNode, createContext, useContext, useState } from "react";
-/* =====================================================
-   TYPES
-===================================================== */
+import React, { createContext, useContext, useState } from "react";
+
+/* ================================
+   Utils
+================================ */
+
+const generateId = () => Math.random().toString(36).substring(2, 10);
+
+/* ================================
+   Types
+================================ */
 
 type ListsContextType = {
   lists: List[];
@@ -14,7 +19,7 @@ type ListsContextType = {
   addList: (name: string) => void;
   deleteList: (id: string) => void;
   archiveList: (id: string) => void;
-  updateList: (id: string, updates: Partial<List>) => void;
+  updateList: (id: string, name: string) => void;
   getList: (id: string) => List | null;
 
   // Items
@@ -26,33 +31,33 @@ type ListsContextType = {
   // Helpers
   findItemById: (itemId: string) => { list: List; item: Item } | null;
 
-  // Stores
+  // Stores (future)
   assignStoreToList: (listId: string, storeId: string) => void;
 };
 
-/* =====================================================
-   CONTEXT
-===================================================== */
+/* ================================
+   Context
+================================ */
 
-const ListsContext = createContext<ListsContextType | undefined>(undefined);
+const ListsContext = createContext<ListsContextType | null>(null);
 
-/* =====================================================
-   PROVIDER
-===================================================== */
+/* ================================
+   Provider
+================================ */
 
-export function ListsProvider({ children }: { children: ReactNode }) {
+export const ListsProvider = ({ children }: { children: React.ReactNode }) => {
   const [lists, setLists] = useState<List[]>([]);
 
-  /* =========================
+  /* ================================
      LISTS
-  ========================= */
+  ================================= */
 
   const addList = (name: string) => {
     const newList: List = {
-      id: generateId("list"),
+      id: generateId(),
       name,
       createdAt: Date.now(),
-      currency: DEFAULT_CURRENCY,
+      currency: "EUR", // 🔥 única fuente por ahora
       items: [],
     };
 
@@ -68,38 +73,40 @@ export function ListsProvider({ children }: { children: ReactNode }) {
       prev.map((l) => (l.id === id ? { ...l, archived: true } : l)),
     );
   };
-  const updateList = (id: string, updates: Partial<List>) => {
-    setLists((prev) =>
-      prev.map((list) => (list.id === id ? { ...list, ...updates } : list)),
-    );
+
+  const updateList = (id: string, name: string) => {
+    setLists((prev) => prev.map((l) => (l.id === id ? { ...l, name } : l)));
   };
 
-  const getList = (id: string) => {
-    return lists.find((l) => l.id === id) ?? null;
+  const getList = (id: string): List | null => {
+    return lists.find((l) => l.id === id) || null;
   };
 
-  /* =========================
+  /* ================================
      ITEMS
-  ========================= */
+  ================================= */
 
   const addItem = (listId: string, item: Partial<Item>) => {
-    const newItem: Item = {
-      id: generateId("item"),
-      name: item.name ?? "Nuevo producto",
-      quantity: item.quantity ?? 1,
-      unit: item.unit ?? "u",
-      unitPrice: item.unitPrice ?? 0,
-      checked: item.checked ?? true,
-      promo: item.promo ?? "none",
-      ...item,
-    };
-
     setLists((prev) =>
-      prev.map((list) =>
-        list.id === listId
-          ? { ...list, items: [...list.items, newItem] }
-          : list,
-      ),
+      prev.map((list) => {
+        if (list.id !== listId) return list;
+
+        const newItem: Item = {
+          id: generateId(),
+          name: item.name ?? "Nuevo producto",
+          quantity: item.quantity ?? 1,
+          unit: item.unit ?? "u",
+          unitPrice: item.unitPrice ?? 0,
+          checked: false,
+          promo: item.promo ?? "none", // 🔥 clave
+          barcode: item.barcode ?? "",
+        };
+
+        return {
+          ...list,
+          items: [newItem, ...list.items],
+        };
+      }),
     );
   };
 
@@ -109,112 +116,110 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     updates: Partial<Item>,
   ) => {
     setLists((prev) =>
-      prev.map((list) =>
-        list.id === listId
-          ? {
-              ...list,
-              items: list.items.map((item) =>
-                item.id === itemId ? { ...item, ...updates } : item,
-              ),
-            }
-          : list,
-      ),
+      prev.map((list) => {
+        if (list.id !== listId) return list;
+
+        return {
+          ...list,
+          items: list.items.map((item) =>
+            item.id === itemId
+              ? {
+                  ...item,
+                  ...updates, // 🔥 merge correcto (NO perder promo)
+                }
+              : item,
+          ),
+        };
+      }),
     );
   };
 
   const removeItem = (listId: string, itemId: string) => {
     setLists((prev) =>
-      prev.map((list) =>
-        list.id === listId
-          ? {
-              ...list,
-              items: list.items.filter((item) => item.id !== itemId),
-            }
-          : list,
-      ),
+      prev.map((list) => {
+        if (list.id !== listId) return list;
+
+        return {
+          ...list,
+          items: list.items.filter((i) => i.id !== itemId),
+        };
+      }),
     );
   };
 
   const toggleItem = (listId: string, itemId: string) => {
     setLists((prev) =>
-      prev.map((list) =>
-        list.id === listId
-          ? {
-              ...list,
-              items: list.items.map((item) =>
-                item.id === itemId
-                  ? { ...item, checked: !(item.checked ?? true) }
-                  : item,
-              ),
-            }
-          : list,
-      ),
+      prev.map((list) => {
+        if (list.id !== listId) return list;
+
+        return {
+          ...list,
+          items: list.items.map((item) =>
+            item.id === itemId ? { ...item, checked: !item.checked } : item,
+          ),
+        };
+      }),
     );
   };
-  /* =========================
+
+  /* ================================
      HELPERS
-  ========================= */
+  ================================= */
 
   const findItemById = (itemId: string) => {
     for (const list of lists) {
       const item = list.items.find((i) => i.id === itemId);
-      if (item) return { list, item };
+      if (item) {
+        return { list, item };
+      }
     }
     return null;
   };
 
-  /* =========================
-     STORES
-  ========================= */
+  /* ================================
+     STORES (stub)
+  ================================= */
 
   const assignStoreToList = (listId: string, storeId: string) => {
     setLists((prev) =>
-      prev.map((l) => (l.id === listId ? { ...l, storeId } : l)),
+      prev.map((list) => (list.id === listId ? { ...list, storeId } : list)),
     );
   };
 
-  /* =========================
-     PROVIDER VALUE
-  ========================= */
+  /* ================================
+     EXPORT
+  ================================= */
 
   return (
     <ListsContext.Provider
       value={{
         lists,
-
-        // Lists
         addList,
         deleteList,
         archiveList,
         updateList,
         getList,
-
-        // Items
         addItem,
         updateItem,
         removeItem,
         toggleItem,
-
-        // Helpers
         findItemById,
-
-        // Stores
         assignStoreToList,
       }}
     >
       {children}
     </ListsContext.Provider>
   );
-}
+};
 
-/* =====================================================
-   HOOK
-===================================================== */
+/* ================================
+   Hook
+================================ */
 
-export function useLists() {
+export const useLists = () => {
   const ctx = useContext(ListsContext);
   if (!ctx) {
     throw new Error("useLists must be used within ListsProvider");
   }
   return ctx;
-}
+};
