@@ -1,3 +1,4 @@
+import { getPromotionLabel } from "@/src/utils/pricing/promotionUtils";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -5,8 +6,6 @@ import { useConfig } from "@/src/context/ConfigContext";
 import { Item } from "@/src/types/Item";
 import { formatCurrency } from "@/src/utils/currency";
 import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
-import { getPromotionLabel } from "@/src/utils/pricing/promotionUtils";
-import { toPromotion } from "@/src/utils/pricing/toPromotion";
 
 type Props = {
   item: Item;
@@ -16,24 +15,26 @@ type Props = {
 
 export default function ItemRow({ item, onToggle, onPress }: Props) {
   const { currency } = useConfig();
-  const price = calculateItemPrice({
-    ...item,
-    promo:
-      typeof item.promo === "string" ? toPromotion(item.promo) : item.promo,
-  });
+
+  const price = calculateItemPrice(item);
+
   const base = price.baseTotal;
   const total = price.finalTotal;
   const savings = price.savings;
 
   const checked = item.checked ?? true;
   const hasPromo = savings > 0;
+
   const qty = item.quantity ?? 1;
   const unitPrice = item.unitPrice ?? 0;
 
-  const promoLabel = getPromotionLabel(item.promo);
-
+  const promoLabel = getPromoLabel(item);
+  const label = getPromotionLabel(item.promo);
+  const totalText = formatCurrency(total, { compact: true });
+  const unitText = formatCurrency(item.unitPrice ?? 0);
   return (
     <View style={[styles.container, !checked && styles.containerDisabled]}>
+      {/* CHECKBOX */}
       <Pressable onPress={onToggle} style={styles.checkbox}>
         <Ionicons
           name={checked ? "checkbox" : "square-outline"}
@@ -42,52 +43,83 @@ export default function ItemRow({ item, onToggle, onPress }: Props) {
         />
       </Pressable>
 
+      {/* CONTENT */}
       <View style={styles.content}>
+        {/* LEFT COLUMN */}
         <View style={styles.left}>
+          {/* NAME + PROMO + SAVINGS */}
           <View style={styles.rowTop}>
             <Text style={[styles.name, !checked && styles.nameDisabled]}>
               {item.name}
             </Text>
 
-            {hasPromo && promoLabel ? (
+            {hasPromo && (
               <View style={styles.promoRow}>
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>{promoLabel}</Text>
                 </View>
 
                 <Text style={styles.savingsInline}>
-                  {formatCurrency(savings, { currency })}
+                  {formatCurrency(savings, currency)}
                 </Text>
               </View>
-            ) : null}
+            )}
           </View>
 
+          {/* QTY x UNIT */}
           <Text style={styles.unitInfo}>
-            {qty} x {formatCurrency(unitPrice, { currency })}
+            {qty} x {formatCurrency(unitPrice, currency)}
           </Text>
         </View>
 
+        {/* RIGHT COLUMN */}
         <View style={styles.right}>
           <View style={styles.priceRow}>
-            {hasPromo ? (
+            {hasPromo && (
               <Text style={styles.basePrice}>
-                {formatCurrency(base, { currency })}
+                {formatCurrency(base, currency)}
               </Text>
-            ) : null}
+            )}
 
             <Text style={styles.finalPrice}>
-              {formatCurrency(total, { currency })}
+              {formatCurrency(total, currency)}
             </Text>
           </View>
         </View>
       </View>
 
+      {/* CHEVRON */}
       <Pressable onPress={onPress} style={styles.chevron}>
         <Ionicons name="chevron-forward" size={20} color="#999" />
       </Pressable>
     </View>
   );
 }
+
+/* =================================================
+   HELPERS
+================================================= */
+
+function getPromoLabel(item: Item): string {
+  const promo = item.promo;
+
+  if (!promo) return "";
+
+  if (typeof promo === "string") return promo;
+
+  if (promo.type === "percent") return `-${promo.value}%`;
+
+  if (promo.type === "multi") return `${promo.buy}x${promo.pay}`;
+
+  if (promo.type === "2x1") return "2x1";
+  if (promo.type === "3x2") return "3x2";
+
+  return "Promo";
+}
+
+/* =================================================
+   STYLES
+================================================= */
 
 const styles = StyleSheet.create({
   container: {
@@ -114,6 +146,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
 
+  /* LEFT */
   left: {
     flex: 1,
     paddingRight: 8,
@@ -167,6 +200,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
+  /* RIGHT */
   right: {
     alignItems: "flex-end",
     justifyContent: "center",

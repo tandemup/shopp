@@ -11,7 +11,6 @@ export function calculateItemPrice(item: Item): PriceResult {
   const unitPrice = item.unitPrice ?? 0;
 
   const baseTotal = round(qty * unitPrice);
-
   const promo = normalizePromotion(item.promo);
 
   let finalTotal = baseTotal;
@@ -36,6 +35,7 @@ export function calculateItemPrice(item: Item): PriceResult {
     case "none":
     default:
       finalTotal = baseTotal;
+      break;
   }
 
   finalTotal = Math.max(0, round(finalTotal));

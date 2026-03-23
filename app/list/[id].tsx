@@ -1,15 +1,14 @@
 import ItemRow from "@/src/components/items/ItemRow";
+import FooterTotal from "@/src/components/shopping/FooterTotal";
 import SearchCombinedBar from "@/src/components/shopping/SearchCombinedBar";
 import StoreSelector from "@/src/components/stores/StoreSelector";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { FlatList, StyleSheet, Text, View } from "react-native";
-
 import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
-
-import FooterTotal from "@/src/components/shopping/FooterTotal";
 import { Item } from "@/src/types/Item";
+import { Promotions } from "@/src/types/Promotion";
 import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { FlatList, StyleSheet, Text, View } from "react-native";
 
 function makeNewItem(name: string): Item {
   return {
@@ -18,7 +17,7 @@ function makeNewItem(name: string): Item {
     unit: "u",
     quantity: 1,
     unitPrice: 0,
-    promo: undefined,
+    promo: Promotions.none(),
     checked: true,
   };
 }
@@ -26,7 +25,7 @@ function makeNewItem(name: string): Item {
 export default function ShoppingListScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getList, addItem, toggleItem, archiveList } = useLists();
+  const { getList, addItem, toggleItem } = useLists();
   const { getStoreById } = useStores();
 
   const list = getList(id);
@@ -39,25 +38,15 @@ export default function ShoppingListScreen() {
     );
   }
 
-  /* -------------------------------
-     Tienda asignada
-  -------------------------------- */
-
   const store = list.storeId ? getStoreById(list.storeId) : undefined;
-
-  /* -------------------------------
-     Total con promociones
-  -------------------------------- */
 
   const totals = list.items
     .filter((item) => item.checked)
     .reduce(
       (acc, item) => {
         const price = calculateItemPrice(item);
-
         acc.total += price.finalTotal;
         acc.savings += price.savings;
-
         return acc;
       },
       { total: 0, savings: 0 },
@@ -66,7 +55,7 @@ export default function ShoppingListScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.header}>{list.name}</Text>
-      {/* ---------- Store selector ---------- */}
+
       <StoreSelector
         store={store}
         onPress={() =>
@@ -79,25 +68,21 @@ export default function ShoppingListScreen() {
           })
         }
       />
-      {/* ---------- Search bar ---------- */}
+
       <SearchCombinedBar
         onAdd={(name) => {
           const trimmed = name.trim();
-
           if (!trimmed) return;
-
           addItem(list.id, makeNewItem(trimmed));
         }}
       />
-      {/* ---------- Items list ---------- */}
+
       <FlatList
         data={list.items}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <ItemRow
-            item={{
-              ...item,
-            }}
+            item={item}
             onToggle={() => toggleItem(list.id, item.id)}
             onPress={() => router.push(`/item/${item.id}`)}
           />
@@ -105,14 +90,13 @@ export default function ShoppingListScreen() {
         ListEmptyComponent={
           <View style={styles.emptyBox}>
             <Text style={styles.emptyTitle}>No hay productos</Text>
-
             <Text style={styles.emptyText}>
               Añade uno desde la barra de búsqueda.
             </Text>
           </View>
         }
       />
-      {/* ---------- Total ---------- */}
+
       <FooterTotal
         total={totals.total}
         savings={totals.savings}
@@ -135,15 +119,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "600",
     marginBottom: 10,
-  },
-
-  flatListContent: {
-    paddingBottom: 16,
-  },
-
-  flatListEmpty: {
-    flexGrow: 1,
-    paddingBottom: 16,
   },
 
   emptyBox: {

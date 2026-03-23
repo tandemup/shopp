@@ -1,18 +1,19 @@
 import { Promotion } from "@/src/types/Promotion";
-import { toPromotion } from "@/src/utils/pricing/promotionMapper";
+import {
+  fromPromotion,
+  toPromotion,
+} from "@/src/utils/pricing/promotionMapper";
 import { useEffect, useMemo, useState } from "react";
 
-export function usePromo(initial?: string) {
-  const [promoString, setPromoString] = useState(initial ?? "none");
+export function usePromo(initial?: Promotion) {
+  const [promoString, setPromoString] = useState<string>(
+    fromPromotion(initial),
+  );
 
-  // 🔁 sincronización externa (clave)
   useEffect(() => {
-    if (initial !== undefined) {
-      setPromoString(initial);
-    }
+    setPromoString(fromPromotion(initial));
   }, [initial]);
 
-  // 🧠 objeto derivado para pricing
   const promo: Promotion = useMemo(() => {
     return toPromotion(promoString);
   }, [promoString]);
@@ -22,8 +23,8 @@ export function usePromo(initial?: string) {
   };
 
   return {
-    promo, // objeto para PricingEngine
-    promoString, // string para persistencia
+    promo,
+    promoString,
     setPromoFromString,
   };
 }
