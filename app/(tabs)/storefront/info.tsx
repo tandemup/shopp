@@ -1,25 +1,47 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRoute } from "@react-navigation/native";
-import { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
+import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
+
 import { getValidCoords } from "@/src/utils/maps/getValidCoords";
 import {
   openGoogleMaps,
   openGoogleMapsSearch,
-} from "../utils/maps/openGoogleMaps";
+} from "@/src/utils/maps/openGoogleMaps";
 
 import StoreMapPreview from "@/src/components/StoreMapPreview";
 
 export default function StoreDetailScreen() {
-  const route = useRoute();
-  const { storeId } = route.params || {};
+  /* ---------------------------------------------
+     Params seguros (expo-router)
+  ---------------------------------------------- */
+  const params = useLocalSearchParams();
 
-  const { getStoreById, toggleFavoriteStore, isFavoriteStore } = useStores();
-  const [showMapPreview, setShowMapPreview] = useState(false);
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const mode = Array.isArray(params.mode) ? params.mode[0] : params.mode;
+  const selectForListId = Array.isArray(params.selectForListId)
+    ? params.selectForListId[0]
+    : params.selectForListId;
 
-  const store = getStoreById(storeId);
+  const router = useRouter();
+
+  /* ---------------------------------------------
+     Contexts
+  ---------------------------------------------- */
+  const { getStoreById, toggleFavorite, isFavorite } = useStores();
+  const { assignStoreToList } = useLists();
+
+  /* ---------------------------------------------
+     Data
+  ---------------------------------------------- */
+  const store = getStoreById(id as string);
+
+  const coords = useMemo(() => (store ? getValidCoords(store) : null), [store]);
+
+  const [showMapPreview, setShowMapPreview] = useState(!!coords);
 
   if (!store) {
     return (
@@ -29,18 +51,23 @@ export default function StoreDetailScreen() {
     );
   }
 
-  const isFavorite = isFavoriteStore(store.id);
+  const isFav = isFavorite(store.id);
 
   /* ---------------------------------------------
      Actions
   ---------------------------------------------- */
   const handleToggleFavorite = () => {
-    toggleFavoriteStore(store.id);
+    toggleFavorite(store.id);
+  };
+
+  const handleSelectStore = () => {
+    if (mode === "select" && selectForListId) {
+      assignStoreToList(selectForListId as string, store.id);
+      router.back(); // vuelve a list/[id]
+    }
   };
 
   const openInGoogleMaps = () => {
-    const coords = getValidCoords(store);
-
     if (coords) {
       openGoogleMaps({
         lat: coords.lat,
@@ -50,65 +77,11 @@ export default function StoreDetailScreen() {
       return;
     }
 
-    const query = [store.name, store.address, store.city]
+    const query = [store.name, store.address, store.city, store.zipcode]
       .filter(Boolean)
       .join(" ");
 
-    if (query) {
-      openGoogleMapsSearch(query);
-    }
-  };
-
-  /* ---------------------------------------------
-     Internal component
-  ---------------------------------------------- */
-  const LocationSection = () => {
-    const coords = getValidCoords(store);
-    return (
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Ubicación</Text>
-
-        {coords && showMapPreview ? (
-          <View style={styles.mapContainer}>
-            <StoreMapPreview lat={coords.lat} lng={coords.lng} />
-          </View>
-        ) : (
-          <View style={styles.mapPlaceholder}>
-            <Ionicons name="map-outline" size={36} color="#999" />
-            <Text style={styles.mapPlaceholderText}>
-              {coords ? "Previsualización del mapa" : "Ubicación no disponible"}
-            </Text>
-          </View>
-        )}
-
-        {coords && !showMapPreview && (
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={() => setShowMapPreview(true)}
-          >
-            <Ionicons name="map-outline" size={18} color="#1a73e8" />
-            <Text style={styles.secondaryButtonText}>
-              Ver mapa (OpenStreetMap)
-            </Text>
-          </Pressable>
-        )}
-
-        {coords && showMapPreview && (
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={() => setShowMapPreview(false)}
-          >
-            <Ionicons name="close-outline" size={18} color="#1a73e8" />
-            <Text style={styles.secondaryButtonText}>Ocultar mapa</Text>
-          </Pressable>
-        )}
-
-        <Pressable style={styles.mapsButton} onPress={openInGoogleMaps}>
-          <Ionicons name="navigate-outline" size={18} color="#fff" />
-          <Text style={styles.mapsButtonText}>Abrir en Google Maps</Text>
-        </Pressable>
-      </View>
-    );
+    if (query) openGoogleMapsSearch(query);
   };
 
   /* ---------------------------------------------
@@ -118,13 +91,15 @@ export default function StoreDetailScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.name}>{store.name}</Text>
+        <Text style={styles.name} numberOfLines={2}>
+          {store.name}
+        </Text>
 
         <Pressable onPress={handleToggleFavorite} hitSlop={10}>
           <Ionicons
-            name={isFavorite ? "star" : "star-outline"}
+            name={isFav ? "star" : "star-outline"}
             size={26}
-            color={isFavorite ? "#f5c518" : "#bbb"}
+            color={isFav ? "#f5c518" : "#bbb"}
           />
         </Pressable>
       </View>
@@ -141,9 +116,52 @@ export default function StoreDetailScreen() {
       )}
 
       {/* Location */}
-      <LocationSection />
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Ubicación</Text>
 
-      {/* Future sections */}
+        {coords && showMapPreview ? (
+          <View style={styles.mapContainer}>
+            <StoreMapPreview lat={coords.lat} lng={coords.lng} />
+          </View>
+        ) : (
+          <View style={styles.mapPlaceholder}>
+            <Ionicons name="map-outline" size={36} color="#999" />
+            <Text style={styles.mapPlaceholderText}>
+              {coords ? "Previsualización del mapa" : "Ubicación no disponible"}
+            </Text>
+          </View>
+        )}
+
+        {coords && (
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={() => setShowMapPreview(!showMapPreview)}
+          >
+            <Ionicons
+              name={showMapPreview ? "close-outline" : "map-outline"}
+              size={18}
+              color="#1a73e8"
+            />
+            <Text style={styles.secondaryButtonText}>
+              {showMapPreview ? "Ocultar mapa" : "Ver mapa"}
+            </Text>
+          </Pressable>
+        )}
+
+        <Pressable style={styles.mapsButton} onPress={openInGoogleMaps}>
+          <Ionicons name="navigate-outline" size={18} color="#fff" />
+          <Text style={styles.mapsButtonText}>Abrir en Google Maps</Text>
+        </Pressable>
+      </View>
+
+      {/* CTA selección (MEJOR POSICIÓN) */}
+      {mode === "select" && (
+        <Pressable style={styles.selectButton} onPress={handleSelectStore}>
+          <Text style={styles.selectButtonText}>Seleccionar esta tienda</Text>
+        </Pressable>
+      )}
+
+      {/* Future */}
       <View style={styles.sectionMuted}>
         <Text style={styles.mutedText}>
           Próximamente: horarios, notas y productos asociados
@@ -159,6 +177,7 @@ export default function StoreDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     padding: 16,
+    paddingTop: 20,
     backgroundColor: "#fff",
   },
 
@@ -260,8 +279,22 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
+  selectButton: {
+    backgroundColor: "#16a34a",
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: "center",
+    marginTop: 10,
+  },
+
+  selectButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+
   sectionMuted: {
-    marginTop: 12,
+    marginTop: 16,
     padding: 12,
     backgroundColor: "#fafafa",
     borderRadius: 8,
