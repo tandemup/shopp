@@ -1,134 +1,125 @@
-import { memo } from "react";
+import { Store } from "@/src/context/StoresContext";
+import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-
-export type Store = {
-  id: string;
-  name: string;
-  address?: string;
-  city?: string;
-  isFavorite?: boolean;
-  distance?: number;
-};
 
 type Props = {
   store: Store;
-  onPress: (id: string) => void;
-  onToggleFavorite: (id: string) => void;
+  onPress: () => void;
+  onToggleFavorite: () => void;
 };
 
-function StoreCardComponent({ store, onPress, onToggleFavorite }: Props) {
+export default function StoreCard({ store, onPress, onToggleFavorite }: Props) {
+  /* ---------------------------------------------
+     Helpers seguros (evitan JSX dentro de Text)
+  ---------------------------------------------- */
+  const addressLine =
+    store.address && store.city
+      ? `${store.address}, ${store.city}`
+      : store.address || store.city || "";
+
+  const distanceText =
+    store.distance != null
+      ? store.distance < 1
+        ? `${Math.round(store.distance * 1000)} m`
+        : `${store.distance.toFixed(1)} km`
+      : null;
+
   return (
-    <Pressable
-      onPress={() => onPress(store.id)}
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      android_ripple={{ color: "#eee" }}
-    >
-      <View style={styles.row}>
-        {/* -------------------------
-            Info tienda
-        -------------------------- */}
-        <View style={styles.textContainer}>
-          <Text style={styles.name}>{store.name}</Text>
+    <View style={styles.card}>
+      {/* ⭐ FAVORITE */}
+      <Pressable
+        style={styles.starButton}
+        onPress={onToggleFavorite}
+        hitSlop={12}
+      >
+        <Ionicons
+          name={store.isFavorite ? "star" : "star-outline"}
+          size={22}
+          color={store.isFavorite ? "#f5c518" : "#bbb"}
+        />
+      </Pressable>
 
-          {store.address && (
-            <Text style={styles.address}>📍 {store.address}</Text>
-          )}
+      {/* CONTENIDO CLICKABLE */}
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [styles.content, pressed && styles.pressed]}
+      >
+        {/* Nombre */}
+        <Text style={styles.name} numberOfLines={1}>
+          {store.name}
+        </Text>
 
-          {store.city && <Text style={styles.city}>{store.city}</Text>}
-
-          {store.distance != null && (
-            <Text style={styles.distance}>{store.distance.toFixed(1)} km</Text>
-          )}
-        </View>
-
-        {/* -------------------------
-            Favorito ⭐
-        -------------------------- */}
-        <Pressable
-          onPress={(e) => {
-            e.stopPropagation(); // 🔥 evita abrir la tienda
-            onToggleFavorite(store.id);
-          }}
-          hitSlop={8}
-        >
-          <Text style={[styles.star, store.isFavorite && styles.starActive]}>
-            {store.isFavorite ? "★" : "☆"}
+        {/* Dirección (SIN JSX dentro de Text) */}
+        {addressLine ? (
+          <Text style={styles.address} numberOfLines={1}>
+            📍 {addressLine}
           </Text>
-        </Pressable>
-      </View>
-    </Pressable>
+        ) : null}
+
+        {/* Distancia */}
+        {distanceText ? (
+          <Text style={styles.distance}>{distanceText}</Text>
+        ) : null}
+      </Pressable>
+    </View>
   );
 }
-
-/* 🔥 Evita re-render innecesario */
-export const StoreCard = memo(StoreCardComponent);
-
-/* ===============================
-   Styles
-================================ */
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: "#fff",
     borderRadius: 14,
     padding: 14,
-    marginBottom: 10,
+    marginBottom: 12,
 
     borderWidth: 1,
     borderColor: "#eee",
 
+    // sombra iOS
     shadowColor: "#000",
-    shadowOpacity: 0.03,
+    shadowOpacity: 0.04,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
 
+    // sombra Android
     elevation: 1,
+
+    position: "relative",
   },
 
-  cardPressed: {
-    opacity: 0.6,
-  },
-
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  textContainer: {
+  content: {
     flex: 1,
-    paddingRight: 10,
+  },
+
+  pressed: {
+    opacity: 0.7,
   },
 
   name: {
     fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 2,
+    fontWeight: "700",
+    color: "#111",
+    paddingRight: 30, // espacio para estrella
+  },
+
+  starButton: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    padding: 6,
+    zIndex: 10,
   },
 
   address: {
+    marginTop: 6,
     fontSize: 13,
-    color: "#6b7280",
-  },
-
-  city: {
-    fontSize: 12,
-    color: "#9ca3af",
-    marginTop: 2,
+    color: "#555",
   },
 
   distance: {
+    marginTop: 6,
     fontSize: 12,
-    color: "#6b7280",
-    marginTop: 4,
-  },
-
-  star: {
-    fontSize: 20,
-    color: "#d1d5db",
-  },
-
-  starActive: {
-    color: "#facc15",
+    color: "#1a73e8",
+    fontWeight: "600",
   },
 });

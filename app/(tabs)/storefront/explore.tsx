@@ -1,136 +1,204 @@
 import { useMemo, useState } from "react";
-import { FlatList, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
-import { Store, StoreCard } from "@/src/components/stores/StoreCard";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
+
 import { useStores } from "@/src/context/StoresContext";
-import { useStoreSelection } from "@/src/hooks/useStoreSelection";
+import type { Store } from "@/src/types/store";
 
-export default function StoreExploreScreen() {
-  const { storesSorted, toggleFavorite } = useStores();
-  const { handleSelectStore, isSelectMode } = useStoreSelection();
+export default function ExploreStoresScreen() {
+  const router = useRouter();
+  const { stores, toggleFavorite } = useStores();
 
-  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
 
-  /* -------------------------------
-     Filtro búsqueda
-  -------------------------------- */
+  /* ---------------------------------------------
+     Filter stores
+  ---------------------------------------------- */
   const filteredStores = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    if (!search.trim()) return stores;
 
-    if (!q) return storesSorted;
-
-    return storesSorted.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.city?.toLowerCase().includes(q) ||
-        s.address?.toLowerCase().includes(q),
+    return stores.filter((s) =>
+      `${s.name} ${s.address} ${s.city}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
     );
-  }, [query, storesSorted]);
+  }, [stores, search]);
 
-  /* -------------------------------
+  /* ---------------------------------------------
      Render item
-  -------------------------------- */
+  ---------------------------------------------- */
   const renderItem = ({ item }: { item: Store }) => (
-    <StoreCard
-      store={item}
-      onPress={handleSelectStore}
-      onToggleFavorite={toggleFavorite} // ⭐ clave
-    />
+    <Pressable
+      style={styles.card}
+      onPress={() => {
+        router.back(); // o navegación futura a detail/select
+      }}
+    >
+      {/* LEFT CONTENT */}
+      <View style={styles.content}>
+        <Text style={styles.name}>{item.name}</Text>
+
+        <View style={styles.addressRow}>
+          <Ionicons name="location-sharp" size={14} color="#e53935" />
+          <Text style={styles.address}>
+            {item.address}, {item.zipcode} {item.city}
+          </Text>
+        </View>
+
+        <Text style={styles.city}>{item.city}</Text>
+      </View>
+
+      {/* FAVORITE */}
+      <Pressable
+        style={styles.favorite}
+        onPress={() => toggleFavorite(item.id)}
+        hitSlop={10}
+      >
+        <Ionicons
+          name={item.favorite ? "star" : "star-outline"}
+          size={22}
+          color={item.favorite ? "#f4b400" : "#bbb"}
+        />
+      </Pressable>
+    </Pressable>
   );
 
-  /* -------------------------------
-     Empty
-  -------------------------------- */
-  const empty = (
-    <View style={styles.empty}>
-      <Text style={styles.title}>No se encontraron tiendas</Text>
-      <Text style={styles.subtitle}>Prueba con otro término de búsqueda</Text>
-    </View>
-  );
-
-  /* -------------------------------
-     Render
-  -------------------------------- */
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>
-        {isSelectMode ? "Seleccionar tienda" : "Explorar tiendas"}
-      </Text>
+    <SafeAreaView style={styles.container}>
+      {/* SEARCH */}
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={18} color="#999" />
+        <TextInput
+          placeholder="Buscar tienda..."
+          placeholderTextColor="#999"
+          value={search}
+          onChangeText={setSearch}
+          style={styles.input}
+        />
+      </View>
 
+      {/* COUNT */}
       <Text style={styles.count}>{filteredStores.length} tiendas</Text>
 
-      <TextInput
-        style={styles.search}
-        placeholder="Buscar tienda o ciudad..."
-        value={query}
-        onChangeText={setQuery}
-      />
-
+      {/* LIST */}
       <FlatList
         data={filteredStores}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        ListEmptyComponent={empty}
-        contentContainerStyle={{ paddingBottom: 20 }}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        initialNumToRender={10}
-        windowSize={5}
-        removeClippedSubviews
+        contentContainerStyle={styles.list}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
-/* ===============================
-   Styles
-================================ */
+/* =====================================================
+   STYLES (OLD DESIGN RESTORED)
+===================================================== */
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 12,
     backgroundColor: "#f5f5f5",
   },
 
-  header: {
-    fontSize: 18,
-    fontWeight: "600",
+  /* SEARCH */
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    margin: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: "#fff",
+
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+
+  input: {
+    marginLeft: 8,
+    flex: 1,
+    fontSize: 15,
+    color: "#333",
+  },
+
+  /* COUNT */
+  count: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    fontSize: 14,
+    color: "#666",
+    fontWeight: "500",
+  },
+
+  /* LIST */
+  list: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+  },
+
+  /* CARD */
+  card: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+
+  content: {
+    flex: 1,
+    paddingRight: 10,
+  },
+
+  name: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#222",
     marginBottom: 4,
   },
 
-  count: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginBottom: 10,
-  },
-
-  search: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 12,
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-
-  empty: {
-    flex: 1,
+  addressRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingTop: 40,
+    marginBottom: 2,
   },
 
-  title: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 6,
+  address: {
+    marginLeft: 6,
+    fontSize: 13,
+    color: "#555",
+    flexShrink: 1,
   },
 
-  subtitle: {
-    color: "#666",
+  city: {
+    fontSize: 13,
+    color: "#777",
+    fontWeight: "500",
+  },
+
+  /* FAVORITE */
+  favorite: {
+    padding: 6,
   },
 });

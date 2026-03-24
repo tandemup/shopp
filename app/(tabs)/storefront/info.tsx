@@ -1,18 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
 
+import StoreMapPreview from "@/src/components/stores/StoreMapPreview";
 import { getValidCoords } from "@/src/utils/maps/getValidCoords";
 import {
   openGoogleMaps,
   openGoogleMapsSearch,
 } from "@/src/utils/maps/openGoogleMaps";
-
-import StoreMapPreview from "@/src/components/StoreMapPreview";
 
 export default function StoreDetailScreen() {
   /* ---------------------------------------------
@@ -41,8 +40,6 @@ export default function StoreDetailScreen() {
 
   const coords = useMemo(() => (store ? getValidCoords(store) : null), [store]);
 
-  const [showMapPreview, setShowMapPreview] = useState(!!coords);
-
   if (!store) {
     return (
       <View style={styles.center}>
@@ -63,7 +60,9 @@ export default function StoreDetailScreen() {
   const handleSelectStore = () => {
     if (mode === "select" && selectForListId) {
       assignStoreToList(selectForListId as string, store.id);
-      router.back(); // vuelve a list/[id]
+
+      // 👇 IMPORTANTE: volver correctamente a la lista
+      router.replace(`/list/${selectForListId}`);
     }
   };
 
@@ -89,7 +88,7 @@ export default function StoreDetailScreen() {
   ---------------------------------------------- */
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {/* Header */}
+      {/* HEADER */}
       <View style={styles.header}>
         <Text style={styles.name} numberOfLines={2}>
           {store.name}
@@ -104,7 +103,7 @@ export default function StoreDetailScreen() {
         </Pressable>
       </View>
 
-      {/* Address */}
+      {/* DIRECCIÓN */}
       {store.address && (
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Dirección</Text>
@@ -115,11 +114,11 @@ export default function StoreDetailScreen() {
         </View>
       )}
 
-      {/* Location */}
+      {/* MAPA */}
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Ubicación</Text>
 
-        {coords && showMapPreview ? (
+        {coords ? (
           <View style={styles.mapContainer}>
             <StoreMapPreview lat={coords.lat} lng={coords.lng} />
           </View>
@@ -127,26 +126,14 @@ export default function StoreDetailScreen() {
           <View style={styles.mapPlaceholder}>
             <Ionicons name="map-outline" size={36} color="#999" />
             <Text style={styles.mapPlaceholderText}>
-              {coords ? "Previsualización del mapa" : "Ubicación no disponible"}
+              Ubicación no disponible
             </Text>
           </View>
         )}
-
-        {coords && (
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={() => setShowMapPreview(!showMapPreview)}
-          >
-            <Ionicons
-              name={showMapPreview ? "close-outline" : "map-outline"}
-              size={18}
-              color="#1a73e8"
-            />
-            <Text style={styles.secondaryButtonText}>
-              {showMapPreview ? "Ocultar mapa" : "Ver mapa"}
-            </Text>
-          </Pressable>
-        )}
+        <Pressable style={styles.osmButton} onPress={openInGoogleMaps}>
+          <Ionicons name="map-outline" size={18} color="#1a73e8" />
+          <Text style={styles.osmButtonText}>Ver mapa (OpenStreetMap)</Text>
+        </Pressable>
 
         <Pressable style={styles.mapsButton} onPress={openInGoogleMaps}>
           <Ionicons name="navigate-outline" size={18} color="#fff" />
@@ -154,14 +141,14 @@ export default function StoreDetailScreen() {
         </Pressable>
       </View>
 
-      {/* CTA selección (MEJOR POSICIÓN) */}
+      {/* CTA SELECT */}
       {mode === "select" && (
         <Pressable style={styles.selectButton} onPress={handleSelectStore}>
           <Text style={styles.selectButtonText}>Seleccionar esta tienda</Text>
         </Pressable>
       )}
 
-      {/* Future */}
+      {/* FUTURO */}
       <View style={styles.sectionMuted}>
         <Text style={styles.mutedText}>
           Próximamente: horarios, notas y productos asociados
@@ -245,24 +232,6 @@ const styles = StyleSheet.create({
     color: "#777",
   },
 
-  secondaryButton: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#1a73e8",
-    marginBottom: 10,
-  },
-
-  secondaryButtonText: {
-    marginLeft: 8,
-    color: "#1a73e8",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-
   mapsButton: {
     flexDirection: "row",
     justifyContent: "center",
@@ -304,5 +273,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#888",
     textAlign: "center",
+  },
+
+  osmButton: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: "#1a73e8",
+    marginBottom: 10,
+  },
+
+  osmButtonText: {
+    marginLeft: 8,
+    color: "#1a73e8",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

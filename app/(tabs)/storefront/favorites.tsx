@@ -2,10 +2,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { Store, StoreCard } from "@/src/components/stores/StoreCard";
+import StoreCard from "@/src/components/stores/StoreCard";
 import { useLists } from "@/src/context/ListsContext";
-import { useStores } from "@/src/context/StoresContext";
-import { useStoreSelection } from "@/src/hooks/useStoreSelection";
+import { Store, useStores } from "@/src/context/StoresContext";
 
 export default function StoreFavoritesScreen() {
   const router = useRouter();
@@ -16,14 +15,15 @@ export default function StoreFavoritesScreen() {
     selectForListId?: string;
   }>();
 
-  const { favoriteStores, toggleFavorite } = useStores();
-  const { isSelectMode, handleSelectStore } = useStoreSelection();
+  const { favorites, toggleFavorite } = useStores();
+
+  const isSelectMode = mode === "select";
 
   /* -------------------------------
      Redirect si no hay favoritas
   -------------------------------- */
   useEffect(() => {
-    if (isSelectMode && favoriteStores.length === 0) {
+    if (isSelectMode && favorites.length === 0) {
       router.replace({
         pathname: "/storefront/explore",
         params: {
@@ -32,7 +32,7 @@ export default function StoreFavoritesScreen() {
         },
       });
     }
-  }, [favoriteStores]);
+  }, [favorites, isSelectMode, selectForListId, router]);
 
   /* -------------------------------
      Render item
@@ -40,23 +40,26 @@ export default function StoreFavoritesScreen() {
   const renderItem = ({ item }: { item: Store }) => (
     <StoreCard
       store={item}
-      onPress={(id) => {
-        if (mode === "select" && selectForListId) {
-          assignStoreToList(String(selectForListId), id);
+      onPress={() => {
+        if (isSelectMode && selectForListId) {
+          assignStoreToList(String(selectForListId), item.id);
           router.replace(`/list/${selectForListId}`);
           return;
         }
 
-        handleSelectStore(id);
+        router.push({
+          pathname: "/storefront/info",
+          params: { id: item.id },
+        });
       }}
-      onToggleFavorite={toggleFavorite}
+      onToggleFavorite={() => toggleFavorite(item.id)}
     />
   );
 
   /* -------------------------------
-     Empty (modo normal)
+     Empty state
   -------------------------------- */
-  if (favoriteStores.length === 0) {
+  if (favorites.length === 0) {
     return (
       <View style={styles.empty}>
         <Text style={styles.title}>No tienes tiendas favoritas</Text>
@@ -86,15 +89,11 @@ export default function StoreFavoritesScreen() {
       <Text style={styles.header}>Favoritas</Text>
 
       <FlatList
-        data={favoriteStores}
+        data={favorites}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={{ paddingBottom: 20 }}
+        contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        initialNumToRender={10}
-        windowSize={5}
-        removeClippedSubviews
       />
     </View>
   );
@@ -116,6 +115,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     marginBottom: 12,
+    color: "#111",
+  },
+
+  listContent: {
+    paddingBottom: 24,
   },
 
   empty: {
@@ -123,22 +127,25 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
+    backgroundColor: "#fff",
   },
 
   title: {
     fontSize: 16,
     fontWeight: "600",
     marginBottom: 6,
+    color: "#111",
   },
 
   subtitle: {
     color: "#666",
     textAlign: "center",
     marginBottom: 16,
+    fontSize: 14,
   },
 
   button: {
-    backgroundColor: "#27ae60",
+    backgroundColor: "#16a34a",
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 10,
@@ -147,5 +154,6 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "#fff",
     fontWeight: "600",
+    fontSize: 14,
   },
 });
