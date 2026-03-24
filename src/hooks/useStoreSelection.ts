@@ -3,31 +3,34 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 export function useStoreSelection() {
   const router = useRouter();
-  const { mode, selectForListId } = useLocalSearchParams<{
-    mode?: string;
-    selectForListId?: string;
-  }>();
-
+  const { mode, selectForListId } = useLocalSearchParams();
   const { assignStoreToList } = useLists();
 
-  const isSelectMode = mode === "select" && !!selectForListId;
+  const isSelectMode = mode === "select";
 
-  const handleSelectStore = (storeId: string) => {
+  const handleSelectStore = (store) => {
     if (isSelectMode && selectForListId) {
-      assignStoreToList(selectForListId, storeId);
-      router.back();
+      // 👉 en vez de seleccionar directamente → abrimos detail
+      router.push({
+        pathname: "/storefront/[id]/info",
+        params: {
+          id: store.id,
+          mode: "select",
+          selectForListId,
+        },
+      });
       return;
     }
 
-    // fallback (browse mode)
+    // 👉 modo normal → abrir detail
     router.push({
-      pathname: "/store/[id]",
-      params: { id: storeId },
+      pathname: "/storefront/[id]/info",
+      params: { id: store.id },
     });
   };
 
   return {
-    isSelectMode,
     handleSelectStore,
+    isSelectMode,
   };
 }

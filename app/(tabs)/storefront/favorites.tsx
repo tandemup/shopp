@@ -2,6 +2,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { Store, StoreCard } from "@/src/components/stores/StoreCard";
 import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
 import { useStoreSelection } from "@/src/hooks/useStoreSelection";
@@ -9,20 +10,20 @@ import { useStoreSelection } from "@/src/hooks/useStoreSelection";
 export default function StoreFavoritesScreen() {
   const router = useRouter();
   const { assignStoreToList } = useLists();
+
   const { mode, selectForListId } = useLocalSearchParams<{
     mode?: string;
     selectForListId?: string;
   }>();
 
-  const { favoriteStores } = useStores();
-
+  const { favoriteStores, toggleFavorite } = useStores();
   const { isSelectMode, handleSelectStore } = useStoreSelection();
 
   /* -------------------------------
      Redirect si no hay favoritas
   -------------------------------- */
   useEffect(() => {
-    if (isSelectMode && (!favoriteStores || favoriteStores.length === 0)) {
+    if (isSelectMode && favoriteStores.length === 0) {
       router.replace({
         pathname: "/storefront/explore",
         params: {
@@ -36,38 +37,26 @@ export default function StoreFavoritesScreen() {
   /* -------------------------------
      Render item
   -------------------------------- */
-  const renderItem = ({ item }: any) => (
-    <Pressable
-      style={styles.card}
-      onPress={() => {
+  const renderItem = ({ item }: { item: Store }) => (
+    <StoreCard
+      store={item}
+      onPress={(id) => {
         if (mode === "select" && selectForListId) {
-          assignStoreToList(String(selectForListId), item.id);
-
+          assignStoreToList(String(selectForListId), id);
           router.replace(`/list/${selectForListId}`);
           return;
         }
 
-        handleSelectStore(item.id);
+        handleSelectStore(id);
       }}
-    >
-      <View style={styles.row}>
-        <View style={styles.textContainer}>
-          <Text style={styles.name}>{item.name}</Text>
-
-          {item.address && <Text style={styles.address}>{item.address}</Text>}
-
-          {item.city && <Text style={styles.city}>{item.city}</Text>}
-        </View>
-
-        <Text style={styles.star}>⭐</Text>
-      </View>
-    </Pressable>
+      onToggleFavorite={toggleFavorite}
+    />
   );
 
   /* -------------------------------
-     Empty state (solo visible si NO es select)
+     Empty (modo normal)
   -------------------------------- */
-  if (!favoriteStores || favoriteStores.length === 0) {
+  if (favoriteStores.length === 0) {
     return (
       <View style={styles.empty}>
         <Text style={styles.title}>No tienes tiendas favoritas</Text>
@@ -100,7 +89,12 @@ export default function StoreFavoritesScreen() {
         data={favoriteStores}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={{ paddingBottom: 16 }}
+        contentContainerStyle={{ paddingBottom: 20 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={10}
+        windowSize={5}
+        removeClippedSubviews
       />
     </View>
   );
@@ -113,52 +107,15 @@ export default function StoreFavoritesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
-    backgroundColor: "#f2f2f2",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: "#f5f5f5",
   },
 
   header: {
     fontSize: 18,
     fontWeight: "600",
     marginBottom: 12,
-  },
-
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-  },
-
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  textContainer: {
-    flex: 1,
-    paddingRight: 10,
-  },
-
-  name: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-
-  address: {
-    fontSize: 13,
-    color: "#666",
-    marginTop: 2,
-  },
-
-  city: {
-    fontSize: 12,
-    color: "#999",
-  },
-
-  star: {
-    fontSize: 18,
   },
 
   empty: {
@@ -183,8 +140,8 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: "#27ae60",
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
   },
 
   buttonText: {

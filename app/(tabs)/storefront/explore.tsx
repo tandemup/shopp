@@ -1,18 +1,12 @@
 import { useMemo, useState } from "react";
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { FlatList, StyleSheet, Text, TextInput, View } from "react-native";
 
+import { Store, StoreCard } from "@/src/components/stores/StoreCard";
 import { useStores } from "@/src/context/StoresContext";
 import { useStoreSelection } from "@/src/hooks/useStoreSelection";
 
 export default function StoreExploreScreen() {
-  const { stores } = useStores();
+  const { storesSorted, toggleFavorite } = useStores();
   const { handleSelectStore, isSelectMode } = useStoreSelection();
 
   const [query, setQuery] = useState("");
@@ -21,39 +15,31 @@ export default function StoreExploreScreen() {
      Filtro búsqueda
   -------------------------------- */
   const filteredStores = useMemo(() => {
-    if (!query.trim()) return stores;
+    const q = query.trim().toLowerCase();
 
-    const q = query.toLowerCase();
+    if (!q) return storesSorted;
 
-    return stores.filter(
+    return storesSorted.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
         s.city?.toLowerCase().includes(q) ||
         s.address?.toLowerCase().includes(q),
     );
-  }, [query, stores]);
+  }, [query, storesSorted]);
 
   /* -------------------------------
      Render item
   -------------------------------- */
-  const renderItem = ({ item }: any) => (
-    <Pressable style={styles.card} onPress={() => handleSelectStore(item.id)}>
-      <View style={styles.row}>
-        <View style={styles.textContainer}>
-          <Text style={styles.name}>{item.name}</Text>
-
-          {item.address && <Text style={styles.address}>{item.address}</Text>}
-
-          {item.city && <Text style={styles.city}>{item.city}</Text>}
-        </View>
-
-        {item.isFavorite && <Text style={styles.star}>⭐</Text>}
-      </View>
-    </Pressable>
+  const renderItem = ({ item }: { item: Store }) => (
+    <StoreCard
+      store={item}
+      onPress={handleSelectStore}
+      onToggleFavorite={toggleFavorite} // ⭐ clave
+    />
   );
 
   /* -------------------------------
-     Empty results
+     Empty
   -------------------------------- */
   const empty = (
     <View style={styles.empty}>
@@ -71,7 +57,8 @@ export default function StoreExploreScreen() {
         {isSelectMode ? "Seleccionar tienda" : "Explorar tiendas"}
       </Text>
 
-      {/* ---------- Search ---------- */}
+      <Text style={styles.count}>{filteredStores.length} tiendas</Text>
+
       <TextInput
         style={styles.search}
         placeholder="Buscar tienda o ciudad..."
@@ -79,13 +66,17 @@ export default function StoreExploreScreen() {
         onChangeText={setQuery}
       />
 
-      {/* ---------- List ---------- */}
       <FlatList
         data={filteredStores}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         ListEmptyComponent={empty}
-        contentContainerStyle={{ paddingBottom: 16 }}
+        contentContainerStyle={{ paddingBottom: 20 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={10}
+        windowSize={5}
+        removeClippedSubviews
       />
     </View>
   );
@@ -98,60 +89,32 @@ export default function StoreExploreScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
-    backgroundColor: "#f2f2f2",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: "#f5f5f5",
   },
 
   header: {
     fontSize: 18,
     fontWeight: "600",
+    marginBottom: 4,
+  },
+
+  count: {
+    fontSize: 12,
+    color: "#6b7280",
     marginBottom: 10,
   },
 
   search: {
     backgroundColor: "#fff",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     marginBottom: 12,
-  },
-
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-  },
-
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  textContainer: {
-    flex: 1,
-    paddingRight: 10,
-  },
-
-  name: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-
-  address: {
-    fontSize: 13,
-    color: "#666",
-    marginTop: 2,
-  },
-
-  city: {
-    fontSize: 12,
-    color: "#999",
-  },
-
-  star: {
-    fontSize: 18,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
   },
 
   empty: {

@@ -190,11 +190,14 @@ export default function ItemDetailScreen() {
               {UNITS.map((u) => (
                 <Pressable
                   key={u}
-                  style={[styles.unitButton, unit === u && styles.unitActive]}
+                  style={[styles.pill, unit === u && styles.pillActive]}
                   onPress={() => setUnit(u)}
                 >
                   <Text
-                    style={unit === u ? styles.unitTextActive : styles.unitText}
+                    style={[
+                      styles.pillText,
+                      unit === u && styles.pillTextActive,
+                    ]}
                   >
                     {u}
                   </Text>
@@ -259,7 +262,7 @@ export default function ItemDetailScreen() {
 
           {/* RESUMEN */}
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>Resumen</Text>
+            <Text style={styles.summaryTitle}>Summary</Text>
 
             <Text style={styles.summaryLine}>
               Base: {formatCurrency(priceResult.baseTotal)}
@@ -277,13 +280,15 @@ export default function ItemDetailScreen() {
           </View>
 
           {/* BOTONES */}
-          <Pressable style={styles.saveButton} onPress={saveItem}>
-            <Text style={styles.saveText}>Guardar cambios</Text>
-          </Pressable>
+          <View style={styles.actions}>
+            <Pressable style={styles.saveButton} onPress={saveItem}>
+              <Text style={styles.saveText}>Guardar cambios</Text>
+            </Pressable>
 
-          <Pressable style={styles.deleteButton} onPress={deleteItem}>
-            <Text style={styles.deleteText}>Eliminar producto</Text>
-          </Pressable>
+            <Pressable style={styles.deleteButton} onPress={deleteItem}>
+              <Text style={styles.deleteText}>Eliminar producto</Text>
+            </Pressable>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -342,7 +347,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  unitRow: { flexDirection: "row", gap: 8 },
+  unitRow: {
+    flexDirection: "row",
+    gap: 10, // 🔥 más aire entre botones
+  },
 
   unitButton: {
     paddingHorizontal: 12,
@@ -372,6 +380,11 @@ const styles = StyleSheet.create({
   chipTextActive: { color: "#fff" },
   chipTextDisabled: { color: "#999" },
 
+  actions: {
+    marginTop: 16,
+    gap: 12, // 🔥 clave: separación vertical limpia
+  },
+
   summaryCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
@@ -384,7 +397,7 @@ const styles = StyleSheet.create({
     color: "#2ecc71", // verde éxito
     fontWeight: "600",
   },
-  summaryTitle: { fontWeight: "600", marginBottom: 8 },
+  summaryTitle: { fontWeight: "700", fontSize: 17, marginBottom: 8 },
   summaryLine: { color: "#555" },
   summaryTotal: { fontSize: 20, fontWeight: "800", marginTop: 6 },
   summaryTotalRow: {
@@ -404,27 +417,57 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   saveButton: {
-    backgroundColor: "#111",
-    padding: 16,
+    backgroundColor: "#2f6df6",
+    paddingVertical: 16,
     borderRadius: 14,
     alignItems: "center",
+    justifyContent: "center",
   },
 
-  saveText: { color: "#fff", fontWeight: "700" },
+  saveText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
 
   deleteButton: {
-    marginTop: 12,
-    backgroundColor: "#fff",
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: "center",
-
     borderWidth: 1.5,
-    borderColor: "#ff3b30", // rojo iOS
+    borderColor: "#ef4444",
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
   },
+
   deleteText: {
-    color: "#ff3b30",
-    fontWeight: "600",
+    color: "#ef4444",
     fontSize: 16,
+    fontWeight: "600",
+  },
+
+  pill: {
+    paddingHorizontal: 20,
+    paddingVertical: 10, // 🔥 antes 6–8 → ahora más cómodo
+    borderRadius: 14,
+    backgroundColor: "#f3f4f6",
+    minHeight: 40, // 👈 asegura área táctil mínima
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  pillActive: {
+    backgroundColor: "#111",
+  },
+
+  pillText: {
+    fontSize: 13,
+    color: "#6b7280",
+    fontWeight: "500",
+  },
+
+  pillTextActive: {
+    color: "#fff",
+    fontWeight: "600",
   },
 });

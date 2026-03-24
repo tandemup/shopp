@@ -7,203 +7,190 @@ import React, {
   useState,
 } from "react";
 
-import storesSeed from "@/data/stores.json";
+import storesData from "@/data/stores.json";
+import { haversineDistance } from "@/src/utils/location/distance";
 
-/* -------------------------------------------------
+/* =========================================
    Types
--------------------------------------------------- */
+========================================= */
+
+type Location = {
+  lat: number;
+  lng: number;
+};
 
 export type Store = {
   id: string;
   name: string;
-  city?: string;
   address?: string;
-
+  city?: string;
+  location?: Location;
   isFavorite?: boolean;
-
-  location?: {
-    lat: number;
-    lng: number;
-  };
+  distance?: number;
 };
 
 type StoresContextType = {
   stores: Store[];
-
-  // derived
+  storesSorted: Store[];
   favoriteStores: Store[];
 
-  // CRUD
-  addStore: (store: Store) => void;
-  deleteStore: (id: string) => void;
-  updateStore: (id: string, updates: Partial<Store>) => void;
-
-  // helpers
+  toggleFavorite: (id: string) => void;
   getStoreById: (id: string) => Store | undefined;
-  toggleFavoriteStore: (id: string) => void;
-  isFavoriteStore: (id: string) => boolean;
+
+  setUserLocation: (loc: Location) => void;
 };
 
-/* -------------------------------------------------
-   Constants
--------------------------------------------------- */
-
-const STORAGE_KEY = "stores:favorites";
-
-/* -------------------------------------------------
+/* =========================================
    Context
--------------------------------------------------- */
+========================================= */
 
-const StoresContext = createContext<StoresContextType | undefined>(undefined);
+const StoresContext = createContext<StoresContextType | null>(null);
 
-/* -------------------------------------------------
+const FAVORITES_KEY = "stores_favorites";
+const DISTANCE_KEY = "stores_distances";
+
+/* =========================================
    Provider
--------------------------------------------------- */
+========================================= */
 
 export function StoresProvider({ children }: { children: React.ReactNode }) {
   const [stores, setStores] = useState<Store[]>([]);
+  const [userLocation, setUserLocation] = useState<Location | null>(null);
 
-  /* -------------------------------------------------
-     INIT (seed + favorites)
-  -------------------------------------------------- */
-
+  /* -------------------------------
+     Init stores + favoritos
+  -------------------------------- */
   useEffect(() => {
-    const loadStores = async () => {
-      try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        const favoriteIds: string[] = stored ? JSON.parse(stored) : [];
+    const init = async () => {
+      const favRaw = await AsyncStorage.getItem(FAVORITES_KEY);
 
-        const hydrated = storesSeed.map((s) => ({
-          ...s,
-          isFavorite: favoriteIds.includes(s.id),
-        }));
+      const favorites: Record<string, boolean> = favRaw
+        ? JSON.parse(favRaw)
+        : {};
 
-        setStores(hydrated);
-      } catch (e) {
-        console.warn("Error loading stores", e);
-        setStores(storesSeed);
-      }
+      const initialStores: Store[] = storesData.map((s: any) => ({
+        ...s,
+        isFavorite: favorites[s.id] ?? false,
+      }));
+
+      setStores(initialStores);
     };
 
-    loadStores();
+    init();
   }, []);
 
-  /* -------------------------------------------------
-     PERSIST FAVORITES
-  -------------------------------------------------- */
+  /* -------------------------------
+     Toggle favorito ⭐
+  -------------------------------- */
+  const toggleFavorite = async (id: string) => {
+    setStores((prev) => {
+      const updated = prev.map((s) =>
+        s.id === id ? { ...s, isFavorite: !s.isFavorite } : s,
+      );
 
+      const favMap = Object.fromEntries(
+        updated.filter((s) => s.isFavorite).map((s) => [s.id, true]),
+      );
+
+      AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(favMap));
+
+      return updated;
+    });
+  };
+
+  /* -------------------------------
+     Distancias + cache
+  -------------------------------- */
   useEffect(() => {
-    const saveFavorites = async () => {
-      try {
-        const favoriteIds = stores.filter((s) => s.isFavorite).map((s) => s.id);
+    if (!userLocation) return;
 
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(favoriteIds));
-      } catch (e) {
-        console.warn("Error saving favorites", e);
-      }
+    const compute = async () => {
+      const raw = await AsyncStorage.getItem(DISTANCE_KEY);
+      const cache: Record<string, number> = raw ? JSON.parse(raw) : {};
+
+      const updated = stores.map((store) => {
+        if (!store.location) return store;
+
+        let distance = cache[store.id];
+
+        if (!distance) {
+          distance = haversineDistance(
+            userLocation.lat,
+            userLocation.lng,
+            store.location.lat,
+            store.location.lng,
+          );
+        }
+
+        return { ...store, distance };
+      });
+
+      const newCache = Object.fromEntries(
+        updated
+          .filter((s) => s.distance != null)
+          .map((s) => [s.id, s.distance]),
+      );
+
+      await AsyncStorage.setItem(DISTANCE_KEY, JSON.stringify(newCache));
+
+      setStores(updated);
     };
 
-    if (stores.length) {
-      saveFavorites();
-    }
-  }, [stores]);
+    compute();
+  }, [userLocation]);
 
-  /* -------------------------------------------------
-     INDEX (performance)
-  -------------------------------------------------- */
+  /* -------------------------------
+     Derivados
+  -------------------------------- */
 
-  const storeMap = useMemo(() => {
-    const map = new Map<string, Store>();
-    stores.forEach((s) => map.set(s.id, s));
-    return map;
-  }, [stores]);
-
-  /* -------------------------------------------------
-     DERIVED
-  -------------------------------------------------- */
-
+  // ⭐ favoritas (CLAVE para favorites.tsx)
   const favoriteStores = useMemo(() => {
     return stores.filter((s) => s.isFavorite);
   }, [stores]);
 
-  /* -------------------------------------------------
-     CRUD
-  -------------------------------------------------- */
+  // 📍 orden por distancia
+  const storesSorted = useMemo(() => {
+    return [...stores].sort((a, b) => {
+      if (a.distance == null) return 1;
+      if (b.distance == null) return -1;
+      return a.distance - b.distance;
+    });
+  }, [stores]);
 
-  const addStore = (store: Store) => {
-    setStores((prev) => [
-      ...prev,
-      {
-        ...store,
-        isFavorite: store.isFavorite ?? false,
-      },
-    ]);
-  };
-
-  const deleteStore = (id: string) => {
-    setStores((prev) => prev.filter((s) => s.id !== id));
-  };
-
-  const updateStore = (id: string, updates: Partial<Store>) => {
-    setStores((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...updates } : s)),
-    );
-  };
-
-  /* -------------------------------------------------
-     HELPERS
-  -------------------------------------------------- */
-
+  /* -------------------------------
+     Helpers
+  -------------------------------- */
   const getStoreById = (id: string) => {
-    return storeMap.get(id);
+    return stores.find((s) => s.id === id);
   };
 
-  const toggleFavoriteStore = (id: string) => {
-    setStores((prev) =>
-      prev.map((s) =>
-        s.id === id ? { ...s, isFavorite: !(s.isFavorite ?? false) } : s,
-      ),
-    );
+  /* -------------------------------
+     Context value
+  -------------------------------- */
+  const value: StoresContextType = {
+    stores,
+    storesSorted,
+    favoriteStores,
+    toggleFavorite,
+    getStoreById,
+    setUserLocation,
   };
-
-  const isFavoriteStore = (id: string) => {
-    return storeMap.get(id)?.isFavorite ?? false;
-  };
-
-  /* -------------------------------------------------
-     VALUE
-  -------------------------------------------------- */
 
   return (
-    <StoresContext.Provider
-      value={{
-        stores,
-        favoriteStores,
-
-        addStore,
-        deleteStore,
-        updateStore,
-
-        getStoreById,
-        toggleFavoriteStore,
-        isFavoriteStore,
-      }}
-    >
-      {children}
-    </StoresContext.Provider>
+    <StoresContext.Provider value={value}>{children}</StoresContext.Provider>
   );
 }
 
-/* -------------------------------------------------
+/* =========================================
    Hook
--------------------------------------------------- */
+========================================= */
 
 export function useStores() {
-  const context = useContext(StoresContext);
+  const ctx = useContext(StoresContext);
 
-  if (!context) {
-    throw new Error("useStores must be used within a StoresProvider");
+  if (!ctx) {
+    throw new Error("useStores must be used inside StoresProvider");
   }
 
-  return context;
+  return ctx;
 }
