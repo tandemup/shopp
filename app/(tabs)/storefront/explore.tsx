@@ -8,12 +8,11 @@ import {
   View,
 } from "react-native";
 
+import type { Store } from "@/src/context/StoresContext";
+import { useStores } from "@/src/context/StoresContext";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-import { useStores } from "@/src/context/StoresContext";
-import type { Store } from "@/src/types/store";
 
 export default function ExploreStoresScreen() {
   const router = useRouter();
@@ -41,7 +40,10 @@ export default function ExploreStoresScreen() {
     <Pressable
       style={styles.card}
       onPress={() => {
-        router.back(); // o navegación futura a detail/select
+        router.push({
+          pathname: "/storefront/info",
+          params: { id: item.id },
+        });
       }}
     >
       {/* LEFT CONTENT */}

@@ -7,6 +7,7 @@ import {
   fromPromotion,
   toPromotion,
 } from "@/src/utils/pricing/promotionMapper";
+import { validatePromotion } from "@/src/utils/pricing/promoValidation";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -29,17 +30,6 @@ const parseNumber = (v: string, fallback = 0) => {
   const n = Number(v.replace(",", "."));
   return Number.isNaN(n) ? fallback : n;
 };
-
-function isPromotionValid(promoId: string, qty: number): boolean {
-  const promo = promotions.find((p) => p.id === promoId);
-  if (!promo || promo.type === "none") return true;
-
-  if (promo.type === "multi") {
-    return qty >= (promo.buy ?? 0);
-  }
-
-  return true;
-}
 
 export default function ItemDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -74,28 +64,9 @@ export default function ItemDetailScreen() {
 
   const promo = useMemo(() => toPromotion(promoId), [promoId]);
 
-  useEffect(() => {
-    if (!isPromotionValid(promoId, quantity)) {
-      setPromoId("none");
-    }
-  }, [promoId, quantity]);
-
   const priceResult = useMemo(() => {
-    if (!item) {
-      return {
-        baseTotal: 0,
-        finalTotal: 0,
-        savings: 0,
-      };
-    }
-
-    return calculateItemPrice({
-      ...item,
-      quantity,
-      unitPrice,
-      promo,
-    });
-  }, [item, quantity, unitPrice, promo]);
+    return calculateItemPrice(quantity, unitPrice, promo);
+  }, [quantity, unitPrice, promo]);
 
   if (!item || !list) {
     return (
@@ -231,28 +202,34 @@ export default function ItemDetailScreen() {
             <Text style={styles.label}>Ofertas</Text>
 
             <View style={styles.promoRow}>
-              {promotions.map((p) => {
-                const valid = isPromotionValid(p.id, quantity);
+              {promotions.map((option) => {
+                const promo = toPromotion(option.id);
+
+                const validation = validatePromotion(
+                  promo,
+                  quantity,
+                  unitPrice,
+                );
+
+                const selected = promoId === option.id;
 
                 return (
                   <Pressable
-                    key={p.id}
-                    disabled={!valid}
-                    onPress={() => setPromoId(p.id)}
+                    key={option.id}
+                    onPress={() => setPromoId(option.id)}
                     style={[
-                      styles.chip,
-                      promoId === p.id && styles.chipActive,
-                      !valid && styles.chipDisabled,
+                      styles.promoChip,
+                      selected && styles.promoChipSelected,
                     ]}
                   >
                     <Text
                       style={[
-                        styles.chipText,
-                        promoId === p.id && styles.chipTextActive,
-                        !valid && styles.chipTextDisabled,
+                        styles.promoChipText,
+                        selected && styles.promoChipTextSelected,
+                        disabled && styles.promoChipTextDisabled,
                       ]}
                     >
-                      {p.label}
+                      {option.label}
                     </Text>
                   </Pressable>
                 );
@@ -265,7 +242,7 @@ export default function ItemDetailScreen() {
             <Text style={styles.summaryTitle}>Summary</Text>
 
             <Text style={styles.summaryLine}>
-              Base: {formatCurrency(priceResult.baseTotal)}
+              Base: {formatCurrency(priceResult.subtotal)}
             </Text>
 
             <Text style={styles.summarySavings}>
@@ -274,11 +251,15 @@ export default function ItemDetailScreen() {
             <View style={styles.summaryTotalRow}>
               <Text style={styles.summaryTotalLabel}>Total</Text>
               <Text style={styles.summaryTotalValue}>
-                {formatCurrency(priceResult.finalTotal)}
+                {formatCurrency(priceResult.total)}
               </Text>
             </View>
           </View>
-
+          {priceResult.warning && (
+            <Text style={{ color: "#f59e0b", marginTop: 6 }}>
+              {priceResult.warning}
+            </Text>
+          )}
           {/* BOTONES */}
           <View style={styles.actions}>
             <Pressable style={styles.saveButton} onPress={saveItem}>
@@ -349,7 +330,7 @@ const styles = StyleSheet.create({
 
   unitRow: {
     flexDirection: "row",
-    gap: 10, // 🔥 más aire entre botones
+    gap: 10,
   },
 
   unitButton: {
@@ -469,5 +450,37 @@ const styles = StyleSheet.create({
   pillTextActive: {
     color: "#fff",
     fontWeight: "600",
+  },
+  promoChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#f1f1f3",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+
+  promoChipSelected: {
+    backgroundColor: "#111",
+    borderColor: "#111",
+  },
+
+  promoChipDisabled: {
+    opacity: 0.35,
+  },
+
+  promoChipText: {
+    fontSize: 13,
+    color: "#374151",
+    fontWeight: "500",
+  },
+
+  promoChipTextSelected: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+
+  promoChipTextDisabled: {
+    color: "#9ca3af",
   },
 });

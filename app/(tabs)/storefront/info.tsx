@@ -1,25 +1,25 @@
+import StoreMapPreview from "@/src/components/stores/StoreMapPreview";
+import { useLists } from "@/src/context/ListsContext";
+import { useStores } from "@/src/context/StoresContext";
+import { getValidCoords } from "@/src/utils/maps/getValidCoords";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-
-import { useLists } from "@/src/context/ListsContext";
-import { useStores } from "@/src/context/StoresContext";
-
-import StoreMapPreview from "@/src/components/stores/StoreMapPreview";
-import { getValidCoords } from "@/src/utils/maps/getValidCoords";
 import {
-  openGoogleMaps,
-  openGoogleMapsSearch,
-} from "@/src/utils/maps/openGoogleMaps";
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 export default function StoreDetailScreen() {
   /* ---------------------------------------------
      Params seguros (expo-router)
   ---------------------------------------------- */
   const params = useLocalSearchParams();
-
-  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const { id } = useLocalSearchParams();
   const mode = Array.isArray(params.mode) ? params.mode[0] : params.mode;
   const selectForListId = Array.isArray(params.selectForListId)
     ? params.selectForListId[0]
@@ -66,21 +66,18 @@ export default function StoreDetailScreen() {
     }
   };
 
+  const openInOpenStreetMap = () => {
+    if (!coords) return;
+    const { lat, lng } = coords;
+    const url = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=18/${lat}/${lng}`;
+    Linking.openURL(url);
+  };
+
   const openInGoogleMaps = () => {
-    if (coords) {
-      openGoogleMaps({
-        lat: coords.lat,
-        lng: coords.lng,
-        label: store.name,
-      });
-      return;
-    }
-
-    const query = [store.name, store.address, store.city, store.zipcode]
-      .filter(Boolean)
-      .join(" ");
-
-    if (query) openGoogleMapsSearch(query);
+    if (!coords) return;
+    const { lat, lng } = coords;
+    const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    Linking.openURL(url);
   };
 
   /* ---------------------------------------------
@@ -88,7 +85,6 @@ export default function StoreDetailScreen() {
   ---------------------------------------------- */
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {/* HEADER */}
       <View style={styles.header}>
         <Text style={styles.name} numberOfLines={2}>
           {store.name}
@@ -103,7 +99,6 @@ export default function StoreDetailScreen() {
         </Pressable>
       </View>
 
-      {/* DIRECCIÓN */}
       {store.address && (
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Dirección</Text>
@@ -114,7 +109,6 @@ export default function StoreDetailScreen() {
         </View>
       )}
 
-      {/* MAPA */}
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Ubicación</Text>
 
@@ -130,25 +124,30 @@ export default function StoreDetailScreen() {
             </Text>
           </View>
         )}
-        <Pressable style={styles.osmButton} onPress={openInGoogleMaps}>
+
+        <Pressable
+          style={styles.osmButton}
+          onPress={() => openInOpenStreetMap(store)}
+        >
           <Ionicons name="map-outline" size={18} color="#1a73e8" />
           <Text style={styles.osmButtonText}>Ver mapa (OpenStreetMap)</Text>
         </Pressable>
 
-        <Pressable style={styles.mapsButton} onPress={openInGoogleMaps}>
+        <Pressable
+          style={styles.mapsButton}
+          onPress={() => openInGoogleMaps(store)}
+        >
           <Ionicons name="navigate-outline" size={18} color="#fff" />
           <Text style={styles.mapsButtonText}>Abrir en Google Maps</Text>
         </Pressable>
       </View>
 
-      {/* CTA SELECT */}
       {mode === "select" && (
         <Pressable style={styles.selectButton} onPress={handleSelectStore}>
           <Text style={styles.selectButtonText}>Seleccionar esta tienda</Text>
         </Pressable>
       )}
 
-      {/* FUTURO */}
       <View style={styles.sectionMuted}>
         <Text style={styles.mutedText}>
           Próximamente: horarios, notas y productos asociados

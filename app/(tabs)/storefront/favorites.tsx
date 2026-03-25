@@ -2,22 +2,32 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
-import StoreCard from "@/src/components/stores/StoreCard";
+import { StoreCard } from "@/src/components/stores/StoreCard";
 import { useLists } from "@/src/context/ListsContext";
-import { Store, useStores } from "@/src/context/StoresContext";
+import type { Store } from "@/src/context/StoresContext";
+import { useStores } from "@/src/context/StoresContext";
 
 export default function StoreFavoritesScreen() {
   const router = useRouter();
   const { assignStoreToList } = useLists();
 
-  const { mode, selectForListId } = useLocalSearchParams<{
-    mode?: string;
-    selectForListId?: string;
-  }>();
-
+  const { mode, selectForListId } = useLocalSearchParams();
+  const isSelectMode = mode === "select";
   const { favorites, toggleFavorite } = useStores();
 
-  const isSelectMode = mode === "select";
+  const handleSelectStore = (store: Store) => {
+    if (isSelectMode && selectForListId) {
+      assignStoreToList(String(selectForListId), store.id);
+
+      router.back(); // 🔥 correcto
+      return;
+    }
+
+    router.push({
+      pathname: "/storefront/info",
+      params: { id: store.id },
+    });
+  };
 
   /* -------------------------------
      Redirect si no hay favoritas
@@ -40,18 +50,7 @@ export default function StoreFavoritesScreen() {
   const renderItem = ({ item }: { item: Store }) => (
     <StoreCard
       store={item}
-      onPress={() => {
-        if (isSelectMode && selectForListId) {
-          assignStoreToList(String(selectForListId), item.id);
-          router.replace(`/list/${selectForListId}`);
-          return;
-        }
-
-        router.push({
-          pathname: "/storefront/info",
-          params: { id: item.id },
-        });
-      }}
+      onPress={() => handleSelectStore(item)}
       onToggleFavorite={() => toggleFavorite(item.id)}
     />
   );

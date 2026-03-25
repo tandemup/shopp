@@ -1,14 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
 
 export default function TabsLayout() {
+  const router = useRouter();
+
   return (
     <Tabs
       initialRouteName="index"
       screenOptions={{
-        headerShown: true, // 👈 activar header
-        headerTitle: "Shopp", // 👈 nombre app
-        headerTitleAlign: "center", // opcional
+        headerShown: true,
+        headerTitle: "Shopp",
+        headerTitleAlign: "center",
         tabBarActiveTintColor: "#22c55e",
       }}
     >
@@ -21,6 +23,7 @@ export default function TabsLayout() {
           ),
         }}
       />
+
       <Tabs.Screen
         name="storefront"
         options={{
@@ -28,6 +31,12 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="storefront" size={size} color={color} />
           ),
+        }}
+        listeners={{
+          tabPress: () => {
+            // 🔥 reset SIEMPRE a la raíz
+            router.replace("/storefront");
+          },
         }}
       />
 

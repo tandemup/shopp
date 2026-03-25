@@ -1,125 +1,94 @@
-import { Store } from "@/src/context/StoresContext";
 import { Ionicons } from "@expo/vector-icons";
+import { memo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+
+import type { Store } from "@/src/context/StoresContext";
 
 type Props = {
   store: Store;
-  onPress: () => void;
-  onToggleFavorite: () => void;
+  onPress: (store: Store) => void;
+  onToggleFavorite: (id: string) => void;
 };
 
-export default function StoreCard({ store, onPress, onToggleFavorite }: Props) {
-  /* ---------------------------------------------
-     Helpers seguros (evitan JSX dentro de Text)
-  ---------------------------------------------- */
-  const addressLine =
-    store.address && store.city
-      ? `${store.address}, ${store.city}`
-      : store.address || store.city || "";
+function StoreCardBase({ store, onPress, onToggleFavorite }: Props) {
+  const handlePress = () => {
+    onPress(store);
+  };
 
-  const distanceText =
-    store.distance != null
-      ? store.distance < 1
-        ? `${Math.round(store.distance * 1000)} m`
-        : `${store.distance.toFixed(1)} km`
-      : null;
+  const handleToggle = () => {
+    onToggleFavorite(store.id);
+  };
 
   return (
-    <View style={styles.card}>
+    <Pressable style={styles.card} onPress={handlePress}>
+      {/* CONTENT */}
+      <View style={styles.content}>
+        <Text style={styles.name}>{store.name}</Text>
+
+        <Text style={styles.address}>
+          📍 {store.address}, {store.city}
+        </Text>
+      </View>
+
       {/* ⭐ FAVORITE */}
-      <Pressable
-        style={styles.starButton}
-        onPress={onToggleFavorite}
-        hitSlop={12}
-      >
+      <Pressable onPress={handleToggle} hitSlop={10} style={styles.star}>
         <Ionicons
-          name={store.isFavorite ? "star" : "star-outline"}
+          name={store.favorite ? "star" : "star-outline"}
           size={22}
-          color={store.isFavorite ? "#f5c518" : "#bbb"}
+          color={store.favorite ? "#f5c518" : "#999"}
         />
       </Pressable>
-
-      {/* CONTENIDO CLICKABLE */}
-      <Pressable
-        onPress={onPress}
-        style={({ pressed }) => [styles.content, pressed && styles.pressed]}
-      >
-        {/* Nombre */}
-        <Text style={styles.name} numberOfLines={1}>
-          {store.name}
-        </Text>
-
-        {/* Dirección (SIN JSX dentro de Text) */}
-        {addressLine ? (
-          <Text style={styles.address} numberOfLines={1}>
-            📍 {addressLine}
-          </Text>
-        ) : null}
-
-        {/* Distancia */}
-        {distanceText ? (
-          <Text style={styles.distance}>{distanceText}</Text>
-        ) : null}
-      </Pressable>
-    </View>
+    </Pressable>
   );
 }
 
+/* ---------------------------------------------
+   🔥 MEMO → evita re-render de toda la lista
+---------------------------------------------- */
+export const StoreCard = memo(
+  StoreCardBase,
+  (prev, next) =>
+    prev.store.id === next.store.id &&
+    prev.store.favorite === next.store.favorite,
+);
+
+/* ---------------------------------------------
+   STYLES
+---------------------------------------------- */
 const styles = StyleSheet.create({
   card: {
     backgroundColor: "#fff",
-    borderRadius: 14,
+    borderRadius: 12,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: 10,
 
-    borderWidth: 1,
-    borderColor: "#eee",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
 
-    // sombra iOS
     shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-
-    // sombra Android
-    elevation: 1,
-
-    position: "relative",
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
 
   content: {
     flex: 1,
-  },
-
-  pressed: {
-    opacity: 0.7,
+    paddingRight: 10,
   },
 
   name: {
     fontSize: 16,
-    fontWeight: "700",
-    color: "#111",
-    paddingRight: 30, // espacio para estrella
-  },
-
-  starButton: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    padding: 6,
-    zIndex: 10,
+    fontWeight: "600",
+    marginBottom: 4,
   },
 
   address: {
-    marginTop: 6,
     fontSize: 13,
-    color: "#555",
+    color: "#666",
   },
 
-  distance: {
-    marginTop: 6,
-    fontSize: 12,
-    color: "#1a73e8",
-    fontWeight: "600",
+  star: {
+    padding: 6,
   },
 });
