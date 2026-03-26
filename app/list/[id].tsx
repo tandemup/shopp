@@ -4,8 +4,7 @@ import SearchCombinedBar from "@/src/components/shopping/SearchCombinedBar";
 import StoreSelector from "@/src/components/stores/StoreSelector";
 import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
-import { Item } from "@/src/types/Item";
-import { Promotions } from "@/src/types/Promotion";
+import type { Item } from "@/src/types/Item";
 import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { FlatList, StyleSheet, Text, View } from "react-native";
@@ -17,7 +16,7 @@ function makeNewItem(name: string): Item {
     unit: "u",
     quantity: 1,
     unitPrice: 0,
-    promo: Promotions.none(),
+    promo: undefined,
     checked: true,
   };
 }

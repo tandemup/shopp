@@ -1,12 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  createContext,
-  ReactNode,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { createContext, ReactNode, useContext, useMemo, useState } from "react";
 
 /* ================================
    Types
@@ -39,12 +31,6 @@ export interface ColorScheme {
   };
   statusBarStyle: "light-content" | "dark-content";
 }
-
-/* ================================
-   Constants
-================================ */
-
-const STORAGE_KEY = "darkMode";
 
 /* ================================
    Themes
@@ -126,22 +112,14 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then((value) => {
-      if (value) setIsDarkMode(JSON.parse(value));
-      setIsLoaded(true);
-    });
-  }, []);
-
   const toggleDarkMode = async () => {
     const newMode = !isDarkMode;
     setIsDarkMode(newMode);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newMode));
   };
 
   const colors = useMemo(
     () => (isDarkMode ? darkColors : lightColors),
-    [isDarkMode]
+    [isDarkMode],
   );
 
   // 🚫 Evita flash de tema incorrecto

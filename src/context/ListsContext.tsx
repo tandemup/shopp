@@ -1,11 +1,8 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
 
 import { Item } from "@/src/types/Item";
 import { List } from "@/src/types/List";
 import { generateId } from "@/src/utils/generateId";
-
-const STORAGE_KEY = "shopp_lists_v2";
 
 /* -------------------------------------------------
    Helpers (ANTI-NaN)
@@ -55,9 +52,6 @@ export const ListsProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const load = async () => {
       try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (!raw) return;
-        setLists(JSON.parse(raw));
       } catch (e) {
         console.warn("Error loading lists", e);
       }
@@ -65,15 +59,6 @@ export const ListsProvider = ({ children }: { children: React.ReactNode }) => {
 
     load();
   }, []);
-
-  /* ---------------------------------------------
-     SAVE (persistencia)
-  ---------------------------------------------- */
-  useEffect(() => {
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(lists)).catch((e) =>
-      console.warn("Error saving lists", e),
-    );
-  }, [lists]);
 
   /* ---------------------------------------------
      Lists
