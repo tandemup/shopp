@@ -12,11 +12,11 @@ import { FlatList, StyleSheet, Text, View } from "react-native";
 function makeNewItem(name: string): Item {
   return {
     id: `item-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
-    name,
+    name: name.trim(),
     unit: "u",
     quantity: 1,
     unitPrice: 0,
-    promoId: "none",
+    promo: { type: "none" },
     checked: true,
   };
 }
@@ -44,7 +44,7 @@ export default function ShoppingListScreen() {
     .reduce(
       (acc, item) => {
         const price = calculateItemPrice(item);
-        acc.total += price.finalTotal;
+        acc.total += price.total;
         acc.savings += price.savings;
         return acc;
       },

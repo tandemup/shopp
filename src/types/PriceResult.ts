@@ -1,6 +1,7 @@
 export type PriceResult = {
   baseTotal: number;
-  finalTotal: number;
+  total: number;
   savings: number;
-  effectiveUnitPrice: number;
+  valid: boolean;
+  reason?: string;
 };

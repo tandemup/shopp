@@ -1,10 +1,10 @@
-import promotions from "@/data/promotions.json";
+import rawPromotions from "@/data/promotions.json";
 import { alert, confirm } from "@/src/components/ui/dialog/dialog";
 import { useLists } from "@/src/context/ListsContext";
-import { Promotion } from "@/src/types/Promotion";
+import type { PromotionOption } from "@/src/types/Promotion";
 import { formatCurrency } from "@/src/utils/currency";
-import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
-import { toPromotion } from "@/src/utils/pricing/PromotionMapper";
+import { calculateItemPrice } from "@/src/utils/pricing/calculateItemPrice";
+import { validatePromotion } from "@/src/utils/pricing/validatePromotion";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -21,11 +21,39 @@ import {
   View,
 } from "react-native";
 
-const UNITS = ["u", "kg", "g", "l"];
+const promotions = rawPromotions as PromotionOption[];
+const UNITS = ["u", "kg", "g", "l"] as const;
 
 const parseNumber = (v: string, fallback = 0) => {
   const n = Number((v || "").replace(",", "."));
   return Number.isFinite(n) ? n : fallback;
+};
+
+const isSamePromotion = (
+  a: Promotion | undefined,
+  b: Promotion | undefined,
+): boolean => {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+
+  if (a.type !== b.type) return false;
+
+  switch (a.type) {
+    case "none":
+    case "2x1":
+    case "3x2":
+      return true;
+
+    case "percent":
+    case "discount":
+      return a.value === (b as typeof a).value;
+
+    case "multi":
+      return a.buy === (b as typeof a).buy && a.pay === (b as typeof a).pay;
+
+    default:
+      return false;
+  }
 };
 
 export default function ItemDetailScreen() {
@@ -59,17 +87,16 @@ export default function ItemDetailScreen() {
   const unitPrice = parseNumber(price, 0);
 
   const priceResult = useMemo(() => {
-    return calculateItemPrice({
-      quantity,
-      unitPrice,
-      promo,
-    });
+    return calculateItemPrice(quantity, unitPrice, promo);
   }, [quantity, unitPrice, promo]);
 
   if (!item || !list) {
     return (
       <SafeAreaView style={styles.notFound}>
-        <Text>Item no encontrado</Text>
+        <Text style={styles.notFoundTitle}>Producto no encontrado</Text>
+        <Pressable style={styles.notFoundButton} onPress={() => router.back()}>
+          <Text style={styles.notFoundButtonText}>Volver</Text>
+        </Pressable>
       </SafeAreaView>
     );
   }
@@ -107,117 +134,136 @@ export default function ItemDetailScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <ScrollView contentContainerStyle={styles.content}>
-          {/* HEADER */}
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.header}>
-            <Pressable onPress={() => router.back()}>
-              <Ionicons name="arrow-back" size={22} />
+            <Pressable style={styles.headerIcon} onPress={() => router.back()}>
+              <Ionicons name="arrow-back" size={22} color="#111827" />
             </Pressable>
+
             <Text style={styles.title}>Editar producto</Text>
-            <View style={{ width: 22 }} />
+
+            <View style={styles.headerSpacer} />
           </View>
 
-          {/* CARD 1 */}
           <View style={styles.card}>
             <Text style={styles.label}>Nombre</Text>
             <TextInput
               style={styles.input}
               value={name}
               onChangeText={setName}
+              placeholder="Nombre del producto"
+              placeholderTextColor="#9ca3af"
+              autoCapitalize="none"
+              autoCorrect={false}
             />
 
-            <Text style={[styles.label, { marginTop: 12 }]}>
+            <Text style={[styles.label, styles.sectionGap]}>
               Código de barras
             </Text>
 
             <View style={styles.row}>
               <TextInput
-                style={[styles.input, { flex: 1 }]}
+                style={[styles.input, styles.flex]}
                 value={barcode}
                 onChangeText={setBarcode}
                 placeholder="EAN-13"
+                placeholderTextColor="#9ca3af"
+                autoCapitalize="none"
+                autoCorrect={false}
               />
 
               <Pressable style={styles.iconButton}>
-                <Ionicons name="barcode-outline" size={18} />
+                <Ionicons name="barcode-outline" size={18} color="#374151" />
               </Pressable>
 
               <Pressable style={styles.iconButton}>
-                <Ionicons name="search-outline" size={18} />
+                <Ionicons name="search-outline" size={18} color="#374151" />
               </Pressable>
             </View>
           </View>
 
-          {/* CARD 2 */}
           <View style={styles.card}>
             <Text style={styles.label}>Unidad</Text>
 
             <View style={styles.unitRow}>
-              {UNITS.map((u) => (
-                <Pressable
-                  key={u}
-                  style={[styles.pill, unit === u && styles.pillActive]}
-                  onPress={() => setUnit(u)}
-                >
-                  <Text
-                    style={[
-                      styles.pillText,
-                      unit === u && styles.pillTextActive,
-                    ]}
+              {UNITS.map((u) => {
+                const selected = unit === u;
+
+                return (
+                  <Pressable
+                    key={u}
+                    style={[styles.pill, selected && styles.pillActive]}
+                    onPress={() => setUnit(u)}
                   >
-                    {u}
-                  </Text>
-                </Pressable>
-              ))}
+                    <Text
+                      style={[
+                        styles.pillText,
+                        selected && styles.pillTextActive,
+                      ]}
+                    >
+                      {u}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
 
-            <View style={[styles.rowSpace, { marginTop: 14 }]}>
-              <View style={{ flex: 1 }}>
+            <View style={[styles.rowSpace, styles.sectionGapLarge]}>
+              <View style={styles.flex}>
                 <Text style={styles.label}>Cantidad ({unit})</Text>
                 <TextInput
                   style={styles.input}
                   value={qty}
                   onChangeText={setQty}
                   keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor="#9ca3af"
                 />
               </View>
 
-              <View style={{ flex: 1 }}>
+              <View style={styles.flex}>
                 <Text style={styles.label}>Precio/{unit}</Text>
                 <TextInput
                   style={styles.input}
                   value={price}
                   onChangeText={setPrice}
                   keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor="#9ca3af"
                 />
               </View>
             </View>
           </View>
 
-          {/* PROMOS */}
           <View style={styles.card}>
             <Text style={styles.label}>Ofertas</Text>
 
             <View style={styles.promoRow}>
               {promotions.map((option) => {
-                const optionPromo = toPromotion(option.id);
-
-                const test = calculateItemPrice({
+                const optionPromo = option;
+                const validation = validatePromotion(
+                  optionPromo,
                   quantity,
                   unitPrice,
-                  promo: optionPromo,
-                });
+                );
 
-                const disabled = !!test.warning;
-                const selected = promo.type === optionPromo.type;
+                const disabled = !validation.valid;
+                const selected = isSamePromotion(promo, optionPromo);
 
                 return (
                   <Pressable
-                    key={option.id}
-                    onPress={() => setPromo(optionPromo)}
+                    key={option.label}
+                    onPress={() => {
+                      if (disabled) return;
+                      setPromo(optionPromo);
+                    }}
                     style={[
                       styles.promoChip,
                       selected && styles.promoChipSelected,
@@ -239,12 +285,11 @@ export default function ItemDetailScreen() {
             </View>
           </View>
 
-          {/* RESUMEN */}
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>Resumen</Text>
 
             <Text style={styles.summaryLine}>
-              Base: {formatCurrency(priceResult.subtotal)}
+              Base: {formatCurrency(priceResult.baseTotal)}
             </Text>
 
             <Text style={styles.summarySavings}>
@@ -259,11 +304,12 @@ export default function ItemDetailScreen() {
             </View>
           </View>
 
-          {priceResult.warning && (
-            <Text style={styles.warning}>{priceResult.warning}</Text>
+          {!priceResult.valid && (
+            <Text style={styles.warning}>
+              {priceResult.reason || "Oferta no válida"}
+            </Text>
           )}
 
-          {/* BOTONES */}
           <View style={styles.actions}>
             <Pressable style={styles.saveButton} onPress={saveItem}>
               <Text style={styles.saveText}>Guardar cambios</Text>
@@ -279,11 +325,48 @@ export default function ItemDetailScreen() {
   );
 }
 
-/* ---------------- STYLES ---------------- */
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f2f2f7" },
-  content: { padding: 16, gap: 16 },
+  flex: {
+    flex: 1,
+  },
+
+  container: {
+    flex: 1,
+    backgroundColor: "#f2f2f7",
+  },
+
+  content: {
+    padding: 16,
+    gap: 16,
+    paddingBottom: 28,
+  },
+
+  notFound: {
+    flex: 1,
+    backgroundColor: "#f2f2f7",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    gap: 16,
+  },
+
+  notFoundTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+  },
+
+  notFoundButton: {
+    backgroundColor: "#2f6df6",
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+
+  notFoundButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
 
   header: {
     flexDirection: "row",
@@ -291,13 +374,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  title: { fontSize: 20, fontWeight: "700" },
+  headerIcon: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  headerSpacer: {
+    width: 28,
+    height: 28,
+  },
+
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111827",
+  },
 
   card: {
     backgroundColor: "#fff",
     borderRadius: 16,
     padding: 14,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#ececec",
   },
 
   label: {
@@ -307,16 +407,35 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
 
+  sectionGap: {
+    marginTop: 12,
+  },
+
+  sectionGapLarge: {
+    marginTop: 14,
+  },
+
   input: {
     backgroundColor: "#f7f7f8",
     borderRadius: 12,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     borderWidth: 1,
     borderColor: "#eee",
+    fontSize: 15,
+    color: "#111827",
   },
 
-  row: { flexDirection: "row", gap: 10 },
-  rowSpace: { flexDirection: "row", gap: 12 },
+  row: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+  },
+
+  rowSpace: {
+    flexDirection: "row",
+    gap: 12,
+  },
 
   iconButton: {
     width: 44,
@@ -327,21 +446,40 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  unitRow: { flexDirection: "row", gap: 10 },
+  unitRow: {
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
+  },
 
   pill: {
-    paddingHorizontal: 20,
+    minWidth: 40,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 14,
     backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  pillActive: { backgroundColor: "#111" },
+  pillActive: {
+    backgroundColor: "#111",
+  },
 
-  pillText: { color: "#6b7280" },
-  pillTextActive: { color: "#fff" },
+  pillText: {
+    color: "#6b7280",
+    fontWeight: "600",
+  },
 
-  promoRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  pillTextActive: {
+    color: "#fff",
+  },
+
+  promoRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
 
   promoChip: {
     paddingHorizontal: 14,
@@ -350,44 +488,89 @@ const styles = StyleSheet.create({
     backgroundColor: "#f1f1f3",
   },
 
-  promoChipSelected: { backgroundColor: "#111" },
-  promoChipDisabled: { opacity: 0.35 },
+  promoChipSelected: {
+    backgroundColor: "#111",
+  },
 
-  promoChipText: { color: "#374151" },
-  promoChipTextSelected: { color: "#fff" },
-  promoChipTextDisabled: { color: "#9ca3af" },
+  promoChipDisabled: {
+    backgroundColor: "#e5e7eb",
+    opacity: 0.55,
+  },
+
+  promoChipText: {
+    color: "#374151",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  promoChipTextSelected: {
+    color: "#fff",
+  },
+
+  promoChipTextDisabled: {
+    color: "#9ca3af",
+  },
 
   summaryCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
     padding: 16,
+    borderWidth: 1,
+    borderColor: "#eee",
   },
 
-  summaryTitle: { fontWeight: "700", fontSize: 17, marginBottom: 8 },
-  summaryLine: { color: "#555" },
+  summaryTitle: {
+    fontWeight: "700",
+    fontSize: 17,
+    marginBottom: 10,
+    color: "#111827",
+  },
+
+  summaryLine: {
+    fontSize: 14,
+    color: "#6b7280",
+  },
 
   summarySavings: {
-    color: "#2ecc71",
+    fontSize: 14,
     fontWeight: "600",
+    color: "#22c55e",
+    marginTop: 2,
   },
 
   summaryTotalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 10,
+    alignItems: "center",
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+  },
+
+  summaryTotalLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#374151",
   },
 
   summaryTotalValue: {
     fontSize: 22,
     fontWeight: "800",
+    color: "#111827",
   },
 
   warning: {
     color: "#f59e0b",
-    marginTop: 6,
+    marginTop: -6,
+    fontSize: 13,
+    fontWeight: "600",
   },
 
-  actions: { marginTop: 16, gap: 12 },
+  actions: {
+    marginTop: 8,
+    gap: 12,
+  },
 
   saveButton: {
     backgroundColor: "#2f6df6",
@@ -396,7 +579,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  saveText: { color: "#fff", fontWeight: "600" },
+  saveText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 15,
+  },
 
   deleteButton: {
     borderWidth: 1.5,
@@ -404,7 +591,12 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 14,
     alignItems: "center",
+    backgroundColor: "#fff",
   },
 
-  deleteText: { color: "#ef4444", fontWeight: "600" },
+  deleteText: {
+    color: "#ef4444",
+    fontWeight: "600",
+    fontSize: 15,
+  },
 });
