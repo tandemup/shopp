@@ -1,5 +1,3 @@
-// src/utils/pricing/promotionMapper.ts
-
 import type { Promotion } from "@/src/types/Promotion";
 
 /* -------------------------------------------------

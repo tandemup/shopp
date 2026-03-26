@@ -1,13 +1,10 @@
 import promotions from "@/data/promotions.json";
 import { alert, confirm } from "@/src/components/ui/dialog/dialog";
 import { useLists } from "@/src/context/ListsContext";
+import { Promotion } from "@/src/types/Promotion";
 import { formatCurrency } from "@/src/utils/currency";
 import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
-import {
-  fromPromotion,
-  toPromotion,
-} from "@/src/utils/pricing/promotionMapper";
-import { validatePromotion } from "@/src/utils/pricing/promoValidation";
+import { toPromotion } from "@/src/utils/pricing/PromotionMapper";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -27,8 +24,8 @@ import {
 const UNITS = ["u", "kg", "g", "l"];
 
 const parseNumber = (v: string, fallback = 0) => {
-  const n = Number(v.replace(",", "."));
-  return Number.isNaN(n) ? fallback : n;
+  const n = Number((v || "").replace(",", "."));
+  return Number.isFinite(n) ? n : fallback;
 };
 
 export default function ItemDetailScreen() {
@@ -45,7 +42,7 @@ export default function ItemDetailScreen() {
   const [unit, setUnit] = useState("u");
   const [qty, setQty] = useState("1");
   const [price, setPrice] = useState("0");
-  const [promoId, setPromoId] = useState<string>("none");
+  const [promo, setPromo] = useState<Promotion>({ type: "none" });
 
   useEffect(() => {
     if (!item) return;
@@ -55,17 +52,18 @@ export default function ItemDetailScreen() {
     setUnit(item.unit ?? "u");
     setQty(String(item.quantity ?? 1));
     setPrice(String(item.unitPrice ?? 0));
-
-    setPromoId(fromPromotion(item.promo));
+    setPromo(item.promo ?? { type: "none" });
   }, [item]);
 
   const quantity = parseNumber(qty, 1);
   const unitPrice = parseNumber(price, 0);
 
-  const promo = useMemo(() => toPromotion(promoId), [promoId]);
-
   const priceResult = useMemo(() => {
-    return calculateItemPrice(quantity, unitPrice, promo);
+    return calculateItemPrice({
+      quantity,
+      unitPrice,
+      promo,
+    });
   }, [quantity, unitPrice, promo]);
 
   if (!item || !list) {
@@ -88,7 +86,7 @@ export default function ItemDetailScreen() {
       unit,
       quantity,
       unitPrice,
-      promo: toPromotion(promoId),
+      promo,
     });
 
     router.back();
@@ -183,6 +181,7 @@ export default function ItemDetailScreen() {
                   style={styles.input}
                   value={qty}
                   onChangeText={setQty}
+                  keyboardType="numeric"
                 />
               </View>
 
@@ -192,34 +191,37 @@ export default function ItemDetailScreen() {
                   style={styles.input}
                   value={price}
                   onChangeText={setPrice}
+                  keyboardType="numeric"
                 />
               </View>
             </View>
           </View>
 
-          {/* CARD PROMOS */}
+          {/* PROMOS */}
           <View style={styles.card}>
             <Text style={styles.label}>Ofertas</Text>
 
             <View style={styles.promoRow}>
               {promotions.map((option) => {
-                const promo = toPromotion(option.id);
+                const optionPromo = toPromotion(option.id);
 
-                const validation = validatePromotion(
-                  promo,
+                const test = calculateItemPrice({
                   quantity,
                   unitPrice,
-                );
+                  promo: optionPromo,
+                });
 
-                const selected = promoId === option.id;
+                const disabled = !!test.warning;
+                const selected = promo.type === optionPromo.type;
 
                 return (
                   <Pressable
                     key={option.id}
-                    onPress={() => setPromoId(option.id)}
+                    onPress={() => setPromo(optionPromo)}
                     style={[
                       styles.promoChip,
                       selected && styles.promoChipSelected,
+                      disabled && styles.promoChipDisabled,
                     ]}
                   >
                     <Text
@@ -239,7 +241,7 @@ export default function ItemDetailScreen() {
 
           {/* RESUMEN */}
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>Summary</Text>
+            <Text style={styles.summaryTitle}>Resumen</Text>
 
             <Text style={styles.summaryLine}>
               Base: {formatCurrency(priceResult.subtotal)}
@@ -248,6 +250,7 @@ export default function ItemDetailScreen() {
             <Text style={styles.summarySavings}>
               Ahorro: {formatCurrency(priceResult.savings)}
             </Text>
+
             <View style={styles.summaryTotalRow}>
               <Text style={styles.summaryTotalLabel}>Total</Text>
               <Text style={styles.summaryTotalValue}>
@@ -255,11 +258,11 @@ export default function ItemDetailScreen() {
               </Text>
             </View>
           </View>
+
           {priceResult.warning && (
-            <Text style={{ color: "#f59e0b", marginTop: 6 }}>
-              {priceResult.warning}
-            </Text>
+            <Text style={styles.warning}>{priceResult.warning}</Text>
           )}
+
           {/* BOTONES */}
           <View style={styles.actions}>
             <Pressable style={styles.saveButton} onPress={saveItem}>
@@ -280,7 +283,6 @@ export default function ItemDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f2f2f7" },
-
   content: { padding: 16, gap: 16 },
 
   header: {
@@ -295,9 +297,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 16,
     padding: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
     elevation: 2,
   },
 
@@ -328,159 +327,84 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  unitRow: {
-    flexDirection: "row",
-    gap: 10,
+  unitRow: { flexDirection: "row", gap: 10 },
+
+  pill: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: "#f3f4f6",
   },
 
-  unitButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: "#f0f0f0",
-  },
+  pillActive: { backgroundColor: "#111" },
 
-  unitActive: { backgroundColor: "#111" },
-
-  unitText: { color: "#333" },
-  unitTextActive: { color: "#fff" },
+  pillText: { color: "#6b7280" },
+  pillTextActive: { color: "#fff" },
 
   promoRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
 
-  chip: {
-    paddingHorizontal: 12,
+  promoChip: {
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
     backgroundColor: "#f1f1f3",
   },
 
-  chipActive: { backgroundColor: "#111" },
-  chipDisabled: { opacity: 0.35 },
+  promoChipSelected: { backgroundColor: "#111" },
+  promoChipDisabled: { opacity: 0.35 },
 
-  chipText: { color: "#333" },
-  chipTextActive: { color: "#fff" },
-  chipTextDisabled: { color: "#999" },
-
-  actions: {
-    marginTop: 16,
-    gap: 12, // 🔥 clave: separación vertical limpia
-  },
+  promoChipText: { color: "#374151" },
+  promoChipTextSelected: { color: "#fff" },
+  promoChipTextDisabled: { color: "#9ca3af" },
 
   summaryCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
     padding: 16,
-    borderWidth: 1,
-    borderColor: "#eee",
   },
-  summarySavings: {
-    fontSize: 14,
-    color: "#2ecc71", // verde éxito
-    fontWeight: "600",
-  },
+
   summaryTitle: { fontWeight: "700", fontSize: 17, marginBottom: 8 },
   summaryLine: { color: "#555" },
-  summaryTotal: { fontSize: 20, fontWeight: "800", marginTop: 6 },
+
+  summarySavings: {
+    color: "#2ecc71",
+    fontWeight: "600",
+  },
+
   summaryTotalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
     marginTop: 10,
-  },
-
-  summaryTotalLabel: {
-    fontSize: 16,
-    fontWeight: "600",
   },
 
   summaryTotalValue: {
     fontSize: 22,
     fontWeight: "800",
   },
-  saveButton: {
-    backgroundColor: "#2f6df6",
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
+
+  warning: {
+    color: "#f59e0b",
+    marginTop: 6,
   },
 
-  saveText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+  actions: { marginTop: 16, gap: 12 },
+
+  saveButton: {
+    backgroundColor: "#2f6df6",
+    padding: 16,
+    borderRadius: 14,
+    alignItems: "center",
   },
+
+  saveText: { color: "#fff", fontWeight: "600" },
 
   deleteButton: {
     borderWidth: 1.5,
     borderColor: "#ef4444",
-    paddingVertical: 16,
+    padding: 16,
     borderRadius: 14,
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#fff",
   },
 
-  deleteText: {
-    color: "#ef4444",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-
-  pill: {
-    paddingHorizontal: 20,
-    paddingVertical: 10, // 🔥 antes 6–8 → ahora más cómodo
-    borderRadius: 14,
-    backgroundColor: "#f3f4f6",
-    minHeight: 40, // 👈 asegura área táctil mínima
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  pillActive: {
-    backgroundColor: "#111",
-  },
-
-  pillText: {
-    fontSize: 13,
-    color: "#6b7280",
-    fontWeight: "500",
-  },
-
-  pillTextActive: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  promoChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "#f1f1f3",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-
-  promoChipSelected: {
-    backgroundColor: "#111",
-    borderColor: "#111",
-  },
-
-  promoChipDisabled: {
-    opacity: 0.35,
-  },
-
-  promoChipText: {
-    fontSize: 13,
-    color: "#374151",
-    fontWeight: "500",
-  },
-
-  promoChipTextSelected: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-
-  promoChipTextDisabled: {
-    color: "#9ca3af",
-  },
+  deleteText: { color: "#ef4444", fontWeight: "600" },
 });

@@ -1,165 +1,215 @@
+import { formatCurrency } from "@/src/utils/currency";
+import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import type { Item } from "@/src/types/Item";
-import { formatCurrency } from "@/src/utils/currency/formatCurrency";
-import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
-import { toPromotion } from "@/src/utils/pricing/promotionMapper";
-
 type Props = {
-  item: Item;
-  listId: string;
-  onToggle: () => void;
+  item: {
+    id: string;
+    name: string;
+    quantity?: number;
+    unitPrice?: number;
+    promo?: {
+      type: string;
+      value?: number;
+      buy?: number;
+      pay?: number;
+    };
+    checked?: boolean;
+  };
+  onPress: () => void;
+  onToggle?: () => void;
 };
 
-export default function ItemRow({ item, listId, onToggle }: Props) {
-  const router = useRouter();
+export default function ItemRow({ item, onPress, onToggle }: Props) {
+  const quantity = Number.isFinite(item.quantity) ? Number(item.quantity) : 0;
+  const unitPrice = Number.isFinite(item.unitPrice)
+    ? Number(item.unitPrice)
+    : 0;
 
-  // 🔑 promo desde promoId
-  const promo = toPromotion(item.promoId ?? "none");
-
-  // 🔑 cálculo robusto
-  const priceInfo = calculateItemPrice({
-    quantity: item.quantity ?? 0,
-    unitPrice: item.unitPrice ?? 0,
-    promo,
-  });
-
-  const handleOpenDetail = () => {
-    router.push({
-      pathname: "/item/[id]",
-      params: { id: item.id, listId },
+  const price = useMemo(() => {
+    return calculateItemPrice({
+      quantity,
+      unitPrice,
+      promo: item.promo,
     });
-  };
+  }, [quantity, unitPrice, item.promo]);
+
+  const total = Number.isFinite(price.total) ? price.total : 0;
+  const savings = Number.isFinite(price.savings) ? price.savings : 0;
+
+  const promoLabel = useMemo(() => {
+    if (!item.promo) return null;
+
+    switch (item.promo.type) {
+      case "2x1":
+        return "2x1";
+      case "3x2":
+        return "3x2";
+      case "percent":
+        return `-${item.promo.value ?? 0}%`;
+      case "discount":
+        return `-${item.promo.value ?? 0}€`;
+      case "multi":
+        return `${item.promo.buy ?? 0}x${item.promo.pay ?? 0}`;
+      default:
+        return null;
+    }
+  }, [item.promo]);
 
   return (
-    <View style={[styles.container, !item.checked && styles.unchecked]}>
-      {/* LEFT */}
-      <Pressable style={styles.left} onPress={onToggle}>
-        <Ionicons
-          name={item.checked ? "checkbox" : "square-outline"}
-          size={22}
-          color={item.checked ? "#22c55e" : "#64748b"}
-        />
+    <Pressable
+      style={[styles.card, item.checked === false && styles.cardUnchecked]}
+      onPress={onPress}
+    >
+      <View style={styles.row}>
+        <View style={styles.left}>
+          <View style={styles.nameRow}>
+            <Text
+              style={[
+                styles.name,
+                item.checked === false && styles.nameUnchecked,
+              ]}
+              numberOfLines={1}
+            >
+              {item.name}
+            </Text>
 
-        <View style={styles.info}>
-          <View style={styles.rowTop}>
-            <Text style={styles.name}>{item.name}</Text>
-
-            {/* PROMO BADGE */}
-            {promo.type !== "none" && (
-              <View style={styles.promoBadge}>
-                <Text style={styles.promoText}>{priceInfo.promoLabel}</Text>
+            {promoLabel && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{promoLabel}</Text>
               </View>
             )}
           </View>
 
-          {/* SUBLINE */}
           <Text style={styles.meta}>
-            {item.quantity ?? 0} × {formatCurrency(item.unitPrice ?? 0)}
+            {quantity} × {formatCurrency(unitPrice)}
           </Text>
         </View>
-      </Pressable>
+        <View style={styles.right}>
+          {/* TOTAL */}
+          <View style={styles.priceBlock}>
+            {savings > 0 && (
+              <Text style={styles.savings}>
+                Ahorro {formatCurrency(savings)}
+              </Text>
+            )}
 
-      {/* RIGHT */}
-      <Pressable style={styles.right} onPress={handleOpenDetail}>
-        {/* Precio base tachado */}
-        {priceInfo.savings > 0 && (
-          <Text style={styles.basePrice}>
-            {formatCurrency(priceInfo.subtotal)}
-          </Text>
-        )}
+            <Text style={styles.total}>{formatCurrency(total)}</Text>
+          </View>
 
-        {/* Precio final */}
-        <Text style={styles.total}>{formatCurrency(priceInfo.total)}</Text>
+          {/* ACTIONS */}
+          <View style={styles.actions}>
+            {/* CHECK */}
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation(); // 🔴 clave
+                onToggle?.();
+              }}
+              style={[
+                styles.checkButton,
+                item.checked && styles.checkButtonActive,
+              ]}
+            >
+              <Ionicons
+                name="checkmark"
+                size={16}
+                color={item.checked ? "#fff" : "#9ca3af"}
+              />
+            </Pressable>
 
-        {/* Ahorro */}
-        {priceInfo.savings > 0 && (
-          <Text style={styles.savings}>
-            -{formatCurrency(priceInfo.savings)}
-          </Text>
-        )}
-
-        <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
-      </Pressable>
-    </View>
+            {/* CHEVRON */}
+            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+          </View>
+        </View>
+      </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  card: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#ececec",
+  },
+
+  cardUnchecked: {
+    opacity: 0.55,
+  },
+
+  row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 12,
-    borderBottomWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#fff",
-  },
-
-  unchecked: {
-    opacity: 0.5,
+    gap: 12,
   },
 
   left: {
-    flexDirection: "row",
-    alignItems: "center",
     flex: 1,
-    gap: 10,
+    minWidth: 0,
   },
 
-  info: {
-    flex: 1,
+  right: {
+    alignItems: "flex-end",
+    justifyContent: "center",
+    minWidth: 88,
   },
 
-  rowTop: {
+  nameRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: 6,
+    marginBottom: 4,
   },
 
   name: {
     fontSize: 16,
     fontWeight: "600",
+    color: "#111827",
+    flexShrink: 1,
+  },
+
+  nameUnchecked: {
+    color: "#6b7280",
+  },
+
+  badge: {
+    backgroundColor: "#fde68a",
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+
+  badgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#92400e",
   },
 
   meta: {
     fontSize: 13,
-    color: "#64748b",
-  },
-
-  promoBadge: {
-    backgroundColor: "#facc15",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-
-  promoText: {
-    fontSize: 11,
-    fontWeight: "600",
-  },
-
-  right: {
-    alignItems: "flex-end",
-    gap: 2,
-  },
-
-  basePrice: {
-    fontSize: 12,
-    color: "#94a3b8",
-    textDecorationLine: "line-through",
+    color: "#6b7280",
   },
 
   total: {
-    fontSize: 16,
+    fontSize: 22,
     fontWeight: "700",
+    color: "#111827",
+    textAlign: "right",
   },
 
   savings: {
     fontSize: 12,
-    color: "#22c55e",
     fontWeight: "600",
+    color: "#22c55e",
+    marginBottom: 2,
+    textAlign: "right",
   },
 });

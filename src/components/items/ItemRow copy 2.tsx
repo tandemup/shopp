@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Item } from "@/src/types/Item";
 import { formatCurrency } from "@/src/utils/currency/formatCurrency";
 import { calculateItemPrice } from "@/src/utils/pricing/PricingEngine";
-import { toPromotion } from "@/src/utils/pricing/promotionMapper";
+import { toPromotion } from "@/src/utils/pricing/PromotionMapper";
 
 type Props = {
   item: Item;
