@@ -110,20 +110,14 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  const toggleDarkMode = async () => {
-    const newMode = !isDarkMode;
-    setIsDarkMode(newMode);
+  const toggleDarkMode = () => {
+    setIsDarkMode((prev) => !prev);
   };
 
   const colors = useMemo(
     () => (isDarkMode ? darkColors : lightColors),
     [isDarkMode],
   );
-
-  // 🚫 Evita flash de tema incorrecto
-  if (!isLoaded) return null;
 
   return (
     <ThemeContext.Provider value={{ isDarkMode, toggleDarkMode, colors }}>

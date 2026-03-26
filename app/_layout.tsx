@@ -2,7 +2,7 @@ import DialogProvider from "@/src/components/ui/dialog/DialogProvider";
 import { ThemeProvider } from "@/src/hooks/useTheme";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { Stack } from "expo-router";
-import "leaflet/dist/leaflet.css";
+// import "leaflet/dist/leaflet.css";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ConfigProvider } from "@/src/context/ConfigContext";

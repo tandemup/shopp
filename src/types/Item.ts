@@ -1,5 +1,3 @@
-import type { Promotion } from "./Promotion";
-
 export type Item = {
   id: string;
   name: string;
@@ -7,6 +5,6 @@ export type Item = {
   unit?: string;
   quantity?: number;
   unitPrice?: number;
-  promo?: Promotion;
+  promoId: string;
   checked?: boolean;
 };

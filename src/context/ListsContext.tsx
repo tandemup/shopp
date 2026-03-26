@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useState } from "react";
 
-import { Item } from "@/src/types/Item";
-import { List } from "@/src/types/List";
+import type { Item } from "@/src/types/Item";
+import type { List } from "@/src/types/List";
 import { generateId } from "@/src/utils/generateId";
 
 /* -------------------------------------------------
@@ -45,20 +45,6 @@ const ListsContext = createContext<ListsContextType | null>(null);
 -------------------------------------------------- */
 export const ListsProvider = ({ children }: { children: React.ReactNode }) => {
   const [lists, setLists] = useState<List[]>([]);
-
-  /* ---------------------------------------------
-     LOAD (persistencia)
-  ---------------------------------------------- */
-  useEffect(() => {
-    const load = async () => {
-      try {
-      } catch (e) {
-        console.warn("Error loading lists", e);
-      }
-    };
-
-    load();
-  }, []);
 
   /* ---------------------------------------------
      Lists

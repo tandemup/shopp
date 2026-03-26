@@ -16,7 +16,7 @@ function makeNewItem(name: string): Item {
     unit: "u",
     quantity: 1,
     unitPrice: 0,
-    promo: undefined,
+    promoId: "none",
     checked: true,
   };
 }
