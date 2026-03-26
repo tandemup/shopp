@@ -1,34 +1,83 @@
-import React, { createContext, useContext, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { createContext, useContext, useEffect, useState } from "react";
 
 import { Item } from "@/src/types/Item";
-import { List } from "@/src/types/list";
-import { Promotions } from "@/src/types/Promotion";
+import { List } from "@/src/types/List";
 import { generateId } from "@/src/utils/generateId";
 
+const STORAGE_KEY = "shopp_lists_v2";
+
+/* -------------------------------------------------
+   Helpers (ANTI-NaN)
+-------------------------------------------------- */
+const toNumber = (v: any, fallback: number) => {
+  const n = typeof v === "number" ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+/* -------------------------------------------------
+   Types
+-------------------------------------------------- */
 type ListsContextType = {
   lists: List[];
 
+  // Lists
   addList: (name: string) => void;
   deleteList: (id: string) => void;
   archiveList: (id: string) => void;
-  updateList: (id: string, name: string) => void;
+  updateList: (id: string, updates: Partial<List>) => void;
   getList: (id: string) => List | null;
 
+  // Items
   addItem: (listId: string, item: Partial<Item>) => void;
   updateItem: (listId: string, itemId: string, updates: Partial<Item>) => void;
   removeItem: (listId: string, itemId: string) => void;
   toggleItem: (listId: string, itemId: string) => void;
 
+  // Helpers
   findItemById: (itemId: string) => { list: List; item: Item } | null;
 
+  // Stores
   assignStoreToList: (listId: string, storeId: string) => void;
 };
 
 const ListsContext = createContext<ListsContextType | null>(null);
 
+/* -------------------------------------------------
+   Provider
+-------------------------------------------------- */
 export const ListsProvider = ({ children }: { children: React.ReactNode }) => {
   const [lists, setLists] = useState<List[]>([]);
 
+  /* ---------------------------------------------
+     LOAD (persistencia)
+  ---------------------------------------------- */
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        setLists(JSON.parse(raw));
+      } catch (e) {
+        console.warn("Error loading lists", e);
+      }
+    };
+
+    load();
+  }, []);
+
+  /* ---------------------------------------------
+     SAVE (persistencia)
+  ---------------------------------------------- */
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(lists)).catch((e) =>
+      console.warn("Error saving lists", e),
+    );
+  }, [lists]);
+
+  /* ---------------------------------------------
+     Lists
+  ---------------------------------------------- */
   const addList = (name: string) => {
     const newList: List = {
       id: generateId(),
@@ -36,6 +85,7 @@ export const ListsProvider = ({ children }: { children: React.ReactNode }) => {
       createdAt: Date.now(),
       currency: "EUR",
       items: [],
+      archived: false,
     };
 
     setLists((prev) => [newList, ...prev]);
@@ -47,18 +97,32 @@ export const ListsProvider = ({ children }: { children: React.ReactNode }) => {
 
   const archiveList = (id: string) => {
     setLists((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, archived: true } : l)),
+      prev.map((l) =>
+        l.id === id
+          ? {
+              ...l,
+              archived: true,
+              archivedAt: Date.now(),
+              items: l.items.filter((i) => i.checked),
+            }
+          : l,
+      ),
     );
   };
 
-  const updateList = (id: string, name: string) => {
-    setLists((prev) => prev.map((l) => (l.id === id ? { ...l, name } : l)));
+  const updateList = (id: string, updates: Partial<List>) => {
+    setLists((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, ...updates } : l)),
+    );
   };
 
   const getList = (id: string): List | null => {
     return lists.find((l) => l.id === id) || null;
   };
 
+  /* ---------------------------------------------
+     Items
+  ---------------------------------------------- */
   const addItem = (listId: string, item: Partial<Item>) => {
     setLists((prev) =>
       prev.map((list) => {
@@ -67,11 +131,11 @@ export const ListsProvider = ({ children }: { children: React.ReactNode }) => {
         const newItem: Item = {
           id: generateId(),
           name: item.name ?? "Nuevo producto",
-          quantity: item.quantity ?? 1,
+          quantity: toNumber(item.quantity, 1),
           unit: item.unit ?? "u",
-          unitPrice: item.unitPrice ?? 0,
+          unitPrice: toNumber(item.unitPrice, 0),
           checked: item.checked ?? true,
-          promo: item.promo ?? Promotions.none(),
+          promoId: item.promoId ?? "none", // 🔑 clave v2
           barcode: item.barcode ?? "",
         };
 
@@ -99,6 +163,8 @@ export const ListsProvider = ({ children }: { children: React.ReactNode }) => {
               ? {
                   ...item,
                   ...updates,
+                  quantity: toNumber(updates.quantity ?? item.quantity, 1),
+                  unitPrice: toNumber(updates.unitPrice ?? item.unitPrice, 0),
                 }
               : item,
           ),
@@ -135,6 +201,9 @@ export const ListsProvider = ({ children }: { children: React.ReactNode }) => {
     );
   };
 
+  /* ---------------------------------------------
+     Helpers
+  ---------------------------------------------- */
   const findItemById = (itemId: string) => {
     for (const list of lists) {
       const item = list.items.find((i) => i.id === itemId);
@@ -143,6 +212,9 @@ export const ListsProvider = ({ children }: { children: React.ReactNode }) => {
     return null;
   };
 
+  /* ---------------------------------------------
+     Stores
+  ---------------------------------------------- */
   const assignStoreToList = (listId: string, storeId: string) => {
     setLists((prev) =>
       prev.map((list) => (list.id === listId ? { ...list, storeId } : list)),
@@ -171,6 +243,9 @@ export const ListsProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
+/* -------------------------------------------------
+   Hook
+-------------------------------------------------- */
 export const useLists = () => {
   const ctx = useContext(ListsContext);
 

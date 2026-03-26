@@ -45,6 +45,10 @@ export default function SearchCombinedBar({ onAdd }: Props) {
           value={query}
           onChangeText={setQuery}
           returnKeyType="done"
+          autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
+          autoComplete="off"
           onSubmitEditing={() => {
             if (query.trim().length === 0) return;
             addProduct(query.trim());

@@ -34,7 +34,6 @@ export default function TabsLayout() {
         }}
         listeners={{
           tabPress: () => {
-            // 🔥 reset SIEMPRE a la raíz
             router.replace("/storefront");
           },
         }}
