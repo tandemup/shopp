@@ -51,26 +51,25 @@ export default function ListCard({ list, onPress, onMenu }: Props) {
      Totales optimizados
   --------------------------------------------- */
 
-  const { total, savings } = useMemo(() => {
-    let total = 0;
-    let savings = 0;
+  const { total, savings, itemCount } = useMemo(() => {
+    return list.items.reduce(
+      (acc, item) => {
+        if (!item.checked) return acc;
 
-    list.items.forEach((item) => {
-      const price = calculateItemPrice(item);
-      total += price.finalTotal;
-      savings += price.savings;
-    });
+        const price = calculateItemPrice(item);
 
-    return {
-      total: Math.round(total * 100) / 100,
-      savings: Math.round(savings * 100) / 100,
-    };
+        return {
+          total: acc.total + (isFinite(price.total) ? price.total : 0),
+          savings: acc.savings + (isFinite(price.savings) ? price.savings : 0),
+          itemCount: acc.itemCount + 1,
+        };
+      },
+      { total: 0, savings: 0, itemCount: 0 },
+    );
   }, [list.items]);
 
   const formattedTotal = formatCurrency(total, currency);
   const formattedSavings = formatCurrency(savings, currency);
-
-  const itemCount = list.items.length;
   const hasSavings = savings > 0;
 
   /* --------------------------------------------

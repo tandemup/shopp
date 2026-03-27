@@ -56,6 +56,7 @@ export default function ShoppingListsScreen() {
       name: newName.trim(),
     });
   };
+
   /* -------------------------------------------------
      Menú contextual
   -------------------------------------------------- */
