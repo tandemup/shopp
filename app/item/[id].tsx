@@ -1,7 +1,7 @@
 import rawPromotions from "@/data/promotions.json";
 import { alert, confirm } from "@/src/components/ui/dialog/dialog";
 import { useLists } from "@/src/context/ListsContext";
-import type { PromotionOption } from "@/src/types/Promotion";
+import type { Promotion, PromotionOption } from "@/src/types/Promotion";
 import { formatCurrency } from "@/src/utils/currency";
 import { calculateItemPrice } from "@/src/utils/pricing/calculateItemPrice";
 import { validatePromotion } from "@/src/utils/pricing/validatePromotion";
@@ -131,6 +131,8 @@ export default function ItemDetailScreen() {
     }
   };
 
+  const promoValidation = validatePromotion(promo, quantity, unitPrice);
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -241,33 +243,29 @@ export default function ItemDetailScreen() {
               </View>
             </View>
           </View>
-
           <View style={styles.card}>
-            <Text style={styles.label}>Ofertas</Text>
+            <Text style={styles.sectionTitle}>Ofertas</Text>
 
-            <View style={styles.promoRow}>
+            <View style={styles.promoWrap}>
               {promotions.map((option) => {
-                const optionPromo = option;
                 const validation = validatePromotion(
-                  optionPromo,
+                  option.promo,
                   quantity,
                   unitPrice,
                 );
 
                 const disabled = !validation.valid;
-                const selected = isSamePromotion(promo, optionPromo);
+                const selected = isSamePromotion(promo, option.promo);
 
                 return (
                   <Pressable
-                    key={option.label}
-                    onPress={() => {
-                      if (disabled) return;
-                      setPromo(optionPromo);
-                    }}
+                    key={option.id}
+                    onPress={() => setPromo(option.promo)}
+                    //disabled={disabled}
                     style={[
                       styles.promoChip,
                       selected && styles.promoChipSelected,
-                      disabled && styles.promoChipDisabled,
+                      !validation.valid && styles.promoChipDisabled,
                     ]}
                   >
                     <Text
@@ -283,6 +281,14 @@ export default function ItemDetailScreen() {
                 );
               })}
             </View>
+
+            {!promoValidation.valid && (
+              <View style={styles.offerWarningBox}>
+                <Text style={styles.offerWarning}>
+                  {promoValidation.message ?? "Oferta no válida"}
+                </Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.summaryCard}>
@@ -425,7 +431,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#111827",
   },
-
+  promoWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 8,
+  },
   row: {
     flexDirection: "row",
     gap: 10,
@@ -451,7 +462,20 @@ const styles = StyleSheet.create({
     gap: 10,
     flexWrap: "wrap",
   },
-
+  offerWarningBox: {
+    marginTop: 10,
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  offerWarning: {
+    fontSize: 12,
+    color: "#ea580c",
+    fontWeight: "600",
+  },
   pill: {
     minWidth: 40,
     paddingHorizontal: 14,
@@ -493,8 +517,8 @@ const styles = StyleSheet.create({
   },
 
   promoChipDisabled: {
-    backgroundColor: "#e5e7eb",
-    opacity: 0.55,
+    backgroundColor: "#f3f4f6",
+    opacity: 0.6,
   },
 
   promoChipText: {

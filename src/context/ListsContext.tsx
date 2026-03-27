@@ -106,7 +106,7 @@ export const ListsProvider = ({ children }: { children: React.ReactNode }) => {
           unit: item.unit ?? "u",
           unitPrice: toNumber(item.unitPrice, 0),
           checked: item.checked ?? true,
-          promoId: item.promoId ?? "none", // 🔑 clave v2
+          promo: item.promo ?? "none", // 🔑 clave v2
           barcode: item.barcode ?? "",
         };
 
