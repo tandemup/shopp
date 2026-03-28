@@ -3,8 +3,10 @@ import { alert, confirm } from "@/src/components/ui/dialog/dialog";
 import { useLists } from "@/src/context/ListsContext";
 import type { Promotion, PromotionOption } from "@/src/types/Promotion";
 import { formatCurrency } from "@/src/utils/currency";
-import { calculateItemPrice } from "@/src/utils/pricing/calculateItemPrice";
-import { validatePromotion } from "@/src/utils/pricing/validatePromotion";
+import {
+  calculateItemPrice,
+  validatePromotion,
+} from "@/src/utils/pricing/pricing";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -87,7 +89,7 @@ export default function ItemDetailScreen() {
   const unitPrice = parseNumber(price, 0);
 
   const priceResult = useMemo(() => {
-    return calculateItemPrice(quantity, unitPrice, promo);
+    return calculateItemPrice({ quantity, unitPrice, promo });
   }, [quantity, unitPrice, promo]);
 
   if (!item || !list) {
@@ -260,8 +262,11 @@ export default function ItemDetailScreen() {
                 return (
                   <Pressable
                     key={option.id}
-                    onPress={() => setPromo(option.promo)}
-                    //disabled={disabled}
+                    onPress={() => {
+                      if (!validation.valid) return;
+                      setPromo(option.promo);
+                    }}
+                    disabled={disabled}
                     style={[
                       styles.promoChip,
                       selected && styles.promoChipSelected,
@@ -373,7 +378,12 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
   },
-
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 6,
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",

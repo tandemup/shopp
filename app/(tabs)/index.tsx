@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import ListCard from "@/src/components/lists/ListCard";
 import { actionSheet } from "@/src/components/ui/dialog/dialog";
+//import { promptDialog } from "@/src/components/ui/dialog/dialog";
 import { useLists } from "@/src/context/ListsContext";
 
 export default function ShoppingListsScreen() {

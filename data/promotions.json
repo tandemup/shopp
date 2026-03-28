@@ -2,12 +2,10 @@
   { "id": "none", "label": "Sin oferta", "type": "none" },
   { "id": "2x1", "label": "2x1", "type": "2x1" },
   { "id": "3x2", "label": "3x2", "type": "3x2" },
-  { "id": "4x3", "label": "4x3", "type": "4x3" },
+  { "id": "m3x2", "label": "3x2 custom", "type": "multi", "but": 3, "pay": 2 },
 
   { "id": "p10", "label": "-10%", "type": "percent", "value": 10 },
   { "id": "p20", "label": "-20%", "type": "percent", "value": 20 },
 
-  { "id": "d5", "label": "-5€", "type": "discount", "value": 5 },
-
-  { "id": "m3x2", "label": "3x2 custom", "type": "multi", "buy": 3, "pay": 2 }
+  { "id": "d5", "label": "-5€", "type": "discount", "value": 5 }
 ]

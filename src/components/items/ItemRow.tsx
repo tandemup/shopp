@@ -5,7 +5,7 @@ import type { Item } from "@/src/types/Item";
 import type { Promotion } from "@/src/types/Promotion";
 
 import { formatCurrency } from "@/src/utils/currency";
-import { calculateItemPrice } from "@/src/utils/pricing/calculateItemPrice";
+import { calculateItemPrice } from "@/src/utils/pricing/pricing";
 
 type Props = {
   item: Item;
@@ -19,8 +19,6 @@ function getPromoLabel(promo: Promotion): string {
       return "2x1";
     case "3x2":
       return "3x2";
-    case "4x3":
-      return "4x3";
     case "percent":
       return `-${promo.value}%`;
     case "discount":
@@ -33,13 +31,15 @@ function getPromoLabel(promo: Promotion): string {
 }
 
 export default function ItemRow({ item, onToggle, onPress }: Props) {
+  //const quantity = Number.isFinite(item.quantity) ? item.quantity : 1;
+  //const unitPrice = Number.isFinite(item.unitPrice) ? item.unitPrice : 0;
   const quantity = item.quantity ?? 0;
   const unitPrice = item.unitPrice ?? 0;
+  const unit = item.unit ?? "u";
+
   const promo = (item.promo ?? { type: "none" }) as Promotion;
+  const price = calculateItemPrice({ quantity, unitPrice, promo });
 
-  const price = calculateItemPrice(quantity, unitPrice, promo);
-
-  // 🔑 modelo correcto
   const checked = item.checked ?? true;
 
   return (
@@ -65,9 +65,10 @@ export default function ItemRow({ item, onToggle, onPress }: Props) {
               </View>
             )}
 
-            {/* qty x price */}
             <Text style={styles.meta}>
-              {quantity} x {formatCurrency(unitPrice)}
+              {quantity} {unit} × {formatCurrency(unitPrice)}
+              {"/"}
+              {unit}
             </Text>
           </View>
         </View>
