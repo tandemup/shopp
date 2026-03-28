@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 // 👉 IMPORTA estas funciones (las que ya definimos)
 
+import { isSamePromotion } from "@/src/utils/pricing/isSamePromotion";
 import { normalizePromotion } from "@/src/utils/pricing/pricing";
 
 type Props = {
@@ -22,23 +23,6 @@ const PROMOTION_OPTIONS: Promotion[] = [
   { type: "discount", value: 5 },
 ];
 
-const promotionComparators = {
-  none: () => true,
-  "2x1": () => true,
-  "3x2": () => true,
-  percent: (a, b) => a.value === b.value,
-  discount: (a, b) => a.value === b.value,
-  multi: (a, b) => a.buy === b.buy && a.pay === b.pay,
-} satisfies Record<Promotion["type"], (a: any, b: any) => boolean>;
-
-export const isSamePromotion = (a?: Promotion, b?: Promotion): boolean => {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  if (a.type !== b.type) return false;
-
-  return promotionComparators[a.type](a, b);
-};
-
 export default function PromotionSelector({ value, onChange }: Props) {
   // ✅ normalización estable
   const promo = useMemo(() => normalizePromotion(value), [value]);
@@ -49,18 +33,19 @@ export default function PromotionSelector({ value, onChange }: Props) {
 
       <View style={styles.grid}>
         {PROMOTION_OPTIONS.map((option) => {
-          const selected = isSamePromotion(promo, option);
+          const normalized = normalizePromotion(option);
+          const selected = isSamePromotion(promo, normalized);
 
           return (
             <Pressable
-              key={getKey(option)}
-              onPress={() => onChange(normalizePromotion(option))}
+              key={getKey(normalized)}
+              onPress={() => onChange(normalized)}
               style={[styles.chip, selected && styles.chipSelected]}
             >
               <Text
                 style={[styles.chipText, selected && styles.chipTextSelected]}
               >
-                {getLabel(option)}
+                {getLabel(normalized)}
               </Text>
             </Pressable>
           );
@@ -73,13 +58,18 @@ export default function PromotionSelector({ value, onChange }: Props) {
 // 🔑 key estable
 const getKey = (p: Promotion) => {
   switch (p.type) {
+    case "none":
+      return "none";
+    case "2x1":
+      return "2x1";
+    case "3x2":
+      return "3x2";
     case "percent":
+      return `percent-${p.value}`;
     case "discount":
-      return `${p.type}-${p.value}`;
+      return `discount-${p.value}`;
     case "multi":
-      return `${p.type}-${p.buy}x${p.pay}`;
-    default:
-      return p.type;
+      return `multi-${p.buy}x${p.pay}`;
   }
 };
 

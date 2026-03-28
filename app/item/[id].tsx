@@ -1,11 +1,5 @@
-import PROMOTIONS from "@/data/promotions.json";
 import UNITS from "@/data/units.json";
-
-import {
-  isSamePromotion,
-  PromotionSelector,
-} from "@/src/components/PromotionSelector";
-
+import PromotionSelector from "@/src/components/PromotionSelector";
 import { alert, confirm } from "@/src/components/ui/dialog/dialog";
 import { useLists } from "@/src/context/ListsContext";
 import type { Promotion } from "@/src/types/Promotion";
@@ -29,18 +23,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-
-const PROMOTION_OPTIONS: Promotion[] = [
-  { type: "none" },
-  { type: "2x1" },
-  { type: "3x2" },
-  { type: "percent", value: 10 },
-  { type: "discount", value: 1 },
-  { type: "multi", buy: 3, pay: 2 },
-];
-
-//const promotions = rawPromotions as PromotionOption[];
-//const UNITS = ["u", "kg", "g", "l"] as const;
 
 const parseNumber = (v: string, fallback = 0) => {
   const n = Number((v || "").replace(",", "."));
@@ -71,14 +53,13 @@ export default function ItemDetailScreen() {
     setUnit(item.unit ?? "u");
     setQty(String(item.quantity ?? 1));
     setPrice(String(item.unitPrice ?? 0));
-
-    // 🔐 SIEMPRE normalizado
     setPromo(normalizePromotion(item.promo));
-  }, [item?.id]);
+  }, [item]); // 🔥 CAMBIO CLAVE
 
   const quantity = parseNumber(qty, 1);
   const unitPrice = parseNumber(price, 0);
   const safePromo = useMemo(() => normalizePromotion(promo), [promo]);
+  const promoNormalized = normalizePromotion(promo);
 
   const priceResult = useMemo(() => {
     return calculateItemPrice({ quantity, unitPrice, promo: safePromo });
@@ -125,7 +106,7 @@ export default function ItemDetailScreen() {
     }
   };
 
-  const Header = ({ title }) => {
+  const Header = ({ title }: { title: string }) => {
     return (
       <View style={styles.header}>
         <Pressable style={styles.headerIcon} onPress={() => router.back()}>
@@ -139,7 +120,13 @@ export default function ItemDetailScreen() {
     );
   };
 
-  const CardNombreBarcode = ({ nombre, barcode }) => {
+  const CardNombreBarcode = ({
+    nombre,
+    barcode,
+  }: {
+    nombre: string;
+    barcode: string;
+  }) => {
     return (
       <View style={styles.card}>
         <Text style={styles.label}>{nombre}</Text>
@@ -178,7 +165,15 @@ export default function ItemDetailScreen() {
     );
   };
 
-  const Unidades = ({ qty, price, unit }) => {
+  const Unidades = ({
+    qty,
+    price,
+    unit,
+  }: {
+    qty: string;
+    price: string;
+    unit: string;
+  }) => {
     return (
       <View style={styles.card}>
         <Text style={styles.label}>Unidad</Text>
@@ -232,60 +227,15 @@ export default function ItemDetailScreen() {
     );
   };
 
-  const Promotions = ({ qty, price, safePromo }) => {
-    return (
-      <View style={styles.card}>
-        <Text style={styles.label}>Ofertas</Text>
-        <View style={styles.promoWrap}>
-          {PROMOTIONS.map((option) => {
-            const validation = validatePromotion(
-              option.promo,
-              quantity,
-              unitPrice,
-            );
-            const disabled = !validation.valid;
-            const selected = isSamePromotion(safePromo, option.promo);
-
-            return (
-              <Pressable
-                key={option.id}
-                onPress={() => {
-                  if (disabled) return;
-                  setPromo(option.promo);
-                }}
-                disabled={disabled}
-                style={[
-                  styles.promoChip,
-                  selected && styles.promoChipSelected,
-                  disabled && styles.promoChipDisabled,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.promoChipText,
-                    selected && styles.promoChipTextSelected,
-                    disabled && styles.promoChipTextDisabled,
-                  ]}
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {!promoValidation.valid && (
-          <View style={styles.offerWarningBox}>
-            <Text style={styles.offerWarning}>
-              {promoValidation.message ?? "Oferta no válida"}
-            </Text>
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  const Summary = ({ base, savings, total }) => {
+  const Summary = ({
+    base,
+    savings,
+    total,
+  }: {
+    base: number;
+    savings: number;
+    total: number;
+  }) => {
     return (
       <View style={styles.summaryCard}>
         <Text style={styles.summaryTitle}>Resumen</Text>
