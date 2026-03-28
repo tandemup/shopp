@@ -1,7 +1,7 @@
-import rawPromotions from "@/data/promotions.json";
+import UNITS from "@/data/units.json";
 import { alert, confirm } from "@/src/components/ui/dialog/dialog";
 import { useLists } from "@/src/context/ListsContext";
-import type { Promotion, PromotionOption } from "@/src/types/Promotion";
+import type { Promotion } from "@/src/types/Promotion";
 import { formatCurrency } from "@/src/utils/currency";
 import {
   calculateItemPrice,
@@ -23,8 +23,8 @@ import {
   View,
 } from "react-native";
 
-const promotions = rawPromotions as PromotionOption[];
-const UNITS = ["u", "kg", "g", "l"] as const;
+//const promotions = rawPromotions as PromotionOption[];
+//const UNITS = ["u", "kg", "g", "l"] as const;
 
 const parseNumber = (v: string, fallback = 0) => {
   const n = Number((v || "").replace(",", "."));
