@@ -36,6 +36,7 @@ export const normalizePromotion = (p?: Promotion): Promotion => {
       };
   }
 };
+
 export function toPromotion(id?: string | null): Promotion {
   if (!id || id === "none") {
     return { type: "none" };

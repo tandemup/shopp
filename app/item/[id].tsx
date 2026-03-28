@@ -1,6 +1,11 @@
 import PROMOTIONS from "@/data/promotions.json";
 import UNITS from "@/data/units.json";
 
+import {
+  isSamePromotion,
+  PromotionSelector,
+} from "@/src/components/PromotionSelector";
+
 import { alert, confirm } from "@/src/components/ui/dialog/dialog";
 import { useLists } from "@/src/context/ListsContext";
 import type { Promotion } from "@/src/types/Promotion";
@@ -10,7 +15,6 @@ import {
   normalizePromotion,
   validatePromotion,
 } from "@/src/utils/pricing/pricing";
-
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
@@ -25,6 +29,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+
 const PROMOTION_OPTIONS: Promotion[] = [
   { type: "none" },
   { type: "2x1" },
@@ -40,23 +45,6 @@ const PROMOTION_OPTIONS: Promotion[] = [
 const parseNumber = (v: string, fallback = 0) => {
   const n = Number((v || "").replace(",", "."));
   return Number.isFinite(n) ? n : fallback;
-};
-
-const promotionComparators = {
-  none: () => true,
-  "2x1": () => true,
-  "3x2": () => true,
-  percent: (a, b) => a.value === b.value,
-  discount: (a, b) => a.value === b.value,
-  multi: (a, b) => a.buy === b.buy && a.pay === b.pay,
-} satisfies Record<Promotion["type"], (a: any, b: any) => boolean>;
-
-const isSamePromotion = (a?: Promotion, b?: Promotion): boolean => {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  if (a.type !== b.type) return false;
-
-  return promotionComparators[a.type](a, b);
 };
 
 export default function ItemDetailScreen() {
@@ -83,8 +71,10 @@ export default function ItemDetailScreen() {
     setUnit(item.unit ?? "u");
     setQty(String(item.quantity ?? 1));
     setPrice(String(item.unitPrice ?? 0));
-    setPromo(item.promo ?? { type: "none" });
-  }, [item]);
+
+    // 🔐 SIEMPRE normalizado
+    setPromo(normalizePromotion(item.promo));
+  }, [item?.id]);
 
   const quantity = parseNumber(qty, 1);
   const unitPrice = parseNumber(price, 0);
@@ -117,7 +107,7 @@ export default function ItemDetailScreen() {
       unit,
       quantity,
       unitPrice,
-      promo,
+      promo: normalizePromotion(promo),
     });
 
     router.back();
@@ -241,6 +231,7 @@ export default function ItemDetailScreen() {
       </View>
     );
   };
+
   const Promotions = ({ qty, price, safePromo }) => {
     return (
       <View style={styles.card}>
@@ -253,7 +244,7 @@ export default function ItemDetailScreen() {
               unitPrice,
             );
             const disabled = !validation.valid;
-            const selected = isSamePromotion(promo, option.promo);
+            const selected = isSamePromotion(safePromo, option.promo);
 
             return (
               <Pressable
@@ -329,7 +320,9 @@ export default function ItemDetailScreen() {
           <Header title="Editar producto" />
           <CardNombreBarcode nombre={"Nombre"} barcode={""} />
           <Unidades qty={qty} price={price} unit={unit} />
-          <Promotions qty={qty} price={price} safePromo={safePromo} />
+
+          <PromotionSelector value={promo} onChange={setPromo} />
+          {/*<Promotions qty={qty} price={price} safePromo={safePromo} />*/}
           <Summary
             base={priceResult.baseTotal}
             savings={priceResult.savings}
