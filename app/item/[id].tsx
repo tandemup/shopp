@@ -1,3 +1,4 @@
+import PROMOTIONS from "@/data/promotions.json";
 import UNITS from "@/data/units.json";
 import { alert, confirm } from "@/src/components/ui/dialog/dialog";
 import { useLists } from "@/src/context/ListsContext";
@@ -5,6 +6,7 @@ import type { Promotion } from "@/src/types/Promotion";
 import { formatCurrency } from "@/src/utils/currency";
 import {
   calculateItemPrice,
+  normalizePromotion,
   validatePromotion,
 } from "@/src/utils/pricing/pricing";
 
@@ -87,10 +89,11 @@ export default function ItemDetailScreen() {
 
   const quantity = parseNumber(qty, 1);
   const unitPrice = parseNumber(price, 0);
+  const safePromo = useMemo(() => normalizePromotion(promo), [promo]);
 
   const priceResult = useMemo(() => {
-    return calculateItemPrice({ quantity, unitPrice, promo });
-  }, [quantity, unitPrice, promo]);
+    return calculateItemPrice({ quantity, unitPrice, promo: safePromo });
+  }, [quantity, unitPrice, safePromo]);
 
   if (!item || !list) {
     return (
@@ -133,6 +136,242 @@ export default function ItemDetailScreen() {
     }
   };
 
+  const renderPromos = () => {
+    return PROMOTIONS.map((option) => {
+      const validation = validatePromotion(option.promo, quantity, unitPrice);
+
+      const disabled = !validation.valid;
+      const selected = isSamePromotion(safePromo, option.promo);
+
+      return (
+        <Pressable
+          key={option.id}
+          onPress={() => {
+            if (disabled) return;
+            setPromo(option.promo);
+          }}
+          disabled={disabled}
+          style={[
+            styles.promoChip,
+            selected && styles.promoChipSelected,
+            disabled && styles.promoChipDisabled,
+          ]}
+        >
+          <Text
+            style={[
+              styles.promoChipText,
+              selected && styles.promoChipTextSelected,
+              disabled && styles.promoChipTextDisabled,
+            ]}
+          >
+            {option.label}
+          </Text>
+        </Pressable>
+      );
+    });
+  };
+
+  const Header = ({ title }) => {
+    return (
+      <View style={styles.header}>
+        <Pressable style={styles.headerIcon} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={22} color="#111827" />
+        </Pressable>
+
+        <Text style={styles.title}>{title}</Text>
+
+        <View style={styles.headerSpacer} />
+      </View>
+    );
+  };
+
+  const CardNombreBarcode = ({ nombre, barcode }) => {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.label}>{nombre}</Text>
+        <TextInput
+          style={styles.input}
+          value={name}
+          onChangeText={setName}
+          placeholder="Nombre del producto"
+          placeholderTextColor="#9ca3af"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+
+        <Text style={[styles.label, styles.sectionGap]}>Código de barras</Text>
+
+        <View style={styles.row}>
+          <TextInput
+            style={[styles.input, styles.flex]}
+            value={barcode}
+            onChangeText={setBarcode}
+            placeholder="EAN-13"
+            placeholderTextColor="#9ca3af"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <Pressable style={styles.iconButton}>
+            <Ionicons name="barcode-outline" size={18} color="#374151" />
+          </Pressable>
+
+          <Pressable style={styles.iconButton}>
+            <Ionicons name="search-outline" size={18} color="#374151" />
+          </Pressable>
+        </View>
+      </View>
+    );
+  };
+
+  const Unidades = ({ qty, price, unit }) => {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.label}>Unidad</Text>
+
+        <View style={styles.unitRow}>
+          {UNITS.map((u) => {
+            const selected = unit === u;
+
+            return (
+              <Pressable
+                key={u}
+                style={[styles.pill, selected && styles.pillActive]}
+                onPress={() => setUnit(u)}
+              >
+                <Text
+                  style={[styles.pillText, selected && styles.pillTextActive]}
+                >
+                  {u}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={[styles.rowSpace, styles.sectionGapLarge]}>
+          <View style={styles.flex}>
+            <Text style={styles.label}>Cantidad ({unit})</Text>
+            <TextInput
+              style={styles.input}
+              value={qty}
+              onChangeText={setQty}
+              keyboardType="numeric"
+              placeholder="0"
+              placeholderTextColor="#9ca3af"
+            />
+          </View>
+
+          <View style={styles.flex}>
+            <Text style={styles.label}>Precio/{unit}</Text>
+            <TextInput
+              style={styles.input}
+              value={price}
+              onChangeText={setPrice}
+              keyboardType="numeric"
+              placeholder="0"
+              placeholderTextColor="#9ca3af"
+            />
+          </View>
+        </View>
+      </View>
+    );
+  };
+  const Ofertas = ({ qty, price, safePromo }) => {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.label}>Ofertas</Text>
+
+        <PromotionList
+          quantity={qty}
+          unitPrice={price}
+          selectedPromo={safePromo}
+          onSelect={setPromo}
+        />
+
+        {!promoValidation.valid && (
+          <View style={styles.offerWarningBox}>
+            <Text style={styles.offerWarning}>
+              {promoValidation.message ?? "Oferta no válida"}
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const PromotionList = ({
+    quantity,
+    unitPrice,
+    selectedPromo,
+    onSelect,
+  }: {
+    quantity: number;
+    unitPrice: number;
+    selectedPromo: Promotion;
+    onSelect: (p: Promotion) => void;
+  }) => {
+    return (
+      <View style={styles.promoWrap}>
+        {PROMOTIONS.map((option) => {
+          const validation = validatePromotion(
+            option.promo,
+            quantity,
+            unitPrice,
+          );
+
+          const disabled = !validation.valid;
+          const selected = isSamePromotion(selectedPromo, option.promo);
+
+          return (
+            <Pressable
+              key={option.id}
+              onPress={() => {
+                if (disabled) return;
+                onSelect(option.promo);
+              }}
+              disabled={disabled}
+              style={[
+                styles.promoChip,
+                selected && styles.promoChipSelected,
+                disabled && styles.promoChipDisabled,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.promoChipText,
+                  selected && styles.promoChipTextSelected,
+                  disabled && styles.promoChipTextDisabled,
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    );
+  };
+
+  const Summary = ({ base, savings, total }) => {
+    return (
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryTitle}>Resumen</Text>
+
+        <Text style={styles.summaryLine}>Base: {formatCurrency(base)}</Text>
+
+        <Text style={styles.summarySavings}>
+          Ahorro: {formatCurrency(savings)}
+        </Text>
+
+        <View style={styles.summaryTotalRow}>
+          <Text style={styles.summaryTotalLabel}>Total</Text>
+          <Text style={styles.summaryTotalValue}>{formatCurrency(total)}</Text>
+        </View>
+      </View>
+    );
+  };
+
   const promoValidation = validatePromotion(promo, quantity, unitPrice);
 
   return (
@@ -146,174 +385,15 @@ export default function ItemDetailScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.header}>
-            <Pressable style={styles.headerIcon} onPress={() => router.back()}>
-              <Ionicons name="arrow-back" size={22} color="#111827" />
-            </Pressable>
-
-            <Text style={styles.title}>Editar producto</Text>
-
-            <View style={styles.headerSpacer} />
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.label}>Nombre</Text>
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-              placeholder="Nombre del producto"
-              placeholderTextColor="#9ca3af"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-
-            <Text style={[styles.label, styles.sectionGap]}>
-              Código de barras
-            </Text>
-
-            <View style={styles.row}>
-              <TextInput
-                style={[styles.input, styles.flex]}
-                value={barcode}
-                onChangeText={setBarcode}
-                placeholder="EAN-13"
-                placeholderTextColor="#9ca3af"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-
-              <Pressable style={styles.iconButton}>
-                <Ionicons name="barcode-outline" size={18} color="#374151" />
-              </Pressable>
-
-              <Pressable style={styles.iconButton}>
-                <Ionicons name="search-outline" size={18} color="#374151" />
-              </Pressable>
-            </View>
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.label}>Unidad</Text>
-
-            <View style={styles.unitRow}>
-              {UNITS.map((u) => {
-                const selected = unit === u;
-
-                return (
-                  <Pressable
-                    key={u}
-                    style={[styles.pill, selected && styles.pillActive]}
-                    onPress={() => setUnit(u)}
-                  >
-                    <Text
-                      style={[
-                        styles.pillText,
-                        selected && styles.pillTextActive,
-                      ]}
-                    >
-                      {u}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <View style={[styles.rowSpace, styles.sectionGapLarge]}>
-              <View style={styles.flex}>
-                <Text style={styles.label}>Cantidad ({unit})</Text>
-                <TextInput
-                  style={styles.input}
-                  value={qty}
-                  onChangeText={setQty}
-                  keyboardType="numeric"
-                  placeholder="0"
-                  placeholderTextColor="#9ca3af"
-                />
-              </View>
-
-              <View style={styles.flex}>
-                <Text style={styles.label}>Precio/{unit}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={price}
-                  onChangeText={setPrice}
-                  keyboardType="numeric"
-                  placeholder="0"
-                  placeholderTextColor="#9ca3af"
-                />
-              </View>
-            </View>
-          </View>
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Ofertas</Text>
-
-            <View style={styles.promoWrap}>
-              {promotions.map((option) => {
-                const validation = validatePromotion(
-                  option.promo,
-                  quantity,
-                  unitPrice,
-                );
-
-                const disabled = !validation.valid;
-                const selected = isSamePromotion(promo, option.promo);
-
-                return (
-                  <Pressable
-                    key={option.id}
-                    onPress={() => {
-                      if (!validation.valid) return;
-                      setPromo(option.promo);
-                    }}
-                    disabled={disabled}
-                    style={[
-                      styles.promoChip,
-                      selected && styles.promoChipSelected,
-                      !validation.valid && styles.promoChipDisabled,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.promoChipText,
-                        selected && styles.promoChipTextSelected,
-                        disabled && styles.promoChipTextDisabled,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {!promoValidation.valid && (
-              <View style={styles.offerWarningBox}>
-                <Text style={styles.offerWarning}>
-                  {promoValidation.message ?? "Oferta no válida"}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>Resumen</Text>
-
-            <Text style={styles.summaryLine}>
-              Base: {formatCurrency(priceResult.baseTotal)}
-            </Text>
-
-            <Text style={styles.summarySavings}>
-              Ahorro: {formatCurrency(priceResult.savings)}
-            </Text>
-
-            <View style={styles.summaryTotalRow}>
-              <Text style={styles.summaryTotalLabel}>Total</Text>
-              <Text style={styles.summaryTotalValue}>
-                {formatCurrency(priceResult.total)}
-              </Text>
-            </View>
-          </View>
+          <Header title="Editar producto" />
+          <CardNombreBarcode nombre={"Nombre"} barcode={""} />
+          <Unidades qty={qty} price={price} unit={unit} />
+          <Ofertas qty={qty} price={price} safePromo={safePromo} />
+          <Summary
+            base={priceResult.baseTotal}
+            savings={priceResult.savings}
+            total={priceResult.total}
+          />
 
           {!priceResult.valid && (
             <Text style={styles.warning}>
