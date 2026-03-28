@@ -10,11 +10,32 @@ const toSafeNumber = (value: unknown, fallback = 0): number => {
   return Number.isFinite(n) ? n : fallback;
 };
 
-export function normalizePromotion(promo?: Promotion | null): Promotion {
+export function normalizePromotionLegacy(promo?: Promotion | null): Promotion {
   if (!promo) return { type: "none" };
   return promo;
 }
 
+export const normalizePromotion = (p?: Promotion): Promotion => {
+  if (!p) return { type: "none" };
+
+  switch (p.type) {
+    case "none":
+    case "2x1":
+    case "3x2":
+      return { type: p.type };
+
+    case "percent":
+    case "discount":
+      return { type: p.type, value: Number(p.value ?? 0) };
+
+    case "multi":
+      return {
+        type: "multi",
+        buy: Number(p.buy ?? 0),
+        pay: Number(p.pay ?? 0),
+      };
+  }
+};
 export function toPromotion(id?: string | null): Promotion {
   if (!id || id === "none") {
     return { type: "none" };

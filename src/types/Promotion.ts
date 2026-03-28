@@ -5,8 +5,3 @@ export type Promotion =
   | { type: "percent"; value: number }
   | { type: "discount"; value: number }
   | { type: "multi"; buy: number; pay: number };
-
-export type PromotionOption = {
-  id: string;
-  label: string;
-} & Promotion;
