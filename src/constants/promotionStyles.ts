@@ -1,3 +1,5 @@
+import type { Promotion } from "@/src/types/Promotion";
+
 export function getPromotionColor(promo?: Promotion): string {
   if (!promo || promo.type === "none") return "#999";
 

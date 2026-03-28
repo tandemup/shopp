@@ -1,9 +1,10 @@
 import UNITS from "@/data/units.json";
-import PromotionSelector from "@/src/components/PromotionSelector";
 import { alert, confirm } from "@/src/components/ui/dialog/dialog";
+import { PROMOTIONS } from "@/src/constants/promotions";
 import { useLists } from "@/src/context/ListsContext";
 import type { Promotion } from "@/src/types/Promotion";
 import { formatCurrency } from "@/src/utils/currency";
+import { isSamePromotion } from "@/src/utils/pricing/isSamePromotion";
 import {
   calculateItemPrice,
   normalizePromotion,
@@ -59,7 +60,6 @@ export default function ItemDetailScreen() {
   const quantity = parseNumber(qty, 1);
   const unitPrice = parseNumber(price, 0);
   const safePromo = useMemo(() => normalizePromotion(promo), [promo]);
-  const promoNormalized = normalizePromotion(promo);
 
   const priceResult = useMemo(() => {
     return calculateItemPrice({ quantity, unitPrice, promo: safePromo });
@@ -227,6 +227,94 @@ export default function ItemDetailScreen() {
     );
   };
 
+  const PromotionList = ({
+    quantity,
+    unitPrice,
+    selectedPromo,
+    onSelect,
+  }: {
+    quantity: number;
+    unitPrice: number;
+    selectedPromo: Promotion;
+    onSelect: (p: Promotion) => void;
+  }) => {
+    return (
+      <View style={styles.promoWrap}>
+        {PROMOTIONS.map((option) => {
+          const promo = normalizePromotion(option.promo);
+
+          const validation = validatePromotion(promo, quantity, unitPrice);
+
+          const disabled = !validation.valid;
+          const selected = isSamePromotion(selectedPromo, promo);
+
+          return (
+            <Pressable
+              key={option.id}
+              onPress={() => {
+                if (disabled) return;
+                onSelect(promo);
+              }}
+              disabled={disabled}
+              style={[
+                styles.promoChip,
+                selected && styles.promoChipSelected,
+                disabled && styles.promoChipDisabled,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.promoChipText,
+                  selected && styles.promoChipTextSelected,
+                  disabled && styles.promoChipTextDisabled,
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    );
+  };
+
+  const Ofertas = ({
+    quantity,
+    unitPrice,
+    selectedPromo,
+    onSelect,
+  }: {
+    quantity: number;
+    unitPrice: number;
+    selectedPromo: Promotion;
+    onSelect: (p: Promotion) => void;
+  }) => {
+    const promoValidation = validatePromotion(
+      selectedPromo,
+      quantity,
+      unitPrice,
+    );
+    return (
+      <View style={styles.card}>
+        <Text style={styles.label}>Ofertas</Text>
+        <PromotionList
+          quantity={quantity}
+          unitPrice={unitPrice}
+          selectedPromo={selectedPromo}
+          onSelect={onSelect}
+        />
+
+        {!promoValidation.valid && (
+          <View style={styles.offerWarningBox}>
+            <Text style={styles.offerWarning}>
+              {promoValidation.message ?? "Oferta no válida"}
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
   const Summary = ({
     base,
     savings,
@@ -271,8 +359,13 @@ export default function ItemDetailScreen() {
           <CardNombreBarcode nombre={"Nombre"} barcode={""} />
           <Unidades qty={qty} price={price} unit={unit} />
 
-          <PromotionSelector value={promo} onChange={setPromo} />
-          {/*<Promotions qty={qty} price={price} safePromo={safePromo} />*/}
+          {/* <PromotionSelector value={promo} onChange={setPromo} /> */}
+          <Ofertas
+            quantity={quantity}
+            unitPrice={unitPrice}
+            selectedPromo={safePromo}
+            onSelect={setPromo}
+          />
           <Summary
             base={priceResult.baseTotal}
             savings={priceResult.savings}

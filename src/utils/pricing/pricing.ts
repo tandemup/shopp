@@ -126,27 +126,27 @@ export function validatePromotion(
         normalized.pay <= 0 ||
         normalized.pay > normalized.buy
       ) {
-        return { valid: false, reason: "Oferta inválida" };
+        return { valid: false, message: "Oferta inválida" };
       }
       return qty >= normalized.buy
         ? { valid: true }
-        : { valid: false, reason: `Min ${normalized.buy}` };
+        : { valid: false, message: `Min ${normalized.buy}` };
 
     case "percent":
       if (normalized.value <= 0 || normalized.value > 100) {
-        return { valid: false, reason: "Descuento inválido" };
+        return { valid: false, message: "Descuento inválido" };
       }
       return price > 0
         ? { valid: true }
-        : { valid: false, reason: "Precio inválido" };
+        : { valid: false, message: "Precio inválido" };
 
     case "discount":
       if (normalized.value <= 0) {
-        return { valid: false, reason: "Descuento inválido" };
+        return { valid: false, message: "Descuento inválido" };
       }
       return price > 0
         ? { valid: true }
-        : { valid: false, reason: "Precio inválido" };
+        : { valid: false, message: "Precio inválido" };
 
     default:
       return { valid: true };
@@ -200,7 +200,7 @@ export function calculateItemPrice(input: {
       total: baseTotal,
       savings: 0,
       valid: false,
-      reason: validation.reason,
+      reason: validation.message,
       promo,
       promoLabel: getPromotionLabel(promo),
     };
