@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "Shopp",
+    "slug": "shopp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "shopp",
+    "userInterfaceStyle": "automatic",
+
+    "icon": "./assets/images/icon.png",
+
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tuempresa.shopp"
+    },
+
+    "android": {
+      "package": "com.tuempresa.shopp",
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/images/favicon.png",
+      "display": "standalone",
+      "output": "static"
+    },
+
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+
+    "updates": {
+      "url": "https://u.expo.dev/89b89590-be3b-4f2d-99a8-44dd2dc22b6e"
+    },
+
+    "extra": {
+      "eas": {
+        "projectId": "89b89590-be3b-4f2d-99a8-44dd2dc22b6e"
+      }
+    },
+
+    "plugins": ["expo-asset"]
+  }
+}
