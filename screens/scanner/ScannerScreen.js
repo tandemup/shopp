@@ -1,23 +1,19 @@
-import React, { useRef } from "react";
-import { StyleSheet } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { View, StyleSheet } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
-
 import BarcodeScannerView from "../../components/features/scanner/BarcodeScannerView";
 import {
   getScannedEntryByBarcode,
   saveScannedEntry,
 } from "../../services/scannerHistory";
+import { safeAlert } from "../../components/ui/alert/safeAlert";
+import { ROUTES } from "../../navigation/ROUTES";
 
 import { lookupProductByBarcode } from "../../services/productLookup";
 
 export default function ScannerScreen() {
   const route = useRoute();
   const navigation = useNavigation();
-
   const isHandlingScanRef = useRef(false);
 
   const onScan = route.params?.onScan;
@@ -108,16 +104,23 @@ export default function ScannerScreen() {
       if (shouldSaveToHistory) {
         await saveDetectedBarcode(code);
       }
-
-      if (closeOnScan) {
-        closeScanner();
-      }
+      navigation.replace(ROUTES.SCANNED_HISTORY, {
+        scannedBarcode: code,
+        showScannedFeedback: true,
+      });
     } catch (error) {
       console.log("Error handling scanned barcode:", error);
 
-      if (closeOnScan) {
-        closeScanner();
-      }
+      safeAlert("Error", "No se pudo guardar el código escaneado", [
+        {
+          text: "Cerrar",
+          onPress: () => {
+            if (closeOnScan) {
+              closeScanner();
+            }
+          },
+        },
+      ]);
     } finally {
       setTimeout(() => {
         isHandlingScanRef.current = false;
@@ -130,12 +133,14 @@ export default function ScannerScreen() {
   }
 
   return (
-    <BarcodeScannerView
-      onDetected={handleDetected}
-      onClose={handleClose}
-      continuous={continuous}
-      barcodeTypes={barcodeTypes}
-    />
+    <View style={styles.container}>
+      <BarcodeScannerView
+        onDetected={handleDetected}
+        onClose={handleClose}
+        continuous={continuous}
+        barcodeTypes={barcodeTypes}
+      />
+    </View>
   );
 }
 

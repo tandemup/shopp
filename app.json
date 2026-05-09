@@ -28,12 +28,13 @@
         "backgroundColor": "#ffffff"
       }
     },
+
     "web": {
       "bundler": "metro",
       "favicon": "./assets/images/favicon.png",
-      "display": "standalone",
-      "output": "single"
+      "display": "standalone"
     },
+
     "runtimeVersion": {
       "policy": "appVersion"
     },

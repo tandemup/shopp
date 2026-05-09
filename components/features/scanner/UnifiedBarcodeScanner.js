@@ -352,7 +352,7 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: 16,
     paddingTop: 14,
-    paddingBottom: 20,
+    paddingBottom: 24,
     backgroundColor: "rgba(0,0,0,0.55)",
     flexDirection: "row",
     justifyContent: "space-around",

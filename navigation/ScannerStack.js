@@ -32,7 +32,11 @@ export default function ScannerStack() {
       <Stack.Screen
         name={ROUTES.SCANNER_SCREEN}
         component={ScannerScreen}
-        options={{ title: "Escanear nuevo producto" }}
+        options={{
+          title: "Escanear nuevo producto",
+          headerShown: false,
+          presentation: "fullScreenModal",
+        }}
       />
 
       <Stack.Screen

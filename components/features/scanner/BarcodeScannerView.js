@@ -6,7 +6,6 @@ import React, {
   useState,
 } from "react";
 import { View, StyleSheet, Pressable } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
@@ -140,7 +139,7 @@ export default function BarcodeScannerView({
   }, [isFocused]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <UnifiedBarcodeScanner
         mode="manual"
         active={true}
@@ -159,7 +158,7 @@ export default function BarcodeScannerView({
           <Ionicons name="close" size={24} color="#fff" />
         </Pressable>
       ) : null}
-    </SafeAreaView>
+    </View>
   );
 }
 

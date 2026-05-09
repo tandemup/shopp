@@ -6,19 +6,19 @@ export const ROUTES = {
   MENU_TAB: "MenuTab",
 
   // Shopping stack
-  SHOPPING_LISTS: "ShoppingLists",
-  SHOPPING_LIST: "ShoppingList",
-  ITEM_DETAIL: "ItemDetail",
+  SHOPPING_LISTS: "Shopping Lists",
+  SHOPPING_LIST: "Shopping List",
+  ITEM_DETAIL: "Item Detail",
 
   // Stores stack
-  STORES_HOME: "StoresHome",
-  STORES_BROWSE: "StoresBrowse",
-  STORE_SELECT: "StoreSelect",
-  STORES_FAVORITES: "StoresFavorites",
-  STORE_DETAIL: "StoreDetail",
-  STORE_MAP: "StoreMap",
-  STORES_NEARBY: "StoresNearby",
-  STORE_INFO: "StoreInfo",
+  STORES_HOME: "Stores Home",
+  STORES_BROWSE: "Stores Browse",
+  STORE_SELECT: "Store Select",
+  STORES_FAVORITES: "Stores Favorites",
+  STORE_DETAIL: "Store Detail",
+  STORE_MAP: "Store Map",
+  STORES_NEARBY: "Stores Nearby",
+  STORE_INFO: "Store Info",
 
   // Archive
   ARCHIVED_LISTS: "Archived Lists",
@@ -31,8 +31,8 @@ export const ROUTES = {
 
   // Scanner
   SCANNER_HOME: "Scanner Home",
-  EDIT_SCANNED_ITEM: "EditScannedItem",
-  SHELF_LABEL_SCANNER: "ShelfLabelScanner",
+  EDIT_SCANNED_ITEM: "Edit Scanned Item",
+  SHELF_LABEL_SCANNER: "Shelf Label Scanner",
   SCANNER_SCREEN: "Scanner Screen",
   QUICK_SCANNER_SCREEN: "QuickScanner Screen",
   DETAILED_SCANNER_SCREEN: "DetailedScanner Screen",

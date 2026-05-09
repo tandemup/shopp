@@ -15,7 +15,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 
 import { ROUTES } from "../../navigation/ROUTES";
-import { safeAlert } from "../../components/ui/alert/safeAlert";
 import BarcodeLink from "../../components/controls/BarcodeLink";
 
 import {
@@ -23,7 +22,7 @@ import {
   removeScannedItem,
 } from "../../services/scannerHistory";
 
-export default function ScannedHistoryScreen({ navigation }) {
+export default function ScannedHistoryScreen({ navigation, route }) {
   const [scannedItems, setScannedItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [filteredItems, setFilteredItems] = useState([]);
