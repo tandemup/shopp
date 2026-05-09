@@ -1,65 +1,178 @@
-// screens/settings/MenuScreen.js
-
 import React from "react";
-import { View, Text, Pressable, ScrollView, StyleSheet } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { ROUTES } from "../../navigation/ROUTES";
-import { safeAlert } from "../../components/ui/alert/safeAlert";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-
 import {
-  clearAppStorage as clearStorage,
-  clearLists as clearActiveLists,
+  Linking,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useCameraPermissions } from "expo-camera";
+import * as Location from "expo-location";
+
+import { ROUTES } from "../../navigation/ROUTES";
+
+// Ajusta estos imports a las rutas reales de tu proyecto.
+// Si ya los tenías en una versión anterior del archivo, conserva tus rutas originales.
+import { safeAlert } from "../../components/ui/alert/safeAlert";
+import {
+  clearActiveLists,
   clearPurchaseHistory,
   clearScannedHistory,
+  clearStorage,
   clearStoresData,
-} from "../../src/storage";
+} from "../../utils/storage";
 
-export default function MenuScreen({ navigation }) {
-  const ActionCard = ({
-    icon,
-    title,
-    subtitle,
-    onPress,
-    destructive = false,
-  }) => {
-    const iconColor = destructive ? "#B91C1C" : "#111827";
-    const tabBarHeight = useBottomTabBarHeight();
+function getPermissionLabel(permission) {
+  if (!permission) return "Comprobando...";
 
-    return (
-      <Pressable
-        style={({ pressed }) => [
-          styles.card,
-          destructive && styles.dangerCard,
-          pressed && styles.cardPressed,
-        ]}
-        onPress={onPress}
-      >
-        <View style={[styles.iconBox, destructive && styles.dangerIconBox]}>
-          <Ionicons name={icon} size={28} color={iconColor} />
+  if (permission.granted) return "Concedido";
+  if (permission.canAskAgain === false) return "Bloqueado";
+  if (permission.status === "denied") return "Denegado";
+
+  return "No solicitado";
+}
+
+function getPermissionColor(permission) {
+  if (!permission) return "#64748b";
+
+  if (permission.granted) return "#16a34a";
+  if (permission.canAskAgain === false) return "#dc2626";
+  if (permission.status === "denied") return "#f97316";
+
+  return "#64748b";
+}
+
+async function handlePermissionPress(permission, requestPermission) {
+  if (permission?.granted) return;
+
+  if (permission?.canAskAgain === false) {
+    await Linking.openSettings();
+    return;
+  }
+
+  await requestPermission();
+}
+
+function PermissionRow({ icon, title, description, permission, onPress }) {
+  const label = getPermissionLabel(permission);
+  const color = getPermissionColor(permission);
+
+  return (
+    <Pressable style={styles.permissionRow} onPress={onPress}>
+      <View style={styles.permissionIconBox}>
+        <Ionicons name={icon} size={22} color="#0f172a" />
+      </View>
+
+      <View style={styles.permissionTextBox}>
+        <Text style={styles.permissionTitle}>{title}</Text>
+        <Text style={styles.permissionDescription}>{description}</Text>
+      </View>
+
+      <View style={[styles.permissionBadge, { borderColor: color }]}>
+        <Text style={[styles.permissionBadgeText, { color }]}>{label}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function SettingsCard({
+  icon,
+  title,
+  subtitle,
+  badge,
+  onPress,
+  danger = false,
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.card,
+        danger && styles.dangerCard,
+        pressed && styles.cardPressed,
+      ]}
+      onPress={onPress}
+    >
+      <View style={styles.cardLeft}>
+        <View style={[styles.cardIconBox, danger && styles.dangerIconBox]}>
+          <Ionicons
+            name={icon}
+            size={22}
+            color={danger ? "#dc2626" : "#0f172a"}
+          />
         </View>
 
-        <View style={styles.cardText}>
+        <View style={styles.cardTextBox}>
           <Text
-            style={[styles.cardTitle, destructive && styles.dangerTitle]}
+            style={[styles.cardTitle, danger && styles.dangerText]}
             numberOfLines={1}
           >
             {title}
           </Text>
 
-          <Text style={styles.cardSubtitle} numberOfLines={2}>
-            {subtitle}
-          </Text>
+          {subtitle ? (
+            <Text style={styles.cardSubtitle} numberOfLines={2}>
+              {subtitle}
+            </Text>
+          ) : null}
         </View>
+      </View>
+
+      <View style={styles.cardRight}>
+        {badge ? (
+          <View style={styles.cardBadge}>
+            <Text style={styles.cardBadgeText}>{badge}</Text>
+          </View>
+        ) : null}
 
         <Ionicons
-          name={destructive ? "warning-outline" : "chevron-forward"}
-          size={22}
-          color={destructive ? "#B91C1C" : "#9CA3AF"}
+          name={danger ? "warning-outline" : "chevron-forward"}
+          size={20}
+          color={danger ? "#dc2626" : "#94a3b8"}
         />
-      </Pressable>
-    );
+      </View>
+    </Pressable>
+  );
+}
+
+export default function MenuScreen({ navigation }) {
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [locationPermission, requestLocationPermission] =
+    Location.useForegroundPermissions();
+
+  const goToProductSearchEngines = () => {
+    navigation.navigate(ROUTES.SEARCH_ENGINE_SETTINGS, {
+      type: "product",
+    });
+  };
+
+  const goToBookSearchEngines = () => {
+    navigation.navigate(ROUTES.SEARCH_ENGINE_SETTINGS, {
+      type: "book",
+    });
+  };
+
+  const goToBarcodeSettings = () => {
+    navigation.navigate(ROUTES.BARCODE_SETTINGS);
+  };
+
+  const goToScannedHistory = () => {
+    navigation.navigate(ROUTES.SCANNED_HISTORY);
+  };
+
+  const goToShoppingLists = () => {
+    navigation.reset({
+      index: 0,
+      routes: [
+        {
+          name: ROUTES.SHOPPING_TAB,
+          params: { screen: ROUTES.SHOPPING_LISTS },
+        },
+      ],
+    });
   };
 
   const handleClearArchivedLists = () => {
@@ -80,16 +193,7 @@ export default function MenuScreen({ navigation }) {
           style: "destructive",
           onPress: async () => {
             await clearStoresData();
-
-            navigation.reset({
-              index: 0,
-              routes: [
-                {
-                  name: ROUTES.SHOPPING_TAB,
-                  params: { screen: ROUTES.SHOPPING_LISTS },
-                },
-              ],
-            });
+            goToShoppingLists();
           },
         },
       ],
@@ -107,86 +211,127 @@ export default function MenuScreen({ navigation }) {
           style: "destructive",
           onPress: async () => {
             await clearStorage();
-
-            navigation.reset({
-              index: 0,
-              routes: [
-                {
-                  name: ROUTES.SHOPPING_TAB,
-                  params: { screen: ROUTES.SHOPPING_LISTS },
-                },
-              ],
-            });
+            goToShoppingLists();
           },
         },
       ],
     );
   };
 
-  const goToProductSearchEngines = () => {
-    navigation.navigate(ROUTES.SEARCH_ENGINE_SETTINGS, {
-      type: "product",
-    });
-  };
-
-  const goToBookSearchEngines = () => {
-    navigation.navigate(ROUTES.SEARCH_ENGINE_SETTINGS, {
-      type: "book",
-    });
-  };
-
-  const goToBarcodeSettings = () => {
-    navigation.navigate(ROUTES.BARCODE_SETTINGS);
-  };
-
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right"]}>
+    <SafeAreaView style={styles.safeArea}>
       <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: 16 }, // 👈 mucho más ajustado
-        ]}
+        style={styles.container}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Menú</Text>
-        <Text style={styles.subtitle}>
-          Gestiona la configuración, el mantenimiento de datos locales y el
-          almacenamiento de la aplicación.
-        </Text>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.headerEyebrow}>Shopp</Text>
+            <Text style={styles.headerTitle}>Ajustes</Text>
+          </View>
 
-        <View style={styles.actions}>
-          <ActionCard
+          <View style={styles.headerIconBox}>
+            <Ionicons name="settings-outline" size={26} color="#0f172a" />
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Búsqueda</Text>
+
+          <SettingsCard
             icon="search-outline"
             title="Motores de productos"
-            subtitle="Configura los motores usados para buscar productos"
+            subtitle="Google, Open Food Facts, Barcode Lookup..."
             onPress={goToProductSearchEngines}
           />
 
-          {null && (
-            <ActionCard
-              icon="book-outline"
-              title="Motores de libros"
-              subtitle="Configura los motores usados para buscar libros"
-              onPress={goToBookSearchEngines}
-            />
-          )}
+          <SettingsCard
+            icon="book-outline"
+            title="Motores de libros"
+            subtitle="Google Books, Open Library..."
+            onPress={goToBookSearchEngines}
+          />
+        </View>
 
-          <ActionCard
-            icon="options-outline"
-            title="Formatos del scanner"
-            subtitle="Selecciona EAN-13, EAN-8, UPC, QR o Code 128"
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Escáner</Text>
+
+          <SettingsCard
+            icon="barcode-outline"
+            title="Configuración del código de barras"
+            subtitle="Formatos admitidos: EAN-13, EAN-8..."
             onPress={goToBarcodeSettings}
           />
 
-          <View style={styles.dangerHeader}>
-            <Text style={styles.dangerHeaderText}>Danger Zone</Text>
-          </View>
+          <SettingsCard
+            icon="time-outline"
+            title="Historial de escaneos"
+            subtitle="Consulta los códigos escaneados recientemente"
+            onPress={goToScannedHistory}
+          />
+        </View>
 
-          <ActionCard
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Permisos</Text>
+
+          <View style={styles.permissionsCard}>
+            <View style={styles.permissionsHeader}>
+              <View style={styles.permissionsHeaderTextBox}>
+                <Text style={styles.permissionsTitle}>
+                  Accesos del dispositivo
+                </Text>
+                <Text style={styles.permissionsSubtitle}>
+                  Cámara, ubicación y permisos necesarios para la app
+                </Text>
+              </View>
+
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={24}
+                color="#0f172a"
+              />
+            </View>
+
+            <PermissionRow
+              icon="camera-outline"
+              title="Cámara"
+              description="Necesaria para escanear códigos de barras."
+              permission={cameraPermission}
+              onPress={() =>
+                handlePermissionPress(cameraPermission, requestCameraPermission)
+              }
+            />
+
+            <PermissionRow
+              icon="location-outline"
+              title="Ubicación"
+              description="Necesaria para tiendas cercanas y mapas."
+              permission={locationPermission}
+              onPress={() =>
+                handlePermissionPress(
+                  locationPermission,
+                  requestLocationPermission,
+                )
+              }
+            />
+
+            {Platform.OS === "web" ? (
+              <Text style={styles.permissionNote}>
+                En web, los permisos dependen del navegador y del uso de HTTPS.
+              </Text>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Danger Zone</Text>
+
+          <SettingsCard
             icon="trash-outline"
             title="Borrar listas activas"
             subtitle="Elimina las listas de compra que todavía no están archivadas"
-            destructive
+            danger
             onPress={() =>
               safeAlert("Borrar listas activas", "¿Seguro?", [
                 { text: "Cancelar", style: "cancel" },
@@ -199,11 +344,11 @@ export default function MenuScreen({ navigation }) {
             }
           />
 
-          <ActionCard
+          <SettingsCard
             icon="file-tray-outline"
             title="Borrar listas archivadas"
             subtitle="Elimina las listas guardadas como archivadas"
-            destructive
+            danger
             onPress={() =>
               safeAlert("Borrar listas archivadas", "¿Seguro?", [
                 { text: "Cancelar", style: "cancel" },
@@ -216,11 +361,11 @@ export default function MenuScreen({ navigation }) {
             }
           />
 
-          <ActionCard
+          <SettingsCard
             icon="receipt-outline"
             title="Borrar historial de compras"
             subtitle="Limpia los registros generados a partir de compras anteriores"
-            destructive
+            danger
             onPress={() =>
               safeAlert("Borrar historial de compras", "¿Seguro?", [
                 { text: "Cancelar", style: "cancel" },
@@ -233,11 +378,11 @@ export default function MenuScreen({ navigation }) {
             }
           />
 
-          <ActionCard
+          <SettingsCard
             icon="barcode-outline"
             title="Borrar historial de escaneos"
             subtitle="Elimina productos y códigos guardados desde el scanner"
-            destructive
+            danger
             onPress={() =>
               safeAlert("Borrar historial de escaneos", "¿Seguro?", [
                 { text: "Cancelar", style: "cancel" },
@@ -250,81 +395,110 @@ export default function MenuScreen({ navigation }) {
             }
           />
 
-          <ActionCard
+          <SettingsCard
             icon="refresh-outline"
             title="Recargar tiendas"
             subtitle="Restaura las tiendas desde los datos iniciales del proyecto"
-            destructive
+            danger
             onPress={handleReloadStores}
           />
 
-          <ActionCard
+          <SettingsCard
             icon="close-circle-outline"
             title="Borrar almacenamiento completo"
             subtitle="Elimina todos los datos locales guardados por la aplicación"
-            destructive
+            danger
             onPress={handleClearAllStorage}
           />
         </View>
+
+        <View style={styles.footerSpace} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "#f8fafc",
   },
 
-  scroll: {
+  container: {
     flex: 1,
+    backgroundColor: "#f8fafc",
   },
 
   content: {
-    padding: 16,
-    paddingBottom: 40,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 28,
   },
 
-  title: {
-    fontSize: 28,
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 22,
+  },
+
+  headerEyebrow: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#64748b",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+
+  headerTitle: {
+    marginTop: 2,
+    fontSize: 30,
     fontWeight: "800",
-    color: "#111827",
-    marginTop: 0,
-    marginBottom: 4,
+    color: "#0f172a",
   },
 
-  subtitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: "#6B7280",
-    marginBottom: 24,
+  headerIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: "#e2e8f0",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  actions: {
-    gap: 14,
+  section: {
+    marginBottom: 22,
+  },
+
+  sectionTitle: {
+    marginBottom: 10,
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#475569",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
 
   card: {
-    minHeight: 86,
-    backgroundColor: "#FFFFFF",
+    minHeight: 76,
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    justifyContent: "space-between",
+    shadowColor: "#0f172a",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
     elevation: 2,
-  },
-
-  dangerCard: {
-    borderColor: "#FECACA",
-    backgroundColor: "#FFFFFF",
   },
 
   cardPressed: {
@@ -332,51 +506,174 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.99 }],
   },
 
-  iconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: "#F3F4F6",
+  dangerCard: {
+    borderColor: "#fecaca",
+    backgroundColor: "#fff7f7",
+  },
+
+  cardLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+  },
+
+  cardIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "#f1f5f9",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 14,
+    marginRight: 12,
   },
 
   dangerIconBox: {
-    backgroundColor: "#FEF2F2",
+    backgroundColor: "#fee2e2",
   },
 
-  cardText: {
+  cardTextBox: {
     flex: 1,
     minWidth: 0,
-    paddingRight: 10,
   },
 
   cardTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 4,
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0f172a",
   },
 
-  dangerTitle: {
-    color: "#B91C1C",
+  dangerText: {
+    color: "#dc2626",
   },
 
   cardSubtitle: {
-    fontSize: 14,
-    lineHeight: 19,
-    color: "#6B7280",
+    marginTop: 3,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "#64748b",
   },
 
-  dangerHeader: {
-    marginTop: 4,
-    marginBottom: -2,
+  cardRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 10,
   },
 
-  dangerHeaderText: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#111827",
+  cardBadge: {
+    marginRight: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "#e0f2fe",
+  },
+
+  cardBadgeText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#0369a1",
+  },
+
+  permissionsCard: {
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    shadowColor: "#0f172a",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+
+  permissionsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 8,
+  },
+
+  permissionsHeaderTextBox: {
+    flex: 1,
+    paddingRight: 10,
+  },
+
+  permissionsTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0f172a",
+  },
+
+  permissionsSubtitle: {
+    marginTop: 3,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "#64748b",
+  },
+
+  permissionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
+  },
+
+  permissionIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+
+  permissionTextBox: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  permissionTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0f172a",
+  },
+
+  permissionDescription: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 16,
+    color: "#64748b",
+  },
+
+  permissionBadge: {
+    marginLeft: 10,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "#fff",
+  },
+
+  permissionBadgeText: {
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  permissionNote: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 17,
+    color: "#64748b",
+  },
+
+  footerSpace: {
+    height: 24,
   },
 });
