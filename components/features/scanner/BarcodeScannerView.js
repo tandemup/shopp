@@ -141,7 +141,7 @@ export default function BarcodeScannerView({
   return (
     <View style={styles.container}>
       <UnifiedBarcodeScanner
-        mode="manual"
+        mode="auto"
         active={true}
         barcodeTypes={effectiveBarcodeTypes}
         showControls={showControls}

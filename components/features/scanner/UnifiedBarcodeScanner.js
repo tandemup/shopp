@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View, Platform } from "react-native";
 
 const DEFAULT_ZOOM_LEVELS = [
   { label: "1.1x", value: 0.1 },
@@ -166,6 +166,27 @@ export default function UnifiedBarcodeScanner({
             style={[styles.primaryButton, styles.cancelPermissionButton]}
             onPress={onCancel}
           >
+            <Text style={styles.primaryButtonText}>Cerrar</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
+
+  const isWeb = Platform.OS === "web";
+  const hasWebBarcodeDetector =
+    typeof window !== "undefined" && "BarcodeDetector" in window;
+
+  if (isWeb && !hasWebBarcodeDetector) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.permissionText}>
+          La cámara está disponible, pero este navegador no soporta lectura
+          nativa de códigos de barras.
+        </Text>
+
+        {onCancel ? (
+          <Pressable style={styles.primaryButton} onPress={onCancel}>
             <Text style={styles.primaryButtonText}>Cerrar</Text>
           </Pressable>
         ) : null}
