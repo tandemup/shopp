@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   Linking,
   Platform,
@@ -14,17 +14,16 @@ import { useCameraPermissions } from "expo-camera";
 import * as Location from "expo-location";
 
 import { ROUTES } from "../../navigation/ROUTES";
-
-// Ajusta estos imports a las rutas reales de tu proyecto.
-// Si ya los tenías en una versión anterior del archivo, conserva tus rutas originales.
 import { safeAlert } from "../../components/ui/alert/safeAlert";
+
 import {
   clearActiveLists,
+  clearArchivedLists,
   clearPurchaseHistory,
   clearScannedHistory,
   clearStorage,
   clearStoresData,
-} from "../../utils/storage";
+} from "../../src/storage";
 
 function getPermissionLabel(permission) {
   if (!permission) return "Comprobando...";
@@ -140,8 +139,90 @@ function SettingsCard({
 
 export default function MenuScreen({ navigation }) {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [locationPermission, requestLocationPermission] =
-    Location.useForegroundPermissions();
+  const [locationPermission, setLocationPermission] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadLocationPermission() {
+      try {
+        if (Platform.OS === "web") {
+          if (
+            typeof navigator !== "undefined" &&
+            navigator.permissions?.query
+          ) {
+            const result = await navigator.permissions.query({
+              name: "geolocation",
+            });
+
+            if (!mounted) return;
+
+            setLocationPermission({
+              granted: result.state === "granted",
+              status:
+                result.state === "granted"
+                  ? "granted"
+                  : result.state === "denied"
+                    ? "denied"
+                    : "undetermined",
+              canAskAgain: result.state !== "denied",
+            });
+
+            return;
+          }
+
+          if (mounted) {
+            setLocationPermission({
+              granted: false,
+              status: "undetermined",
+              canAskAgain: true,
+            });
+          }
+
+          return;
+        }
+
+        const result = await Location.getForegroundPermissionsAsync();
+
+        if (mounted) {
+          setLocationPermission(result);
+        }
+      } catch (error) {
+        console.warn("[MenuScreen] location permission error", error);
+
+        if (mounted) {
+          setLocationPermission({
+            granted: false,
+            status: "undetermined",
+            canAskAgain: true,
+          });
+        }
+      }
+    }
+
+    loadLocationPermission();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const requestLocationPermission = async () => {
+    try {
+      if (Platform.OS === "web") {
+        safeAlert(
+          "Ubicación en web",
+          "En web, el permiso de ubicación se gestiona desde el navegador. Si necesitas cambiarlo, usa el icono de permisos junto a la URL.",
+        );
+        return;
+      }
+
+      const result = await Location.requestForegroundPermissionsAsync();
+      setLocationPermission(result);
+    } catch (error) {
+      console.warn("[MenuScreen] request location permission error", error);
+    }
+  };
 
   const goToProductSearchEngines = () => {
     navigation.navigate(ROUTES.SEARCH_ENGINE_SETTINGS, {
@@ -175,11 +256,24 @@ export default function MenuScreen({ navigation }) {
     });
   };
 
-  const handleClearArchivedLists = () => {
-    safeAlert(
-      "Pendiente",
-      "No hay una función clearArchivedLists exportada en el storage actual.",
-    );
+  const handleClearActiveLists = async () => {
+    await clearActiveLists();
+    goToShoppingLists();
+  };
+
+  const handleClearArchivedLists = async () => {
+    await clearArchivedLists();
+    goToShoppingLists();
+  };
+
+  const handleClearPurchaseHistory = async () => {
+    await clearPurchaseHistory();
+    goToShoppingLists();
+  };
+
+  const handleClearScannedHistory = async () => {
+    await clearScannedHistory();
+    goToShoppingLists();
   };
 
   const handleReloadStores = () => {
@@ -338,7 +432,7 @@ export default function MenuScreen({ navigation }) {
                 {
                   text: "Borrar",
                   style: "destructive",
-                  onPress: clearActiveLists,
+                  onPress: handleClearActiveLists,
                 },
               ])
             }
@@ -372,7 +466,7 @@ export default function MenuScreen({ navigation }) {
                 {
                   text: "Borrar",
                   style: "destructive",
-                  onPress: clearPurchaseHistory,
+                  onPress: handleClearPurchaseHistory,
                 },
               ])
             }
@@ -389,7 +483,7 @@ export default function MenuScreen({ navigation }) {
                 {
                   text: "Borrar",
                   style: "destructive",
-                  onPress: clearScannedHistory,
+                  onPress: handleClearScannedHistory,
                 },
               ])
             }
