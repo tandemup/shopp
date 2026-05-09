@@ -4,6 +4,7 @@ import { STORAGE_KEYS } from "../src/storage/storageKeys";
 
 // 👉 Seed
 import STORES_SEED from "../data/stores.json";
+import { clearStoresData } from "../src/storage";
 
 const StoresContext = createContext();
 
@@ -87,6 +88,11 @@ export const StoresProvider = ({ children }) => {
 
   const isFavoriteStore = (storeId) => favoriteStoreIds.includes(storeId);
 
+  const reloadStoresFromSeed = async () => {
+    await clearStoresData();
+    setStores(STORES_SEED);
+  };
+
   return (
     <StoresContext.Provider
       value={{
@@ -98,6 +104,7 @@ export const StoresProvider = ({ children }) => {
         toggleFavoriteStore,
         isFavoriteStore,
         getStoreById,
+        reloadStoresFromSeed,
       }}
     >
       {children}

@@ -157,7 +157,7 @@ export default function SearchEngines() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
 
   content: {
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 16,
     paddingBottom: 24,
   },
 

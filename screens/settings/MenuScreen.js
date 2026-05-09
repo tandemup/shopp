@@ -20,10 +20,12 @@ import {
   clearActiveLists,
   clearArchivedLists,
   clearPurchaseHistory,
-  clearScannedHistory,
   clearStorage,
-  clearStoresData,
 } from "../../src/storage";
+
+import { clearScannedHistory } from "../../services/scannerHistory";
+import { useLists } from "../../context/ListsContext";
+import { useStores } from "../../context/StoresContext";
 
 function getPermissionLabel(permission) {
   if (!permission) return "Comprobando...";
@@ -44,11 +46,18 @@ function getPermissionColor(permission) {
 
   return "#64748b";
 }
-
 async function handlePermissionPress(permission, requestPermission) {
   if (permission?.granted) return;
 
   if (permission?.canAskAgain === false) {
+    if (Platform.OS === "web") {
+      safeAlert(
+        "Permiso bloqueado",
+        "El permiso está bloqueado en el navegador. Para cambiarlo, pulsa el icono de permisos junto a la URL y habilita el acceso desde los ajustes del sitio.",
+      );
+      return;
+    }
+
     await Linking.openSettings();
     return;
   }
@@ -140,7 +149,10 @@ function SettingsCard({
 export default function MenuScreen({ navigation }) {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [locationPermission, setLocationPermission] = useState(null);
+  const { clearActiveListsState, clearArchivedListsState, clearAllListsState } =
+    useLists();
 
+  const { reloadStoresFromSeed } = useStores();
   useEffect(() => {
     let mounted = true;
 
@@ -210,10 +222,48 @@ export default function MenuScreen({ navigation }) {
   const requestLocationPermission = async () => {
     try {
       if (Platform.OS === "web") {
-        safeAlert(
-          "Ubicación en web",
-          "En web, el permiso de ubicación se gestiona desde el navegador. Si necesitas cambiarlo, usa el icono de permisos junto a la URL.",
-        );
+        if (typeof navigator === "undefined" || !navigator.geolocation) {
+          setLocationPermission({
+            granted: false,
+            status: "denied",
+            canAskAgain: false,
+          });
+
+          safeAlert(
+            "Ubicación no disponible",
+            "Este navegador no permite usar geolocalización.",
+          );
+
+          return;
+        }
+
+        const result = await new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            () => {
+              resolve({
+                granted: true,
+                status: "granted",
+                canAskAgain: true,
+              });
+            },
+            (error) => {
+              const blocked = error?.code === 1;
+
+              resolve({
+                granted: false,
+                status: blocked ? "denied" : "undetermined",
+                canAskAgain: !blocked,
+              });
+            },
+            {
+              enableHighAccuracy: false,
+              timeout: 8000,
+              maximumAge: 60000,
+            },
+          );
+        });
+
+        setLocationPermission(result);
         return;
       }
 
@@ -221,6 +271,12 @@ export default function MenuScreen({ navigation }) {
       setLocationPermission(result);
     } catch (error) {
       console.warn("[MenuScreen] request location permission error", error);
+
+      setLocationPermission({
+        granted: false,
+        status: "undetermined",
+        canAskAgain: true,
+      });
     }
   };
 
@@ -241,7 +297,9 @@ export default function MenuScreen({ navigation }) {
   };
 
   const goToScannedHistory = () => {
-    navigation.navigate(ROUTES.SCANNED_HISTORY);
+    navigation.navigate(ROUTES.SCANNER_TAB, {
+      screen: ROUTES.SCANNED_HISTORY,
+    });
   };
 
   const goToShoppingLists = () => {
@@ -258,22 +316,25 @@ export default function MenuScreen({ navigation }) {
 
   const handleClearActiveLists = async () => {
     await clearActiveLists();
+    clearActiveListsState();
     goToShoppingLists();
   };
 
   const handleClearArchivedLists = async () => {
     await clearArchivedLists();
+    clearArchivedListsState();
     goToShoppingLists();
   };
 
   const handleClearPurchaseHistory = async () => {
     await clearPurchaseHistory();
+    clearArchivedListsState();
     goToShoppingLists();
   };
 
   const handleClearScannedHistory = async () => {
     await clearScannedHistory();
-    goToShoppingLists();
+    goToScannedHistory();
   };
 
   const handleReloadStores = () => {
@@ -286,7 +347,7 @@ export default function MenuScreen({ navigation }) {
           text: "Recargar",
           style: "destructive",
           onPress: async () => {
-            await clearStoresData();
+            await reloadStoresFromSeed();
             goToShoppingLists();
           },
         },
@@ -305,6 +366,9 @@ export default function MenuScreen({ navigation }) {
           style: "destructive",
           onPress: async () => {
             await clearStorage();
+            clearAllListsState();
+            await clearScannedHistory();
+            await reloadStoresFromSeed();
             goToShoppingLists();
           },
         },

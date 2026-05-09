@@ -291,7 +291,7 @@ export default function ArchivedListsScreen({ navigation }) {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["left", "right", "bottom"]}>
       <View style={styles.content}>
         <Text style={styles.title}>Listas archivadas</Text>
 
@@ -345,7 +345,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 16,
   },
 
   title: {

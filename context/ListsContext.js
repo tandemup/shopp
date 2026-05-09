@@ -116,6 +116,17 @@ export function ListsProvider({ children }) {
     );
   };
 
+  const clearActiveListsState = () => {
+    setLists((prev) => prev.filter((list) => list?.archived === true));
+  };
+
+  const clearArchivedListsState = () => {
+    setLists((prev) => prev.filter((list) => list?.archived !== true));
+  };
+
+  const clearAllListsState = () => {
+    setLists([]);
+  };
   /* -------------------------------------------------
      API pública — Items
   -------------------------------------------------- */
@@ -188,6 +199,10 @@ export function ListsProvider({ children }) {
       deleteList,
       archiveList,
       restoreList,
+
+      clearActiveListsState,
+      clearArchivedListsState,
+      clearAllListsState,
 
       addItem,
       updateItem,

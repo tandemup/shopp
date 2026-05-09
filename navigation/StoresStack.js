@@ -1,6 +1,7 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { ROUTES } from "./ROUTES";
 
+import StoreInfoScreen from "../screens/stores/StoreInfoScreen";
 import StoresHomeScreen from "../screens/stores/StoresHomeScreen";
 import StoreSelectScreen from "../screens/stores/StoreSelectScreen";
 import StoresBrowseScreen from "../screens/stores/StoresBrowseScreen";
@@ -37,6 +38,11 @@ export default function StoresStack() {
       />
 
       <Stack.Screen name={ROUTES.STORE_DETAIL} component={StoreDetailScreen} />
+      <Stack.Screen
+        name={ROUTES.STORE_INFO}
+        component={StoreInfoScreen}
+        options={{ title: "Información de tiendas" }}
+      />
     </Stack.Navigator>
   );
 }
