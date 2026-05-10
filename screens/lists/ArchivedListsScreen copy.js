@@ -2,12 +2,12 @@ import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
+  TouchableOpacity,
   Pressable,
   StyleSheet,
   FlatList,
   Linking,
 } from "react-native";
-
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import SearchBar from "../../components/features/search/SearchBar";
@@ -17,6 +17,7 @@ import { ROUTES } from "../../navigation/ROUTES";
 import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
 import { normalizePriceInfo } from "../../utils/core/defaultItem";
+import { StoreSearchLink } from "../../components/controls/StoreSearchLink";
 
 const HeaderRow = ({ title, expanded, onToggle, onPressDetails }) => (
   <View style={styles.topRow}>
@@ -43,66 +44,22 @@ const HeaderRow = ({ title, expanded, onToggle, onPressDetails }) => (
   </View>
 );
 
-const ArchivedDatePill = ({ archivedAt }) => {
-  const date = archivedAt ? new Date(archivedAt) : null;
-
-  return (
+const InfoRow = ({ archivedAt, store, onPressStore }) => (
+  <View style={styles.infoRow}>
     <View style={styles.metaPill}>
       <Ionicons name="calendar-outline" size={15} color="#6B7280" />
       <Text style={styles.subInfo} numberOfLines={1}>
-        {date && !Number.isNaN(date.getTime())
-          ? date.toLocaleDateString("es-ES", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            })
-          : "Sin fecha"}
+        {new Date(archivedAt).toLocaleDateString("es-ES", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        })}
       </Text>
     </View>
-  );
-};
 
-const StorePill = ({ store, onPressStore }) => {
-  const handlePressStore = () => {
-    if (!store?.id) return;
-    onPressStore?.(store.id);
-  };
-
-  if (!store) {
-    return (
-      <View style={[styles.metaPill, styles.storePill, styles.storePillMuted]}>
-        <Ionicons name="location-outline" size={14} color="#9CA3AF" />
-        <Text style={styles.storeMutedText} numberOfLines={1}>
-          Sin tienda
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <Pressable
-      onPress={handlePressStore}
-      disabled={!onPressStore}
-      style={({ pressed }) => [
-        styles.metaPill,
-        styles.storePill,
-        pressed && styles.storePillPressed,
-      ]}
-      hitSlop={6}
-    >
-      <Ionicons name="location-outline" size={14} color="#2563EB" />
-      <Text style={styles.storeText} numberOfLines={1}>
-        {store.name}
-      </Text>
-    </Pressable>
-  );
-};
-
-const InfoRow = ({ archivedAt, store, onPressStore }) => (
-  <View style={styles.infoRow}>
-    <ArchivedDatePill archivedAt={archivedAt} />
-
-    <StorePill store={store} onPressStore={onPressStore} />
+    <View style={[styles.metaPill, styles.storePill]}>
+      <StoreSearchLink store={store} onPressStore={onPressStore} />
+    </View>
   </View>
 );
 
@@ -282,15 +239,13 @@ export default function ArchivedListsScreen({ navigation }) {
   };
 
   const openStoreInfo = (storeId) => {
+    console.log("Storeid: ", storeId);
+
     if (!storeId) return;
 
-    const store = getStoreById(storeId);
-
-    if (!store?.name) return;
-
-    Linking.openURL(
-      `https://www.google.com/search?q=${encodeURIComponent(store.name)}`,
-    );
+    navigation.navigate(ROUTES.STORE_INFO, {
+      storeId,
+    });
   };
 
   const renderItem = ({ item }) => (
@@ -466,47 +421,15 @@ const styles = StyleSheet.create({
     gap: 5,
   },
 
+  storePill: {
+    flexShrink: 1,
+  },
+
   subInfo: {
     fontSize: 13,
     color: "#6B7280",
   },
-  storePill: {
-    flexShrink: 1,
-    maxWidth: 150,
-    minHeight: 28,
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-  },
 
-  storePillPressed: {
-    backgroundColor: "#DBEAFE",
-    borderColor: "#93C5FD",
-    transform: [{ scale: 0.98 }],
-  },
-
-  storePillMuted: {
-    backgroundColor: "#F3F4F6",
-    borderColor: "#E5E7EB",
-  },
-
-  storeText: {
-    color: "#1D4ED8",
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: "700",
-    flexShrink: 1,
-  },
-
-  storeMutedText: {
-    color: "#9CA3AF",
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: "600",
-    flexShrink: 1,
-  },
   storeLink: {
     flexDirection: "row",
     alignItems: "center",
@@ -525,6 +448,7 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
     fontSize: 13,
   },
+
   separator: {
     height: 1,
     backgroundColor: "#E5E7EB",

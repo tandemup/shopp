@@ -20,6 +20,13 @@ export default function StoresStack() {
         headerBackButtonDisplayMode: "minimal",
       }}
     >
+      <Stack.Screen
+        name={ROUTES.STORE_INFO}
+        component={StoreInfoScreen}
+        options={{
+          title: "Store Info",
+        }}
+      />
       <Stack.Screen name={ROUTES.STORES_HOME} component={StoresHomeScreen} />
       <Stack.Screen name={ROUTES.STORE_SELECT} component={StoreSelectScreen} />
       <Stack.Screen
@@ -38,11 +45,6 @@ export default function StoresStack() {
       />
 
       <Stack.Screen name={ROUTES.STORE_DETAIL} component={StoreDetailScreen} />
-      <Stack.Screen
-        name={ROUTES.STORE_INFO}
-        component={StoreInfoScreen}
-        options={{ title: "Información de tiendas" }}
-      />
     </Stack.Navigator>
   );
 }

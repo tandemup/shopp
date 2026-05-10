@@ -26,15 +26,46 @@ import {
   getStoresFromPurchaseHistory,
 } from "../../utils/queries/products";
 
-import {
-  joinText,
-  priceText,
-  purchaseMetaText,
-} from "../../utils/store/formatters";
+import { priceText } from "../../utils/store/formatters";
+
+/* -------------------------------------------------
+   Meta components
+-------------------------------------------------- */
+
+const CreatedDatePill = ({ createdAt }) => {
+  const date = createdAt ? new Date(createdAt) : null;
+
+  return (
+    <View style={styles.metaPill}>
+      <Ionicons name="calendar-outline" size={15} color="#6B7280" />
+
+      <Text style={styles.subInfo} numberOfLines={1}>
+        {date && !Number.isNaN(date.getTime())
+          ? date.toLocaleDateString("es-ES", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            })
+          : "Sin fecha"}
+      </Text>
+    </View>
+  );
+};
+
+const PurchaseCountText = ({ frequency }) => {
+  const count = Number(frequency ?? 0);
+
+  return (
+    <Text style={styles.purchaseCountText}>
+      {count === 1 ? "1 compra" : `${count} compras`}
+    </Text>
+  );
+};
 
 /* -------------------------------------------------
    Screen
 -------------------------------------------------- */
+
 export default function PurchaseHistoryScreen() {
   const navigation = useNavigation();
   const lists = useLists();
@@ -45,16 +76,10 @@ export default function PurchaseHistoryScreen() {
   const [search, setSearch] = useState("");
   const [selectedStore, setSelectedStore] = useState(null);
 
-  /* ---------------------------
-     Stores disponibles en historial
-  ----------------------------*/
   const stores = useMemo(() => {
     return getStoresFromPurchaseHistory(purchaseHistory, getStoreById);
   }, [purchaseHistory, getStoreById]);
 
-  /* ---------------------------
-     Productos filtrados + ordenados
-  ----------------------------*/
   const products = useMemo(() => {
     const base = queryProducts({
       purchaseHistory,
@@ -67,9 +92,6 @@ export default function PurchaseHistoryScreen() {
     );
   }, [purchaseHistory, search, selectedStore]);
 
-  /* ---------------------------
-     Helpers
-  ----------------------------*/
   const openSearch = (query) => {
     const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
     Linking.openURL(url);
@@ -91,9 +113,6 @@ export default function PurchaseHistoryScreen() {
     }
   };
 
-  /* ---------------------------
-     Render item
-  ----------------------------*/
   const renderItem = ({ item }) => {
     const store = item.storeId ? getStoreById(item.storeId) : null;
 
@@ -125,9 +144,10 @@ export default function PurchaseHistoryScreen() {
             />
           ) : null}
 
-          <Text style={styles.cardSubtitle}>
-            {purchaseMetaText(item.frequency, item.lastPurchasedAt)}
-          </Text>
+          <View style={styles.purchaseMetaRow}>
+            <PurchaseCountText frequency={item.frequency} />
+            <CreatedDatePill createdAt={item.lastPurchasedAt} />
+          </View>
 
           <StoreLink
             store={store}
@@ -150,9 +170,6 @@ export default function PurchaseHistoryScreen() {
     );
   };
 
-  /* ---------------------------
-     Render
-  ----------------------------*/
   return (
     <SafeAreaView style={styles.container} edges={["left", "right", "bottom"]}>
       <View style={styles.content}>
@@ -225,6 +242,7 @@ export default function PurchaseHistoryScreen() {
 /* -------------------------------------------------
    Styles
 -------------------------------------------------- */
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -345,9 +363,34 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
 
-  cardSubtitle: {
-    marginTop: 4,
-    fontSize: 14,
+  purchaseMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 6,
+    marginBottom: 2,
+  },
+
+  purchaseCountText: {
+    fontSize: 13,
+    color: "#6B7280",
+    fontWeight: "600",
+  },
+
+  metaPill: {
+    minHeight: 28,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "#F3F4F6",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+
+  subInfo: {
+    fontSize: 13,
     color: "#6B7280",
   },
 

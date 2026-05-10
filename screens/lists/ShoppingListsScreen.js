@@ -213,6 +213,34 @@ function MenuNavegacion2({
   );
 }
 
+const CreatedDatePill = ({ createdAt }) => {
+  const date = createdAt ? new Date(createdAt) : null;
+
+  return (
+    <View style={styles.metaPill}>
+      <Ionicons name="calendar-outline" size={15} color="#6B7280" />
+
+      <Text style={styles.subInfo} numberOfLines={1}>
+        {date && !Number.isNaN(date.getTime())
+          ? date.toLocaleDateString("es-ES", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            })
+          : "Sin fecha"}
+      </Text>
+    </View>
+  );
+};
+const PurchaseCountText = ({ frequency }) => {
+  const count = Number(frequency ?? 0);
+
+  return (
+    <Text style={styles.purchaseCountText}>
+      {count === 1 ? "1 compra" : `${count} compras`}
+    </Text>
+  );
+};
 export default function ShoppingListsScreen() {
   const navigation = useNavigation();
   const listRef = useRef(null);
@@ -339,9 +367,11 @@ export default function ShoppingListsScreen() {
           </Pressable>
         </View>
 
-        <Text style={styles.date}>
-          Creada el {new Date(item.createdAt).toLocaleDateString()}
-        </Text>
+        <View style={styles.metaRow}>
+          <Text>
+            Creada en <CreatedDatePill createdAt={item.createdAt} />
+          </Text>
+        </View>
 
         <Text style={styles.count}>{item.items?.length || 0} productos</Text>
       </Pressable>
@@ -709,5 +739,29 @@ const styles = StyleSheet.create({
     backgroundColor: "#16a34a",
     padding: 10,
     borderRadius: 8,
+  },
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+
+  metaPill: {
+    minHeight: 28,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "#F3F4F6",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+
+  subInfo: {
+    fontSize: 13,
+    color: "#6B7280",
   },
 });
