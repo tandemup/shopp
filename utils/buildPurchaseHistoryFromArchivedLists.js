@@ -12,6 +12,7 @@ import { normalizeProductName } from "./normalize";
  * @param {Array} archivedLists
  * @returns {Array} purchaseHistory
  */
+
 export function buildPurchaseHistoryFromArchivedLists(archivedLists = []) {
   const map = new Map();
 

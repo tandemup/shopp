@@ -8,6 +8,8 @@ import {
   Pressable,
   Linking,
 } from "react-native";
+
+import DatePill from "../../components/controls/DatePill";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Ionicons } from "@expo/vector-icons";
@@ -31,26 +33,6 @@ import { priceText } from "../../utils/store/formatters";
 /* -------------------------------------------------
    Meta components
 -------------------------------------------------- */
-
-const CreatedDatePill = ({ createdAt }) => {
-  const date = createdAt ? new Date(createdAt) : null;
-
-  return (
-    <View style={styles.metaPill}>
-      <Ionicons name="calendar-outline" size={15} color="#6B7280" />
-
-      <Text style={styles.subInfo} numberOfLines={1}>
-        {date && !Number.isNaN(date.getTime())
-          ? date.toLocaleDateString("es-ES", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            })
-          : "Sin fecha"}
-      </Text>
-    </View>
-  );
-};
 
 const PurchaseCountText = ({ frequency }) => {
   const count = Number(frequency ?? 0);
@@ -146,7 +128,7 @@ export default function PurchaseHistoryScreen() {
 
           <View style={styles.purchaseMetaRow}>
             <PurchaseCountText frequency={item.frequency} />
-            <CreatedDatePill createdAt={item.lastPurchasedAt} />
+            <DatePill date={item.lastPurchasedAt} />
           </View>
 
           <StoreLink

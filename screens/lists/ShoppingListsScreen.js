@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 
+import DatePill from "../../components/controls/DatePill";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -85,6 +86,7 @@ function MenuNavegacion1({ onCreateList }) {
     </View>
   );
 }
+
 function MenuNavegacion2({
   archivedCount = 0,
   historyCount = 0,
@@ -213,25 +215,6 @@ function MenuNavegacion2({
   );
 }
 
-const CreatedDatePill = ({ createdAt }) => {
-  const date = createdAt ? new Date(createdAt) : null;
-
-  return (
-    <View style={styles.metaPill}>
-      <Ionicons name="calendar-outline" size={15} color="#6B7280" />
-
-      <Text style={styles.subInfo} numberOfLines={1}>
-        {date && !Number.isNaN(date.getTime())
-          ? date.toLocaleDateString("es-ES", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            })
-          : "Sin fecha"}
-      </Text>
-    </View>
-  );
-};
 const PurchaseCountText = ({ frequency }) => {
   const count = Number(frequency ?? 0);
 
@@ -366,13 +349,14 @@ export default function ShoppingListsScreen() {
             <Ionicons name="ellipsis-vertical" size={20} color="#555" />
           </Pressable>
         </View>
-
         <View style={styles.metaRow}>
-          <Text>
-            Creada en <CreatedDatePill createdAt={item.createdAt} />
-          </Text>
+          <Text style={styles.metaLabel}>Creada en</Text>
+          <DatePill
+            date={item.createdAt}
+            fallback="Sin fecha"
+            icon="calendar-outline"
+          />
         </View>
-
         <Text style={styles.count}>{item.items?.length || 0} productos</Text>
       </Pressable>
     );
@@ -748,7 +732,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 4,
   },
-
+  metaLabel: {
+    fontSize: 13,
+    color: "#6B7280",
+    fontWeight: "600",
+  },
   metaPill: {
     minHeight: 28,
     borderRadius: 999,

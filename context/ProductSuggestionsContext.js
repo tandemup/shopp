@@ -97,7 +97,7 @@ export function ProductSuggestionsProvider({ children }) {
       if (storeFilter && item.storeId !== storeFilter) return;
 
       const frequency = purchaseHistory.filter(
-        (p) => p.name === item.name
+        (p) => p.name === item.name,
       ).length;
 
       const recencyScore = getRecencyScore(item.purchasedAt);
@@ -147,7 +147,7 @@ export function ProductSuggestionsProvider({ children }) {
        3️⃣ Crear nuevo
     ----------------------------*/
     const hasExactMatch = Array.from(resultsMap.values()).some(
-      (r) => r.name.toLowerCase() === q
+      (r) => r.name.toLowerCase() === q,
     );
 
     if (!hasExactMatch) {
@@ -163,7 +163,7 @@ export function ProductSuggestionsProvider({ children }) {
        4️⃣ Orden final
     ----------------------------*/
     const results = Array.from(resultsMap.values()).sort(
-      (a, b) => b.score - a.score
+      (a, b) => b.score - a.score,
     );
 
     cacheRef.current.set(q, results);
@@ -201,7 +201,7 @@ export function useProductSuggestions() {
   const ctx = useContext(ProductSuggestionsContext);
   if (!ctx) {
     throw new Error(
-      "useProductSuggestions must be used inside ProductSuggestionsProvider"
+      "useProductSuggestions must be used inside ProductSuggestionsProvider",
     );
   }
   return ctx;
