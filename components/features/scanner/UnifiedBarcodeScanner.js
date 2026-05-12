@@ -200,6 +200,7 @@ export default function UnifiedBarcodeScanner({
         <CameraView
           style={StyleSheet.absoluteFillObject}
           facing="back"
+          autofocus="on"
           active={cameraActive}
           enableTorch={torch}
           zoom={zoom}

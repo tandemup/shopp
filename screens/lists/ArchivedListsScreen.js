@@ -14,7 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import SearchBar from "../../components/features/search/SearchBar";
 import { Ionicons } from "@expo/vector-icons";
-
+import { formatCurrency } from "../../utils/store/formatters";
 import { ROUTES } from "../../navigation/ROUTES";
 import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
@@ -48,7 +48,6 @@ const HeaderRow = ({ title, expanded, onToggle, onPressDetails }) => (
 const InfoRow = ({ archivedAt, store, onPressStore }) => (
   <View style={styles.infoRow}>
     <DatePill date={archivedAt} fallback="Sin fecha" icon="calendar-outline" />
-
     <StorePill store={store} onPressStore={onPressStore} />
   </View>
 );
@@ -59,8 +58,7 @@ const ProductsAndTotalRow = ({ count, total }) => (
       <Ionicons name="cart-outline" size={17} color="#6B7280" />
       <Text style={styles.productsText}>{count} productos</Text>
     </View>
-
-    <Text style={styles.totalPrice}>{total.toFixed(2)} €</Text>
+    <Text style={styles.totalPrice}>{formatCurrency(total.toFixed(2))}</Text>
   </View>
 );
 
@@ -101,9 +99,7 @@ const ArchivedItemRow = ({ item }) => {
         )}
 
         {typeof savings === "number" && savings > 0 && (
-          <Text style={styles.savingText}>
-            💸 {savings.toFixed(2)} {currency}
-          </Text>
+          <Text style={styles.savingText}>💸 {formatCurrency(savings)}</Text>
         )}
 
         {typeof warning === "string" && (
@@ -113,9 +109,7 @@ const ArchivedItemRow = ({ item }) => {
 
       <View style={styles.itemPriceColumn}>
         {typeof total === "number" && (
-          <Text style={styles.itemPrice}>
-            {total.toFixed(2)} {currency}
-          </Text>
+          <Text style={styles.itemPrice}>{formatCurrency(total)}</Text>
         )}
       </View>
     </View>

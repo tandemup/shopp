@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useCameraPermissions } from "expo-camera";
+import { useCameraPermissions, useMicrophonePermissions } from "expo-camera";
 import * as Location from "expo-location";
 
 import { ROUTES } from "../../navigation/ROUTES";
@@ -46,8 +46,33 @@ function getPermissionColor(permission) {
 
   return "#64748b";
 }
-async function handlePermissionPress(permission, requestPermission) {
-  if (permission?.granted) return;
+
+async function handlePermissionPress(permission, requestPermission, label) {
+  if (permission?.granted) {
+    if (Platform.OS === "web") {
+      safeAlert(
+        `${label} concedido`,
+        "El permiso ya está concedido. Para volver a preguntar, revócalo desde los permisos del sitio: pulsa el icono junto a la URL, cambia el permiso a bloquear o preguntar, y recarga la página.",
+      );
+      return;
+    }
+
+    safeAlert(
+      `${label} concedido`,
+      "El permiso ya está concedido. Android/iOS no permiten anularlo desde la app para volver a mostrar el diálogo del sistema. Puedes revocarlo manualmente desde Ajustes y después volver a tocar esta opción.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Abrir ajustes",
+          onPress: async () => {
+            await Linking.openSettings();
+          },
+        },
+      ],
+    );
+
+    return;
+  }
 
   if (permission?.canAskAgain === false) {
     if (Platform.OS === "web") {
@@ -148,11 +173,16 @@ function SettingsCard({
 
 export default function MenuScreen({ navigation }) {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [microphonePermission, requestMicrophonePermission] =
+    useMicrophonePermissions();
+
   const [locationPermission, setLocationPermission] = useState(null);
+
   const { clearActiveListsState, clearArchivedListsState, clearAllListsState } =
     useLists();
 
   const { reloadStoresFromSeed } = useStores();
+
   useEffect(() => {
     let mounted = true;
 
@@ -440,7 +470,7 @@ export default function MenuScreen({ navigation }) {
                   Accesos del dispositivo
                 </Text>
                 <Text style={styles.permissionsSubtitle}>
-                  Cámara, ubicación y permisos necesarios para la app
+                  Cámara, micrófono, ubicación y permisos necesarios para la app
                 </Text>
               </View>
 
@@ -457,7 +487,25 @@ export default function MenuScreen({ navigation }) {
               description="Necesaria para escanear códigos de barras."
               permission={cameraPermission}
               onPress={() =>
-                handlePermissionPress(cameraPermission, requestCameraPermission)
+                handlePermissionPress(
+                  cameraPermission,
+                  requestCameraPermission,
+                  "Cámara",
+                )
+              }
+            />
+
+            <PermissionRow
+              icon="mic-outline"
+              title="Micrófono"
+              description="Necesario solo si grabas vídeo con audio."
+              permission={microphonePermission}
+              onPress={() =>
+                handlePermissionPress(
+                  microphonePermission,
+                  requestMicrophonePermission,
+                  "Micrófono",
+                )
               }
             />
 
@@ -470,15 +518,23 @@ export default function MenuScreen({ navigation }) {
                 handlePermissionPress(
                   locationPermission,
                   requestLocationPermission,
+                  "Ubicación",
                 )
               }
             />
 
             {Platform.OS === "web" ? (
               <Text style={styles.permissionNote}>
-                En web, los permisos dependen del navegador y del uso de HTTPS.
+                En web, los permisos dependen del navegador, del uso de HTTPS y
+                de los ajustes del sitio.
               </Text>
-            ) : null}
+            ) : (
+              <Text style={styles.permissionNote}>
+                Si un permiso ya está concedido, Android/iOS no permiten volver
+                a mostrar el diálogo del sistema desde la app. Para probar el
+                flujo otra vez, revoca el permiso desde Ajustes.
+              </Text>
+            )}
           </View>
         </View>
 
