@@ -20,17 +20,11 @@ import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
 import { normalizePriceInfo } from "../../utils/core/defaultItem";
 
-const HeaderRow = ({ title, expanded, onToggle, onPressDetails }) => (
+const HeaderRow = ({ title, expanded, onToggle }) => (
   <View style={styles.topRow}>
-    <Pressable
-      onPress={onPressDetails}
-      style={styles.titlePressable}
-      hitSlop={6}
-    >
-      <Text style={styles.listTitle} numberOfLines={1}>
-        {title}
-      </Text>
-    </Pressable>
+    <Text style={styles.listTitle} numberOfLines={1}>
+      {title}
+    </Text>
 
     <Pressable onPress={onToggle} style={styles.chevronPressable} hitSlop={10}>
       <Ionicons
@@ -66,13 +60,13 @@ const ProductsAndTotalRow = ({ count, total }) => (
    ITEM ROW
 ──────────────────────────────────────────────── */
 
-const ArchivedItemRow = ({ item }) => {
+const ArchivedItemRow = ({ item, isLast }) => {
   const pi = normalizePriceInfo(item.priceInfo);
   const { total, currency, promo, promoLabel, savings, summary, warning } = pi;
   const hasOffer = !!(promo || promoLabel);
 
   return (
-    <View style={styles.itemRow}>
+    <View style={[styles.itemRow, isLast && styles.itemRowLast]}>
       <View style={styles.itemIconBox}>
         <Ionicons name="receipt-outline" size={18} color="#111827" />
       </View>
@@ -115,7 +109,6 @@ const ArchivedItemRow = ({ item }) => {
     </View>
   );
 };
-
 /* ────────────────────────────────────────────────
    CARD
 ──────────────────────────────────────────────── */
@@ -125,7 +118,6 @@ const ArchivedListCard = ({
   store,
   expanded,
   onToggle,
-  onPressDetails,
   onPressStore,
 }) => {
   const items = list.items || [];
@@ -146,9 +138,7 @@ const ArchivedListCard = ({
             title={list.name}
             expanded={expanded}
             onToggle={onToggle}
-            onPressDetails={onPressDetails}
           />
-
           <InfoRow
             archivedAt={list.archivedAt || list.createdAt}
             store={store}
@@ -163,8 +153,12 @@ const ArchivedListCard = ({
 
       {expanded && (
         <View style={styles.itemsContainer}>
-          {items.map((item) => (
-            <ArchivedItemRow key={item.id} item={item} />
+          {items.map((item, index) => (
+            <ArchivedItemRow
+              key={item.id}
+              item={item}
+              isLast={index === items.length - 1}
+            />
           ))}
         </View>
       )}
@@ -214,14 +208,6 @@ export default function ArchivedListsScreen({ navigation }) {
     });
   }, [search, sortedLists, getStoreById]);
 
-  const openDetails = (list) => {
-    if (!list?.id) return;
-
-    navigation.navigate(ROUTES.ARCHIVED_LIST_DETAIL, {
-      listId: list.id,
-    });
-  };
-
   const openStoreInfo1 = (storeId) => {
     if (!storeId) return;
 
@@ -246,7 +232,7 @@ export default function ArchivedListsScreen({ navigation }) {
     if (!storeId) return;
 
     navigation.navigate(ROUTES.STORES_TAB, {
-      screen: ROUTES.STORE_INFO,
+      screen: ROUTES.STORE_DETAIL,
       params: {
         storeId,
       },
@@ -261,7 +247,6 @@ export default function ArchivedListsScreen({ navigation }) {
       onToggle={() =>
         setExpandedListId(expandedListId === item.id ? null : item.id)
       }
-      onPressDetails={() => openDetails(item)}
       onPressStore={openStoreInfo}
     />
   );
@@ -458,6 +443,10 @@ const styles = StyleSheet.create({
     gap: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
+  },
+
+  itemRowLast: {
+    borderBottomWidth: 0,
   },
 
   itemIconBox: {

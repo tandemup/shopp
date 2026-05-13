@@ -11,7 +11,9 @@ import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
 import { ROUTES } from "../../navigation/ROUTES";
 import { formatCurrency } from "../../utils/store/formatters";
-import StoreLink from "../../components/controls/StoreLink";
+
+import DatePill from "../../components/controls/DatePill";
+import StorePill from "../../components/controls/StorePill";
 
 /* -------------------------------------------------
    Screen
@@ -58,6 +60,17 @@ export default function PurchaseDetailScreen() {
 
     return sum / purchases.length;
   }, [purchases]);
+
+  /* ---------------------------
+     Navegar a detalle de tienda
+  ----------------------------*/
+  const openStoreDetail = (storeId) => {
+    if (!storeId) return;
+
+    navigation.navigate(ROUTES.STORE_DETAIL, {
+      storeId,
+    });
+  };
 
   /* ---------------------------
      Protección básica
@@ -116,22 +129,13 @@ export default function PurchaseDetailScreen() {
         </View>
 
         <View style={styles.cardText}>
-          <Text style={styles.cardTitle}>
-            {new Date(item.purchasedAt).toLocaleDateString()}
-          </Text>
+          <View style={styles.metaRow}>
+            <DatePill date={item.purchasedAt} />
+          </View>
 
-          {store?.name ? (
-            <StoreLink
-              store={store}
-              labelPrefix=""
-              queryPrefix={product.name}
-              iconColor="#2563EB"
-              textColor="#2563EB"
-              textStyle={styles.storeLinkText}
-            />
-          ) : (
-            <Text style={styles.cardSubtitle}>Tienda no indicada</Text>
-          )}
+          <View style={styles.storeRow}>
+            <StorePill store={store} onPressStore={openStoreDetail} />
+          </View>
         </View>
 
         <View style={styles.priceBox}>
@@ -143,6 +147,7 @@ export default function PurchaseDetailScreen() {
       </View>
     );
   };
+
   /* ---------------------------
      Render
   ----------------------------*/
@@ -263,23 +268,17 @@ const styles = StyleSheet.create({
   cardText: {
     flex: 1,
     paddingRight: 10,
+    gap: 6,
   },
 
-  cardTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 4,
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
 
-  cardSubtitle: {
-    fontSize: 14,
-    color: "#6B7280",
-  },
-
-  storeLinkText: {
-    fontSize: 14,
-    fontWeight: "600",
+  storeRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
 
   priceBox: {

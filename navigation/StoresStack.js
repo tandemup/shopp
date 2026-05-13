@@ -44,7 +44,15 @@ export default function StoresStack() {
         component={StoresFavoritesScreen}
       />
 
-      <Stack.Screen name={ROUTES.STORE_DETAIL} component={StoreDetailScreen} />
+      <Stack.Screen
+        name={ROUTES.STORE_DETAIL}
+        component={StoreDetailScreen}
+        options={{
+          title: "Store Detail",
+          headerShown: true,
+          headerBackTitleVisible: false,
+        }}
+      />
     </Stack.Navigator>
   );
 }

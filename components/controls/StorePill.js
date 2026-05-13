@@ -53,8 +53,9 @@ const styles = StyleSheet.create({
   },
 
   storePill: {
-    flexShrink: 1,
-    maxWidth: 150,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "#EFF6FF",
     borderWidth: 1,
     borderColor: "#BFDBFE",
@@ -79,13 +80,11 @@ const styles = StyleSheet.create({
     color: "#2563EB",
     fontSize: 13,
     fontWeight: "600",
-    flexShrink: 1,
   },
 
   storeMutedText: {
     color: "#9CA3AF",
     fontSize: 13,
     fontWeight: "600",
-    flexShrink: 1,
   },
 });

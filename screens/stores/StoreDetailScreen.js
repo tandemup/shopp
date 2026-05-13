@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useLayoutEffect, useState } from "react";
+import { useRoute, useNavigation } from "@react-navigation/native";
+
 import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRoute } from "@react-navigation/native";
 
 import { useStores } from "../../context/StoresContext";
 import { getValidCoords } from "../../utils/maps/getValidCoords";
@@ -12,10 +13,38 @@ import {
 
 import StoreMapPreview from "../../components/features/maps/StoreMapPreview";
 import { useLocation } from "../../context/LocationContext";
+import { ROUTES } from "../../navigation/ROUTES";
 
 export default function StoreDetailScreen() {
   const route = useRoute();
   const { storeId } = route.params || {};
+  const navigation = useNavigation();
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <Pressable
+          onPress={() => {
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+              return;
+            }
+
+            navigation.navigate(ROUTES.SHOPPING_TAB, {
+              screen: ROUTES.PURCHASE_HISTORY,
+            });
+          }}
+          hitSlop={10}
+          style={{
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+          }}
+        >
+          <Ionicons name="arrow-back" size={26} color="#111827" />
+        </Pressable>
+      ),
+    });
+  }, [navigation]);
 
   const { getStoreById, toggleFavoriteStore, isFavoriteStore } = useStores();
   const { location } = useLocation();
