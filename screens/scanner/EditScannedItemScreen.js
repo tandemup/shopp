@@ -18,7 +18,7 @@ import {
   updateScannedEntry,
   removeScannedItem,
 } from "../../services/scannerHistory";
-
+import { SafeAreaView } from "react-native-safe-area-context";
 import { safeAlert } from "../../components/ui/alert/safeAlert";
 import { createThumbnail } from "../../utils/createThumbnail";
 import BarcodeLink from "../../components/controls/BarcodeLink";
@@ -141,95 +141,14 @@ export default function EditScannedItemScreen({ route, navigation }) {
       style={styles.screen}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Text style={styles.title}>Editar escaneo</Text>
-
-        <Text style={styles.label}>Código de barras</Text>
-        <View style={styles.codeBox}>
-          <BarcodeLink barcode={barcode} label={barcode} iconColor="#2563eb" />
-        </View>
-
-        <Text style={styles.label}>Nombre</Text>
-        <TextInput
-          style={styles.input}
-          value={name}
-          onChangeText={setName}
-          placeholder="Nombre del producto"
-          placeholderTextColor="#9ca3af"
-        />
-
-        <Text style={styles.label}>Marca</Text>
-        <TextInput
-          style={styles.input}
-          value={brand}
-          onChangeText={setBrand}
-          placeholder="Marca"
-          placeholderTextColor="#9ca3af"
-        />
-
-        <Text style={styles.label}>URL</Text>
-        <TextInput
-          style={styles.input}
-          value={url}
-          onChangeText={setUrl}
-          placeholder="URL del producto"
-          placeholderTextColor="#9ca3af"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-
-        <Text style={styles.label}>Imagen del producto</Text>
-
-        {thumbnailUri ? (
-          <Image
-            source={{ uri: thumbnailUri }}
-            style={styles.thumb}
-            contentFit="cover"
-            cachePolicy="disk"
-          />
-        ) : (
-          <View style={styles.noThumb}>
-            <Ionicons name="image-outline" size={24} color="#6b7280" />
-            <Text style={styles.noThumbText}>Sin imagen</Text>
-          </View>
-        )}
-
-        <TextInput
-          value={imageUrl}
-          onChangeText={setImageUrl}
-          onBlur={handleImageUrlBlur}
-          placeholder="URL de la imagen"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-
-        <Text style={styles.label}>Notas</Text>
-        <TextInput
-          value={notes}
-          onChangeText={setNotes}
-          placeholder="Añade una descripción o notas"
-          placeholderTextColor="#9ca3af"
-          multiline
-          style={[styles.input, styles.notesInput]}
-        />
-
-        <View style={styles.actions}>
-          <Pressable style={styles.saveBtn} onPress={handleSave}>
-            <Ionicons name="save" size={20} color="#fff" />
-            <Text style={styles.actionText}>Guardar</Text>
-          </Pressable>
-
-          <Pressable style={styles.deleteBtn} onPress={handleDelete}>
-            <Ionicons name="trash" size={20} color="#fff" />
-            <Text style={styles.actionText}>Eliminar</Text>
-          </Pressable>
-        </View>
-      </ScrollView>
+      <SafeAreaView style={styles.screen} edges={["left", "right", "bottom"]}>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+        >
+          ...
+        </ScrollView>
+      </SafeAreaView>
     </KeyboardAvoidingView>
   );
 }

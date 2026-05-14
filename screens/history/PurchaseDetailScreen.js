@@ -77,7 +77,10 @@ export default function PurchaseDetailScreen() {
   ----------------------------*/
   if (!product) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView
+        style={styles.container}
+        edges={["left", "right", "bottom"]}
+      >
         <View style={styles.emptyState}>
           <Ionicons name="alert-circle-outline" size={34} color="#9CA3AF" />
           <Text style={styles.emptyTitle}>Producto no disponible</Text>

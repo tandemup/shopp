@@ -86,7 +86,7 @@ export default function BarcodeSettingsScreen() {
   };
 
   return (
-    <View style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
@@ -134,7 +134,7 @@ export default function BarcodeSettingsScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

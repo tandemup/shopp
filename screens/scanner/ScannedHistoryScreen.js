@@ -13,7 +13,7 @@ import {
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
-
+import { SafeAreaView } from "react-native-safe-area-context";
 import { ROUTES } from "../../navigation/ROUTES";
 import BarcodeLink from "../../components/controls/BarcodeLink";
 
@@ -176,7 +176,7 @@ export default function ScannedHistoryScreen({ navigation, route }) {
     : "No hay escaneos guardados";
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["left", "right", "bottom"]}>
       <View style={styles.content}>
         <Text style={styles.title}>Historial de Escaneos</Text>
 
@@ -220,7 +220,7 @@ export default function ScannedHistoryScreen({ navigation, route }) {
           showsVerticalScrollIndicator={false}
         />
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 

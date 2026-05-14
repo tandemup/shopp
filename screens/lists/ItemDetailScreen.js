@@ -363,7 +363,10 @@ export default function ItemDetailScreen() {
 
   if (!item) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView
+        style={styles.container}
+        edges={["left", "right", "bottom"]}
+      >
         <Text>Producto no encontrado</Text>
       </SafeAreaView>
     );

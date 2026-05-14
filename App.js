@@ -1,4 +1,6 @@
 import React, { useEffect } from "react";
+import { Platform } from "react-native";
+
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -39,7 +41,13 @@ export default function App() {
               <ProductLearningProvider>
                 <ProductSuggestionsProvider>
                   <NavigationContainer>
-                    <StatusBar style="auto" />
+                    <StatusBar
+                      style="auto"
+                      translucent={false}
+                      backgroundColor={
+                        Platform.OS === "android" ? "#F9FAFB" : undefined
+                      }
+                    />
                     <RootStack.Navigator screenOptions={{ headerShown: false }}>
                       <RootStack.Screen
                         name="Splash"

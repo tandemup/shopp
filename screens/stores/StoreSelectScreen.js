@@ -155,7 +155,7 @@ export default function StoreSelectScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["left", "right", "bottom"]}>
       <View style={styles.content}>
         <Text style={styles.title}>Seleccionar tienda</Text>
 

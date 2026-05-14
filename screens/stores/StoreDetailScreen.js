@@ -10,7 +10,7 @@ import {
   openGoogleMaps,
   openGoogleMapsSearch,
 } from "../../utils/maps/openGoogleMaps";
-
+import { SafeAreaView } from "react-native-safe-area-context";
 import StoreMapPreview from "../../components/features/maps/StoreMapPreview";
 import { useLocation } from "../../context/LocationContext";
 import { ROUTES } from "../../navigation/ROUTES";
@@ -160,41 +160,43 @@ export default function StoreDetailScreen() {
      Render
   ---------------------------------------------- */
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.name}>{store.name}</Text>
+    <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+      <ScrollView contentContainerStyle={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.name}>{store.name}</Text>
 
-        <Pressable onPress={handleToggleFavorite} hitSlop={10}>
-          <Ionicons
-            name={isFavorite ? "star" : "star-outline"}
-            size={26}
-            color={isFavorite ? "#f5c518" : "#bbb"}
-          />
-        </Pressable>
-      </View>
+          <Pressable onPress={handleToggleFavorite} hitSlop={10}>
+            <Ionicons
+              name={isFavorite ? "star" : "star-outline"}
+              size={26}
+              color={isFavorite ? "#f5c518" : "#bbb"}
+            />
+          </Pressable>
+        </View>
 
-      {/* Address */}
-      {store.address && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Dirección</Text>
-          <Text style={styles.sectionText}>
-            📍 {store.address}
-            {store.city ? `, ${store.city}` : ""}
+        {/* Address */}
+        {store.address && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Dirección</Text>
+            <Text style={styles.sectionText}>
+              📍 {store.address}
+              {store.city ? `, ${store.city}` : ""}
+            </Text>
+          </View>
+        )}
+
+        {/* Location */}
+        <LocationSection />
+
+        {/* Future sections */}
+        <View style={styles.sectionMuted}>
+          <Text style={styles.mutedText}>
+            Próximamente: horarios, notas y productos asociados
           </Text>
         </View>
-      )}
-
-      {/* Location */}
-      <LocationSection />
-
-      {/* Future sections */}
-      <View style={styles.sectionMuted}>
-        <Text style={styles.mutedText}>
-          Próximamente: horarios, notas y productos asociados
-        </Text>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -316,5 +318,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#888",
     textAlign: "center",
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
   },
 });

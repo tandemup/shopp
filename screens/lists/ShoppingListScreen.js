@@ -13,7 +13,7 @@ import { useRoute, useNavigation } from "@react-navigation/native";
 import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
 import { Ionicons } from "@expo/vector-icons";
-
+import { SafeAreaView } from "react-native-safe-area-context";
 import StoreSelector from "../../components/features/stores/StoreSelector";
 import ItemRow from "../../components/features/items/ItemRow";
 import SearchCombinedBar from "../../components/features/search/SearchCombinedBar";
@@ -131,46 +131,49 @@ export default function ShoppingListScreen() {
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.listHeader}>
-        <Text style={styles.listName}>{list.name}</Text>
-        <CurrencyBadge currency={list.currency} size="sm" />
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+        <View style={styles.listHeader}>
+          <Text style={styles.listName}>{list.name}</Text>
+          <CurrencyBadge currency={list.currency} size="sm" />
+        </View>
 
-      <View style={styles.storeSelectorWrapper}>
-        <StoreSelector
-          store={assignedStore}
-          onPress={() =>
-            navigation.navigate(ROUTES.STORE_SELECT, {
-              selectForListId: listId,
-            })
-          }
-          onInfoPress={(store) =>
-            navigation.navigate(ROUTES.STORES_TAB, {
-              screen: ROUTES.STORE_DETAIL,
-              params: { storeId: store.id },
-            })
-          }
+        <View style={styles.storeSelectorWrapper}>
+          <StoreSelector
+            store={assignedStore}
+            onPress={() =>
+              navigation.navigate(ROUTES.STORE_SELECT, {
+                selectForListId: listId,
+              })
+            }
+            onInfoPress={(store) =>
+              navigation.navigate(ROUTES.STORES_TAB, {
+                screen: ROUTES.STORE_DETAIL,
+                params: { storeId: store.id },
+              })
+            }
+          />
+        </View>
+
+        <SearchCombinedBar
+          currentList={list}
+          onCreateNew={handleCreateNew}
+          onAddFromHistory={handleAddFromHistory}
         />
-      </View>
 
-      <SearchCombinedBar
-        currentList={list}
-        onCreateNew={handleCreateNew}
-        onAddFromHistory={handleAddFromHistory}
-      />
-      <FlatList
-        data={list.items}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      />
+        <FlatList
+          data={list.items}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        />
 
-      <CheckoutBar
-        total={total}
-        currency={list.currency}
-        onCheckout={handleCheckout}
-      />
+        <CheckoutBar
+          total={total}
+          currency={list.currency}
+          onCheckout={handleCheckout}
+        />
+      </SafeAreaView>
     </KeyboardAvoidingView>
   );
 }
@@ -205,5 +208,9 @@ const styles = StyleSheet.create({
   },
   storeSelectorWrapper: {
     marginBottom: 8,
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#fff",
   },
 });
