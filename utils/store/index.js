@@ -1,3 +1,6 @@
 export * from "./openingHours";
-export * from "./formatters";
+export * from "./text";
+export * from "./formatText";
+export * from "./prices";
+export * from "./currency";
 export * from "./distanceCache";

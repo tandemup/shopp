@@ -25,6 +25,9 @@ export default function ShoppingStack() {
   return (
     <Stack.Navigator
       screenOptions={{
+        headerStyle: {
+          backgroundColor: "papayawhip",
+        },
         headerTitleAlign: "center",
         headerTitleStyle: { fontSize: 20, fontWeight: "700" },
         headerBackButtonDisplayMode: "minimal",

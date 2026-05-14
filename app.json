@@ -18,8 +18,8 @@
     },
     "android": {
       "package": "com.ramnworksshopp.shopp",
-      "versioncode": 1,
-      "edgeToEdgeEnabled": true,
+      "versionCode": 1,
+      "edgeToEdgeEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"

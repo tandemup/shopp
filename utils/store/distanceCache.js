@@ -1,5 +1,5 @@
 import { getItem, setItem } from "../storage";
-import { getDistanceKm } from "../math/distance";
+import { getDistanceKm, distanceMetersBetween } from "../math/distance";
 
 const KEY = "stores_distance_cache";
 

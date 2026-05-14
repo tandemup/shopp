@@ -9,7 +9,10 @@ export {
   purchaseMetaText,
 } from "./formatText";
 
+export { DEFAULT_CURRENCY } from "./currency";
+
 export { formatCurrency, priceText, metaText } from "./prices";
+export { normalizeCurrency } from "./currency";
 
 export {
   formatStoreName,
@@ -20,5 +23,3 @@ export {
   getStoreStatusBadge,
   formatStoreLabel,
 } from "./stores";
-
-export { DEFAULT_CURRENCY } from "./currency";
