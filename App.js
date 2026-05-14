@@ -40,7 +40,6 @@ export default function App() {
                 <ProductSuggestionsProvider>
                   <NavigationContainer>
                     <StatusBar style="auto" />
-
                     <RootStack.Navigator screenOptions={{ headerShown: false }}>
                       <RootStack.Screen
                         name="Splash"
