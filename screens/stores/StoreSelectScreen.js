@@ -73,7 +73,10 @@ export default function StoreSelectScreen() {
   -------------------------------------------------- */
   if (!favoriteStores || favoriteStores.length === 0) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView
+        style={styles.container}
+        edges={["left", "right", "bottom"]}
+      >
         <View style={styles.content}>
           <Text style={styles.title}>Seleccionar tienda</Text>
 

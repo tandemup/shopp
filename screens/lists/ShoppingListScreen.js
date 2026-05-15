@@ -9,6 +9,7 @@ import {
   Platform,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 
 import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
@@ -34,6 +35,9 @@ export default function ShoppingListScreen() {
     () => activeLists.find((l) => l.id === listId),
     [activeLists, listId],
   );
+  useEffect(() => {
+    navigation.setOptions(headerConfig.navigationOptions);
+  }, [navigation]);
 
   useEffect(() => {
     if (!list) {
@@ -125,6 +129,11 @@ export default function ShoppingListScreen() {
       }
     />
   );
+
+  const headerConfig = buildHeaderConfig({
+    title: "Shopping Lists",
+    preset: "light",
+  });
 
   return (
     <KeyboardAvoidingView

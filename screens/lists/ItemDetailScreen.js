@@ -18,6 +18,8 @@ import {
 } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { StatusBar } from "expo-status-bar";
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 
 import { getSearchSettings } from "../../src/storage/settingsStorage";
 import { DEFAULT_CURRENCY } from "../../constants/currency";
@@ -336,6 +338,10 @@ export default function ItemDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const insets = useSafeAreaInsets();
+  const headerConfig = buildHeaderConfig({
+    title: "Editar producto",
+    preset: "light",
+  });
 
   const { listId, itemId } = route.params || {};
 
@@ -354,12 +360,8 @@ export default function ItemDetailScreen() {
   });
 
   useLayoutEffect(() => {
-    navigation.setOptions({
-      title: "Editar producto",
-      headerTitleAlign: "center",
-      headerTransparent: false,
-    });
-  }, [navigation]);
+    navigation.setOptions(headerConfig.navigationOptions);
+  }, [navigation, headerConfig.navigationOptions]);
 
   if (!item) {
     return (
@@ -500,6 +502,7 @@ export default function ItemDetailScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
     >
+      <StatusBar {...headerConfig.statusBar} />
       <SafeAreaView
         style={styles.container}
         edges={["left", "right", "bottom"]}

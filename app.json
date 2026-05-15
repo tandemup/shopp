@@ -24,6 +24,11 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "androidStatusBar": {
+        "backgroundColor": "#2563EB",
+        "barStyle": "light-content",
+        "translucent": false
+      },
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"

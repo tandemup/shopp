@@ -42,10 +42,10 @@ export default function App() {
                 <ProductSuggestionsProvider>
                   <NavigationContainer>
                     <StatusBar
-                      style="auto"
+                      style="light"
                       translucent={false}
                       backgroundColor={
-                        Platform.OS === "android" ? "#F9FAFB" : undefined
+                        Platform.OS === "android" ? "#2563EB" : undefined
                       }
                     />
                     <RootStack.Navigator screenOptions={{ headerShown: false }}>

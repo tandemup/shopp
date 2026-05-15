@@ -10,9 +10,14 @@ import {
   ScrollView,
   TouchableOpacity,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
+
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
+import { getScreenContainerStyles } from "../../utils/layout/getScreenContainerStyles";
 
 import DatePill from "../../components/controls/DatePill";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 
@@ -27,65 +32,12 @@ import {
   safeConfirm,
 } from "../../components/ui/alert/safeAlert";
 
-function EditListNameModal() {}
+const headerConfig = buildHeaderConfig({
+  title: "Shopping Lists",
+  preset: "light",
+});
 
-function MenuNavegacion1({ onCreateList }) {
-  const navigation = useNavigation();
-
-  const Row = ({ icon, label, route, onPress }) => (
-    <TouchableOpacity
-      style={styles1.nav1Row}
-      onPress={() => {
-        if (onPress) {
-          onPress();
-          return;
-        }
-
-        navigation.navigate(ROUTES.SHOPPING_TAB, {
-          screen: route,
-        });
-      }}
-      activeOpacity={0.8}
-    >
-      <Ionicons
-        name={icon}
-        size={20}
-        color="#2563eb"
-        style={styles1.nav1RowIcon}
-      />
-      <Text style={styles1.nav1RowText}>{label}</Text>
-      <Ionicons name="chevron-forward" size={20} color="#999" />
-    </TouchableOpacity>
-  );
-
-  return (
-    <View style={styles1.nav1Wrapper}>
-      <Text style={styles1.nav1Title}>Navegación</Text>
-
-      <Row icon="add-outline" label="Nueva lista" onPress={onCreateList} />
-      <Row
-        icon="list-outline"
-        label="Mis listas"
-        route={ROUTES.SHOPPING_LISTS}
-      />
-      <Row
-        icon="archive-outline"
-        label="Listas archivadas"
-        route={ROUTES.ARCHIVED_LISTS}
-      />
-      <Row
-        icon="receipt-outline"
-        label="Historial de compras"
-        route={ROUTES.PURCHASE_HISTORY}
-      />
-      <Row
-        icon="barcode-outline"
-        label="Historial de escaneos"
-        route={ROUTES.SCANNED_HISTORY}
-      />
-    </View>
-  );
-}
+// const layout = getScreenContainerStyles();
 
 function MenuNavegacion2({
   archivedCount = 0,
@@ -224,6 +176,7 @@ const PurchaseCountText = ({ frequency }) => {
     </Text>
   );
 };
+
 export default function ShoppingListsScreen() {
   const navigation = useNavigation();
   const listRef = useRef(null);
@@ -239,13 +192,9 @@ export default function ShoppingListsScreen() {
 
   const [editingList, setEditingList] = useState(undefined);
   const [editName, setEditName] = useState("");
-
+  // headerStyle: {backgroundColor: "papayawhip",
   useEffect(() => {
-    navigation.setOptions({
-      title: "Shopping Lists",
-      headerTitleAlign: "center",
-      headerShadowVisible: true,
-    });
+    navigation.setOptions(headerConfig.navigationOptions);
   }, [navigation]);
 
   const buildTodayListName = () => {
@@ -368,6 +317,7 @@ export default function ShoppingListsScreen() {
 
   return (
     <View style={styles.screen}>
+      <StatusBar {...headerConfig.statusBar} />
       <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
         <View style={styles.content}>
           <Text style={styles.title}>Shopping Lists</Text>
