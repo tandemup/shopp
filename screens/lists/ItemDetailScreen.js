@@ -510,6 +510,7 @@ export default function ItemDetailScreen() {
       params: {
         listId,
         itemId,
+        returnToTab: ROUTES.SHOPPING_TAB,
       },
     });
   }

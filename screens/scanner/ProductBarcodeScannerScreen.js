@@ -1,7 +1,11 @@
 import React, { useEffect, useRef } from "react";
 import { View, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import {
+  CommonActions,
+  useNavigation,
+  useRoute,
+} from "@react-navigation/native";
 
 import BarcodeScannerView from "../../components/features/scanner/BarcodeScannerView";
 import { ROUTES } from "../../navigation/ROUTES";
@@ -20,21 +24,27 @@ export default function ProductBarcodeScannerScreen() {
     });
   }, [navigation]);
 
-  function handleDetected(code) {
-    if (isHandlingScanRef.current) return;
-
-    isHandlingScanRef.current = true;
-
-    const barcode = String(code || "")
+  function normalizeBarcode(code) {
+    return String(code || "")
       .replace(/\D/g, "")
       .trim();
+  }
 
-    if (!barcode) {
-      isHandlingScanRef.current = false;
-      return;
-    }
+  function returnToItemDetail(barcode) {
+    const parentNavigation = navigation.getParent();
 
-    navigation.navigate(ROUTES.SHOPPING_TAB, {
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: ROUTES.SCANNER_HOME,
+          },
+        ],
+      }),
+    );
+
+    parentNavigation?.navigate(ROUTES.SHOPPING_TAB, {
       screen: ROUTES.ITEM_DETAIL,
       params: {
         listId,
@@ -42,6 +52,21 @@ export default function ProductBarcodeScannerScreen() {
         scannedBarcode: barcode,
       },
     });
+  }
+
+  function handleDetected(code) {
+    if (isHandlingScanRef.current) return;
+
+    isHandlingScanRef.current = true;
+
+    const barcode = normalizeBarcode(code);
+
+    if (!barcode) {
+      isHandlingScanRef.current = false;
+      return;
+    }
+
+    returnToItemDetail(barcode);
   }
 
   function handleClose() {

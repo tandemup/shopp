@@ -1,9 +1,11 @@
 // screens/settings/BarcodeSettingsScreen.js
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, Switch, StyleSheet, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 
 import {
   BARCODE_FORMATS,
@@ -15,9 +17,26 @@ import {
   setBarcodeSettings,
 } from "../../src/storage/barcodeSettingsStorage";
 
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
+
 export default function BarcodeSettingsScreen() {
+  const navigation = useNavigation();
+
   const [settings, setSettings] = useState(DEFAULT_BARCODE_SETTINGS);
   const [isReady, setIsReady] = useState(false);
+
+  const headerConfig = useMemo(
+    () =>
+      buildHeaderConfig({
+        title: "Código de barras",
+        preset: "light",
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    navigation.setOptions(headerConfig.navigationOptions);
+  }, [navigation, headerConfig]);
 
   useEffect(() => {
     const init = async () => {
@@ -87,13 +106,13 @@ export default function BarcodeSettingsScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+      <StatusBar {...headerConfig.statusBar} />
+
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Código de barras</Text>
-
         <Text style={styles.subtitle}>
           Selecciona qué formatos debe intentar leer el scanner. Para productos
           de supermercado, mantén activos EAN-13, EAN-8, UPC-A y UPC-E.
@@ -132,7 +151,7 @@ export default function BarcodeSettingsScreen() {
           </Text>
         </View>
 
-        <View style={{ height: 40 }} />
+        <View style={styles.bottomSpacer} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -151,15 +170,8 @@ const styles = StyleSheet.create({
 
   content: {
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 16,
     paddingBottom: 24,
-  },
-
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#111827",
-    marginBottom: 8,
   },
 
   subtitle: {
@@ -273,5 +285,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: "#1E3A8A",
+  },
+
+  bottomSpacer: {
+    height: 40,
   },
 });

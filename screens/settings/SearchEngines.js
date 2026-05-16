@@ -2,8 +2,9 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
-import { useRoute } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 
 import {
   getSearchSettings,
@@ -12,6 +13,7 @@ import {
 } from "../../src/storage/settingsStorage";
 
 import { SEARCH_ENGINES, BOOK_ENGINES } from "../../constants/searchEngines";
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 
 const CATEGORY_CONFIG = {
   product: {
@@ -37,6 +39,7 @@ function buildSingleSelectionMap(engines, selectedId) {
 }
 
 export default function SearchEngines() {
+  const navigation = useNavigation();
   const route = useRoute();
 
   const type = route.params?.type ?? "all";
@@ -69,6 +72,19 @@ export default function SearchEngines() {
         "Elige los motores predeterminados para productos, códigos de barras y libros.",
     };
   }, [type]);
+
+  const headerConfig = useMemo(
+    () =>
+      buildHeaderConfig({
+        title: screenCopy.title,
+        preset: "light",
+      }),
+    [screenCopy.title],
+  );
+
+  useEffect(() => {
+    navigation.setOptions(headerConfig.navigationOptions);
+  }, [navigation, headerConfig]);
 
   useEffect(() => {
     const init = async () => {
@@ -158,13 +174,13 @@ export default function SearchEngines() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+      <StatusBar {...headerConfig.statusBar} />
+
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>{screenCopy.title}</Text>
-
         <Text style={styles.subtitle}>{screenCopy.subtitle}</Text>
 
         {showProducts ? (
@@ -214,13 +230,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 24,
-  },
-
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#111827",
-    marginBottom: 8,
   },
 
   subtitle: {
