@@ -1,43 +1,72 @@
-import React from "react";
+import React, { useEffect, useMemo } from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
+
 export default function StoreInfoScreen() {
+  const navigation = useNavigation();
+
+  const headerConfig = useMemo(
+    () =>
+      buildHeaderConfig({
+        title: "Información de tiendas",
+        preset: "light",
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    navigation.setOptions(headerConfig.navigationOptions);
+  }, [navigation, headerConfig]);
+
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right", "bottom"]}>
-      <View style={styles.content}>
-        <View style={styles.iconBox}>
-          <Ionicons
-            name="information-circle-outline"
-            size={34}
-            color="#111827"
-          />
-        </View>
+    <View style={styles.screen}>
+      <StatusBar {...headerConfig.statusBar} />
 
-        <Text style={styles.title}>Información de tiendas</Text>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+        <View style={styles.content}>
+          <View style={styles.iconBox}>
+            <Ionicons
+              name="information-circle-outline"
+              size={34}
+              color="#111827"
+            />
+          </View>
 
-        <Text style={styles.subtitle}>
-          Aquí podrás consultar información general de las tiendas: horarios,
-          direcciones, estado, favoritos y datos relacionados con tiendas
-          cercanas.
-        </Text>
+          <Text style={styles.title}>Información de tiendas</Text>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Estado actual</Text>
-          <Text style={styles.cardText}>
-            La información de tiendas se obtiene de los datos locales de la
-            aplicación. Más adelante puedes conectar esta pantalla con una ficha
-            detallada, mapas o datos remotos.
+          <Text style={styles.subtitle}>
+            Aquí podrás consultar información general de las tiendas: horarios,
+            direcciones, estado, favoritos y datos relacionados con tiendas
+            cercanas.
           </Text>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Estado actual</Text>
+
+            <Text style={styles.cardText}>
+              La información de tiendas se obtiene de los datos locales de la
+              aplicación. Más adelante puedes conectar esta pantalla con una
+              ficha detallada, mapas o datos remotos.
+            </Text>
+          </View>
         </View>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+
+  safeArea: {
     flex: 1,
     backgroundColor: "#F9FAFB",
   },

@@ -1,20 +1,22 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Linking,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useCameraPermissions, useMicrophonePermissions } from "expo-camera";
 import * as Location from "expo-location";
 
 import { ROUTES } from "../../navigation/ROUTES";
 import { safeAlert } from "../../components/ui/alert/safeAlert";
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 
 import {
   clearActiveLists,
@@ -182,6 +184,19 @@ export default function MenuScreen({ navigation }) {
     useLists();
 
   const { reloadStoresFromSeed } = useStores();
+
+  const headerConfig = useMemo(
+    () =>
+      buildHeaderConfig({
+        title: "Settings",
+        preset: "light",
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    navigation.setOptions(headerConfig.navigationOptions);
+  }, [navigation, headerConfig]);
 
   useEffect(() => {
     let mounted = true;
@@ -407,232 +422,243 @@ export default function MenuScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.headerEyebrow}>Shopp</Text>
-            <Text style={styles.headerTitle}>Ajustes</Text>
-          </View>
+    <View style={styles.screen}>
+      <StatusBar {...headerConfig.statusBar} />
 
-          <View style={styles.headerIconBox}>
-            <Ionicons name="settings-outline" size={26} color="#0f172a" />
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Búsqueda</Text>
-
-          <SettingsCard
-            icon="search-outline"
-            title="Motores de productos"
-            subtitle="Google, Open Food Facts, Barcode Lookup..."
-            onPress={goToProductSearchEngines}
-          />
-
-          <SettingsCard
-            icon="book-outline"
-            title="Motores de libros"
-            subtitle="Google Books, Open Library..."
-            onPress={goToBookSearchEngines}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Escáner</Text>
-
-          <SettingsCard
-            icon="barcode-outline"
-            title="Configuración del código de barras"
-            subtitle="Formatos admitidos: EAN-13, EAN-8..."
-            onPress={goToBarcodeSettings}
-          />
-
-          <SettingsCard
-            icon="time-outline"
-            title="Historial de escaneos"
-            subtitle="Consulta los códigos escaneados recientemente"
-            onPress={goToScannedHistory}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Permisos</Text>
-
-          <View style={styles.permissionsCard}>
-            <View style={styles.permissionsHeader}>
-              <View style={styles.permissionsHeaderTextBox}>
-                <Text style={styles.permissionsTitle}>
-                  Accesos del dispositivo
-                </Text>
-                <Text style={styles.permissionsSubtitle}>
-                  Cámara, micrófono, ubicación y permisos necesarios para la app
-                </Text>
-              </View>
-
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={24}
-                color="#0f172a"
-              />
+      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.headerEyebrow}>Shopp</Text>
+              <Text style={styles.headerTitle}>Settings</Text>
             </View>
 
-            <PermissionRow
-              icon="camera-outline"
-              title="Cámara"
-              description="Necesaria para escanear códigos de barras."
-              permission={cameraPermission}
-              onPress={() =>
-                handlePermissionPress(
-                  cameraPermission,
-                  requestCameraPermission,
-                  "Cámara",
-                )
-              }
-            />
-
-            <PermissionRow
-              icon="mic-outline"
-              title="Micrófono"
-              description="Necesario solo si grabas vídeo con audio."
-              permission={microphonePermission}
-              onPress={() =>
-                handlePermissionPress(
-                  microphonePermission,
-                  requestMicrophonePermission,
-                  "Micrófono",
-                )
-              }
-            />
-
-            <PermissionRow
-              icon="location-outline"
-              title="Ubicación"
-              description="Necesaria para tiendas cercanas y mapas."
-              permission={locationPermission}
-              onPress={() =>
-                handlePermissionPress(
-                  locationPermission,
-                  requestLocationPermission,
-                  "Ubicación",
-                )
-              }
-            />
-
-            {Platform.OS === "web" ? (
-              <Text style={styles.permissionNote}>
-                En web, los permisos dependen del navegador, del uso de HTTPS y
-                de los ajustes del sitio.
-              </Text>
-            ) : (
-              <Text style={styles.permissionNote}>
-                Si un permiso ya está concedido, Android/iOS no permiten volver
-                a mostrar el diálogo del sistema desde la app. Para probar el
-                flujo otra vez, revoca el permiso desde Ajustes.
-              </Text>
-            )}
+            <View style={styles.headerIconBox}>
+              <Ionicons name="settings-outline" size={26} color="#0f172a" />
+            </View>
           </View>
-        </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Danger Zone</Text>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Búsqueda</Text>
 
-          <SettingsCard
-            icon="trash-outline"
-            title="Borrar listas activas"
-            subtitle="Elimina las listas de compra que todavía no están archivadas"
-            danger
-            onPress={() =>
-              safeAlert("Borrar listas activas", "¿Seguro?", [
-                { text: "Cancelar", style: "cancel" },
-                {
-                  text: "Borrar",
-                  style: "destructive",
-                  onPress: handleClearActiveLists,
-                },
-              ])
-            }
-          />
+            <SettingsCard
+              icon="search-outline"
+              title="Motores de productos"
+              subtitle="Google, Open Food Facts, Barcode Lookup..."
+              onPress={goToProductSearchEngines}
+            />
 
-          <SettingsCard
-            icon="file-tray-outline"
-            title="Borrar listas archivadas"
-            subtitle="Elimina las listas guardadas como archivadas"
-            danger
-            onPress={() =>
-              safeAlert("Borrar listas archivadas", "¿Seguro?", [
-                { text: "Cancelar", style: "cancel" },
-                {
-                  text: "Borrar",
-                  style: "destructive",
-                  onPress: handleClearArchivedLists,
-                },
-              ])
-            }
-          />
+            <SettingsCard
+              icon="book-outline"
+              title="Motores de libros"
+              subtitle="Google Books, Open Library..."
+              onPress={goToBookSearchEngines}
+            />
+          </View>
 
-          <SettingsCard
-            icon="receipt-outline"
-            title="Borrar historial de compras"
-            subtitle="Limpia los registros generados a partir de compras anteriores"
-            danger
-            onPress={() =>
-              safeAlert("Borrar historial de compras", "¿Seguro?", [
-                { text: "Cancelar", style: "cancel" },
-                {
-                  text: "Borrar",
-                  style: "destructive",
-                  onPress: handleClearPurchaseHistory,
-                },
-              ])
-            }
-          />
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Escáner</Text>
 
-          <SettingsCard
-            icon="barcode-outline"
-            title="Borrar historial de escaneos"
-            subtitle="Elimina productos y códigos guardados desde el scanner"
-            danger
-            onPress={() =>
-              safeAlert("Borrar historial de escaneos", "¿Seguro?", [
-                { text: "Cancelar", style: "cancel" },
-                {
-                  text: "Borrar",
-                  style: "destructive",
-                  onPress: handleClearScannedHistory,
-                },
-              ])
-            }
-          />
+            <SettingsCard
+              icon="barcode-outline"
+              title="Configuración del código de barras"
+              subtitle="Formatos admitidos: EAN-13, EAN-8..."
+              onPress={goToBarcodeSettings}
+            />
 
-          <SettingsCard
-            icon="refresh-outline"
-            title="Recargar tiendas"
-            subtitle="Restaura las tiendas desde los datos iniciales del proyecto"
-            danger
-            onPress={handleReloadStores}
-          />
+            <SettingsCard
+              icon="time-outline"
+              title="Historial de escaneos"
+              subtitle="Consulta los códigos escaneados recientemente"
+              onPress={goToScannedHistory}
+            />
+          </View>
 
-          <SettingsCard
-            icon="close-circle-outline"
-            title="Borrar almacenamiento completo"
-            subtitle="Elimina todos los datos locales guardados por la aplicación"
-            danger
-            onPress={handleClearAllStorage}
-          />
-        </View>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Permisos</Text>
 
-        <View style={styles.footerSpace} />
-      </ScrollView>
-    </SafeAreaView>
+            <View style={styles.permissionsCard}>
+              <View style={styles.permissionsHeader}>
+                <View style={styles.permissionsHeaderTextBox}>
+                  <Text style={styles.permissionsTitle}>
+                    Accesos del dispositivo
+                  </Text>
+
+                  <Text style={styles.permissionsSubtitle}>
+                    Cámara, micrófono, ubicación y permisos necesarios para la
+                    app
+                  </Text>
+                </View>
+
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={24}
+                  color="#0f172a"
+                />
+              </View>
+
+              <PermissionRow
+                icon="camera-outline"
+                title="Cámara"
+                description="Necesaria para escanear códigos de barras."
+                permission={cameraPermission}
+                onPress={() =>
+                  handlePermissionPress(
+                    cameraPermission,
+                    requestCameraPermission,
+                    "Cámara",
+                  )
+                }
+              />
+
+              <PermissionRow
+                icon="mic-outline"
+                title="Micrófono"
+                description="Necesario solo si grabas vídeo con audio."
+                permission={microphonePermission}
+                onPress={() =>
+                  handlePermissionPress(
+                    microphonePermission,
+                    requestMicrophonePermission,
+                    "Micrófono",
+                  )
+                }
+              />
+
+              <PermissionRow
+                icon="location-outline"
+                title="Ubicación"
+                description="Necesaria para tiendas cercanas y mapas."
+                permission={locationPermission}
+                onPress={() =>
+                  handlePermissionPress(
+                    locationPermission,
+                    requestLocationPermission,
+                    "Ubicación",
+                  )
+                }
+              />
+
+              {Platform.OS === "web" ? (
+                <Text style={styles.permissionNote}>
+                  En web, los permisos dependen del navegador, del uso de HTTPS
+                  y de los ajustes del sitio.
+                </Text>
+              ) : (
+                <Text style={styles.permissionNote}>
+                  Si un permiso ya está concedido, Android/iOS no permiten
+                  volver a mostrar el diálogo del sistema desde la app. Para
+                  probar el flujo otra vez, revoca el permiso desde Ajustes.
+                </Text>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Danger Zone</Text>
+
+            <SettingsCard
+              icon="trash-outline"
+              title="Borrar listas activas"
+              subtitle="Elimina las listas de compra que todavía no están archivadas"
+              danger
+              onPress={() =>
+                safeAlert("Borrar listas activas", "¿Seguro?", [
+                  { text: "Cancelar", style: "cancel" },
+                  {
+                    text: "Borrar",
+                    style: "destructive",
+                    onPress: handleClearActiveLists,
+                  },
+                ])
+              }
+            />
+
+            <SettingsCard
+              icon="file-tray-outline"
+              title="Borrar listas archivadas"
+              subtitle="Elimina las listas guardadas como archivadas"
+              danger
+              onPress={() =>
+                safeAlert("Borrar listas archivadas", "¿Seguro?", [
+                  { text: "Cancelar", style: "cancel" },
+                  {
+                    text: "Borrar",
+                    style: "destructive",
+                    onPress: handleClearArchivedLists,
+                  },
+                ])
+              }
+            />
+
+            <SettingsCard
+              icon="receipt-outline"
+              title="Borrar historial de compras"
+              subtitle="Limpia los registros generados a partir de compras anteriores"
+              danger
+              onPress={() =>
+                safeAlert("Borrar historial de compras", "¿Seguro?", [
+                  { text: "Cancelar", style: "cancel" },
+                  {
+                    text: "Borrar",
+                    style: "destructive",
+                    onPress: handleClearPurchaseHistory,
+                  },
+                ])
+              }
+            />
+
+            <SettingsCard
+              icon="barcode-outline"
+              title="Borrar historial de escaneos"
+              subtitle="Elimina productos y códigos guardados desde el scanner"
+              danger
+              onPress={() =>
+                safeAlert("Borrar historial de escaneos", "¿Seguro?", [
+                  { text: "Cancelar", style: "cancel" },
+                  {
+                    text: "Borrar",
+                    style: "destructive",
+                    onPress: handleClearScannedHistory,
+                  },
+                ])
+              }
+            />
+
+            <SettingsCard
+              icon="refresh-outline"
+              title="Recargar tiendas"
+              subtitle="Restaura las tiendas desde los datos iniciales del proyecto"
+              danger
+              onPress={handleReloadStores}
+            />
+
+            <SettingsCard
+              icon="close-circle-outline"
+              title="Borrar almacenamiento completo"
+              subtitle="Elimina todos los datos locales guardados por la aplicación"
+              danger
+              onPress={handleClearAllStorage}
+            />
+          </View>
+
+          <View style={styles.footerSpace} />
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+  },
+
   safeArea: {
     flex: 1,
     backgroundColor: "#f8fafc",

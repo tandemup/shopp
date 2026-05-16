@@ -1,12 +1,14 @@
 // screens/StoresNearbyScreen.js
-import React from "react";
+import React, { useEffect, useMemo } from "react";
 import { View, Text, FlatList, Pressable, StyleSheet } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useStores } from "../../context/StoresContext";
 import { useStoresWithDistance } from "../../hooks/useStoresWithDistance";
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 import { ROUTES } from "../../navigation/ROUTES";
 
 /* ---------------------------------------------
@@ -30,6 +32,19 @@ export default function StoresNearbyScreen() {
 
   const { toggleFavoriteStore, isFavoriteStore } = useStores();
   const { sortedStores, loading, hasLocation } = useStoresWithDistance();
+
+  const headerConfig = useMemo(
+    () =>
+      buildHeaderConfig({
+        title: "Tiendas cercanas",
+        preset: "light",
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    navigation.setOptions(headerConfig.navigationOptions);
+  }, [navigation, headerConfig]);
 
   const handlePressStore = (store) => {
     navigation.navigate(ROUTES.STORE_DETAIL, {
@@ -93,27 +108,34 @@ export default function StoresNearbyScreen() {
   ---------------------------------------------- */
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={["left", "right"]}>
-        <View style={styles.content}>
-          <Text style={styles.title}>Tiendas cercanas</Text>
+      <View style={styles.screen}>
+        <StatusBar {...headerConfig.statusBar} />
 
-          <Text style={styles.subtitle}>
-            Busca tiendas próximas a tu ubicación actual.
-          </Text>
+        <SafeAreaView
+          style={styles.safeArea}
+          edges={["left", "right", "bottom"]}
+        >
+          <View style={styles.content}>
+            <Text style={styles.title}>Tiendas cercanas</Text>
 
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIconBox}>
-              <Ionicons name="location-outline" size={34} color="#9CA3AF" />
-            </View>
-
-            <Text style={styles.emptyTitle}>Buscando tiendas cercanas…</Text>
-
-            <Text style={styles.emptyText}>
-              Estamos calculando la distancia de las tiendas disponibles.
+            <Text style={styles.subtitle}>
+              Busca tiendas próximas a tu ubicación actual.
             </Text>
+
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconBox}>
+                <Ionicons name="location-outline" size={34} color="#9CA3AF" />
+              </View>
+
+              <Text style={styles.emptyTitle}>Buscando tiendas cercanas…</Text>
+
+              <Text style={styles.emptyText}>
+                Estamos calculando la distancia de las tiendas disponibles.
+              </Text>
+            </View>
           </View>
-        </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      </View>
     );
   }
 
@@ -122,30 +144,37 @@ export default function StoresNearbyScreen() {
   ---------------------------------------------- */
   if (!hasLocation) {
     return (
-      <SafeAreaView style={styles.container} edges={["left", "right"]}>
-        <View style={styles.content}>
-          <Text style={styles.title}>Tiendas cercanas</Text>
+      <View style={styles.screen}>
+        <StatusBar {...headerConfig.statusBar} />
 
-          <Text style={styles.subtitle}>
-            Busca tiendas próximas a tu ubicación actual.
-          </Text>
+        <SafeAreaView
+          style={styles.safeArea}
+          edges={["left", "right", "bottom"]}
+        >
+          <View style={styles.content}>
+            <Text style={styles.title}>Tiendas cercanas</Text>
 
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIconBox}>
-              <Ionicons name="navigate-outline" size={34} color="#9CA3AF" />
+            <Text style={styles.subtitle}>
+              Busca tiendas próximas a tu ubicación actual.
+            </Text>
+
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconBox}>
+                <Ionicons name="navigate-outline" size={34} color="#9CA3AF" />
+              </View>
+
+              <Text style={styles.emptyTitle}>
+                No se pudo obtener tu ubicación
+              </Text>
+
+              <Text style={styles.emptyText}>
+                Revisa los permisos de ubicación para ordenar las tiendas por
+                cercanía.
+              </Text>
             </View>
-
-            <Text style={styles.emptyTitle}>
-              No se pudo obtener tu ubicación
-            </Text>
-
-            <Text style={styles.emptyText}>
-              Revisa los permisos de ubicación para ordenar las tiendas por
-              cercanía.
-            </Text>
           </View>
-        </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      </View>
     );
   }
 
@@ -153,43 +182,51 @@ export default function StoresNearbyScreen() {
      Render
   ---------------------------------------------- */
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right"]}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Tiendas cercanas</Text>
+    <View style={styles.screen}>
+      <StatusBar {...headerConfig.statusBar} />
 
-        <Text style={styles.subtitle}>
-          Consulta las tiendas ordenadas por distancia desde tu ubicación.
-        </Text>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+        <View style={styles.content}>
+          <Text style={styles.title}>Tiendas cercanas</Text>
 
-        <Text style={styles.countText}>
-          {sortedStores.length} tienda{sortedStores.length === 1 ? "" : "s"}
-        </Text>
+          <Text style={styles.subtitle}>
+            Consulta las tiendas ordenadas por distancia desde tu ubicación.
+          </Text>
 
-        <FlatList
-          data={sortedStores}
-          keyExtractor={(item) => item.id}
-          renderItem={renderStoreRow}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.listContent,
-            sortedStores.length === 0 && styles.emptyListContent,
-          ]}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconBox}>
-                <Ionicons name="storefront-outline" size={34} color="#9CA3AF" />
+          <Text style={styles.countText}>
+            {sortedStores.length} tienda{sortedStores.length === 1 ? "" : "s"}
+          </Text>
+
+          <FlatList
+            data={sortedStores}
+            keyExtractor={(item) => item.id}
+            renderItem={renderStoreRow}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[
+              styles.listContent,
+              sortedStores.length === 0 && styles.emptyListContent,
+            ]}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <View style={styles.emptyIconBox}>
+                  <Ionicons
+                    name="storefront-outline"
+                    size={34}
+                    color="#9CA3AF"
+                  />
+                </View>
+
+                <Text style={styles.emptyTitle}>No hay tiendas cercanas</Text>
+
+                <Text style={styles.emptyText}>
+                  No se encontraron tiendas disponibles para mostrar.
+                </Text>
               </View>
-
-              <Text style={styles.emptyTitle}>No hay tiendas cercanas</Text>
-
-              <Text style={styles.emptyText}>
-                No se encontraron tiendas disponibles para mostrar.
-              </Text>
-            </View>
-          }
-        />
-      </View>
-    </SafeAreaView>
+            }
+          />
+        </View>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -197,7 +234,12 @@ export default function StoresNearbyScreen() {
    Styles
 ---------------------------------------------- */
 const styles = StyleSheet.create({
-  container: {
+  screen: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+
+  safeArea: {
     flex: 1,
     backgroundColor: "#F9FAFB",
   },

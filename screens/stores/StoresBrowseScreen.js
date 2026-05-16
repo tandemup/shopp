@@ -1,6 +1,7 @@
 // screens/StoresBrowseScreen.js
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -9,6 +10,7 @@ import { useStores } from "../../context/StoresContext";
 import { useLocation } from "../../context/LocationContext";
 import { distanceMetersBetween } from "../../utils/math/distance";
 import { formatDistance } from "../../utils/math/formatDistance";
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 
 import SearchBar from "../../components/features/search/SearchBar";
 import { ROUTES } from "../../navigation/ROUTES";
@@ -27,6 +29,19 @@ export default function StoresBrowseScreen() {
   const { location } = useLocation();
 
   const [query, setQuery] = useState("");
+
+  const headerConfig = useMemo(
+    () =>
+      buildHeaderConfig({
+        title: isSelectMode ? "Seleccionar tienda" : "Explorar tiendas",
+        preset: "light",
+      }),
+    [isSelectMode],
+  );
+
+  useEffect(() => {
+    navigation.setOptions(headerConfig.navigationOptions);
+  }, [navigation, headerConfig]);
 
   /* ---------------------------------------------
      Ordenar + enriquecer con distancia
@@ -157,53 +172,65 @@ export default function StoresBrowseScreen() {
   };
 
   const countLabel = query.trim()
-    ? `${filteredStores.length} resultado${filteredStores.length === 1 ? "" : "s"}`
-    : `${filteredStores.length} tienda${filteredStores.length === 1 ? "" : "s"}`;
+    ? `${filteredStores.length} resultado${
+        filteredStores.length === 1 ? "" : "s"
+      }`
+    : `${filteredStores.length} tienda${
+        filteredStores.length === 1 ? "" : "s"
+      }`;
 
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right"]}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Tiendas</Text>
+    <View style={styles.screen}>
+      <StatusBar {...headerConfig.statusBar} />
 
-        <Text style={styles.subtitle}>
-          Busca tiendas, consulta las más cercanas y marca tus favoritas.
-        </Text>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+        <View style={styles.content}>
+          <Text style={styles.title}>Tiendas</Text>
 
-        <SearchBar
-          value={query}
-          onChange={setQuery}
-          placeholder="Buscar tienda…"
-          style={styles.search}
-        />
+          <Text style={styles.subtitle}>
+            Busca tiendas, consulta las más cercanas y marca tus favoritas.
+          </Text>
 
-        <Text style={styles.countText}>{countLabel}</Text>
+          <SearchBar
+            value={query}
+            onChange={setQuery}
+            placeholder="Buscar tienda…"
+            style={styles.search}
+          />
 
-        <FlatList
-          data={filteredStores}
-          keyExtractor={(item) => item.id}
-          renderItem={renderStoreRow}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.listContent,
-            filteredStores.length === 0 && styles.emptyListContent,
-          ]}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconBox}>
-                <Ionicons name="storefront-outline" size={34} color="#9CA3AF" />
+          <Text style={styles.countText}>{countLabel}</Text>
+
+          <FlatList
+            data={filteredStores}
+            keyExtractor={(item) => item.id}
+            renderItem={renderStoreRow}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[
+              styles.listContent,
+              filteredStores.length === 0 && styles.emptyListContent,
+            ]}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <View style={styles.emptyIconBox}>
+                  <Ionicons
+                    name="storefront-outline"
+                    size={34}
+                    color="#9CA3AF"
+                  />
+                </View>
+
+                <Text style={styles.emptyTitle}>No se encontraron tiendas</Text>
+
+                <Text style={styles.emptyText}>
+                  Prueba a cambiar la búsqueda o revisa el filtro aplicado.
+                </Text>
               </View>
-
-              <Text style={styles.emptyTitle}>No se encontraron tiendas</Text>
-
-              <Text style={styles.emptyText}>
-                Prueba a cambiar la búsqueda o revisa el filtro aplicado.
-              </Text>
-            </View>
-          }
-        />
-      </View>
-    </SafeAreaView>
+            }
+          />
+        </View>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -211,7 +238,12 @@ export default function StoresBrowseScreen() {
    Styles
 -------------------------------------------------- */
 const styles = StyleSheet.create({
-  container: {
+  screen: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+
+  safeArea: {
     flex: 1,
     backgroundColor: "#F9FAFB",
   },

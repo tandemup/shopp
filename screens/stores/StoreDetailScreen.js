@@ -1,27 +1,46 @@
-import React, { useLayoutEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRoute, useNavigation } from "@react-navigation/native";
-
 import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useStores } from "../../context/StoresContext";
+import { useLocation } from "../../context/LocationContext";
 import { getValidCoords } from "../../utils/maps/getValidCoords";
 import {
   openGoogleMaps,
   openGoogleMapsSearch,
 } from "../../utils/maps/openGoogleMaps";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 import StoreMapPreview from "../../components/features/maps/StoreMapPreview";
-import { useLocation } from "../../context/LocationContext";
 import { ROUTES } from "../../navigation/ROUTES";
 
 export default function StoreDetailScreen() {
   const route = useRoute();
-  const { storeId } = route.params || {};
   const navigation = useNavigation();
 
-  useLayoutEffect(() => {
+  const { storeId } = route.params || {};
+
+  const { getStoreById, toggleFavoriteStore, isFavoriteStore } = useStores();
+  const { location } = useLocation();
+
+  const [showMapPreview, setShowMapPreview] = useState(false);
+
+  const store = getStoreById(storeId);
+
+  const headerConfig = useMemo(
+    () =>
+      buildHeaderConfig({
+        title: "Detalle de tienda",
+        preset: "light",
+      }),
+    [],
+  );
+
+  useEffect(() => {
     navigation.setOptions({
+      ...headerConfig.navigationOptions,
       headerLeft: () => (
         <Pressable
           onPress={() => {
@@ -35,19 +54,13 @@ export default function StoreDetailScreen() {
             });
           }}
           hitSlop={10}
-          style={{
-            paddingHorizontal: 16,
-            paddingVertical: 8,
-          }}
+          style={styles.headerBackButton}
         >
           <Ionicons name="arrow-back" size={26} color="#111827" />
         </Pressable>
       ),
     });
-  }, [navigation]);
-
-  const { getStoreById, toggleFavoriteStore, isFavoriteStore } = useStores();
-  const { location } = useLocation();
+  }, [navigation, headerConfig]);
 
   const userCoords =
     location?.lat != null && location?.lng != null
@@ -57,14 +70,19 @@ export default function StoreDetailScreen() {
         }
       : null;
 
-  const [showMapPreview, setShowMapPreview] = useState(false);
-
-  const store = getStoreById(storeId);
-
   if (!store) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>Tienda no encontrada</Text>
+      <View style={styles.screen}>
+        <StatusBar {...headerConfig.statusBar} />
+
+        <SafeAreaView
+          style={styles.safeArea}
+          edges={["left", "right", "bottom"]}
+        >
+          <View style={styles.center}>
+            <Text style={styles.errorText}>Tienda no encontrada</Text>
+          </View>
+        </SafeAreaView>
       </View>
     );
   }
@@ -104,6 +122,7 @@ export default function StoreDetailScreen() {
   ---------------------------------------------- */
   const LocationSection = () => {
     const coords = getValidCoords(store);
+
     return (
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Ubicación</Text>
@@ -120,36 +139,40 @@ export default function StoreDetailScreen() {
         ) : (
           <View style={styles.mapPlaceholder}>
             <Ionicons name="map-outline" size={36} color="#999" />
+
             <Text style={styles.mapPlaceholderText}>
               {coords ? "Previsualización del mapa" : "Ubicación no disponible"}
             </Text>
           </View>
         )}
 
-        {coords && !showMapPreview && (
+        {coords && !showMapPreview ? (
           <Pressable
             style={styles.secondaryButton}
             onPress={() => setShowMapPreview(true)}
           >
             <Ionicons name="map-outline" size={18} color="#1a73e8" />
+
             <Text style={styles.secondaryButtonText}>
               Ver mapa (OpenStreetMap)
             </Text>
           </Pressable>
-        )}
+        ) : null}
 
-        {coords && showMapPreview && (
+        {coords && showMapPreview ? (
           <Pressable
             style={styles.secondaryButton}
             onPress={() => setShowMapPreview(false)}
           >
             <Ionicons name="close-outline" size={18} color="#1a73e8" />
+
             <Text style={styles.secondaryButtonText}>Ocultar mapa</Text>
           </Pressable>
-        )}
+        ) : null}
 
         <Pressable style={styles.mapsButton} onPress={openInGoogleMaps}>
           <Ionicons name="navigate-outline" size={18} color="#fff" />
+
           <Text style={styles.mapsButtonText}>Abrir en Google Maps</Text>
         </Pressable>
       </View>
@@ -160,43 +183,48 @@ export default function StoreDetailScreen() {
      Render
   ---------------------------------------------- */
   return (
-    <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
-      <ScrollView contentContainerStyle={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.name}>{store.name}</Text>
+    <View style={styles.screen}>
+      <StatusBar {...headerConfig.statusBar} />
 
-          <Pressable onPress={handleToggleFavorite} hitSlop={10}>
-            <Ionicons
-              name={isFavorite ? "star" : "star-outline"}
-              size={26}
-              color={isFavorite ? "#f5c518" : "#bbb"}
-            />
-          </Pressable>
-        </View>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.container}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.header}>
+            <Text style={styles.name}>{store.name}</Text>
 
-        {/* Address */}
-        {store.address && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Dirección</Text>
-            <Text style={styles.sectionText}>
-              📍 {store.address}
-              {store.city ? `, ${store.city}` : ""}
+            <Pressable onPress={handleToggleFavorite} hitSlop={10}>
+              <Ionicons
+                name={isFavorite ? "star" : "star-outline"}
+                size={26}
+                color={isFavorite ? "#f5c518" : "#bbb"}
+              />
+            </Pressable>
+          </View>
+
+          {store.address ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Dirección</Text>
+
+              <Text style={styles.sectionText}>
+                📍 {store.address}
+                {store.city ? `, ${store.city}` : ""}
+              </Text>
+            </View>
+          ) : null}
+
+          <LocationSection />
+
+          <View style={styles.sectionMuted}>
+            <Text style={styles.mutedText}>
+              Próximamente: horarios, notas y productos asociados
             </Text>
           </View>
-        )}
-
-        {/* Location */}
-        <LocationSection />
-
-        {/* Future sections */}
-        <View style={styles.sectionMuted}>
-          <Text style={styles.mutedText}>
-            Próximamente: horarios, notas y productos asociados
-          </Text>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -204,9 +232,30 @@ export default function StoreDetailScreen() {
    Styles
 -------------------------------------------------- */
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+
+  scroll: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+
   container: {
     padding: 16,
-    backgroundColor: "#fff",
+    paddingBottom: 32,
+    backgroundColor: "#F9FAFB",
+  },
+
+  headerBackButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
 
   center: {
@@ -318,9 +367,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#888",
     textAlign: "center",
-  },
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#F9FAFB",
   },
 });

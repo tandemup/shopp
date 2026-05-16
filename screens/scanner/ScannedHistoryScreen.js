@@ -1,6 +1,6 @@
 // screens/scanner/ScannedHistoryScreen.js
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -9,13 +9,15 @@ import {
   StyleSheet,
   Pressable,
 } from "react-native";
-
+import { StatusBar } from "expo-status-bar";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 import { ROUTES } from "../../navigation/ROUTES";
-import BarcodeLink from "../../components/controls/BarcodeLink";
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
+import { safeAlert } from "../../components/ui/alert/safeAlert";
 
 import {
   getScannedHistory,
@@ -28,6 +30,19 @@ export default function ScannedHistoryScreen({ navigation, route }) {
   const [filteredItems, setFilteredItems] = useState([]);
 
   const isFocused = useIsFocused();
+
+  const headerConfig = useMemo(
+    () =>
+      buildHeaderConfig({
+        title: "Historial de escaneos",
+        preset: "light",
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    navigation.setOptions(headerConfig.navigationOptions);
+  }, [navigation, headerConfig]);
 
   useEffect(() => {
     if (isFocused) {
@@ -156,17 +171,6 @@ export default function ScannedHistoryScreen({ navigation, route }) {
             <Ionicons name="chevron-forward" size={22} color="#9CA3AF" />
           </View>
         </Pressable>
-        {/* 
-        {item.barcode ? (
-          <View style={styles.barcodeRow}>
-            <BarcodeLink
-              barcode={item.barcode}
-              label={item.barcode}
-              iconColor="#2563eb"
-            />
-          </View>
-        ) : null}
-         */}
       </View>
     );
   };
@@ -176,56 +180,65 @@ export default function ScannedHistoryScreen({ navigation, route }) {
     : "No hay escaneos guardados";
 
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right", "bottom"]}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Historial de Escaneos</Text>
+    <View style={styles.screen}>
+      <StatusBar {...headerConfig.statusBar} />
 
-        <Text style={styles.subtitle}>
-          Consulta productos y códigos de barras escaneados anteriormente.
-        </Text>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+        <View style={styles.content}>
+          <Text style={styles.title}>Historial de Escaneos</Text>
 
-        <View style={styles.searchContainer}>
-          <Ionicons
-            name="search-outline"
-            size={20}
-            color="#6B7280"
-            style={styles.searchIcon}
-          />
+          <Text style={styles.subtitle}>
+            Consulta productos y códigos de barras escaneados anteriormente.
+          </Text>
 
-          <TextInput
-            placeholder="Buscar producto o código..."
-            placeholderTextColor="#9CA3AF"
-            style={styles.searchInput}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="none"
-            autoCorrect={false}
+          <View style={styles.searchContainer}>
+            <Ionicons
+              name="search-outline"
+              size={20}
+              color="#6B7280"
+              style={styles.searchIcon}
+            />
+
+            <TextInput
+              placeholder="Buscar producto o código..."
+              placeholderTextColor="#9CA3AF"
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+
+          <FlatList
+            data={filteredItems}
+            renderItem={renderItem}
+            keyExtractor={(item, index) =>
+              item.id?.toString() || item.barcode?.toString() || `scan-${index}`
+            }
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={
+              <View style={styles.emptyBlock}>
+                <Ionicons name="barcode-outline" size={34} color="#9CA3AF" />
+                <Text style={styles.empty}>{emptyMessage}</Text>
+              </View>
+            }
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           />
         </View>
-
-        <FlatList
-          data={filteredItems}
-          renderItem={renderItem}
-          keyExtractor={(item, index) =>
-            item.id?.toString() || item.barcode?.toString() || `scan-${index}`
-          }
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <View style={styles.emptyBlock}>
-              <Ionicons name="barcode-outline" size={34} color="#9CA3AF" />
-              <Text style={styles.empty}>{emptyMessage}</Text>
-            </View>
-          }
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        />
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+
+  safeArea: {
     flex: 1,
     backgroundColor: "#F9FAFB",
   },
@@ -321,15 +334,6 @@ const styles = StyleSheet.create({
     marginRight: 14,
   },
 
-  imageWrapper2: {
-    width: 90,
-    height: 90,
-    borderRadius: 5,
-    overflow: "hidden",
-    backgroundColor: "#F3F4F6",
-    marginRight: 14,
-  },
-
   image: {
     width: "100%",
     height: "100%",
@@ -368,12 +372,6 @@ const styles = StyleSheet.create({
   actionsCol: {
     justifyContent: "center",
     marginLeft: 8,
-  },
-
-  barcodeRow: {
-    marginTop: 10,
-    marginLeft: 78,
-    alignItems: "flex-start",
   },
 
   emptyBlock: {

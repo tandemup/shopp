@@ -1,6 +1,7 @@
 // screens/StoreSelectScreen.js
-import React from "react";
+import React, { useEffect, useMemo } from "react";
 import { View, Text, FlatList, StyleSheet, Pressable } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useNavigation, useRoute } from "@react-navigation/native";
@@ -8,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useStores } from "../../context/StoresContext";
 import { useLists } from "../../context/ListsContext";
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 import { ROUTES } from "../../navigation/ROUTES";
 
 /* --------------------------------------------------
@@ -26,6 +28,19 @@ export default function StoreSelectScreen() {
 
   const { favoriteStores, toggleFavoriteStore, isFavoriteStore } = useStores();
   const { updateListStore } = useLists();
+
+  const headerConfig = useMemo(
+    () =>
+      buildHeaderConfig({
+        title: "Seleccionar tienda",
+        preset: "light",
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    navigation.setOptions(headerConfig.navigationOptions);
+  }, [navigation, headerConfig]);
 
   /* --------------------------------------------------
    Actions
@@ -68,38 +83,42 @@ export default function StoreSelectScreen() {
     );
   }
 
+  const renderScreen = (children) => (
+    <View style={styles.screen}>
+      <StatusBar {...headerConfig.statusBar} />
+
+      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+        {children}
+      </SafeAreaView>
+    </View>
+  );
+
   /* --------------------------------------------------
    Empty state
   -------------------------------------------------- */
   if (!favoriteStores || favoriteStores.length === 0) {
-    return (
-      <SafeAreaView
-        style={styles.container}
-        edges={["left", "right", "bottom"]}
-      >
-        <View style={styles.content}>
-          <Text style={styles.title}>Seleccionar tienda</Text>
+    return renderScreen(
+      <View style={styles.content}>
+        <Text style={styles.title}>Seleccionar tienda</Text>
 
-          <Text style={styles.subtitle}>
-            Elige una tienda favorita para asociarla a esta lista de compra.
+        <Text style={styles.subtitle}>
+          Elige una tienda favorita para asociarla a esta lista de compra.
+        </Text>
+
+        <View style={styles.emptyState}>
+          <View style={styles.emptyIconBox}>
+            <Ionicons name="storefront-outline" size={34} color="#9CA3AF" />
+          </View>
+
+          <Text style={styles.emptyTitle}>No tienes tiendas favoritas</Text>
+
+          <Text style={styles.emptySubtitle}>
+            Marca una tienda como favorita para poder seleccionarla rápidamente.
           </Text>
 
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIconBox}>
-              <Ionicons name="storefront-outline" size={34} color="#9CA3AF" />
-            </View>
-
-            <Text style={styles.emptyTitle}>No tienes tiendas favoritas</Text>
-
-            <Text style={styles.emptySubtitle}>
-              Marca una tienda como favorita para poder seleccionarla
-              rápidamente.
-            </Text>
-
-            <ExplorerButton display />
-          </View>
+          <ExplorerButton display />
         </View>
-      </SafeAreaView>
+      </View>,
     );
   }
 
@@ -157,26 +176,24 @@ export default function StoreSelectScreen() {
     );
   };
 
-  return (
-    <SafeAreaView style={styles.container} edges={["left", "right", "bottom"]}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Seleccionar tienda</Text>
+  return renderScreen(
+    <View style={styles.content}>
+      <Text style={styles.title}>Seleccionar tienda</Text>
 
-        <Text style={styles.subtitle}>
-          Elige una tienda favorita para asociarla a esta lista de compra.
-        </Text>
+      <Text style={styles.subtitle}>
+        Elige una tienda favorita para asociarla a esta lista de compra.
+      </Text>
 
-        <ExplorerButton display />
+      <ExplorerButton display />
 
-        <FlatList
-          data={favoriteStores}
-          keyExtractor={(item) => item.id}
-          renderItem={renderStoreRow}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-        />
-      </View>
-    </SafeAreaView>
+      <FlatList
+        data={favoriteStores}
+        keyExtractor={(item) => item.id}
+        renderItem={renderStoreRow}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+      />
+    </View>,
   );
 }
 
@@ -184,7 +201,12 @@ export default function StoreSelectScreen() {
  Styles
 -------------------------------------------------- */
 const styles = StyleSheet.create({
-  container: {
+  screen: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+
+  safeArea: {
     flex: 1,
     backgroundColor: "#F9FAFB",
   },

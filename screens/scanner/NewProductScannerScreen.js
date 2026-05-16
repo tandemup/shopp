@@ -1,36 +1,32 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { View, StyleSheet } from "react-native";
-import { useRoute, useNavigation } from "@react-navigation/native";
+import { StatusBar } from "expo-status-bar";
+import { useNavigation, useRoute } from "@react-navigation/native";
 
 import BarcodeScannerView from "../../components/features/scanner/BarcodeScannerView";
+import { safeAlert } from "../../components/ui/alert/safeAlert";
+import { ROUTES } from "../../navigation/ROUTES";
+
 import {
   getScannedEntryByBarcode,
   saveScannedEntry,
 } from "../../services/scannerHistory";
-import { safeAlert } from "../../components/ui/alert/safeAlert";
-import { ROUTES } from "../../navigation/ROUTES";
+
 import { lookupProductByBarcode } from "../../services/productLookup";
 
-export default function ScannerScreen() {
-  const route = useRoute();
+export default function NewProductScannerScreen() {
   const navigation = useNavigation();
+  const route = useRoute();
 
   const isHandlingScanRef = useRef(false);
 
-  const onScan = route.params?.onScan;
+  const { barcodeTypes } = route.params || {};
 
-  const continuous = route.params?.continuous ?? false;
-  const closeOnScan = route.params?.closeOnScan ?? true;
-  const shouldSaveToHistory = route.params?.saveToHistory ?? !onScan;
-  const returnToTab = route.params?.returnToTab;
-
-  /**
-   * Importante:
-   * No ponemos fallback ["ean13"] aquí.
-   * Si barcodeTypes no viene por navegación, BarcodeScannerView usará
-   * los formatos guardados en BarcodeSettingsScreen.
-   */
-  const barcodeTypes = route.params?.barcodeTypes;
+  useEffect(() => {
+    navigation.setOptions({
+      headerShown: false,
+    });
+  }, [navigation]);
 
   function normalizeBarcode(code) {
     return String(code || "")
@@ -89,15 +85,6 @@ export default function ScannerScreen() {
     return scannedItem;
   }
 
-  function closeScanner() {
-    if (returnToTab) {
-      navigation.getParent()?.navigate(returnToTab);
-      return;
-    }
-
-    navigation.goBack();
-  }
-
   async function handleDetected(code) {
     if (isHandlingScanRef.current) return;
 
@@ -111,40 +98,20 @@ export default function ScannerScreen() {
     }
 
     try {
-      if (typeof onScan === "function") {
-        onScan(barcode);
+      await saveDetectedBarcode(barcode);
 
-        if (closeOnScan) {
-          closeScanner();
-        }
-
-        return;
-      }
-
-      if (shouldSaveToHistory) {
-        await saveDetectedBarcode(barcode);
-
-        navigation.replace(ROUTES.SCANNED_HISTORY, {
-          scannedBarcode: barcode,
-          showScannedFeedback: true,
-        });
-
-        return;
-      }
-
-      if (closeOnScan) {
-        closeScanner();
-      }
+      navigation.replace(ROUTES.SCANNED_HISTORY, {
+        scannedBarcode: barcode,
+        showScannedFeedback: true,
+      });
     } catch (error) {
-      console.log("Error handling scanned barcode:", error);
+      console.log("Error handling new product scan:", error);
 
-      safeAlert("Error", "No se pudo procesar el código escaneado", [
+      safeAlert("Error", "No se pudo guardar el producto escaneado", [
         {
           text: "Cerrar",
           onPress: () => {
-            if (closeOnScan) {
-              closeScanner();
-            }
+            navigation.goBack();
           },
         },
       ]);
@@ -156,15 +123,17 @@ export default function ScannerScreen() {
   }
 
   function handleClose() {
-    closeScanner();
+    navigation.goBack();
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.screen}>
+      <StatusBar style="light" backgroundColor="#000000" translucent={false} />
+
       <BarcodeScannerView
         onDetected={handleDetected}
         onClose={handleClose}
-        continuous={continuous}
+        continuous={false}
         barcodeTypes={barcodeTypes}
       />
     </View>
@@ -172,7 +141,7 @@ export default function ScannerScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: "#000000",
   },

@@ -1,10 +1,12 @@
-import React from "react";
+import React, { useEffect, useMemo } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ROUTES } from "../../navigation/ROUTES";
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 
 /* -------------------------------------------------
    Menu Item
@@ -15,14 +17,22 @@ function MenuItem({ icon, title, subtitle, onPress }) {
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={onPress}
       accessibilityRole="button"
+      accessibilityLabel={title}
     >
       <View style={styles.iconBox}>
         <Ionicons name={icon} size={28} color="#111827" />
       </View>
 
       <View style={styles.cardText}>
-        <Text style={styles.cardTitle}>{title}</Text>
-        {subtitle ? <Text style={styles.cardSubtitle}>{subtitle}</Text> : null}
+        <Text style={styles.cardTitle} numberOfLines={1}>
+          {title}
+        </Text>
+
+        {subtitle ? (
+          <Text style={styles.cardSubtitle} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
 
       <Ionicons name="chevron-forward" size={22} color="#9CA3AF" />
@@ -36,47 +46,64 @@ function MenuItem({ icon, title, subtitle, onPress }) {
 export default function StoresHomeScreen() {
   const navigation = useNavigation();
 
+  const headerConfig = useMemo(
+    () =>
+      buildHeaderConfig({
+        title: "Tiendas",
+        preset: "light",
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    navigation.setOptions(headerConfig.navigationOptions);
+  }, [navigation, headerConfig]);
+
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right", "bottom"]}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Gestión de tiendas</Text>
+    <View style={styles.screen}>
+      <StatusBar {...headerConfig.statusBar} />
 
-        <Text style={styles.subtitle}>
-          Explora tiendas, consulta tus favoritas o busca establecimientos
-          cercanos.
-        </Text>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+        <View style={styles.content}>
+          <Text style={styles.title}>Tiendas</Text>
 
-        <View style={styles.actions}>
-          <MenuItem
-            icon="storefront-outline"
-            title="Explorar tiendas"
-            subtitle="Buscar tiendas cercanas o por nombre"
-            onPress={() => navigation.navigate(ROUTES.STORES_BROWSE)}
-          />
+          <Text style={styles.subtitle}>
+            Explora tiendas, consulta tus favoritas o busca establecimientos
+            cercanos.
+          </Text>
 
-          <MenuItem
-            icon="star-outline"
-            title="Tiendas favoritas"
-            subtitle="Acceso rápido a tus tiendas habituales"
-            onPress={() => navigation.navigate(ROUTES.STORES_FAVORITES)}
-          />
+          <View style={styles.actions}>
+            <MenuItem
+              icon="storefront-outline"
+              title="Explorar tiendas"
+              subtitle="Buscar tiendas cercanas o por nombre"
+              onPress={() => navigation.navigate(ROUTES.STORES_BROWSE)}
+            />
 
-          <MenuItem
-            icon="map-outline"
-            title="Tiendas cercanas"
-            subtitle="Ordenadas por distancia"
-            onPress={() => navigation.navigate(ROUTES.STORES_NEARBY)}
-          />
+            <MenuItem
+              icon="star-outline"
+              title="Tiendas favoritas"
+              subtitle="Acceso rápido a tus tiendas habituales"
+              onPress={() => navigation.navigate(ROUTES.STORES_FAVORITES)}
+            />
 
-          <MenuItem
-            icon="information-circle-outline"
-            title="Información de tiendas"
-            subtitle="Horarios, direcciones y estado"
-            onPress={() => navigation.navigate(ROUTES.STORE_INFO)}
-          />
+            <MenuItem
+              icon="map-outline"
+              title="Tiendas cercanas"
+              subtitle="Ordenadas por distancia"
+              onPress={() => navigation.navigate(ROUTES.STORES_NEARBY)}
+            />
+
+            <MenuItem
+              icon="information-circle-outline"
+              title="Información de tiendas"
+              subtitle="Horarios, direcciones y estado"
+              onPress={() => navigation.navigate(ROUTES.STORE_INFO)}
+            />
+          </View>
         </View>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -84,7 +111,12 @@ export default function StoresHomeScreen() {
    Styles
 -------------------------------------------------- */
 const styles = StyleSheet.create({
-  container: {
+  screen: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+
+  safeArea: {
     flex: 1,
     backgroundColor: "#F9FAFB",
   },

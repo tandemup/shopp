@@ -5,7 +5,8 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { ROUTES } from "./ROUTES";
 
 import ScannerTabScreen from "../screens/scanner/ScannerTabScreen";
-import ScannerScreen from "../screens/scanner/ScannerScreen";
+import ProductBarcodeScannerScreen from "../screens/scanner/ProductBarcodeScannerScreen";
+import NewProductScannerScreen from "../screens/scanner/NewProductScannerScreen";
 import EditScannedItemScreen from "../screens/scanner/EditScannedItemScreen";
 import ScannedHistoryScreen from "../screens/scanner/ScannedHistoryScreen";
 import SearchEngines from "../screens/settings/SearchEngines";
@@ -30,8 +31,18 @@ export default function ScannerStack() {
       />
 
       <Stack.Screen
-        name={ROUTES.SCANNER_SCREEN}
-        component={ScannerScreen}
+        name={ROUTES.PRODUCT_BARCODE_SCANNER}
+        component={ProductBarcodeScannerScreen}
+        options={{
+          title: "Leer código de barras",
+          headerShown: false,
+          presentation: "fullScreenModal",
+        }}
+      />
+
+      <Stack.Screen
+        name={ROUTES.NEW_PRODUCT_SCANNER}
+        component={NewProductScannerScreen}
         options={{
           title: "Escanear nuevo producto",
           headerShown: false,

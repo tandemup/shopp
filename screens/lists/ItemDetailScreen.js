@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useMemo, useState } from "react";
+import React, { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { UNITS } from "../../constants/unitTypes";
 import { ROUTES } from "../../navigation/ROUTES";
 import {
@@ -17,7 +17,11 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import {
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+} from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 
@@ -338,10 +342,15 @@ export default function ItemDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const insets = useSafeAreaInsets();
-  const headerConfig = buildHeaderConfig({
-    title: "Editar producto",
-    preset: "light",
-  });
+
+  const headerConfig = useMemo(
+    () =>
+      buildHeaderConfig({
+        title: "Editar producto",
+        preset: "light",
+      }),
+    [],
+  );
 
   const { listId, itemId } = route.params || {};
 
@@ -361,16 +370,35 @@ export default function ItemDetailScreen() {
 
   useLayoutEffect(() => {
     navigation.setOptions(headerConfig.navigationOptions);
-  }, [navigation, headerConfig.navigationOptions]);
+  }, [navigation, headerConfig]);
 
+  useFocusEffect(
+    useCallback(() => {
+      const scannedBarcode = route.params?.scannedBarcode;
+
+      if (!scannedBarcode) return;
+
+      setBarcode(String(scannedBarcode));
+
+      navigation.setParams({
+        scannedBarcode: undefined,
+      });
+    }, [navigation, route.params?.scannedBarcode]),
+  );
   if (!item) {
     return (
-      <SafeAreaView
-        style={styles.container}
-        edges={["left", "right", "bottom"]}
-      >
-        <Text>Producto no encontrado</Text>
-      </SafeAreaView>
+      <View style={styles.keyboardView}>
+        <StatusBar {...headerConfig.statusBar} />
+
+        <SafeAreaView
+          style={styles.container}
+          edges={["left", "right", "bottom"]}
+        >
+          <View style={styles.center}>
+            <Text>Producto no encontrado</Text>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
@@ -478,14 +506,10 @@ export default function ItemDetailScreen() {
 
   function handleOpenScanner() {
     navigation.navigate(ROUTES.SCANNER_TAB, {
-      screen: ROUTES.SCANNER_SCREEN,
+      screen: ROUTES.PRODUCT_BARCODE_SCANNER,
       params: {
-        saveToHistory: false,
-        closeOnScan: true,
-        returnToTab: ROUTES.SHOPPING_TAB,
-        onScan: (code) => {
-          setBarcode(code);
-        },
+        listId,
+        itemId,
       },
     });
   }
@@ -503,6 +527,7 @@ export default function ItemDetailScreen() {
       keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
     >
       <StatusBar {...headerConfig.statusBar} />
+
       <SafeAreaView
         style={styles.container}
         edges={["left", "right", "bottom"]}
@@ -576,6 +601,12 @@ const styles = StyleSheet.create({
 
   screen: {
     flex: 1,
+  },
+
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   scroll: {

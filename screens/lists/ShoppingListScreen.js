@@ -3,25 +3,24 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   FlatList,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { useRoute, useNavigation } from "@react-navigation/native";
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
+import { SafeAreaView } from "react-native-safe-area-context";
 
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
-import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
 import StoreSelector from "../../components/features/stores/StoreSelector";
 import ItemRow from "../../components/features/items/ItemRow";
 import SearchCombinedBar from "../../components/features/search/SearchCombinedBar";
 import CheckoutBar from "../../components/features/checkout/CheckoutBar";
 import CurrencyBadge from "../../components/ui/CurrencyBadge";
 import { ROUTES } from "../../navigation/ROUTES";
-import { safeAlert, safeConfirm } from "../../components/ui/alert/safeAlert";
+import { safeAlert } from "../../components/ui/alert/safeAlert";
 
 export default function ShoppingListScreen() {
   const route = useRoute();
@@ -31,13 +30,23 @@ export default function ShoppingListScreen() {
   const { activeLists, addItem, updateItem, archiveList } = useLists();
   const { getStoreById } = useStores();
 
+  const headerConfig = useMemo(
+    () =>
+      buildHeaderConfig({
+        title: "Shopping Lists",
+        preset: "light",
+      }),
+    [],
+  );
+
   const list = useMemo(
     () => activeLists.find((l) => l.id === listId),
     [activeLists, listId],
   );
+
   useEffect(() => {
     navigation.setOptions(headerConfig.navigationOptions);
-  }, [navigation]);
+  }, [navigation, headerConfig]);
 
   useEffect(() => {
     if (!list) {
@@ -129,11 +138,6 @@ export default function ShoppingListScreen() {
       }
     />
   );
-
-  const headerConfig = buildHeaderConfig({
-    title: "Shopping Lists",
-    preset: "light",
-  });
 
   return (
     <KeyboardAvoidingView

@@ -20,13 +20,12 @@ import StoreMapScreen from "../screens/stores/StoreMapScreen";
 import MenuScreen from "../screens/settings/MenuScreen";
 
 const Stack = createNativeStackNavigator();
-//        headerStyle:  backgroundColor: "papayawhip"
 export default function ShoppingStack() {
   return (
     <Stack.Navigator
       screenOptions={{
         headerStyle: {
-          backgroundColor: "red",
+          backgroundColor: "papayawhip",
         },
         headerTitleAlign: "center",
         headerTitleStyle: { fontSize: 20, fontWeight: "700" },

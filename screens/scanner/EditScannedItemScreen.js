@@ -1,4 +1,5 @@
 // screens/scanner/EditScannedItemScreen.js
+
 import React, { useState } from "react";
 import {
   View,
@@ -13,12 +14,12 @@ import {
 
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
   updateScannedEntry,
   removeScannedItem,
 } from "../../services/scannerHistory";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { safeAlert } from "../../components/ui/alert/safeAlert";
 import { createThumbnail } from "../../utils/createThumbnail";
 import BarcodeLink from "../../components/controls/BarcodeLink";
@@ -41,32 +42,54 @@ export default function EditScannedItemScreen({ route, navigation }) {
 
     try {
       const thumb = await createThumbnail(imageUrl, barcode);
-      if (thumb) setThumbnailUri(thumb);
+
+      if (thumb) {
+        setThumbnailUri(thumb);
+      }
     } catch (error) {
       console.log("Error creating thumbnail:", error);
     }
   };
+
   const handleLookupProduct = async () => {
     if (!barcode) {
       safeAlert("Código vacío", "Este escaneo no tiene código de barras");
       return;
     }
 
-    const result = await lookupProductByBarcode(barcode);
+    try {
+      const result = await lookupProductByBarcode(barcode);
 
-    if (!result.found) {
-      safeAlert(
-        "Producto no encontrado",
-        "No se encontró información para este código de barras",
-      );
-      return;
+      if (!result.found) {
+        safeAlert(
+          "Producto no encontrado",
+          "No se encontró información para este código de barras",
+        );
+        return;
+      }
+
+      const product = result.product;
+
+      if (product.name) setName(product.name);
+      if (product.brand) setBrand(product.brand);
+      if (product.url) setUrl(product.url);
+      if (product.imageUrl) {
+        setImageUrl(product.imageUrl);
+
+        try {
+          const thumb = await createThumbnail(product.imageUrl, barcode);
+
+          if (thumb) {
+            setThumbnailUri(thumb);
+          }
+        } catch (error) {
+          console.log("Error creating product thumbnail:", error);
+        }
+      }
+    } catch (error) {
+      console.log("Error looking up product:", error);
+      safeAlert("Error", "No se pudo consultar la información del producto");
     }
-
-    const product = result.product;
-
-    if (product.name) setName(product.name);
-    if (product.brand) setBrand(product.brand);
-    if (product.imageUrl) setImageUrl(product.imageUrl);
   };
 
   const handleSave = async () => {
@@ -130,39 +153,191 @@ export default function EditScannedItemScreen({ route, navigation }) {
 
   if (!item) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Escaneo no encontrado</Text>
+      <View style={styles.emptyScreen}>
+        <Ionicons name="alert-circle-outline" size={42} color="#9CA3AF" />
+        <Text style={styles.emptyTitle}>Escaneo no encontrado</Text>
+        <Text style={styles.emptyText}>
+          No se pudo cargar la información del producto escaneado.
+        </Text>
+
+        <Pressable style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Text style={styles.backBtnText}>Volver</Text>
+        </Pressable>
       </View>
     );
   }
 
+  const previewImage = thumbnailUri || imageUrl;
+
   return (
     <KeyboardAvoidingView
       style={styles.screen}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <SafeAreaView style={styles.screen} edges={["left", "right", "bottom"]}>
         <ScrollView
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
         >
-          ...
+          <Text style={styles.title}>Editar producto escaneado</Text>
+
+          <Text style={styles.label}>Código de barras</Text>
+
+          <View style={styles.codeBox}>
+            <BarcodeLink barcode={barcode} />
+          </View>
+
+          <View style={styles.previewRow}>
+            {previewImage ? (
+              <Image
+                source={{ uri: previewImage }}
+                style={styles.thumb}
+                contentFit="cover"
+              />
+            ) : (
+              <View style={styles.noThumb}>
+                <Ionicons name="image-outline" size={24} color="#9CA3AF" />
+                <Text style={styles.noThumbText}>Sin imagen</Text>
+              </View>
+            )}
+
+            <Pressable style={styles.lookupBtn} onPress={handleLookupProduct}>
+              <Ionicons name="search-outline" size={18} color="#111827" />
+              <Text style={styles.lookupBtnText}>Buscar producto</Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.label}>Nombre</Text>
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            placeholder="Nombre del producto"
+            placeholderTextColor="#9CA3AF"
+            returnKeyType="next"
+          />
+
+          <Text style={styles.label}>Marca</Text>
+          <TextInput
+            style={styles.input}
+            value={brand}
+            onChangeText={setBrand}
+            placeholder="Marca"
+            placeholderTextColor="#9CA3AF"
+            returnKeyType="next"
+          />
+
+          <Text style={styles.label}>URL del producto</Text>
+          <TextInput
+            style={styles.input}
+            value={url}
+            onChangeText={setUrl}
+            placeholder="https://..."
+            placeholderTextColor="#9CA3AF"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            returnKeyType="next"
+          />
+
+          <Text style={styles.label}>URL de imagen</Text>
+          <TextInput
+            style={styles.input}
+            value={imageUrl}
+            onChangeText={(value) => {
+              setImageUrl(value);
+              setThumbnailUri(null);
+            }}
+            onBlur={handleImageUrlBlur}
+            placeholder="https://..."
+            placeholderTextColor="#9CA3AF"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            returnKeyType="next"
+          />
+
+          <Text style={styles.label}>Notas</Text>
+          <TextInput
+            style={[styles.input, styles.notesInput]}
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Notas del producto"
+            placeholderTextColor="#9CA3AF"
+            multiline
+          />
+
+          <View style={styles.actions}>
+            <Pressable style={styles.deleteBtn} onPress={handleDelete}>
+              <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.actionText}>Eliminar</Text>
+            </Pressable>
+
+            <Pressable style={styles.saveBtn} onPress={handleSave}>
+              <Ionicons name="save-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.actionText}>Guardar</Text>
+            </Pressable>
+          </View>
         </ScrollView>
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
 }
 
+const SCREEN_BACKGROUND = "#FAFAFA";
+const TEXT_PRIMARY = "#111827";
+const TEXT_SECONDARY = "#374151";
+const TEXT_MUTED = "#6B7280";
+const BORDER_COLOR = "#E5E7EB";
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#FAFAFA",
+    backgroundColor: SCREEN_BACKGROUND,
+  },
+
+  emptyScreen: {
+    flex: 1,
+    backgroundColor: SCREEN_BACKGROUND,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+
+  emptyTitle: {
+    marginTop: 12,
+    fontSize: 22,
+    fontWeight: "800",
+    color: TEXT_PRIMARY,
+    textAlign: "center",
+  },
+
+  emptyText: {
+    marginTop: 8,
+    fontSize: 15,
+    lineHeight: 22,
+    color: TEXT_MUTED,
+    textAlign: "center",
+  },
+
+  backBtn: {
+    marginTop: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: "#111827",
+  },
+
+  backBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
   },
 
   container: {
     padding: 20,
     paddingBottom: 40,
-    backgroundColor: "#FAFAFA",
+    backgroundColor: SCREEN_BACKGROUND,
   },
 
   title: {
@@ -170,7 +345,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center",
     marginBottom: 20,
-    color: "#111827",
+    color: TEXT_PRIMARY,
   },
 
   label: {
@@ -178,26 +353,54 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     fontSize: 14,
     fontWeight: "700",
-    color: "#374151",
+    color: TEXT_SECONDARY,
   },
 
   codeBox: {
-    backgroundColor: "#e8f0fe",
+    backgroundColor: "#E8F0FE",
     padding: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#aabbee",
+    borderColor: "#AABBBE",
+  },
+
+  previewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+
+  lookupBtn: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER_COLOR,
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+
+  lookupBtnText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: TEXT_PRIMARY,
   },
 
   input: {
-    backgroundColor: "#fff",
+    backgroundColor: "#FFFFFF",
     paddingHorizontal: 12,
     paddingVertical: 12,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "#DDDDDD",
     fontSize: 16,
-    color: "#111827",
+    color: TEXT_PRIMARY,
   },
 
   notesInput: {
@@ -209,28 +412,24 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 12,
-    backgroundColor: "#eee",
-    marginTop: 6,
-    marginBottom: 8,
+    backgroundColor: "#EEEEEE",
   },
 
   noThumb: {
     width: 96,
     height: 72,
     borderRadius: 12,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#F3F4F6",
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: BORDER_COLOR,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 6,
-    marginBottom: 8,
   },
 
   noThumbText: {
     marginTop: 4,
     fontSize: 12,
-    color: "#6b7280",
+    color: TEXT_MUTED,
   },
 
   actions: {
@@ -244,7 +443,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 60,
     borderRadius: 20,
-    backgroundColor: "#22c55e",
+    backgroundColor: "#22C55E",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -260,7 +459,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 60,
     borderRadius: 20,
-    backgroundColor: "#ef4444",
+    backgroundColor: "#EF4444",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -273,7 +472,7 @@ const styles = StyleSheet.create({
   },
 
   actionText: {
-    color: "#fff",
+    color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "700",
   },

@@ -40,6 +40,9 @@ export const ROUTES = {
   SEARCH_ENGINE_SETTINGS: "SearchEngine Settings Screen",
   CONFIRM_DELETE: "Confirm Delete Screen",
   SETTINGS: "Settings Screen",
+
+  PRODUCT_BARCODE_SCANNER: "ProductBarcodeScanner",
+  NEW_PRODUCT_SCANNER: "NewProductScanner",
   // Menu
   MENU: "Menu",
   BARCODE_SETTINGS: "Barcode Settings Screen",

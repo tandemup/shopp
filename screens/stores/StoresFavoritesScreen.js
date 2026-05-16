@@ -1,6 +1,7 @@
 // screens/StoresFavoritesScreen.js
-import React from "react";
+import React, { useEffect, useMemo } from "react";
 import { View, Text, FlatList, Pressable, StyleSheet } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useNavigation, useRoute } from "@react-navigation/native";
@@ -8,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useStores } from "../../context/StoresContext";
 import { formatDistance } from "../../utils/math/formatDistance";
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 import { ROUTES } from "../../navigation/ROUTES";
 
 export default function StoresFavoritesScreen() {
@@ -16,6 +18,19 @@ export default function StoresFavoritesScreen() {
 
   const { listId } = route.params || {};
   const { favoriteStores, toggleFavoriteStore, isFavoriteStore } = useStores();
+
+  const headerConfig = useMemo(
+    () =>
+      buildHeaderConfig({
+        title: "Tiendas favoritas",
+        preset: "light",
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    navigation.setOptions(headerConfig.navigationOptions);
+  }, [navigation, headerConfig]);
 
   /* ---------------------------------------------
      Navigation
@@ -81,37 +96,42 @@ export default function StoresFavoritesScreen() {
   const isEmpty = !favoriteStores || favoriteStores.length === 0;
 
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right"]}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Tiendas favoritas</Text>
+    <View style={styles.screen}>
+      <StatusBar {...headerConfig.statusBar} />
 
-        <Text style={styles.subtitle}>
-          Consulta tus tiendas guardadas y accede rápidamente a sus detalles.
-        </Text>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+        <View style={styles.content}>
+          <Text style={styles.title}>Tiendas favoritas</Text>
 
-        {isEmpty ? (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIconBox}>
-              <Ionicons name="star-outline" size={34} color="#9CA3AF" />
+          <Text style={styles.subtitle}>
+            Consulta tus tiendas guardadas y accede rápidamente a sus detalles.
+          </Text>
+
+          {isEmpty ? (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconBox}>
+                <Ionicons name="star-outline" size={34} color="#9CA3AF" />
+              </View>
+
+              <Text style={styles.emptyTitle}>No tienes tiendas favoritas</Text>
+
+              <Text style={styles.emptyText}>
+                Marca una tienda con la estrella para acceder rápidamente a
+                ella.
+              </Text>
             </View>
-
-            <Text style={styles.emptyTitle}>No tienes tiendas favoritas</Text>
-
-            <Text style={styles.emptyText}>
-              Marca una tienda con la estrella para acceder rápidamente a ella.
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            data={favoriteStores}
-            keyExtractor={(item) => item.id}
-            renderItem={renderStoreRow}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContent}
-          />
-        )}
-      </View>
-    </SafeAreaView>
+          ) : (
+            <FlatList
+              data={favoriteStores}
+              keyExtractor={(item) => item.id}
+              renderItem={renderStoreRow}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.listContent}
+            />
+          )}
+        </View>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -119,7 +139,12 @@ export default function StoresFavoritesScreen() {
    Styles
 -------------------------------------------------- */
 const styles = StyleSheet.create({
-  container: {
+  screen: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+
+  safeArea: {
     flex: 1,
     backgroundColor: "#F9FAFB",
   },
