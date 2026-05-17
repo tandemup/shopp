@@ -100,64 +100,38 @@ function Unidades({
   onChangeUnit,
   showError,
 }) {
-  const [showUnits, setShowUnits] = useState(false);
-
-  const unitLabel =
-    {
-      u: "🧩 Unidad (pieza)",
-      kg: "⚖️ Kilogramos",
-      g: "⚖️ Gramos",
-      l: "🧃 Litros",
-    }[unit] ?? "Unidad";
-
-  const handleToggleUnits = () => {
-    setShowUnits((prev) => !prev);
-  };
-
-  const handleSelectUnit = (nextUnit) => {
-    onChangeUnit(nextUnit);
-    setShowUnits(false);
-  };
-
   return (
     <View style={styles.card0}>
-      <Pressable style={styles.unitHeaderButton} onPress={handleToggleUnits}>
-        <View style={styles.unitHeaderLeft}>
-          <Text style={styles.label}>Unidad</Text>
-        </View>
+      <View style={styles.unitHeader}>
+        <Text style={styles.label}>Unidad</Text>
 
-        <View style={styles.unitHeaderRight}>
-          <Text style={styles.unitHeaderValue} numberOfLines={1}>
-            {unitLabel}
-          </Text>
+        <Text style={styles.unitHint}>
+          {
+            {
+              u: "🧩 Unidad (pieza)",
+              kg: "⚖️ Kilogramos",
+              g: "⚖️ Gramos",
+              l: "🧃 Litros",
+            }[unit]
+          }
+        </Text>
+      </View>
 
-          <Ionicons
-            name={showUnits ? "chevron-up" : "chevron-down"}
-            size={20}
-            color="#64748b"
-          />
-        </View>
-      </Pressable>
-
-      {showUnits ? (
-        <View style={styles.unitOptionsContainer}>
-          <View style={styles.unitRow}>
-            {UNITS.map((u) => (
-              <Pressable
-                key={u}
-                style={[styles.unitBtn, unit === u && styles.unitBtnActive]}
-                onPress={() => handleSelectUnit(u)}
-              >
-                <Text
-                  style={[styles.unitText, unit === u && styles.unitTextActive]}
-                >
-                  {formatUnit(u)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      ) : null}
+      <View style={styles.unitRow}>
+        {UNITS.map((u) => (
+          <Pressable
+            key={u}
+            style={[styles.unitBtn, unit === u && styles.unitBtnActive]}
+            onPress={() => onChangeUnit(u)}
+          >
+            <Text
+              style={[styles.unitText, unit === u && styles.unitTextActive]}
+            >
+              {formatUnit(u)}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
 
       <View style={styles.divider}>
         <View style={styles.inlineRow}>
@@ -172,11 +146,11 @@ function Unidades({
               onChangeText={onChangeQty}
             />
 
-            {showError ? (
+            {showError && (
               <Text style={styles.inputError}>
                 ⚠️ Solo enteros para unidades (u)
               </Text>
-            ) : null}
+            )}
           </View>
 
           <View style={styles.inlineField}>
@@ -199,8 +173,6 @@ function Unidades({
 }
 
 function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
-  const [showPromos, setShowPromos] = useState(false);
-
   const qty = Number(String(quantity).replace(",", ".")) || 0;
   const price = Number(String(unitPrice).replace(",", ".")) || 0;
 
@@ -214,106 +186,70 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
   );
 
   const selectedOption = PROMOTIONS[selectedPromoSafe];
-
-  const promoLabel =
-    selectedOption?.label ??
-    (selectedPromoSafe === "none" ? "Sin oferta" : String(selectedPromoSafe));
-
   const hint = selectedOption?.hint;
-
-  const handleTogglePromos = () => {
-    setShowPromos((prev) => !prev);
-  };
-
-  const handleSelectPromo = (promoId) => {
-    onSelect(promoId);
-    setShowPromos(false);
-  };
 
   return (
     <View style={styles.card0}>
-      <Pressable style={styles.promoHeaderButton} onPress={handleTogglePromos}>
-        <View style={styles.promoHeaderLeft}>
-          <Text style={styles.label}>Ofertas</Text>
-        </View>
+      <View style={styles.ofertasHeader}>
+        <Text style={styles.label}>Ofertas</Text>
 
-        <View style={styles.promoHeaderRight}>
-          <Text
-            style={[
-              styles.promoHeaderValue,
-              selectedPromoSafe !== "none" && styles.promoHeaderValueActive,
-            ]}
-            numberOfLines={1}
-          >
-            {promoLabel}
+        {selectedPromoSafe !== "none" && hint && (
+          <Text style={styles.promoHintInline} numberOfLines={1}>
+            💡 {hint}
           </Text>
+        )}
+      </View>
 
-          <Ionicons
-            name={showPromos ? "chevron-up" : "chevron-down"}
-            size={20}
-            color="#64748b"
-          />
-        </View>
-      </Pressable>
+      <View style={styles.promoWrap}>
+        {Object.values(PROMOTIONS)
+          .filter((option) => {
+            const id = option.id;
+            const isMulti = id === "2x1" || id === "3x2";
 
-      {showPromos ? (
-        <View style={styles.promoOptionsContainer}>
-          {selectedPromoSafe !== "none" && hint ? (
-            <Text style={styles.promoHintBlock}>💡 {hint}</Text>
-          ) : null}
+            return !(isMulti && unit !== "u");
+          })
+          .map((option) => {
+            const promo = normalizePromotion(option.id);
+            const validation = validatePromotion(promo, qty, price);
+            const disabled = !validation.valid;
+            const selected = selectedPromoSafe === option.id;
 
-          <View style={styles.promoWrap}>
-            {Object.values(PROMOTIONS)
-              .filter((option) => {
-                const id = option.id;
-                const isMulti = id === "2x1" || id === "3x2";
+            return (
+              <Pressable
+                key={option.id}
+                onPress={() => {
+                  if (disabled) return;
+                  onSelect(option.id);
+                }}
+                disabled={disabled}
+                style={({ pressed }) => [
+                  styles.promoChip,
+                  selected && styles.promoChipSelected,
+                  disabled && styles.promoChipDisabled,
+                  pressed && !disabled && { opacity: 0.8 },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.promoChipText,
+                    selected && styles.promoChipTextSelected,
+                    disabled && styles.promoChipTextDisabled,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+      </View>
 
-                return !(isMulti && unit !== "u");
-              })
-              .map((option) => {
-                const promo = normalizePromotion(option.id);
-                const validation = validatePromotion(promo, qty, price);
-                const disabled = !validation.valid;
-                const selected = selectedPromoSafe === option.id;
-
-                return (
-                  <Pressable
-                    key={option.id}
-                    onPress={() => {
-                      if (disabled) return;
-                      handleSelectPromo(option.id);
-                    }}
-                    disabled={disabled}
-                    style={({ pressed }) => [
-                      styles.promoChip,
-                      selected && styles.promoChipSelected,
-                      disabled && styles.promoChipDisabled,
-                      pressed && !disabled && { opacity: 0.8 },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.promoChipText,
-                        selected && styles.promoChipTextSelected,
-                        disabled && styles.promoChipTextDisabled,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-          </View>
-        </View>
-      ) : null}
-
-      {!promoValidation.valid ? (
+      {!promoValidation.valid && (
         <View style={styles.offerWarningBox}>
           <Text style={styles.offerWarning}>
             ⚠️ {promoValidation.message ?? "Oferta no válida"}
           </Text>
         </View>
-      ) : null}
+      )}
     </View>
   );
 }
@@ -449,6 +385,22 @@ export default function ItemDetailScreen() {
       });
     }, [navigation, route.params?.scannedBarcode]),
   );
+  if (!item) {
+    return (
+      <View style={styles.keyboardView}>
+        <StatusBar {...headerConfig.statusBar} />
+
+        <SafeAreaView
+          style={styles.container}
+          edges={["left", "right", "bottom"]}
+        >
+          <View style={styles.center}>
+            <Text>Producto no encontrado</Text>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   const updatePricing = (patch) => {
     setPricing((prev) => ({ ...prev, ...patch }));
@@ -515,7 +467,7 @@ export default function ItemDetailScreen() {
   const handleDelete = () => {
     safeAlert(
       "Eliminar producto",
-      `¿Seguro que quieres eliminar "${item?.name}"?`,
+      `¿Seguro que quieres eliminar "${item.name}"?`,
       [
         { text: "Cancelar", style: "cancel" },
         {
@@ -569,33 +521,19 @@ export default function ItemDetailScreen() {
     return !Number.isInteger(n);
   }
 
-  if (!item) {
-    return (
-      <View style={styles.keyboardView}>
-        <StatusBar {...headerConfig.statusBar} />
-
-        <SafeAreaView
-          style={styles.container}
-          edges={["left", "right", "bottom"]}
-        >
-          <View style={styles.center}>
-            <Text>Producto no encontrado</Text>
-          </View>
-        </SafeAreaView>
-      </View>
-    );
-  }
-
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right", "bottom"]}>
+    <KeyboardAvoidingView
+      style={styles.keyboardView}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
+    >
       <StatusBar {...headerConfig.statusBar} />
 
-      <View style={styles.screen}>
-        <KeyboardAvoidingView
-          style={styles.keyboardView}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
-        >
+      <SafeAreaView
+        style={styles.container}
+        edges={["left", "right", "bottom"]}
+      >
+        <View style={styles.screen}>
           <ScrollView
             style={styles.scroll}
             contentContainerStyle={styles.content}
@@ -627,28 +565,28 @@ export default function ItemDetailScreen() {
               total={priceInfo.total}
             />
           </ScrollView>
-        </KeyboardAvoidingView>
 
-        <View
-          style={[
-            styles.actions,
-            {
-              paddingBottom: Math.max(insets.bottom, 12),
-            },
-          ]}
-        >
-          <Pressable style={styles.saveBtn} onPress={handleSave}>
-            <Ionicons name="save" size={18} color="#fff" />
-            <Text style={styles.saveText}>Guardar</Text>
-          </Pressable>
+          <View
+            style={[
+              styles.actions,
+              {
+                paddingBottom: Math.max(insets.bottom, 12),
+              },
+            ]}
+          >
+            <Pressable style={styles.saveBtn} onPress={handleSave}>
+              <Ionicons name="save" size={18} color="#fff" />
+              <Text style={styles.saveText}>Guardar</Text>
+            </Pressable>
 
-          <Pressable style={styles.deleteBtn} onPress={handleDelete}>
-            <Ionicons name="trash" size={18} color="#fff" />
-            <Text style={styles.deleteText}>Eliminar</Text>
-          </Pressable>
+            <Pressable style={styles.deleteBtn} onPress={handleDelete}>
+              <Ionicons name="trash" size={18} color="#fff" />
+              <Text style={styles.deleteText}>Eliminar</Text>
+            </Pressable>
+          </View>
         </View>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -678,111 +616,13 @@ const styles = StyleSheet.create({
 
   content: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 24,
     gap: 16,
   },
 
-  unitHeaderButton: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#f9fafb",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  unitHeaderRight: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 8,
-    marginLeft: 12,
-  },
-  unitHeaderLeft: {
-    flexShrink: 0,
-  },
-
-  unitHeaderValue: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#64748b",
-    flexShrink: 1,
-    textAlign: "right",
-  },
-
-  unitSelectedText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#111827",
-    textTransform: "uppercase",
-  },
-
-  unitOptionsContainer: {
-    marginTop: 10,
-  },
-  promoHeaderButton: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#f9fafb",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-
-  promoHeaderLeft: {
-    flexShrink: 0,
-  },
-
-  promoHeaderRight: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 8,
-    marginLeft: 12,
-  },
-
-  promoHeaderValue: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#64748b",
-    flexShrink: 1,
-    textAlign: "right",
-  },
-
-  promoHeaderValueActive: {
-    color: "#111827",
-    fontWeight: "800",
-  },
-
-  promoOptionsContainer: {
-    marginTop: 10,
-  },
-
-  promoHintBlock: {
-    marginBottom: 10,
-    fontSize: 13,
-    color: "#6b7280",
-    lineHeight: 18,
-  },
   card0: {
     backgroundColor: "#fff",
     borderRadius: 16,
-    borderColor: "#e5e7eb",
-    gap: 5,
-  },
-
-  card1: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
     borderColor: "#e5e7eb",
     gap: 5,
   },
@@ -869,35 +709,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
-  },
-
-  unitDropdownHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#f9fafb",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-
-  unitDropdownRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-
-  unitSelectedText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#111827",
-    textTransform: "uppercase",
-  },
-
-  unitDropdownBody: {
-    marginTop: 10,
   },
 
   unitHeader: {

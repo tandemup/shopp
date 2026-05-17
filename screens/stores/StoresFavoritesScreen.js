@@ -12,6 +12,23 @@ import { formatDistance } from "../../utils/math/formatDistance";
 import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 import { ROUTES } from "../../navigation/ROUTES";
 
+function NoTienesTiendasFavoritas() {
+  return (
+    <View style={styles.emptyState}>
+      <View style={styles.emptyIconBox}>
+        <Ionicons name="star-outline" size={34} color="#9CA3AF" />
+      </View>
+
+      <Text style={styles.emptyTitle}>No tienes tiendas favoritas</Text>
+
+      <Text style={styles.emptyText}>
+        Marca una tienda con la estrella para acceder rápidamente a ella.
+      </Text>
+      <ExplorerButton display />
+    </View>
+  );
+}
+
 export default function StoresFavoritesScreen() {
   const navigation = useNavigation();
   const route = useRoute();
@@ -108,18 +125,7 @@ export default function StoresFavoritesScreen() {
           </Text>
 
           {isEmpty ? (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconBox}>
-                <Ionicons name="star-outline" size={34} color="#9CA3AF" />
-              </View>
-
-              <Text style={styles.emptyTitle}>No tienes tiendas favoritas</Text>
-
-              <Text style={styles.emptyText}>
-                Marca una tienda con la estrella para acceder rápidamente a
-                ella.
-              </Text>
-            </View>
+            <NoTienesTiendasFavoritas />
           ) : (
             <FlatList
               data={favoriteStores}

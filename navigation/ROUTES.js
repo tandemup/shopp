@@ -29,23 +29,34 @@ export const ROUTES = {
   PURCHASE_DETAIL: "Purchase Detail",
   SCANNED_HISTORY: "Scanned History",
 
-  // Scanner
+  // Scanner stack
   SCANNER_HOME: "Scanner Home",
-  EDIT_SCANNED_ITEM: "Edit Scanned Item",
-  SHELF_LABEL_SCANNER: "Shelf Label Scanner",
+
+  // Scanner básico:
+  // Se usa desde ItemDetailScreen.js.
+  // Lee un código de barras y lo devuelve como route.params.scannedBarcode.
+  PRODUCT_BARCODE_SCANNER: "ProductBarcodeScanner",
+
+  // Scanner principal:
+  // Se usa desde el tab Scanner para escanear un producto nuevo.
+  NEW_PRODUCT_SCANNER: "NewProductScanner",
+
+  // Scanner auxiliares / existentes
   SCANNER_SCREEN: "Scanner Screen",
   QUICK_SCANNER_SCREEN: "QuickScanner Screen",
   DETAILED_SCANNER_SCREEN: "DetailedScanner Screen",
+  SHELF_LABEL_SCANNER: "Shelf Label Scanner",
+  EDIT_SCANNED_ITEM: "Edit Scanned Item",
+
+  // Search settings
   SEARCH_ENGINES: "Search Engines",
   SEARCH_ENGINE_SETTINGS: "SearchEngine Settings Screen",
-  CONFIRM_DELETE: "Confirm Delete Screen",
-  SETTINGS: "Settings Screen",
 
-  PRODUCT_BARCODE_SCANNER: "ProductBarcodeScanner",
-  NEW_PRODUCT_SCANNER: "NewProductScanner",
-  // Menu
+  // Menu / Settings
   MENU: "Menu",
+  SETTINGS: "Settings Screen",
   BARCODE_SETTINGS: "Barcode Settings Screen",
+  CONFIRM_DELETE: "Confirm Delete Screen",
 
   // Debug
   PRODUCT_LEARNING_DEBUG: "Product Learning Debug",
