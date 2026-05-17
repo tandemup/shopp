@@ -95,6 +95,7 @@ export default function ScannerTabScreen({ navigation }) {
 
       <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
         <View style={styles.content}>
+          <Text style={styles.title}>Scanner</Text>
           <Text style={styles.description}>
             Escanea nuevos productos o consulta el historial de códigos
             escaneados.
@@ -178,6 +179,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 24,
+  },
+
+  title: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 8,
   },
 
   description: {

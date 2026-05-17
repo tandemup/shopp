@@ -45,3 +45,11 @@ export async function getSearchSettings() {
 export async function setSearchSettings(settings) {
   return await storage.setJSON(STORAGE_KEYS.SEARCH_SETTINGS, settings);
 }
+
+export async function getBarcodeSettings() {
+  const settings = await getSettings();
+
+  return {
+    barcodeTypes: settings?.barcodeTypes ?? ["ean13", "ean8", "upc_a", "upc_e"],
+  };
+}

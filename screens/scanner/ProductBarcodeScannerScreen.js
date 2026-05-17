@@ -20,16 +20,53 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import {
+  CommonActions,
   useFocusEffect,
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
-
 import { ROUTES } from "../../navigation/ROUTES";
 import { buildHeaderConfig } from "../../utils/layout/headerStyles";
+import { getBarcodeSettings } from "../../src/storage/settingsStorage";
 
 const ZOOM_VALUES = [0, 0.15, 0.3, 0.45];
 const ZOOM_LABELS = ["1x", "1.2x", "1.5x", "2x"];
+
+const DEFAULT_BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e"];
+
+const ALLOWED_BARCODE_TYPES = new Set([
+  "aztec",
+  "codabar",
+  "code39",
+  "code93",
+  "code128",
+  "datamatrix",
+  "ean8",
+  "ean13",
+  "itf14",
+  "pdf417",
+  "qr",
+  "upc_a",
+  "upc_e",
+]);
+
+function normalizeBarcodeTypes(value) {
+  if (Array.isArray(value)) {
+    const filtered = value.filter((type) => ALLOWED_BARCODE_TYPES.has(type));
+    return filtered.length > 0 ? filtered : DEFAULT_BARCODE_TYPES;
+  }
+
+  if (value && typeof value === "object") {
+    const filtered = Object.entries(value)
+      .filter(([, enabled]) => Boolean(enabled))
+      .map(([type]) => type)
+      .filter((type) => ALLOWED_BARCODE_TYPES.has(type));
+
+    return filtered.length > 0 ? filtered : DEFAULT_BARCODE_TYPES;
+  }
+
+  return DEFAULT_BARCODE_TYPES;
+}
 
 export default function ProductBarcodeScannerScreen() {
   const navigation = useNavigation();
@@ -41,6 +78,8 @@ export default function ProductBarcodeScannerScreen() {
   const [locked, setLocked] = useState(false);
   const [zoomIndex, setZoomIndex] = useState(1);
   const [torchEnabled, setTorchEnabled] = useState(false);
+
+  const [barcodeTypes, setBarcodeTypes] = useState(DEFAULT_BARCODE_TYPES);
 
   const {
     listId,
@@ -63,11 +102,30 @@ export default function ProductBarcodeScannerScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      let isActive = true;
+
       scannedRef.current = false;
       setLocked(false);
       setTorchEnabled(false);
 
+      async function loadBarcodeSettings() {
+        try {
+          const settings = await getBarcodeSettings();
+
+          if (!isActive) return;
+
+          setBarcodeTypes(normalizeBarcodeTypes(settings?.barcodeTypes));
+        } catch (error) {
+          if (!isActive) return;
+
+          setBarcodeTypes(DEFAULT_BARCODE_TYPES);
+        }
+      }
+
+      loadBarcodeSettings();
+
       return () => {
+        isActive = false;
         scannedRef.current = false;
         setLocked(false);
         setTorchEnabled(false);
@@ -104,14 +162,26 @@ export default function ProductBarcodeScannerScreen() {
     const parentNavigation = navigation.getParent?.();
 
     if (parentNavigation) {
-      parentNavigation.navigate(returnToTab, {
-        screen: ROUTES.ITEM_DETAIL,
-        params: {
-          listId,
-          itemId,
-          scannedBarcode: code,
-        },
-      });
+      parentNavigation.dispatch(
+        CommonActions.navigate({
+          name: returnToTab,
+          params: {
+            screen: ROUTES.ITEM_DETAIL,
+            params: {
+              listId,
+              itemId,
+              scannedBarcode: code,
+            },
+          },
+        }),
+      );
+
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: ROUTES.SCANNER_HOME }],
+        }),
+      );
 
       return;
     }
@@ -125,7 +195,6 @@ export default function ProductBarcodeScannerScreen() {
       },
     });
   };
-
   if (!permission) {
     return (
       <SafeAreaView style={styles.container}>
@@ -178,7 +247,7 @@ export default function ProductBarcodeScannerScreen() {
           enableTorch={torchEnabled}
           onBarcodeScanned={locked ? undefined : handleBarcodeScanned}
           barcodeScannerSettings={{
-            barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e"],
+            barcodeTypes,
           }}
         />
 
