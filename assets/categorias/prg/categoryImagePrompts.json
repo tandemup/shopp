@@ -1,0 +1,51 @@
+[
+  {
+    "id": "frutas_verduras",
+    "categoria": "Frutas y verduras",
+    "subcategorias": ["Kiwi", "Aguacate"],
+    "subcategoriasalt": [
+      "Manzana",
+      "Plátano",
+      "Tomate",
+      "Lechuga",
+      "Zanahoria"
+    ],
+
+    "tipo_imagen": "icono de categoría de supermercado",
+    "formato": "PNG",
+    "ancho": 128,
+    "alto": 128,
+    "fondo": "transparente",
+    "relacion_aspecto": "1:1",
+    "estilo": {
+      "general": "colorido, limpio, infantil y amable",
+      "uso": "app móvil",
+      "bordes": "suaves y redondeados",
+      "sombras": "ligeras",
+      "colores": "vivos"
+    },
+    "composicion": {
+      "numero_productos": 4,
+      "centrado": true,
+      "sin_texto": true,
+      "sin_numeros": true,
+      "sin_borde_exterior": true,
+      "ocupacion_lienzo": "85-95%"
+    },
+    "prompt": [
+      "Ilustración tipo icono {{formato}} para una categoría de supermercado llamada \"{{categoria}}\".",
+      "Representar visualmente estas subcategorías: {{subcategorias}}.",
+      "Mostrar {{numero_productos}} productos representativos.",
+      "Estilo {{estilo_general}}, con aspecto de {{estilo_uso}}.",
+      "Productos con formas redondeadas, bordes {{bordes}}, sombras {{sombras}} y colores {{colores}}.",
+      "Composición equilibrada y centrada.",
+      "Sin texto, sin números y sin borde exterior.",
+      "Fondo {{fondo}}.",
+      "Formato cuadrado exacto de {{ancho}} x {{alto}} píxeles, relación de aspecto {{relacion_aspecto}}.",
+      "La salida final debe ser un PNG real de exactamente {{ancho}} x {{alto}} píxeles.",
+      "No generar una imagen más grande.",
+      "No añadir margen transparente exterior.",
+      "La ilustración debe ocupar aproximadamente el {{ocupacion_lienzo}} del lienzo, sin quedar demasiado pequeña y sin dejar un canvas transparente excesivo."
+    ]
+  }
+]

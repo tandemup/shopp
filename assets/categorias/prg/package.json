@@ -1,0 +1,13 @@
+{
+  "name": "prg",
+  "version": "1.0.0",
+  "description": "Generador de prompts para imágenes de categorías de supermercado",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "prompt": "node index.js"
+  }
+}

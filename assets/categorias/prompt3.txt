@@ -1,0 +1,24 @@
+Crea un archivo SVG vectorial real, editable y con fondo transparente para la categoría de supermercado "Frutas y verduras".
+
+Requisitos técnicos obligatorios:
+- Entrega el resultado como código SVG real.
+- El archivo debe comenzar con <svg> y usar viewBox="0 0 1024 1024".
+- Usa únicamente geometría vectorial editable, por ejemplo: <svg>, <g>, <circle>, <ellipse>, <path>, <rect>, <polygon>, <linearGradient>, <radialGradient>, <filter>.
+- No generes PNG, JPG ni ninguna imagen rasterizada.
+- No incrustes imágenes en base64.
+- No uses <image href="...">.
+- No conviertas una imagen PNG dentro del SVG.
+- Todo el contenido debe estar dibujado como formas vectoriales editables.
+
+Composición:
+- Formato cuadrado.
+- Fondo transparente.
+- Coloca un círculo verde en la esquina superior izquierda con el número "1" en blanco.
+- Mostrar 4 productos representativos: una manzana roja, un plátano amarillo, un tomate rojo y una lechuga verde.
+- Los elementos deben estar agrupados de forma equilibrada y centrados dentro del lienzo.
+- Usa bordes suaves, sombras ligeras y colores vivos.
+- Estilo colorido, limpio, infantil, amable y con aspecto de icono para app móvil.
+- Sin texto adicional, salvo el número dentro del círculo.
+
+Salida:
+- Devuelve únicamente el contenido final del archivo SVG.

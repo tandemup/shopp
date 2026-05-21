@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -17,10 +17,13 @@ import { useStores } from "../../context/StoresContext";
 import StoreSelector from "../../components/features/stores/StoreSelector";
 import ItemRow from "../../components/features/items/ItemRow";
 import SearchCombinedBar from "../../components/features/search/SearchCombinedBar";
+import CategoryImageSelector from "../../components/features/search/CategoryImageSelector";
+
 import CheckoutBar from "../../components/features/checkout/CheckoutBar";
 import CurrencyBadge from "../../components/ui/CurrencyBadge";
 import { ROUTES } from "../../navigation/ROUTES";
 import { safeAlert } from "../../components/ui/alert/safeAlert";
+import PredictiveSearchBar from "./PredictiveSearchBar";
 
 export default function ShoppingListScreen() {
   const route = useRoute();
@@ -29,6 +32,17 @@ export default function ShoppingListScreen() {
 
   const { activeLists, addItem, updateItem, archiveList } = useLists();
   const { getStoreById } = useStores();
+  const [query, setQuery] = useState("");
+  const products = [
+    "Manzana",
+    "Plátano",
+    "Tomate",
+    "Lechuga",
+    "Zanahoria",
+    "Aceite de oliva",
+    "Leche entera",
+    "Pan integral",
+  ];
 
   const headerConfig = useMemo(
     () =>
@@ -138,6 +152,29 @@ export default function ShoppingListScreen() {
       }
     />
   );
+  const CATEGORIES = [
+    {
+      id: "frutas_verduras",
+      name: "Frutas y verduras",
+      image: require("../assets/categories/1_frutas_verduras.png"),
+    },
+    {
+      id: "carne_pescado",
+      name: "Carne y pescado",
+      image: require("../assets/categories/2_carnes_pescados.png"),
+    },
+    {
+      id: "panaderia",
+      name: "Panadería",
+      image: require("../assets/categories/3_panaderia_bolleria.png"),
+    },
+
+    {
+      id: "lacteos",
+      name: "Lácteos",
+      image: require("../assets/categories/4_lacteos_huevos.png"),
+    },
+  ];
 
   return (
     <KeyboardAvoidingView
@@ -149,7 +186,6 @@ export default function ShoppingListScreen() {
           <Text style={styles.listName}>{list.name}</Text>
           <CurrencyBadge currency={list.currency} size="sm" />
         </View>
-
         <View style={styles.storeSelectorWrapper}>
           <StoreSelector
             store={assignedStore}
@@ -166,11 +202,12 @@ export default function ShoppingListScreen() {
             }
           />
         </View>
-
-        <SearchCombinedBar
-          currentList={list}
-          onCreateNew={handleCreateNew}
-          onAddFromHistory={handleAddFromHistory}
+        {/* <SearchCombinedBar currentList={list} onCreateNew={handleCreateNew} onAddFromHistory={handleAddFromHistory}/> */}
+        <CategoryImageSelector
+          title="Elige una categoría"
+          categories={CATEGORIES}
+          selectedCategoryId={selectedCategory?.id}
+          onChange={setSelectedCategory}
         />
 
         <FlatList
@@ -180,7 +217,6 @@ export default function ShoppingListScreen() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         />
-
         <CheckoutBar
           total={total}
           currency={list.currency}

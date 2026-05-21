@@ -1,0 +1,18 @@
+| Nº | Categoría                        | Ilustración sugerida                                             |
+| -: | -------------------------------- | ---------------------------------------------------------------- |
+|  1 | **Frutas y verduras**            | Manzana, plátano, tomate, lechuga, zanahoria                     |
+|  2 | **Carne y pescado**              | Filete, pollo, pescado, marisco                                  |
+|  3 | **Panadería y bollería**         | Barra de pan, croissant, magdalena, pan de molde                 |
+|  4 | **Lácteos y huevos**             | Leche, yogur, queso, huevos                                      |
+|  5 | **Charcutería y refrigerados**   | Fiambre, jamón cocido, pasta fresca, ensaladas preparadas        |
+|  6 | **Congelados**                   | Bolsa de guisantes, pizza congelada, helado, pescado congelado   |
+|  7 | **Despensa / alimentación seca** | Arroz, pasta, conservas, aceite, legumbres                       |
+|  8 | **Bebidas**                      | Agua, refresco, zumo, leche vegetal                              |
+|  9 | **Dulces y aperitivos**          | Chocolate, galletas, patatas fritas, frutos secos                |
+| 10 | **Higiene personal**             | Gel, champú, pasta de dientes, desodorante                       |
+| 11 | **Limpieza del hogar**           | Detergente, limpiador multiusos, lejía, esponjas                 |
+| 12 | **Bebé**                         | Pañales, potito, toallitas, biberón                              |
+| 13 | **Mascotas**                     | Saco de pienso, cuenco, hueso, lata de comida                    |
+| 14 | **Hogar y bazar**                | Papel de cocina, pilas, sartén, bolsas de basura                 |
+| 15 | **Salud y parafarmacia**         | Tiritas, vitaminas, botiquín, termómetro                         |
+| 16 | **Dietética, bio y sin gluten**  | Producto sin gluten, bote bio, hojas verdes, cereales saludables |

@@ -12,10 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import {
   useFocusEffect,
@@ -41,6 +38,44 @@ import { formatCurrency } from "../../utils/store/prices";
 import { formatUnit } from "../../utils/pricing/unitFormat";
 import { safeAlert } from "../../components/ui/alert/safeAlert";
 
+function ProductHero({ name, barcode }) {
+  const title = name?.trim() || "Producto sin nombre";
+  const subtitle = barcode?.trim()
+    ? `EAN: ${barcode.trim()}`
+    : "Edita cantidad, precio, unidad y ofertas";
+
+  return (
+    <View style={styles.productHero}>
+      <View style={styles.productIconCircle}>
+        <Ionicons name="cube-outline" size={24} color="#2563eb" />
+      </View>
+
+      <View style={styles.productHeroText}>
+        <Text style={styles.productHeroTitle} numberOfLines={1}>
+          {title}
+        </Text>
+
+        <Text style={styles.productHeroSubtitle} numberOfLines={1}>
+          {subtitle}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function SectionTitle({ icon, title, subtitle }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionTitleRow}>
+        {icon ? <Ionicons name={icon} size={18} color="#2563eb" /> : null}
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </View>
+
+      {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
+    </View>
+  );
+}
+
 function CardNombreBarcode({
   nameItem,
   barcodeItem,
@@ -51,6 +86,12 @@ function CardNombreBarcode({
 }) {
   return (
     <View style={styles.card}>
+      <SectionTitle
+        icon="pricetag-outline"
+        title="Producto"
+        subtitle="Nombre visible en la lista y código EAN-13"
+      />
+
       <Text style={styles.label}>Nombre</Text>
 
       <TextInput
@@ -63,13 +104,13 @@ function CardNombreBarcode({
         autoCorrect={false}
       />
 
-      <View style={{ height: 12 }} />
+      <View style={styles.fieldGap} />
 
       <Text style={styles.label}>Código de barras</Text>
 
       <View style={styles.barcodeRow}>
         <TextInput
-          style={[styles.input, { flex: 1 }]}
+          style={[styles.input, styles.barcodeInput]}
           value={barcodeItem}
           onChangeText={onChangeBarcode}
           placeholder="EAN-13"
@@ -78,11 +119,11 @@ function CardNombreBarcode({
           autoCorrect={false}
         />
 
-        <Pressable style={styles.scanBtn} onPress={onScanner}>
+        <Pressable style={styles.iconButton} onPress={onScanner}>
           <Ionicons name="barcode-outline" size={22} color="#2563eb" />
         </Pressable>
 
-        <Pressable style={styles.scanBtn} onPress={onSearch}>
+        <Pressable style={styles.iconButton} onPress={onSearch}>
           <Ionicons name="search-outline" size={22} color="#2563eb" />
         </Pressable>
       </View>
@@ -104,10 +145,10 @@ function Unidades({
 
   const unitLabel =
     {
-      u: "🧩 Unidad (pieza)",
-      kg: "⚖️ Kilogramos",
-      g: "⚖️ Gramos",
-      l: "🧃 Litros",
+      u: "Unidad",
+      kg: "Kilogramos",
+      g: "Gramos",
+      l: "Litros",
     }[unit] ?? "Unidad";
 
   const handleToggleUnits = () => {
@@ -120,14 +161,20 @@ function Unidades({
   };
 
   return (
-    <View style={styles.card0}>
-      <Pressable style={styles.unitHeaderButton} onPress={handleToggleUnits}>
-        <View style={styles.unitHeaderLeft}>
-          <Text style={styles.label}>Unidad</Text>
+    <View style={styles.card}>
+      <SectionTitle
+        icon="calculator-outline"
+        title="Precio y cantidad"
+        subtitle="Define cómo se calcula el importe del producto"
+      />
+
+      <Pressable style={styles.dropdownHeader} onPress={handleToggleUnits}>
+        <View style={styles.dropdownHeaderLeft}>
+          <Text style={styles.dropdownLabel}>Unidad</Text>
         </View>
 
-        <View style={styles.unitHeaderRight}>
-          <Text style={styles.unitHeaderValue} numberOfLines={1}>
+        <View style={styles.dropdownHeaderRight}>
+          <Text style={styles.dropdownValue} numberOfLines={1}>
             {unitLabel}
           </Text>
 
@@ -140,8 +187,8 @@ function Unidades({
       </Pressable>
 
       {showUnits ? (
-        <View style={styles.unitOptionsContainer}>
-          <View style={styles.unitRow}>
+        <View style={styles.dropdownBody}>
+          <View style={styles.chipRow}>
             {UNITS.map((u) => (
               <Pressable
                 key={u}
@@ -159,39 +206,37 @@ function Unidades({
         </View>
       ) : null}
 
-      <View style={styles.divider}>
-        <View style={styles.inlineRow}>
-          <View style={styles.inlineField}>
-            <Text style={styles.label}>Cantidad ({formatUnit(unit)})</Text>
+      <View style={styles.priceGrid}>
+        <View style={styles.inlineField}>
+          <Text style={styles.label}>Cantidad ({formatUnit(unit)})</Text>
 
-            <TextInput
-              keyboardType={unit === "u" ? "number-pad" : "decimal-pad"}
-              inputMode={unit === "u" ? "numeric" : "decimal"}
-              style={styles.inputNum}
-              value={qty}
-              onChangeText={onChangeQty}
-            />
+          <TextInput
+            keyboardType={unit === "u" ? "number-pad" : "decimal-pad"}
+            inputMode={unit === "u" ? "numeric" : "decimal"}
+            style={[styles.inputNum, showError && styles.inputDanger]}
+            value={qty}
+            onChangeText={onChangeQty}
+          />
 
-            {showError ? (
-              <Text style={styles.inputError}>
-                ⚠️ Solo enteros para unidades (u)
-              </Text>
-            ) : null}
-          </View>
-
-          <View style={styles.inlineField}>
-            <Text style={styles.label}>
-              Precio unitario ({currencySymbol}/{formatUnit(unit)})
+          {showError ? (
+            <Text style={styles.inputError}>
+              Solo enteros para unidades (u)
             </Text>
+          ) : null}
+        </View>
 
-            <TextInput
-              inputMode="decimal"
-              style={styles.inputNum}
-              keyboardType="decimal-pad"
-              value={price}
-              onChangeText={onChangePrice}
-            />
-          </View>
+        <View style={styles.inlineField}>
+          <Text style={styles.label}>
+            Precio ({currencySymbol}/{formatUnit(unit)})
+          </Text>
+
+          <TextInput
+            inputMode="decimal"
+            style={styles.inputNum}
+            keyboardType="decimal-pad"
+            value={price}
+            onChangeText={onChangePrice}
+          />
         </View>
       </View>
     </View>
@@ -231,17 +276,23 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
   };
 
   return (
-    <View style={styles.card0}>
-      <Pressable style={styles.promoHeaderButton} onPress={handleTogglePromos}>
-        <View style={styles.promoHeaderLeft}>
-          <Text style={styles.label}>Ofertas</Text>
+    <View style={styles.card}>
+      <SectionTitle
+        icon="sparkles-outline"
+        title="Oferta"
+        subtitle="Aplica promociones compatibles con la unidad elegida"
+      />
+
+      <Pressable style={styles.dropdownHeader} onPress={handleTogglePromos}>
+        <View style={styles.dropdownHeaderLeft}>
+          <Text style={styles.dropdownLabel}>Promoción</Text>
         </View>
 
-        <View style={styles.promoHeaderRight}>
+        <View style={styles.dropdownHeaderRight}>
           <Text
             style={[
-              styles.promoHeaderValue,
-              selectedPromoSafe !== "none" && styles.promoHeaderValueActive,
+              styles.dropdownValue,
+              selectedPromoSafe !== "none" && styles.dropdownValueActive,
             ]}
             numberOfLines={1}
           >
@@ -257,12 +308,15 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
       </Pressable>
 
       {showPromos ? (
-        <View style={styles.promoOptionsContainer}>
+        <View style={styles.dropdownBody}>
           {selectedPromoSafe !== "none" && hint ? (
-            <Text style={styles.promoHintBlock}>💡 {hint}</Text>
+            <View style={styles.promoHintBox}>
+              <Ionicons name="bulb-outline" size={16} color="#92400e" />
+              <Text style={styles.promoHintText}>{hint}</Text>
+            </View>
           ) : null}
 
-          <View style={styles.promoWrap}>
+          <View style={styles.chipRow}>
             {Object.values(PROMOTIONS)
               .filter((option) => {
                 const id = option.id;
@@ -288,7 +342,7 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
                       styles.promoChip,
                       selected && styles.promoChipSelected,
                       disabled && styles.promoChipDisabled,
-                      pressed && !disabled && { opacity: 0.8 },
+                      pressed && !disabled && styles.pressed,
                     ]}
                   >
                     <Text
@@ -309,8 +363,9 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
 
       {!promoValidation.valid ? (
         <View style={styles.offerWarningBox}>
+          <Ionicons name="warning-outline" size={16} color="#9a3412" />
           <Text style={styles.offerWarning}>
-            ⚠️ {promoValidation.message ?? "Oferta no válida"}
+            {promoValidation.message ?? "Oferta no válida"}
           </Text>
         </View>
       ) : null}
@@ -320,7 +375,7 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
 
 function Contenedor({ pricing, onChange, currencySymbol, isUnitInvalid }) {
   return (
-    <View style={styles.cardContenedor}>
+    <>
       <Unidades
         qty={pricing.qty}
         price={pricing.unitPrice}
@@ -360,14 +415,16 @@ function Contenedor({ pricing, onChange, currencySymbol, isUnitInvalid }) {
         onSelect={(v) => onChange({ promo: v })}
         unit={pricing.unit}
       />
-    </View>
+    </>
   );
 }
 
 function SummaryRow({ label, value, bold, valueStyle }) {
   return (
     <View style={styles.summaryRow}>
-      <Text style={styles.summaryLabel}>{label}</Text>
+      <Text style={[styles.summaryLabel, bold && styles.summaryLabelBold]}>
+        {label}
+      </Text>
 
       <Text
         style={[
@@ -385,19 +442,32 @@ function SummaryRow({ label, value, bold, valueStyle }) {
 function Summary({ base, savings, total }) {
   return (
     <View style={styles.summaryCard}>
-      <Text style={styles.summaryTitle}>Resumen</Text>
+      <View style={styles.summaryHeader}>
+        <View>
+          <Text style={styles.summaryTitle}>Resumen</Text>
+          <Text style={styles.summarySubtitle}>Importe calculado</Text>
+        </View>
 
-      <SummaryRow label="Base imponible" value={formatCurrency(base)} />
+        <View style={styles.summaryIconCircle}>
+          <Ionicons name="receipt-outline" size={20} color="#16a34a" />
+        </View>
+      </View>
 
-      {savings > 0 && (
-        <SummaryRow
-          label="Descuento oferta"
-          value={`-${formatCurrency(savings)}`}
-          valueStyle={styles.summaryValueDiscount}
-        />
-      )}
+      <View style={styles.summaryRows}>
+        <SummaryRow label="Base" value={formatCurrency(base)} />
 
-      <SummaryRow label="Total" value={formatCurrency(total)} bold />
+        {savings > 0 ? (
+          <SummaryRow
+            label="Descuento oferta"
+            value={`-${formatCurrency(savings)}`}
+            valueStyle={styles.summaryValueDiscount}
+          />
+        ) : null}
+
+        <View style={styles.summaryDivider} />
+
+        <SummaryRow label="Total" value={formatCurrency(total)} bold />
+      </View>
     </View>
   );
 }
@@ -405,7 +475,6 @@ function Summary({ base, savings, total }) {
 export default function ItemDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const insets = useSafeAreaInsets();
 
   const headerConfig = useMemo(
     () =>
@@ -574,12 +643,9 @@ export default function ItemDetailScreen() {
       <View style={styles.keyboardView}>
         <StatusBar {...headerConfig.statusBar} />
 
-        <SafeAreaView
-          style={styles.container}
-          edges={["left", "right", "bottom"]}
-        >
+        <SafeAreaView style={styles.container} edges={["left", "right"]}>
           <View style={styles.center}>
-            <Text>Producto no encontrado</Text>
+            <Text style={styles.notFoundText}>Producto no encontrado</Text>
           </View>
         </SafeAreaView>
       </View>
@@ -587,7 +653,7 @@ export default function ItemDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right", "bottom"]}>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <StatusBar {...headerConfig.statusBar} />
 
       <View style={styles.screen}>
@@ -605,6 +671,8 @@ export default function ItemDetailScreen() {
             }
             showsVerticalScrollIndicator={false}
           >
+            <ProductHero name={name} barcode={barcode} />
+
             <CardNombreBarcode
               nameItem={name}
               barcodeItem={barcode}
@@ -629,22 +697,15 @@ export default function ItemDetailScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
 
-        <View
-          style={[
-            styles.actions,
-            {
-              paddingBottom: Math.max(insets.bottom, 12),
-            },
-          ]}
-        >
-          <Pressable style={styles.saveBtn} onPress={handleSave}>
-            <Ionicons name="save" size={18} color="#fff" />
-            <Text style={styles.saveText}>Guardar</Text>
+        <View style={styles.actions}>
+          <Pressable style={styles.deleteBtn} onPress={handleDelete}>
+            <Ionicons name="trash-outline" size={18} color="#dc2626" />
+            <Text style={styles.deleteText}>Eliminar</Text>
           </Pressable>
 
-          <Pressable style={styles.deleteBtn} onPress={handleDelete}>
-            <Ionicons name="trash" size={18} color="#fff" />
-            <Text style={styles.deleteText}>Eliminar</Text>
+          <Pressable style={styles.saveBtn} onPress={handleSave}>
+            <Ionicons name="save-outline" size={18} color="#fff" />
+            <Text style={styles.saveText}>Guardar cambios</Text>
           </Pressable>
         </View>
       </View>
@@ -659,7 +720,7 @@ const styles = StyleSheet.create({
 
   container: {
     flex: 1,
-    backgroundColor: "#f2f2f7",
+    backgroundColor: "#f3f4f6",
   },
 
   screen: {
@@ -672,155 +733,106 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  notFoundText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#374151",
+  },
+
   scroll: {
     flex: 1,
   },
 
   content: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 120,
     gap: 16,
   },
 
-  unitHeaderButton: {
+  productHero: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    backgroundColor: "#eff6ff",
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#f9fafb",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderColor: "#bfdbfe",
+    borderRadius: 20,
+    padding: 16,
+    gap: 14,
   },
-  unitHeaderRight: {
-    flex: 1,
-    flexDirection: "row",
+
+  productIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: "#dbeafe",
     alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 8,
-    marginLeft: 12,
-  },
-  unitHeaderLeft: {
-    flexShrink: 0,
+    justifyContent: "center",
   },
 
-  unitHeaderValue: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#64748b",
-    flexShrink: 1,
-    textAlign: "right",
+  productHeroText: {
+    flex: 1,
+    minWidth: 0,
   },
 
-  unitSelectedText: {
-    fontSize: 14,
+  productHeroTitle: {
+    fontSize: 18,
     fontWeight: "800",
     color: "#111827",
-    textTransform: "uppercase",
   },
 
-  unitOptionsContainer: {
-    marginTop: 10,
-  },
-  promoHeaderButton: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#f9fafb",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-
-  promoHeaderLeft: {
-    flexShrink: 0,
-  },
-
-  promoHeaderRight: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 8,
-    marginLeft: 12,
-  },
-
-  promoHeaderValue: {
+  productHeroSubtitle: {
+    marginTop: 3,
     fontSize: 13,
-    fontWeight: "600",
-    color: "#64748b",
-    flexShrink: 1,
-    textAlign: "right",
-  },
-
-  promoHeaderValueActive: {
-    color: "#111827",
-    fontWeight: "800",
-  },
-
-  promoOptionsContainer: {
-    marginTop: 10,
-  },
-
-  promoHintBlock: {
-    marginBottom: 10,
-    fontSize: 13,
-    color: "#6b7280",
-    lineHeight: 18,
-  },
-  card0: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    borderColor: "#e5e7eb",
-    gap: 5,
-  },
-
-  card1: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    gap: 5,
+    color: "#475569",
+    fontWeight: "500",
   },
 
   card: {
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 20,
+    padding: 16,
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    gap: 5,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 1,
   },
 
-  cardContenedor: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    gap: 16,
+  sectionHeader: {
+    marginBottom: 14,
   },
 
-  ofertasHeader: {
+  sectionTitleRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 7,
   },
 
-  promoHintInline: {
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#111827",
+  },
+
+  sectionSubtitle: {
+    marginTop: 4,
     fontSize: 13,
-    color: "#6b7280",
-    flexShrink: 1,
-    textAlign: "right",
+    color: "#64748b",
+    lineHeight: 18,
+  },
+
+  fieldGap: {
+    height: 12,
   },
 
   label: {
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#374151",
     marginBottom: 8,
   },
@@ -829,29 +841,36 @@ const styles = StyleSheet.create({
     backgroundColor: "#f9fafb",
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
     color: "#111827",
   },
 
+  inputDanger: {
+    borderColor: "#fca5a5",
+    backgroundColor: "#fff7f7",
+  },
+
   inputError: {
     marginTop: 6,
     fontSize: 13,
     color: "#b91c1c",
-    fontWeight: "500",
+    fontWeight: "600",
   },
 
   inputNum: {
     backgroundColor: "#f9fafb",
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 22,
     color: "#111827",
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
   },
 
   barcodeRow: {
@@ -860,65 +879,82 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 
-  scanBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
+  barcodeInput: {
+    flex: 1,
+  },
+
+  iconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#fff",
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  unitDropdownHeader: {
+  dropdownHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     borderWidth: 1,
     borderColor: "#e5e7eb",
     backgroundColor: "#f9fafb",
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 13,
   },
 
-  unitDropdownRight: {
+  dropdownHeaderLeft: {
+    flexShrink: 0,
+  },
+
+  dropdownHeaderRight: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "flex-end",
     gap: 8,
+    marginLeft: 12,
   },
 
-  unitSelectedText: {
+  dropdownLabel: {
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "700",
+    color: "#374151",
+  },
+
+  dropdownValue: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#64748b",
+    flexShrink: 1,
+    textAlign: "right",
+  },
+
+  dropdownValueActive: {
     color: "#111827",
-    textTransform: "uppercase",
+    fontWeight: "800",
   },
 
-  unitDropdownBody: {
-    marginTop: 10,
+  dropdownBody: {
+    marginTop: 12,
   },
 
-  unitHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  unitRow: {
+  chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
   },
 
   unitBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: 9,
+    paddingHorizontal: 15,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#000",
-    backgroundColor: "#fff",
+    borderColor: "#e5e7eb",
+    backgroundColor: "#f9fafb",
   },
 
   unitBtnActive: {
@@ -928,7 +964,7 @@ const styles = StyleSheet.create({
 
   unitText: {
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#374151",
   },
 
@@ -936,39 +972,43 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
 
-  unitHint: {
-    fontSize: 13,
-    color: "#64748b",
-    marginTop: 0,
-  },
-
-  divider: {
-    marginTop: 10,
-  },
-
-  inlineRow: {
+  priceGrid: {
     flexDirection: "row",
     gap: 12,
+    marginTop: 14,
   },
 
   inlineField: {
     flex: 1,
   },
 
-  promoWrap: {
+  promoHintBox: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    alignItems: "flex-start",
     gap: 8,
-    marginTop: 0,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: "#fffbeb",
+    borderWidth: 1,
+    borderColor: "#fde68a",
+  },
+
+  promoHintText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#92400e",
+    lineHeight: 18,
+    fontWeight: "500",
   },
 
   promoChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: 9,
+    paddingHorizontal: 15,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#000",
-    backgroundColor: "#fff",
+    borderColor: "#e5e7eb",
+    backgroundColor: "#f9fafb",
   },
 
   promoChipSelected: {
@@ -977,14 +1017,13 @@ const styles = StyleSheet.create({
   },
 
   promoChipDisabled: {
-    backgroundColor: "#f9fafb",
+    backgroundColor: "#f8fafc",
     borderColor: "#e5e7eb",
-    opacity: 1,
   },
 
   promoChipText: {
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#374151",
   },
 
@@ -996,62 +1035,119 @@ const styles = StyleSheet.create({
     color: "#9ca3af",
   },
 
+  pressed: {
+    opacity: 0.8,
+  },
+
   offerWarningBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
     marginTop: 12,
-    padding: 10,
-    borderRadius: 12,
+    padding: 12,
+    borderRadius: 14,
     backgroundColor: "#fff7ed",
     borderWidth: 1,
     borderColor: "#fdba74",
   },
 
   offerWarning: {
+    flex: 1,
     color: "#9a3412",
     fontSize: 13,
-    fontWeight: "500",
+    fontWeight: "600",
+    lineHeight: 18,
   },
 
   summaryCard: {
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 20,
+    padding: 16,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "#dcfce7",
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 1,
+  },
+
+  summaryHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
   },
 
   summaryTitle: {
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
     color: "#111827",
-    marginBottom: 10,
+  },
+
+  summarySubtitle: {
+    marginTop: 3,
+    fontSize: 13,
+    color: "#64748b",
+    fontWeight: "500",
+  },
+
+  summaryIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    backgroundColor: "#dcfce7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  summaryRows: {
+    gap: 8,
   },
 
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 6,
   },
 
   summaryLabel: {
     fontSize: 14,
     color: "#374151",
+    fontWeight: "500",
+  },
+
+  summaryLabelBold: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#111827",
   },
 
   summaryValue: {
     fontSize: 14,
     color: "#111827",
+    fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
 
   summaryValueBold: {
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#111827",
   },
 
   summaryValueDiscount: {
     color: "#16a34a",
-    fontWeight: "600",
+    fontWeight: "800",
+  },
+
+  summaryDivider: {
+    height: 1,
+    backgroundColor: "#e5e7eb",
+    marginVertical: 4,
   },
 
   actions: {
@@ -1059,40 +1155,47 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingTop: 12,
+    paddingBottom: 12,
     borderTopWidth: 1,
     borderColor: "#e5e7eb",
-    backgroundColor: "#f2f2f7",
+    backgroundColor: "#f3f4f6",
   },
 
   saveBtn: {
-    flex: 1,
+    flex: 1.4,
     flexDirection: "row",
-    gap: 6,
-    backgroundColor: "#22c55e",
-    padding: 14,
-    borderRadius: 12,
+    gap: 7,
+    backgroundColor: "#16a34a",
+    paddingVertical: 15,
+    paddingHorizontal: 14,
+    borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
   },
 
   saveText: {
     color: "#fff",
-    fontWeight: "700",
+    fontWeight: "800",
+    fontSize: 15,
   },
 
   deleteBtn: {
     flex: 1,
     flexDirection: "row",
-    gap: 6,
-    backgroundColor: "#ef4444",
-    padding: 14,
-    borderRadius: 12,
+    gap: 7,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    paddingVertical: 15,
+    paddingHorizontal: 14,
+    borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
   },
 
   deleteText: {
-    color: "#fff",
-    fontWeight: "700",
+    color: "#dc2626",
+    fontWeight: "800",
+    fontSize: 15,
   },
 });

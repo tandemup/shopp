@@ -1,0 +1,27 @@
+Crea un archivo SVG vectorial real, no PNG ni imagen rasterizada.
+
+Debe ser un SVG editable con elementos como:
+<svg>, <circle>, <ellipse>, <path>, <rect>, <linearGradient>, etc.
+
+No incrustes imágenes en base64.
+No uses <image href="...">.
+No conviertas una imagen PNG dentro del SVG.
+Quiero geometría vectorial editable.
+
+Ilustración tipo icono para la categoría de supermercado:
+“Frutas y verduras”.
+
+Formato:
+- viewBox="0 0 1024 1024"
+- fondo transparente
+- composición cuadrada
+- círculo verde en la esquina superior izquierda con el número 1 en blanco
+- mostrar una manzana roja, un plátano amarillo, una lechuga verde y un tomate rojo
+- estilo colorido, limpio, infantil y amable
+- bordes suaves
+- sombras ligeras
+- colores vivos
+- aspecto de app móvil
+- sin texto adicional
+
+Entrega el resultado como archivo .svg descargable.
