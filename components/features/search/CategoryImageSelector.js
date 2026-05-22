@@ -10,10 +10,10 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 function CategoryImageSelector({
+  title = "Categoría",
   categories = [],
   selectedCategoryId,
   onChange,
-  title = "Categoría",
   showTitle = true,
 }) {
   function handleSelect(category) {
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    width: 92,
+    width: 104,
     alignItems: "center",
   },
 
@@ -119,9 +119,9 @@ const styles = StyleSheet.create({
   cardSelected: {},
 
   imageBox: {
-    width: 76,
-    height: 76,
-    borderRadius: 22,
+    width: 90,
+    height: 90,
+    borderRadius: 26,
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#e5e7eb",
@@ -145,8 +145,8 @@ const styles = StyleSheet.create({
   },
 
   image: {
-    width: 58,
-    height: 58,
+    width: 78,
+    height: 78,
   },
 
   checkBadge: {

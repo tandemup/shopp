@@ -7,23 +7,23 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { StatusBar } from "expo-status-bar";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
+import { PRODUCT_CATEGORIES } from "../../constants/categories";
+
 import StoreSelector from "../../components/features/stores/StoreSelector";
 import ItemRow from "../../components/features/items/ItemRow";
 import SearchCombinedBar from "../../components/features/search/SearchCombinedBar";
 import CategoryImageSelector from "../../components/features/search/CategoryImageSelector";
-
 import CheckoutBar from "../../components/features/checkout/CheckoutBar";
 import CurrencyBadge from "../../components/ui/CurrencyBadge";
+
 import { ROUTES } from "../../navigation/ROUTES";
 import { safeAlert } from "../../components/ui/alert/safeAlert";
-import PredictiveSearchBar from "./PredictiveSearchBar";
 
 export default function ShoppingListScreen() {
   const route = useRoute();
@@ -32,17 +32,8 @@ export default function ShoppingListScreen() {
 
   const { activeLists, addItem, updateItem, archiveList } = useLists();
   const { getStoreById } = useStores();
-  const [query, setQuery] = useState("");
-  const products = [
-    "Manzana",
-    "Plátano",
-    "Tomate",
-    "Lechuga",
-    "Zanahoria",
-    "Aceite de oliva",
-    "Leche entera",
-    "Pan integral",
-  ];
+
+  const [selectedCategory, setSelectedCategory] = useState(null);
 
   const headerConfig = useMemo(
     () =>
@@ -77,12 +68,16 @@ export default function ShoppingListScreen() {
   }
 
   const assignedStore = list.storeId ? getStoreById(list.storeId) : null;
-
   const handleCreateNew = (name) => {
     const trimmed = name?.trim();
     if (!trimmed) return;
 
-    addItem(listId, { name: trimmed });
+    addItem(listId, {
+      name: trimmed,
+      checked: true,
+      categoryId: selectedCategory?.id ?? null,
+      categoryName: selectedCategory?.name ?? null,
+    });
   };
 
   const handleAddFromHistory = (historicItem) => {
@@ -98,6 +93,8 @@ export default function ShoppingListScreen() {
           }
         : null,
       checked: true,
+      categoryId: selectedCategory?.id ?? historicItem.categoryId ?? null,
+      categoryName: selectedCategory?.name ?? historicItem.categoryName ?? null,
     });
   };
 
@@ -152,29 +149,6 @@ export default function ShoppingListScreen() {
       }
     />
   );
-  const CATEGORIES = [
-    {
-      id: "frutas_verduras",
-      name: "Frutas y verduras",
-      image: require("../assets/categories/1_frutas_verduras.png"),
-    },
-    {
-      id: "carne_pescado",
-      name: "Carne y pescado",
-      image: require("../assets/categories/2_carnes_pescados.png"),
-    },
-    {
-      id: "panaderia",
-      name: "Panadería",
-      image: require("../assets/categories/3_panaderia_bolleria.png"),
-    },
-
-    {
-      id: "lacteos",
-      name: "Lácteos",
-      image: require("../assets/categories/4_lacteos_huevos.png"),
-    },
-  ];
 
   return (
     <KeyboardAvoidingView
@@ -202,14 +176,19 @@ export default function ShoppingListScreen() {
             }
           />
         </View>
-        {/* <SearchCombinedBar currentList={list} onCreateNew={handleCreateNew} onAddFromHistory={handleAddFromHistory}/> */}
+
         <CategoryImageSelector
           title="Elige una categoría"
-          categories={CATEGORIES}
+          categories={PRODUCT_CATEGORIES}
           selectedCategoryId={selectedCategory?.id}
           onChange={setSelectedCategory}
         />
 
+        <SearchCombinedBar
+          currentList={list}
+          onCreateNew={handleCreateNew}
+          onAddFromHistory={handleAddFromHistory}
+        />
         <FlatList
           data={list.items}
           keyExtractor={(item) => item.id}

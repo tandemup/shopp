@@ -1,6 +1,0 @@
-Ilustración tipo *.PNG icono para una categoría de supermercado llamada “[CARNE Y PESCADO]”.
-Estilo colorido, limpio, infantil y amable, con fondo transparente,
-Para las subcategorías elige: pollo, ternera, merluza, sardinas. 
-Mostrar 3 o 4 productos representativos de la categoría, con bordes suaves,
-sombras ligeras, colores vivos y aspecto de app móvil.
-Formato cuadrado 128px x128px, sin texto adicional salvo etiquetas simples en envases si es necesario.

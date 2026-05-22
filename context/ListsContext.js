@@ -145,6 +145,9 @@ export function ListsProvider({ children }) {
                   priceInfo: item?.priceInfo ?? null,
                   checked: item?.checked ?? true,
                   promo: item?.promo ?? null,
+
+                  categoryId: item?.categoryId ?? null,
+                  categoryName: item?.categoryName ?? null,
                 },
                 ...list.items,
               ],
