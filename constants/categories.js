@@ -1,4 +1,4 @@
-export const PRODUCT_CATEGORIES_11 = [
+export const PRODUCT_CATEGORIES = [
   {
     id: "frutas_verduras",
     name: "Frutas y verduras",
@@ -81,7 +81,7 @@ export const PRODUCT_CATEGORIES_11 = [
   },
 ];
 
-export const PRODUCT_CATEGORIES = [
+export const PRODUCT_CATEGORIES_11 = [
   {
     id: "frutas_verduras",
     name: "Frutas y verduras",
