@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState } from "react";
+import React, { useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -18,7 +18,6 @@ import { PRODUCT_CATEGORIES } from "../../constants/categories";
 import StoreSelector from "../../components/features/stores/StoreSelector";
 import ItemRow from "../../components/features/items/ItemRow";
 import SearchCombinedBar from "../../components/features/search/SearchCombinedBar";
-import CategoryImageSelector from "../../components/features/search/CategoryImageSelector";
 import CheckoutBar from "../../components/features/checkout/CheckoutBar";
 import CurrencyBadge from "../../components/ui/CurrencyBadge";
 
@@ -33,8 +32,6 @@ export default function ShoppingListScreen() {
   const { activeLists, addItem, updateItem, archiveList } = useLists();
   const { getStoreById } = useStores();
 
-  const [selectedCategory, setSelectedCategory] = useState(null);
-
   const headerConfig = useMemo(
     () =>
       buildHeaderConfig({
@@ -48,6 +45,13 @@ export default function ShoppingListScreen() {
     () => activeLists.find((l) => l.id === listId),
     [activeLists, listId],
   );
+
+  const categoriesById = useMemo(() => {
+    return PRODUCT_CATEGORIES.reduce((acc, category) => {
+      acc[category.id] = category;
+      return acc;
+    }, {});
+  }, []);
 
   useEffect(() => {
     navigation.setOptions(headerConfig.navigationOptions);
@@ -68,6 +72,7 @@ export default function ShoppingListScreen() {
   }
 
   const assignedStore = list.storeId ? getStoreById(list.storeId) : null;
+
   const handleCreateNew = (name) => {
     const trimmed = name?.trim();
     if (!trimmed) return;
@@ -75,8 +80,6 @@ export default function ShoppingListScreen() {
     addItem(listId, {
       name: trimmed,
       checked: true,
-      categoryId: selectedCategory?.id ?? null,
-      categoryName: selectedCategory?.name ?? null,
     });
   };
 
@@ -93,8 +96,11 @@ export default function ShoppingListScreen() {
           }
         : null,
       checked: true,
-      categoryId: selectedCategory?.id ?? historicItem.categoryId ?? null,
-      categoryName: selectedCategory?.name ?? historicItem.categoryName ?? null,
+
+      categoryId: historicItem.categoryId ?? null,
+      categoryName: historicItem.categoryName ?? null,
+      subcategoryId: historicItem.subcategoryId ?? null,
+      subcategoryName: historicItem.subcategoryName ?? null,
     });
   };
 
@@ -137,22 +143,28 @@ export default function ShoppingListScreen() {
     );
   };
 
-  const renderItem = ({ item }) => (
-    <ItemRow
-      item={item}
-      onToggle={() => handleToggleItem(item.id)}
-      onEdit={() =>
-        navigation.navigate(ROUTES.ITEM_DETAIL, {
-          listId,
-          itemId: item.id,
-        })
-      }
-    />
-  );
+  const renderItem = ({ item }) => {
+    const category = item.categoryId ? categoriesById[item.categoryId] : null;
+
+    return (
+      <ItemRow
+        item={item}
+        categoryImage={category?.image ?? null}
+        categoryName={category?.name ?? item.categoryName ?? null}
+        onToggle={() => handleToggleItem(item.id)}
+        onEdit={() =>
+          navigation.navigate(ROUTES.ITEM_DETAIL, {
+            listId,
+            itemId: item.id,
+          })
+        }
+      />
+    );
+  };
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={styles.keyboardView}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
@@ -160,6 +172,7 @@ export default function ShoppingListScreen() {
           <Text style={styles.listName}>{list.name}</Text>
           <CurrencyBadge currency={list.currency} size="sm" />
         </View>
+
         <View style={styles.storeSelectorWrapper}>
           <StoreSelector
             store={assignedStore}
@@ -177,18 +190,12 @@ export default function ShoppingListScreen() {
           />
         </View>
 
-        <CategoryImageSelector
-          title="Elige una categoría"
-          categories={PRODUCT_CATEGORIES}
-          selectedCategoryId={selectedCategory?.id}
-          onChange={setSelectedCategory}
-        />
-
         <SearchCombinedBar
           currentList={list}
           onCreateNew={handleCreateNew}
           onAddFromHistory={handleAddFromHistory}
         />
+
         <FlatList
           data={list.items}
           keyExtractor={(item) => item.id}
@@ -196,6 +203,7 @@ export default function ShoppingListScreen() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         />
+
         <CheckoutBar
           total={total}
           currency={list.currency}
@@ -207,16 +215,21 @@ export default function ShoppingListScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 32,
+  keyboardView: {
+    flex: 1,
   },
+
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#fff",
+  },
+
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
+
   listHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -227,6 +240,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#eee",
     backgroundColor: "#fff",
   },
+
   listName: {
     fontSize: 20,
     fontWeight: "600",
@@ -234,11 +248,15 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     marginRight: 12,
   },
+
   storeSelectorWrapper: {
-    marginBottom: 8,
+    width: "100%",
+    marginBottom: 16,
   },
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#fff",
+
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 32,
   },
 });

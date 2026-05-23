@@ -1,1 +1,0 @@
-Para una app de lista de la compra, yo usaría una clasificación más compacta: Frescos, Refrigerados, Congelados, Despensa, Bebidas, Limpieza, Higiene, Bebé, Mascotas, Hogar, Salud y Otros.

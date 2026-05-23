@@ -25,7 +25,10 @@ import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 import { getSearchSettings } from "../../src/storage/settingsStorage";
 import { DEFAULT_CURRENCY } from "../../constants/currency";
 import { SEARCH_ENGINES } from "../../constants/searchEngines";
+import { PRODUCT_CATEGORIES } from "../../constants/categories";
 import { useLists } from "../../context/ListsContext";
+
+import CategoryImageSelector from "../../components/features/search/CategoryImageSelector";
 
 import {
   PricingEngine,
@@ -127,6 +130,95 @@ function CardNombreBarcode({
           <Ionicons name="search-outline" size={22} color="#2563eb" />
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+function Categorias({
+  selectedCategoryId,
+  selectedSubcategoryId,
+  onChangeCategory,
+  onChangeSubcategory,
+}) {
+  const [showCategories, setShowCategories] = useState(false);
+
+  const selectedCategory = PRODUCT_CATEGORIES.find(
+    (category) => category.id === selectedCategoryId,
+  );
+
+  const selectedSubcategory = selectedCategory?.subcategories?.find(
+    (subcategory) => {
+      const id = typeof subcategory === "string" ? subcategory : subcategory.id;
+
+      return id === selectedSubcategoryId;
+    },
+  );
+
+  const selectedSubcategoryName =
+    typeof selectedSubcategory === "string"
+      ? selectedSubcategory
+      : selectedSubcategory?.name;
+
+  const value = selectedCategory
+    ? `${selectedCategory.name}${
+        selectedSubcategoryName ? ` · ${selectedSubcategoryName}` : ""
+      }`
+    : "Sin categoría";
+
+  return (
+    <View style={[styles.card, styles.categoryCard]}>
+      <SectionTitle
+        icon="albums-outline"
+        title="Categoría"
+        subtitle="Clasifica el producto para encontrarlo mejor en la lista"
+      />
+
+      <Pressable
+        style={styles.dropdownHeader}
+        onPress={() => setShowCategories((prev) => !prev)}
+      >
+        <View style={styles.dropdownHeaderLeft}>
+          <Text style={styles.dropdownLabel}>Asignación</Text>
+        </View>
+
+        <View style={styles.dropdownHeaderRight}>
+          <Text
+            style={[
+              styles.dropdownValue,
+              selectedCategory && styles.dropdownValueActive,
+            ]}
+            numberOfLines={1}
+          >
+            {value}
+          </Text>
+
+          <Ionicons
+            name={showCategories ? "chevron-up" : "chevron-down"}
+            size={20}
+            color="#64748b"
+          />
+        </View>
+      </Pressable>
+
+      {showCategories ? (
+        <View style={styles.categoryDropdownBody}>
+          <View style={styles.categorySelectorInner}>
+            <CategoryImageSelector
+              categories={PRODUCT_CATEGORIES}
+              selectedCategoryId={selectedCategoryId}
+              selectedSubcategoryId={selectedSubcategoryId}
+              showTitle={false}
+              subcategoryTitle="Subcategoría"
+              onChange={(category) => {
+                onChangeCategory(category);
+              }}
+              onSubcategoryChange={(subcategory) => {
+                onChangeSubcategory(subcategory);
+              }}
+            />
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -494,6 +586,14 @@ export default function ItemDetailScreen() {
   const [name, setName] = useState(item?.name ?? "");
   const [barcode, setBarcode] = useState(item?.barcode ?? "");
 
+  const [selectedCategoryId, setSelectedCategoryId] = useState(
+    item?.categoryId ?? null,
+  );
+
+  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState(
+    item?.subcategoryId ?? null,
+  );
+
   const [pricing, setPricing] = useState({
     qty: String(item?.priceInfo?.qty ?? "1"),
     unitPrice: String(item?.priceInfo?.unitPrice ?? "0"),
@@ -545,6 +645,34 @@ export default function ItemDetailScreen() {
     });
   }, [pricing, listCurrencyCode]);
 
+  const selectedCategory = useMemo(() => {
+    return (
+      PRODUCT_CATEGORIES.find(
+        (category) => category.id === selectedCategoryId,
+      ) ?? null
+    );
+  }, [selectedCategoryId]);
+
+  const selectedSubcategory = useMemo(() => {
+    if (!selectedCategory || !Array.isArray(selectedCategory.subcategories)) {
+      return null;
+    }
+
+    return (
+      selectedCategory.subcategories.find((subcategory) => {
+        const id =
+          typeof subcategory === "string" ? subcategory : subcategory.id;
+
+        return id === selectedSubcategoryId;
+      }) ?? null
+    );
+  }, [selectedCategory, selectedSubcategoryId]);
+
+  const selectedSubcategoryName =
+    typeof selectedSubcategory === "string"
+      ? selectedSubcategory
+      : selectedSubcategory?.name;
+
   const isUnitInvalid = pricing.unit === "u" && hasDecimals(pricing.qty);
 
   const handleSave = () => {
@@ -576,6 +704,10 @@ export default function ItemDetailScreen() {
       barcode: barcode.trim(),
       unit: pricing.unit,
       priceInfo,
+      categoryId: selectedCategory?.id ?? null,
+      categoryName: selectedCategory?.name ?? null,
+      subcategoryId: selectedSubcategoryId ?? null,
+      subcategoryName: selectedSubcategoryName ?? null,
     });
 
     navigation.goBack();
@@ -680,6 +812,23 @@ export default function ItemDetailScreen() {
               onChangeBarcode={setBarcode}
               onScanner={handleOpenScanner}
               onSearch={handleSearch}
+            />
+
+            <Categorias
+              selectedCategoryId={selectedCategoryId}
+              selectedSubcategoryId={selectedSubcategoryId}
+              onChangeCategory={(category) => {
+                setSelectedCategoryId(category.id);
+                setSelectedSubcategoryId(null);
+              }}
+              onChangeSubcategory={(subcategory) => {
+                const subcategoryId =
+                  typeof subcategory === "string"
+                    ? subcategory
+                    : subcategory.id;
+
+                setSelectedSubcategoryId(subcategoryId);
+              }}
             />
 
             <Contenedor
@@ -801,6 +950,10 @@ const styles = StyleSheet.create({
       height: 4,
     },
     elevation: 1,
+  },
+
+  categoryCard: {
+    paddingBottom: 10,
   },
 
   sectionHeader: {
@@ -940,6 +1093,17 @@ const styles = StyleSheet.create({
 
   dropdownBody: {
     marginTop: 12,
+  },
+
+  categoryDropdownBody: {
+    marginTop: 12,
+    marginHorizontal: 0,
+    marginBottom: -4,
+    overflow: "hidden",
+  },
+
+  categorySelectorInner: {
+    marginHorizontal: -4,
   },
 
   chipRow: {

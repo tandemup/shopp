@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useMemo } from "react";
 import {
   Image,
   Pressable,
@@ -11,16 +11,44 @@ import { Ionicons } from "@expo/vector-icons";
 
 function CategoryImageSelector({
   title = "Categoría",
+  subcategoryTitle = "Subcategoría",
+
   categories = [],
+
   selectedCategoryId,
+  selectedSubcategoryId,
+
   onChange,
+  onSubcategoryChange,
+
   showTitle = true,
+  showSubcategories = true,
 }) {
-  function handleSelect(category) {
+  function handleSelectCategory(category) {
     if (typeof onChange === "function") {
       onChange(category);
     }
   }
+
+  function handleSelectSubcategory(subcategory, category) {
+    if (typeof onSubcategoryChange === "function") {
+      onSubcategoryChange(subcategory, category);
+    }
+  }
+
+  const selectedCategory = useMemo(() => {
+    if (!Array.isArray(categories)) {
+      return null;
+    }
+
+    return (
+      categories.find((category) => category.id === selectedCategoryId) ?? null
+    );
+  }, [categories, selectedCategoryId]);
+
+  const subcategories = Array.isArray(selectedCategory?.subcategories)
+    ? selectedCategory.subcategories
+    : [];
 
   if (!Array.isArray(categories) || categories.length === 0) {
     return null;
@@ -45,7 +73,7 @@ function CategoryImageSelector({
           return (
             <Pressable
               key={category.id}
-              onPress={() => handleSelect(category)}
+              onPress={() => handleSelectCategory(category)}
               style={({ pressed }) => [
                 styles.card,
                 selected && styles.cardSelected,
@@ -78,6 +106,68 @@ function CategoryImageSelector({
           );
         })}
       </ScrollView>
+
+      {showSubcategories && selectedCategory && subcategories.length > 0 ? (
+        <View style={styles.subcategoriesContainer}>
+          <View style={styles.subcategoryHeader}>
+            <Text style={styles.subcategoryTitle}>{subcategoryTitle}</Text>
+            <Text style={styles.selectedCategoryName} numberOfLines={1}>
+              {selectedCategory.name}
+            </Text>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.subcategoriesScrollContent}
+          >
+            {subcategories.map((subcategory) => {
+              const subcategoryId =
+                typeof subcategory === "string" ? subcategory : subcategory.id;
+
+              const subcategoryName =
+                typeof subcategory === "string"
+                  ? subcategory
+                  : subcategory.name;
+
+              const selected = subcategoryId === selectedSubcategoryId;
+
+              return (
+                <Pressable
+                  key={subcategoryId}
+                  onPress={() =>
+                    handleSelectSubcategory(subcategory, selectedCategory)
+                  }
+                  style={({ pressed }) => [
+                    styles.subcategoryChip,
+                    selected && styles.subcategoryChipSelected,
+                    pressed && styles.subcategoryChipPressed,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.subcategoryChipText,
+                      selected && styles.subcategoryChipTextSelected,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {subcategoryName}
+                  </Text>
+
+                  {selected ? (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={15}
+                      color="#2563eb"
+                      style={styles.subcategoryIcon}
+                    />
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -87,14 +177,13 @@ export default memo(CategoryImageSelector);
 const styles = StyleSheet.create({
   container: {
     marginTop: 12,
-    marginBottom: 12,
+    marginBottom: 16,
   },
 
   header: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 0,
     marginBottom: 8,
   },
-
   title: {
     fontSize: 16,
     fontWeight: "700",
@@ -102,7 +191,8 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 0,
+    paddingRight: 8,
     gap: 12,
   },
 
@@ -175,5 +265,74 @@ const styles = StyleSheet.create({
   labelSelected: {
     color: "#2563eb",
     fontWeight: "800",
+  },
+  subcategoriesContainer: {
+    marginTop: 14,
+    marginBottom: 10,
+  },
+
+  subcategoryHeader: {
+    paddingHorizontal: 0,
+    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+
+  subcategoriesScrollContent: {
+    paddingHorizontal: 0,
+    paddingRight: 8,
+    gap: 8,
+  },
+
+  subcategoryTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111827",
+  },
+
+  selectedCategoryName: {
+    flex: 1,
+    textAlign: "right",
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6b7280",
+  },
+
+  subcategoryChip: {
+    minHeight: 34,
+    paddingHorizontal: 13,
+    borderRadius: 999,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  subcategoryChipSelected: {
+    backgroundColor: "#eff6ff",
+    borderColor: "#2563eb",
+  },
+
+  subcategoryChipPressed: {
+    opacity: 0.75,
+    transform: [{ scale: 0.98 }],
+  },
+
+  subcategoryChipText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#4b5563",
+  },
+
+  subcategoryChipTextSelected: {
+    color: "#2563eb",
+  },
+
+  subcategoryIcon: {
+    marginLeft: 6,
   },
 });

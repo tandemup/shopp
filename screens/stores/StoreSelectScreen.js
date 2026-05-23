@@ -303,7 +303,7 @@ const styles = StyleSheet.create({
   },
 
   exploreButton: {
-    alignSelf: "flex-start",
+    alignSelf: "center",
     minHeight: 42,
     backgroundColor: "#2563EB",
     borderRadius: 14,
