@@ -114,11 +114,6 @@ export default function EditScannedItemScreen({ route, navigation }) {
       return;
     }
 
-    if (!name.trim()) {
-      safeAlert("Nombre requerido", "El producto debe tener un nombre");
-      return;
-    }
-
     try {
       let finalThumbnail = thumbnailUri;
 
@@ -127,7 +122,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
       }
 
       await updateScannedEntry(barcode, {
-        name: name.trim(),
+        name: name.trim() || "Producto sin nombre",
         brand: brand.trim(),
         url: url.trim(),
         imageUrl: imageUrl.trim(),
@@ -142,7 +137,6 @@ export default function EditScannedItemScreen({ route, navigation }) {
       safeAlert("Error", "No se pudo guardar el escaneo");
     }
   };
-
   const handleDelete = () => {
     if (!barcode) {
       safeAlert("Código vacío", "Este escaneo no tiene código de barras");

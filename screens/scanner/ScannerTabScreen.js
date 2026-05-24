@@ -128,10 +128,11 @@ export default function ScannerTabScreen({ navigation }) {
               </View>
 
               <View style={styles.cardText}>
-                <Text style={styles.cardTitle}>Escanear nuevo producto</Text>
+                <Text style={styles.cardTitle}>Escanear nuevo producto 1</Text>
 
                 <Text style={styles.cardSubtitle}>
-                  Abrir la cámara para leer un código de barras
+                  Abrir la cámara para leer un código de barras. Abrir luego el
+                  Historial de escaneos.
                 </Text>
 
                 <Text style={styles.cardMeta} numberOfLines={1}>
@@ -154,10 +155,11 @@ export default function ScannerTabScreen({ navigation }) {
               </View>
 
               <View style={styles.cardText}>
-                <Text style={styles.cardTitle}>Escanear nuevo producto</Text>
+                <Text style={styles.cardTitle}>Escanear nuevo producto 2</Text>
 
                 <Text style={styles.cardSubtitle}>
-                  Abrir la cámara para leer un código de barras
+                  Abrir la cámara para leer un código de barras. Luego mostrar
+                  ProductBarcodeScannerScreen
                 </Text>
 
                 <Text style={styles.cardMeta} numberOfLines={1}>
@@ -180,10 +182,11 @@ export default function ScannerTabScreen({ navigation }) {
               </View>
 
               <View style={styles.cardText}>
-                <Text style={styles.cardTitle}>Escanear nuevo producto</Text>
+                <Text style={styles.cardTitle}>Escanear nuevo producto 3</Text>
 
                 <Text style={styles.cardSubtitle}>
-                  Abrir la cámara para leer un código de barras
+                  Método alternativo: Abrir la cámara para leer un código de
+                  barras. Luego mostrar ProductBarcodeScannerScreen
                 </Text>
 
                 <Text style={styles.cardMeta} numberOfLines={1}>

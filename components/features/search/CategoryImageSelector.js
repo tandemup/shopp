@@ -83,11 +83,15 @@ function CategoryImageSelector({
               <View
                 style={[styles.imageBox, selected && styles.imageBoxSelected]}
               >
-                <Image
-                  source={category.image}
-                  style={styles.image}
-                  resizeMode="contain"
-                />
+                {category.image ? (
+                  <Image
+                    source={category.image}
+                    style={styles.image}
+                    resizeMode="contain"
+                  />
+                ) : (
+                  <Ionicons name="image-outline" size={34} color="#9CA3AF" />
+                )}
 
                 {selected ? (
                   <View style={styles.checkBadge}>

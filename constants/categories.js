@@ -1,8 +1,27 @@
+const CATEGORY_IMAGES = {
+  frutas_verduras: require("../assets/categories/1.png"),
+  carnes_pescados: require("../assets/categories/2.png"),
+  panaderia_bolleria: require("../assets/categories/3.png"),
+  lacteos_huevos: require("../assets/categories/4.png"),
+  refrigerados: require("../assets/categories/5.png"),
+  congelados: require("../assets/categories/6.png"),
+  despensa: require("../assets/categories/7.png"),
+  bebidas: require("../assets/categories/8.png"),
+  dulces_aperitivos: require("../assets/categories/9.png"),
+  higiene_personal: require("../assets/categories/10.png"),
+  limpieza_hogar: require("../assets/categories/11.png"),
+  bebe: require("../assets/categories/12.png"),
+  mascotas: require("../assets/categories/13.png"),
+  hogar_bazar: require("../assets/categories/14.png"),
+  salud_parafarmacia: require("../assets/categories/15.png"),
+  dietetica_ecologico: require("../assets/categories/16.png"),
+};
+
 export const PRODUCT_CATEGORIES = [
   {
     id: "frutas_verduras",
     name: "Frutas y verduras",
-    image: require("../assets/categories/1.png"),
+    image: CATEGORY_IMAGES.frutas_verduras,
     subcategories: [
       "Manzana",
       "Platano",
@@ -25,7 +44,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "carnes_pescados",
     name: "Carne y pescado",
-    image: require("../assets/categories/2.png"),
+    image: CATEGORY_IMAGES.carnes_pescados,
     subcategories: [
       "Pollo",
       "Ternera",
@@ -48,7 +67,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "panaderia_bolleria",
     name: "Panadería",
-    image: require("../assets/categories/3.png"),
+    image: CATEGORY_IMAGES.panaderia_bolleria,
     subcategories: [
       "Pan",
       "Baguette",
@@ -71,7 +90,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "lacteos_huevos",
     name: "Lácteos y huevos",
-    image: require("../assets/categories/4.png"),
+    image: CATEGORY_IMAGES.lacteos_huevos,
     subcategories: [
       "Leche",
       "Yogur",
@@ -94,7 +113,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "refrigerados",
     name: "Refrigerados",
-    image: require("../assets/categories/5.png"),
+    image: CATEGORY_IMAGES.refrigerados,
     subcategories: [
       "Pavo",
       "Jamon",
@@ -117,7 +136,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "congelados",
     name: "Congelados",
-    image: require("../assets/categories/6.png"),
+    image: CATEGORY_IMAGES.congelados,
     subcategories: [
       "Pizza",
       "Helado",
@@ -140,7 +159,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "despensa",
     name: "Despensa",
-    image: require("../assets/categories/7.png"),
+    image: CATEGORY_IMAGES.despensa,
     subcategories: [
       "Arroz",
       "Pasta",
@@ -163,7 +182,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "bebidas",
     name: "Bebidas",
-    image: require("../assets/categories/8.png"),
+    image: CATEGORY_IMAGES.bebidas,
     subcategories: [
       "Agua",
       "Refresco",
@@ -186,7 +205,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "dulces_aperitivos",
     name: "Dulces y aperitivos",
-    image: require("../assets/categories/9.png"),
+    image: CATEGORY_IMAGES.dulces_aperitivos,
     subcategories: [
       "Chocolate",
       "Galletas",
@@ -209,7 +228,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "higiene_personal",
     name: "Higiene personal",
-    image: require("../assets/categories/10.png"),
+    image: CATEGORY_IMAGES.higiene_personal,
     subcategories: [
       "Champu",
       "Gel",
@@ -232,7 +251,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "limpieza_hogar",
     name: "Limpieza del hogar",
-    image: require("../assets/categories/11.png"),
+    image: CATEGORY_IMAGES.limpieza_hogar,
     subcategories: [
       "Detergente",
       "Suavizante",
@@ -255,7 +274,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "bebe",
     name: "Bebé",
-    image: require("../assets/categories/12.png"),
+    image: CATEGORY_IMAGES.bebe,
     subcategories: [
       "Panales",
       "Toallitas",
@@ -278,7 +297,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "mascotas",
     name: "Mascotas",
-    image: require("../assets/categories/13.png"),
+    image: CATEGORY_IMAGES.mascotas,
     subcategories: [
       "Pienso",
       "Latas",
@@ -301,7 +320,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "hogar_bazar",
     name: "Hogar y bazar",
-    image: require("../assets/categories/14.png"),
+    image: CATEGORY_IMAGES.hogar_bazar,
     subcategories: [
       "Pilas",
       "Velas",
@@ -324,7 +343,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "salud_parafarmacia",
     name: "Salud y parafarmacia",
-    image: require("../assets/categories/15.png"),
+    image: CATEGORY_IMAGES.salud_parafarmacia,
     subcategories: [
       "Tiritas",
       "Alcohol",
@@ -347,7 +366,7 @@ export const PRODUCT_CATEGORIES = [
   {
     id: "dietetica_ecologico",
     name: "Dietética y ecológico",
-    image: require("../assets/categories/16.png"),
+    image: CATEGORY_IMAGES.dietetica_ecologico,
     subcategories: [
       "Tofu",
       "Seitan",
