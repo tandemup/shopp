@@ -1,4 +1,6 @@
-import React from "react";
+// screens/scanner/ProductInfoScreen.js
+
+import React, { useEffect, useRef, useState } from "react";
 import {
   Image,
   Linking,
@@ -12,14 +14,69 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { ROUTES } from "../../navigation/ROUTES";
 
+import {
+  getSearchSettings,
+  DEFAULT_SEARCH_SETTINGS,
+} from "../../src/storage/settingsStorage";
+
+import {
+  buildProductSearchUrl,
+  getProductSearchEngineLabel,
+} from "../../utils/productSearchUrl";
+
 export default function ProductInfoScreen({ route, navigation }) {
-  const { barcode, product } = route.params || {};
+  const { barcode, product, autoOpenEngine } = route.params || {};
 
   const safeProduct = product || {
     barcode,
   };
 
+  const [selectedProductEngine, setSelectedProductEngine] = useState(
+    DEFAULT_SEARCH_SETTINGS?.selectedProductEngine ||
+      DEFAULT_SEARCH_SETTINGS?.generalEngine ||
+      "open_food_facts",
+  );
+
+  const hasAutoOpenedRef = useRef(false);
+
   const imageUri = safeProduct.imageUrl || safeProduct.thumbnailUri || "";
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSelectedProductEngine() {
+      try {
+        const searchSettings = await getSearchSettings();
+
+        const engine =
+          searchSettings?.selectedProductEngine ||
+          searchSettings?.generalEngine ||
+          "open_food_facts";
+
+        if (mounted) {
+          setSelectedProductEngine(engine);
+        }
+      } catch (error) {
+        console.log("Error loading selected product engine:", error);
+      }
+    }
+
+    loadSelectedProductEngine();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!autoOpenEngine) return;
+    if (!selectedProductEngine) return;
+    if (hasAutoOpenedRef.current) return;
+
+    hasAutoOpenedRef.current = true;
+
+    handleOpenSelectedProductEngine();
+  }, [autoOpenEngine, selectedProductEngine]);
 
   function handleEditProduct() {
     navigation.navigate(ROUTES.EDIT_SCANNED_ITEM, {
@@ -28,7 +85,21 @@ export default function ProductInfoScreen({ route, navigation }) {
     });
   }
 
-  function handleOpenUrl() {
+  async function handleOpenSelectedProductEngine() {
+    const targetBarcode = safeProduct.barcode || barcode;
+
+    const url = buildProductSearchUrl(selectedProductEngine, targetBarcode);
+
+    if (!url) return;
+
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      console.log("Error opening product search URL:", error);
+    }
+  }
+
+  function handleOpenProductUrl() {
     if (!safeProduct.url) return;
 
     Linking.openURL(safeProduct.url).catch((error) => {
@@ -90,6 +161,16 @@ export default function ProductInfoScreen({ route, navigation }) {
         </View>
       </View>
 
+      <TouchableOpacity
+        style={styles.searchButton}
+        onPress={handleOpenSelectedProductEngine}
+      >
+        <Ionicons name="search-outline" size={21} color="#2563EB" />
+        <Text style={styles.searchButtonText}>
+          Buscar en {getProductSearchEngineLabel(selectedProductEngine)}
+        </Text>
+      </TouchableOpacity>
+
       <InfoSection title="Datos principales">
         <InfoRow label="Código de barras" value={safeProduct.barcode} />
         <InfoRow label="Nombre" value={safeProduct.name} />
@@ -118,7 +199,10 @@ export default function ProductInfoScreen({ route, navigation }) {
       </InfoSection>
 
       {!!safeProduct.url && (
-        <TouchableOpacity style={styles.linkButton} onPress={handleOpenUrl}>
+        <TouchableOpacity
+          style={styles.linkButton}
+          onPress={handleOpenProductUrl}
+        >
           <Ionicons name="open-outline" size={21} color="#2563EB" />
           <Text style={styles.linkButtonText}>Abrir ficha del producto</Text>
         </TouchableOpacity>
@@ -306,6 +390,23 @@ const styles = StyleSheet.create({
   barcodeText: {
     fontSize: 14,
     color: "#374151",
+    fontWeight: "800",
+  },
+
+  searchButton: {
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 14,
+  },
+
+  searchButtonText: {
+    color: "#2563EB",
+    fontSize: 15,
     fontWeight: "800",
   },
 

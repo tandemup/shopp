@@ -1,3 +1,5 @@
+// screens/scanner/NewProductScannerScreen1.js
+
 import React, { useEffect, useRef } from "react";
 import { View, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
@@ -103,6 +105,10 @@ export default function NewProductScannerScreen1() {
       navigation.replace(ROUTES.PRODUCT_INFO, {
         barcode,
         product: scannedItem,
+
+        // Déjalo en false para que el usuario pulse el botón manualmente.
+        // Cámbialo a true si quieres que abra el motor automáticamente.
+        autoOpenEngine: false,
       });
     } catch (error) {
       console.log("Error handling new product scan:", error);

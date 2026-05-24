@@ -8,8 +8,8 @@ import ScannerTabScreen from "../screens/scanner/ScannerTabScreen";
 import ProductBarcodeScannerScreen from "../screens/scanner/ProductBarcodeScannerScreen";
 import NewProductScannerScreen from "../screens/scanner/NewProductScannerScreen";
 import NewProductScannerScreen1 from "../screens/scanner/NewProductScannerScreen1";
+import NewProductScannerScreen2 from "../screens/scanner/NewProductScannerScreen2";
 import ProductInfoScreen from "../screens/scanner/ProductInfoScreen";
-
 import EditScannedItemScreen from "../screens/scanner/EditScannedItemScreen";
 import ScannedHistoryScreen from "../screens/scanner/ScannedHistoryScreen";
 import SearchEngines from "../screens/settings/SearchEngines";
@@ -58,6 +58,16 @@ export default function ScannerStack() {
         component={NewProductScannerScreen1}
         options={{
           title: "Escanear nuevo producto1",
+          headerShown: false,
+          presentation: "fullScreenModal",
+        }}
+      />
+
+      <Stack.Screen
+        name={ROUTES.NEW_PRODUCT_SCANNER2}
+        component={NewProductScannerScreen2}
+        options={{
+          title: "Escanear nuevo producto2",
           headerShown: false,
           presentation: "fullScreenModal",
         }}
