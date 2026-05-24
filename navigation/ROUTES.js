@@ -40,6 +40,10 @@ export const ROUTES = {
   // Scanner principal:
   // Se usa desde el tab Scanner para escanear un producto nuevo.
   NEW_PRODUCT_SCANNER: "NewProductScanner",
+  NEW_PRODUCT_SCANNER1: "NewProductScanner1",
+
+  // Pantalla para mostrar información obtenida del producto escaneado
+  PRODUCT_INFO: "ProductInfo",
 
   // Scanner auxiliares / existentes
   SCANNER_SCREEN: "Scanner Screen",

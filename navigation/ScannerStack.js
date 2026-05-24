@@ -7,6 +7,9 @@ import { ROUTES } from "./ROUTES";
 import ScannerTabScreen from "../screens/scanner/ScannerTabScreen";
 import ProductBarcodeScannerScreen from "../screens/scanner/ProductBarcodeScannerScreen";
 import NewProductScannerScreen from "../screens/scanner/NewProductScannerScreen";
+import NewProductScannerScreen1 from "../screens/scanner/NewProductScannerScreen1";
+import ProductInfoScreen from "../screens/scanner/ProductInfoScreen";
+
 import EditScannedItemScreen from "../screens/scanner/EditScannedItemScreen";
 import ScannedHistoryScreen from "../screens/scanner/ScannedHistoryScreen";
 import SearchEngines from "../screens/settings/SearchEngines";
@@ -47,6 +50,24 @@ export default function ScannerStack() {
           title: "Escanear nuevo producto",
           headerShown: false,
           presentation: "fullScreenModal",
+        }}
+      />
+
+      <Stack.Screen
+        name={ROUTES.NEW_PRODUCT_SCANNER1}
+        component={NewProductScannerScreen1}
+        options={{
+          title: "Escanear nuevo producto1",
+          headerShown: false,
+          presentation: "fullScreenModal",
+        }}
+      />
+
+      <Stack.Screen
+        name={ROUTES.PRODUCT_INFO}
+        component={ProductInfoScreen}
+        options={{
+          title: "Información del producto",
         }}
       />
 

@@ -85,6 +85,13 @@ export default function ScannerTabScreen({ navigation }) {
     });
   };
 
+  const goToScanner1 = () => {
+    navigation.navigate(ROUTES.NEW_PRODUCT_SCANNER1, {
+      saveToHistory: true,
+      barcodeTypes: enabledBarcodeTypes,
+    });
+  };
+
   const goToScannedHistory = () => {
     navigation.navigate(ROUTES.SCANNED_HISTORY);
   };
@@ -108,6 +115,32 @@ export default function ScannerTabScreen({ navigation }) {
                 pressed && styles.cardPressed,
               ]}
               onPress={goToScanner}
+            >
+              <View style={styles.iconBox}>
+                <Ionicons name="barcode-outline" size={26} color="#111827" />
+              </View>
+
+              <View style={styles.cardText}>
+                <Text style={styles.cardTitle}>Escanear nuevo producto</Text>
+
+                <Text style={styles.cardSubtitle}>
+                  Abrir la cámara para leer un código de barras
+                </Text>
+
+                <Text style={styles.cardMeta} numberOfLines={1}>
+                  Formatos activos: {enabledFormatsLabel}
+                </Text>
+              </View>
+
+              <Ionicons name="chevron-forward" size={22} color="#9CA3AF" />
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.card,
+                pressed && styles.cardPressed,
+              ]}
+              onPress={goToScanner1}
             >
               <View style={styles.iconBox}>
                 <Ionicons name="barcode-outline" size={26} color="#111827" />
