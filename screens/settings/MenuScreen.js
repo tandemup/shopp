@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Linking,
   Platform,
@@ -8,6 +8,13 @@ import {
   Text,
   View,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
+import {
+  getSearchSettings,
+  DEFAULT_SEARCH_SETTINGS,
+} from "../../src/storage/settingsStorage";
+
+import { SEARCH_ENGINES } from "../../constants/searchEngines";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,7 +35,20 @@ import {
 import { clearScannedHistory } from "../../services/scannerHistory";
 import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
+function buildProductSearchEngineSubtitle(settings) {
+  const engineId =
+    settings?.selectedProductEngine ||
+    settings?.generalEngine ||
+    DEFAULT_SEARCH_SETTINGS?.selectedProductEngine ||
+    DEFAULT_SEARCH_SETTINGS?.generalEngine ||
+    "google";
 
+  const engine = SEARCH_ENGINES?.[engineId];
+
+  const engineLabel = engine?.label || engine?.name || engineId;
+
+  return `Motor activo: ${engineLabel}`;
+}
 function getPermissionLabel(permission) {
   if (!permission) return "Comprobando...";
 
@@ -179,7 +199,8 @@ export default function MenuScreen({ navigation }) {
     useMicrophonePermissions();
 
   const [locationPermission, setLocationPermission] = useState(null);
-
+  const [productSearchEngineSubtitle, setProductSearchEngineSubtitle] =
+    useState("Motor activo: Google");
   const { clearActiveListsState, clearArchivedListsState, clearAllListsState } =
     useLists();
 
@@ -420,6 +441,27 @@ export default function MenuScreen({ navigation }) {
       ],
     );
   };
+  const loadProductSearchEngineSubtitle = useCallback(async () => {
+    try {
+      const settings = await getSearchSettings();
+      const subtitle = buildProductSearchEngineSubtitle(settings);
+
+      setProductSearchEngineSubtitle(subtitle);
+    } catch (error) {
+      console.warn("[MenuScreen] product search settings error", error);
+
+      const fallbackSubtitle = buildProductSearchEngineSubtitle(
+        DEFAULT_SEARCH_SETTINGS,
+      );
+
+      setProductSearchEngineSubtitle(fallbackSubtitle);
+    }
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadProductSearchEngineSubtitle();
+    }, [loadProductSearchEngineSubtitle]),
+  );
 
   return (
     <View style={styles.screen}>
@@ -447,14 +489,14 @@ export default function MenuScreen({ navigation }) {
 
             <SettingsCard
               icon="search-outline"
-              title="Motores de productos"
-              subtitle="Google, Open Food Facts, Barcode Lookup..."
+              title="Product Search Engines"
+              subtitle={productSearchEngineSubtitle}
               onPress={goToProductSearchEngines}
             />
 
             <SettingsCard
               icon="book-outline"
-              title="Motores de libros"
+              title="Book Search Engines"
               subtitle="Google Books, Open Library..."
               onPress={goToBookSearchEngines}
             />
