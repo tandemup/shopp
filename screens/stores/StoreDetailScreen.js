@@ -75,10 +75,7 @@ export default function StoreDetailScreen() {
       <View style={styles.screen}>
         <StatusBar {...headerConfig.statusBar} />
 
-        <SafeAreaView
-          style={styles.safeArea}
-          edges={["left", "right", "bottom"]}
-        >
+        <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
           <View style={styles.center}>
             <Text style={styles.errorText}>Tienda no encontrada</Text>
           </View>

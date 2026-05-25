@@ -107,7 +107,7 @@ export default function ScannerTabScreen({ navigation }) {
     <View style={styles.screen}>
       <StatusBar {...headerConfig.statusBar} />
 
-      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
         <View style={styles.content}>
           <Text style={styles.title}>Scanner</Text>
           <Text style={styles.description}>

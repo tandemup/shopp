@@ -27,7 +27,7 @@ export default function StoreInfoScreen() {
     <View style={styles.screen}>
       <StatusBar {...headerConfig.statusBar} />
 
-      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
         <View style={styles.content}>
           <View style={styles.iconBox}>
             <Ionicons

@@ -111,10 +111,7 @@ export default function StoresNearbyScreen() {
       <View style={styles.screen}>
         <StatusBar {...headerConfig.statusBar} />
 
-        <SafeAreaView
-          style={styles.safeArea}
-          edges={["left", "right", "bottom"]}
-        >
+        <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
           <View style={styles.content}>
             <Text style={styles.title}>Tiendas cercanas</Text>
 
@@ -147,10 +144,7 @@ export default function StoresNearbyScreen() {
       <View style={styles.screen}>
         <StatusBar {...headerConfig.statusBar} />
 
-        <SafeAreaView
-          style={styles.safeArea}
-          edges={["left", "right", "bottom"]}
-        >
+        <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
           <View style={styles.content}>
             <Text style={styles.title}>Tiendas cercanas</Text>
 
@@ -185,7 +179,7 @@ export default function StoresNearbyScreen() {
     <View style={styles.screen}>
       <StatusBar {...headerConfig.statusBar} />
 
-      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
         <View style={styles.content}>
           <Text style={styles.title}>Tiendas cercanas</Text>
 

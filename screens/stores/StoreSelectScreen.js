@@ -87,7 +87,7 @@ export default function StoreSelectScreen() {
     <View style={styles.screen}>
       <StatusBar {...headerConfig.statusBar} />
 
-      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
         {children}
       </SafeAreaView>
     </View>

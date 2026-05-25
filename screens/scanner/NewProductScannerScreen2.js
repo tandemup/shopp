@@ -289,7 +289,7 @@ export default function NewProductScannerScreen2() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right", "bottom"]}>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <StatusBar style="light" backgroundColor="#000000" translucent={false} />
 
       <View style={styles.cameraWrap}>

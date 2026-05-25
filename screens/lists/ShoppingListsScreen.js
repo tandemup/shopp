@@ -318,7 +318,7 @@ export default function ShoppingListsScreen() {
   return (
     <View style={styles.screen}>
       <StatusBar {...headerConfig.statusBar} />
-      <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
+      <SafeAreaView edges={["left", "right"]} style={styles.safeArea}>
         <View style={styles.content}>
           <Text style={styles.title}>Shopping Lists</Text>
 

@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import {
   getSearchSettings,
   DEFAULT_SEARCH_SETTINGS,
@@ -35,6 +36,7 @@ import {
 import { clearScannedHistory } from "../../services/scannerHistory";
 import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
+
 function buildProductSearchEngineSubtitle(settings) {
   const engineId =
     settings?.selectedProductEngine ||
@@ -203,7 +205,7 @@ export default function MenuScreen({ navigation }) {
     useState("Motor activo: Google");
   const { clearActiveListsState, clearArchivedListsState, clearAllListsState } =
     useLists();
-
+  const tabBarHeight = useBottomTabBarHeight();
   const { reloadStoresFromSeed } = useStores();
 
   const headerConfig = useMemo(
@@ -467,10 +469,15 @@ export default function MenuScreen({ navigation }) {
     <View style={styles.screen}>
       <StatusBar {...headerConfig.statusBar} />
 
-      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
         <ScrollView
           style={styles.container}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[
+            styles.content,
+            {
+              paddingBottom: tabBarHeight + 24,
+            },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
@@ -714,7 +721,6 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 28,
   },
 
   header: {

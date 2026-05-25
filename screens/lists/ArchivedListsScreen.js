@@ -252,7 +252,7 @@ export default function ArchivedListsScreen({ navigation }) {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right", "bottom"]}>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <View style={styles.content}>
         <Text style={styles.title}>Listas archivadas</Text>
 

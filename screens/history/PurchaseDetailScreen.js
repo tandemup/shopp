@@ -77,10 +77,7 @@ export default function PurchaseDetailScreen() {
   ----------------------------*/
   if (!product) {
     return (
-      <SafeAreaView
-        style={styles.container}
-        edges={["left", "right", "bottom"]}
-      >
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
         <View style={styles.emptyState}>
           <Ionicons name="alert-circle-outline" size={34} color="#9CA3AF" />
           <Text style={styles.emptyTitle}>Producto no disponible</Text>
@@ -155,7 +152,7 @@ export default function PurchaseDetailScreen() {
      Render
   ----------------------------*/
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right", "bottom"]}>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <View style={styles.content}>
         <Text style={styles.title} numberOfLines={2}>
           {product.name}

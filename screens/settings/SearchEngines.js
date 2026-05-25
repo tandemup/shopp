@@ -173,7 +173,7 @@ export default function SearchEngines() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+    <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
       <StatusBar {...headerConfig.statusBar} />
 
       <ScrollView

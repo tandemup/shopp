@@ -365,7 +365,7 @@ export default function PurchaseHistoryScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right", "bottom"]}>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <View style={styles.content}>
         <Text style={styles.title}>Historial de compras</Text>
 

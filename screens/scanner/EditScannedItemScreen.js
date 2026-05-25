@@ -190,7 +190,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
     >
       <StatusBar {...headerConfig.statusBar} />
 
-      <SafeAreaView style={styles.screen} edges={["left", "right", "bottom"]}>
+      <SafeAreaView style={styles.screen} edges={["left", "right"]}>
         <ScrollView
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"

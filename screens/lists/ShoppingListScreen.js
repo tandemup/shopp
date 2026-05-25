@@ -167,7 +167,7 @@ export default function ShoppingListScreen() {
       style={styles.keyboardView}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
         <View style={styles.listHeader}>
           <Text style={styles.listName}>{list.name}</Text>
           <CurrencyBadge currency={list.currency} size="sm" />

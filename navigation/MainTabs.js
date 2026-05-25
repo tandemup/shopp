@@ -1,9 +1,7 @@
 import React from "react";
-import {
-  createBottomTabNavigator,
-  useBottomTabBarHeight,
-} from "@react-navigation/bottom-tabs";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet } from "react-native";
 
 import { ROUTES } from "./ROUTES";
 import ShoppingStack from "./ShoppingStack";
@@ -13,13 +11,23 @@ import MenuStack from "./MenuStack";
 
 const Tab = createBottomTabNavigator();
 
+const SCREEN_BACKGROUND = "#f8fafc";
+
 export default function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        sceneStyle: {
+          backgroundColor: SCREEN_BACKGROUND,
+        },
         tabBarActiveTintColor: "#2563EB",
         tabBarInactiveTintColor: "#9CA3AF",
+        tabBarStyle: {
+          backgroundColor: "#FFFFFF",
+          borderTopColor: "#E5E7EB",
+          borderTopWidth: StyleSheet.hairlineWidth,
+        },
       }}
     >
       <Tab.Screen

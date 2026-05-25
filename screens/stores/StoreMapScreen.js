@@ -131,10 +131,7 @@ export default function StoreMapScreen({ route }) {
       <View style={styles.screen}>
         <StatusBar {...headerConfig.statusBar} />
 
-        <SafeAreaView
-          style={styles.safeArea}
-          edges={["left", "right", "bottom"]}
-        >
+        <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
           <View style={styles.emptyState}>
             <View style={styles.emptyIconBox}>
               <Ionicons name="map-outline" size={34} color="#9CA3AF" />
@@ -155,7 +152,7 @@ export default function StoreMapScreen({ route }) {
     <View style={styles.screen}>
       <StatusBar {...headerConfig.statusBar} />
 
-      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+      <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
         <WebView
           originWhitelist={["*"]}
           source={{ html }}
