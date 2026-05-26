@@ -10,13 +10,25 @@ export function getAllProducts(purchaseHistory = []) {
 
 /**
  * Busca productos por texto (case-insensitive).
- * Actualmente busca solo por nombre.
+ * Busca por nombre, barcode, categoría y subcategoría.
  */
 export function searchProducts(purchaseHistory = [], query = "") {
   const q = query.toLowerCase().trim();
   if (!q) return purchaseHistory;
 
-  return purchaseHistory.filter((p) => p.name?.toLowerCase().includes(q));
+  return purchaseHistory.filter((p) => {
+    const nameMatch = p.name?.toLowerCase().includes(q);
+    const barcodeMatch =
+      typeof p.barcode === "string" && p.barcode.includes(query);
+    const categoryMatch =
+      typeof p.categoryName === "string" &&
+      p.categoryName.toLowerCase().includes(q);
+    const subcategoryMatch =
+      typeof p.subcategoryName === "string" &&
+      p.subcategoryName.toLowerCase().includes(q);
+
+    return nameMatch || barcodeMatch || categoryMatch || subcategoryMatch;
+  });
 }
 
 /**
@@ -70,7 +82,7 @@ export function getStoresFromPurchaseHistory__(purchaseHistory = []) {
 
 export function getStoresFromPurchaseHistory(
   purchaseHistory = [],
-  getStoreById
+  getStoreById,
 ) {
   const map = new Map();
 
@@ -125,7 +137,15 @@ export function queryProducts({
       const barcodeMatch =
         typeof p.barcode === "string" && p.barcode.includes(search);
 
-      return nameMatch || barcodeMatch;
+      const categoryMatch =
+        typeof p.categoryName === "string" &&
+        p.categoryName.toLowerCase().includes(q);
+
+      const subcategoryMatch =
+        typeof p.subcategoryName === "string" &&
+        p.subcategoryName.toLowerCase().includes(q);
+
+      return nameMatch || barcodeMatch || categoryMatch || subcategoryMatch;
     });
   }
 

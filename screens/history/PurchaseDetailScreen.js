@@ -105,10 +105,18 @@ export default function PurchaseDetailScreen() {
       id: String(Date.now()),
       name: product.name ?? "",
       barcode: product.barcode ?? "",
+
       quantity,
       unitPrice,
-      unit: product.unit ?? "u",
+      unit: product.unit ?? product.priceInfo?.unit ?? "u",
+      priceInfo: product.priceInfo ?? null,
+
       checked: true,
+
+      categoryId: product.categoryId ?? null,
+      categoryName: product.categoryName ?? null,
+      subcategoryId: product.subcategoryId ?? null,
+      subcategoryName: product.subcategoryName ?? null,
     };
 
     navigation.navigate(ROUTES.SHOPPING_LISTS, {
@@ -162,6 +170,26 @@ export default function PurchaseDetailScreen() {
           {purchases.length} compra{purchases.length === 1 ? "" : "s"} · Precio
           medio {formatCurrency(averagePrice)}
         </Text>
+
+        {Boolean(product.categoryName || product.subcategoryName) && (
+          <View style={styles.categoryRow}>
+            {product.categoryName ? (
+              <View style={styles.categoryPill}>
+                <Text style={styles.categoryPillText} numberOfLines={1}>
+                  {product.categoryName}
+                </Text>
+              </View>
+            ) : null}
+
+            {product.subcategoryName ? (
+              <View style={styles.subcategoryPill}>
+                <Text style={styles.subcategoryPillText} numberOfLines={1}>
+                  {product.subcategoryName}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        )}
 
         <FlatList
           data={purchases}
@@ -225,6 +253,44 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: "#6B7280",
     marginBottom: 18,
+  },
+
+  categoryRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 14,
+  },
+
+  categoryPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+  },
+
+  subcategoryPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+
+  categoryPillText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#2563EB",
+  },
+
+  subcategoryPillText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#475569",
   },
 
   listContent: {

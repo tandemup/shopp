@@ -82,8 +82,13 @@ export default function SearchCombinedBar({
         id: e.id,
         type: "history",
         name: e.name,
+        barcode: e.barcode ?? "",
         priceInfo: e.priceInfo ?? null,
         storeId: e.storeId ?? null,
+        categoryId: e.categoryId ?? null,
+        categoryName: e.categoryName ?? null,
+        subcategoryId: e.subcategoryId ?? null,
+        subcategoryName: e.subcategoryName ?? null,
       }));
   }, [query, purchaseHistory, safeCurrentList.id, safeCurrentList.storeId]);
 
@@ -109,7 +114,12 @@ export default function SearchCombinedBar({
     if (item.type === "history") {
       onAddFromHistory?.({
         name: item.name,
+        barcode: item.barcode ?? "",
         priceInfo: item.priceInfo ?? null,
+        categoryId: item.categoryId ?? null,
+        categoryName: item.categoryName ?? null,
+        subcategoryId: item.subcategoryId ?? null,
+        subcategoryName: item.subcategoryName ?? null,
       });
       setQuery("");
     }
@@ -185,6 +195,15 @@ export default function SearchCombinedBar({
                   {item.storeId && (
                     <Text style={styles.metaText}>
                       🏬 {getStoreById(item.storeId)?.name ?? "Tienda"}
+                    </Text>
+                  )}
+
+                  {Boolean(item.categoryName || item.subcategoryName) && (
+                    <Text style={styles.metaText} numberOfLines={1}>
+                      🏷️{" "}
+                      {[item.subcategoryName, item.categoryName]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </Text>
                   )}
                 </View>

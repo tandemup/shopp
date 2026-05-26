@@ -27,15 +27,10 @@ import { formatCurrency, priceText } from "../../utils/store/formatters";
    Helpers
 -------------------------------------------------- */
 
-const getProductKey = (item) => {
-  if (item?.barcode) return `barcode:${item.barcode}`;
-  return `name:${String(item?.name ?? "")
-    .trim()
-    .toLowerCase()}`;
-};
-
 const toTimestamp = (value) => {
   if (!value) return 0;
+
+  if (typeof value === "number") return value;
 
   const date = new Date(value);
   const time = date.getTime();
@@ -46,77 +41,6 @@ const toTimestamp = (value) => {
 const getPurchaseQuantity = (purchase) => {
   const quantity = Number(purchase?.quantity ?? purchase?.qty ?? 1);
   return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
-};
-
-const buildProductsFromArchivedLists = (archivedLists = []) => {
-  const map = new Map();
-
-  archivedLists.forEach((list) => {
-    const purchasedAt = list.archivedAt || list.createdAt;
-    const storeId = list.storeId ?? null;
-
-    (list.items ?? []).forEach((item) => {
-      if (!item?.name) return;
-
-      const key = getProductKey(item);
-      const quantity = getPurchaseQuantity(item);
-      const total = Number(item.priceInfo?.total ?? item.price ?? 0);
-
-      if (!map.has(key)) {
-        map.set(key, {
-          id: key,
-          name: item.name,
-          barcode: item.barcode ?? "",
-          unit: item.unit ?? "u",
-          purchases: [],
-        });
-      }
-
-      const product = map.get(key);
-
-      product.purchases.push({
-        id: `${list.id}-${item.id}`,
-        listId: list.id,
-        storeId,
-        purchasedAt,
-        quantity,
-        unit: item.unit ?? product.unit ?? "u",
-        priceInfo: item.priceInfo ?? {
-          total,
-          unitPrice: item.unitPrice ?? item.price ?? 0,
-        },
-      });
-    });
-  });
-
-  return Array.from(map.values()).map((product) => {
-    const purchases = [...product.purchases].sort(
-      (a, b) => toTimestamp(b.purchasedAt) - toTimestamp(a.purchasedAt),
-    );
-
-    const totalUnits = purchases.reduce(
-      (sum, purchase) => sum + getPurchaseQuantity(purchase),
-      0,
-    );
-
-    const totalSpent = purchases.reduce(
-      (sum, purchase) => sum + Number(purchase.priceInfo?.total ?? 0),
-      0,
-    );
-
-    const lastPurchase = purchases[0] ?? null;
-
-    return {
-      ...product,
-      purchases,
-      frequency: purchases.length,
-      totalUnits,
-      totalSpent,
-      lastPurchasedAt: lastPurchase?.purchasedAt,
-      storeId: lastPurchase?.storeId ?? null,
-      priceInfo: lastPurchase?.priceInfo ?? null,
-    };
-  });
 };
 
 const groupPurchasesByStore = (purchases = [], getStoreById) => {
@@ -255,6 +179,26 @@ const PurchaseHistoryCard = ({
             />
           ) : null}
 
+          {Boolean(item.categoryName || item.subcategoryName) && (
+            <View style={styles.categoryRow}>
+              {item.categoryName ? (
+                <View style={styles.categoryPill}>
+                  <Text style={styles.categoryPillText} numberOfLines={1}>
+                    {item.categoryName}
+                  </Text>
+                </View>
+              ) : null}
+
+              {item.subcategoryName ? (
+                <View style={styles.subcategoryPill}>
+                  <Text style={styles.subcategoryPillText} numberOfLines={1}>
+                    {item.subcategoryName}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          )}
+
           <View style={styles.infoRow}>
             <DatePill
               date={item.lastPurchasedAt}
@@ -302,7 +246,7 @@ export default function PurchaseHistoryScreen() {
   const navigation = useNavigation();
   const lists = useLists();
 
-  const { purchaseHistory = [], archivedLists = [] } = lists;
+  const { purchaseHistory = [] } = lists;
   const { getStoreById } = useStores();
 
   const [search, setSearch] = useState("");
@@ -310,12 +254,8 @@ export default function PurchaseHistoryScreen() {
   const [expandedProductId, setExpandedProductId] = useState(null);
 
   const sourceProducts = useMemo(() => {
-    if (archivedLists?.length > 0) {
-      return buildProductsFromArchivedLists(archivedLists);
-    }
-
     return purchaseHistory;
-  }, [archivedLists, purchaseHistory]);
+  }, [purchaseHistory]);
 
   const stores = useMemo(() => {
     return getStoresFromPurchaseHistory(sourceProducts, getStoreById);
@@ -514,6 +454,44 @@ const styles = StyleSheet.create({
   chevronPressable: {
     padding: 6,
     marginLeft: 8,
+  },
+
+  categoryRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 8,
+  },
+
+  categoryPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+  },
+
+  subcategoryPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+
+  categoryPillText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#2563EB",
+  },
+
+  subcategoryPillText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#475569",
   },
 
   infoRow: {

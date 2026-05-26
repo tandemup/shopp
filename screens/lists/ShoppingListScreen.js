@@ -86,6 +86,7 @@ export default function ShoppingListScreen() {
   const handleAddFromHistory = (historicItem) => {
     addItem(listId, {
       name: historicItem.name,
+      barcode: historicItem.barcode ?? "",
       priceInfo: historicItem.priceInfo
         ? {
             ...historicItem.priceInfo,

@@ -22,6 +22,12 @@ export const defaultItem = {
   barcode: "",
   image: null,
   checked: true,
+
+  categoryId: null,
+  categoryName: null,
+  subcategoryId: null,
+  subcategoryName: null,
+
   priceInfo: defaultPriceInfo(),
 };
 

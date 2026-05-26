@@ -8,10 +8,41 @@ import { normalizeProductName } from "./normalize";
  * - nombre normalizado, si no existe barcode
  *
  * Además conserva purchases[], que usa PurchaseDetailScreen.
+ * También conserva category/subcategory para poder reutilizar productos
+ * desde el historial sin perder clasificación.
  *
  * @param {Array} archivedLists
  * @returns {Array} purchaseHistory
  */
+
+const toTimestamp = (value) => {
+  if (!value) return 0;
+
+  if (typeof value === "number") return value;
+
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+};
+
+const getQuantity = (item) => {
+  const quantity = Number(item?.quantity ?? item?.priceInfo?.qty ?? 1);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+};
+
+const getPriceInfo = (item) => item?.priceInfo ?? null;
+
+const getPurchaseTotal = (item) => {
+  const priceInfo = getPriceInfo(item);
+  const total = Number(priceInfo?.total ?? item?.total ?? item?.price ?? 0);
+  return Number.isFinite(total) ? total : 0;
+};
+
+const getCategoryFields = (item) => ({
+  categoryId: item?.categoryId ?? null,
+  categoryName: item?.categoryName ?? null,
+  subcategoryId: item?.subcategoryId ?? null,
+  subcategoryName: item?.subcategoryName ?? null,
+});
 
 export function buildPurchaseHistoryFromArchivedLists(archivedLists = []) {
   const map = new Map();
@@ -28,11 +59,10 @@ export function buildPurchaseHistoryFromArchivedLists(archivedLists = []) {
 
       const normalizedName = normalizeProductName(item.name);
       const barcode = item.barcode ?? null;
-
-      // Clave estable:
-      // - si hay barcode → manda el barcode
-      // - si no → nombre normalizado
       const key = barcode || normalizedName;
+      const quantity = getQuantity(item);
+      const total = getPurchaseTotal(item);
+      const categoryFields = getCategoryFields(item);
 
       const purchase = {
         id: `${listId ?? "list"}-${item.id ?? key}-${purchasedAt}`,
@@ -46,11 +76,13 @@ export function buildPurchaseHistoryFromArchivedLists(archivedLists = []) {
         normalizedName,
         barcode,
 
-        quantity: item.quantity ?? 1,
+        quantity,
         unitPrice: item.unitPrice ?? item.priceInfo?.unitPrice ?? 0,
-        unit: item.unit ?? "u",
-        promo: item.promo ?? null,
+        unit: item.unit ?? item.priceInfo?.unit ?? "u",
+        promo: item.promo ?? item.priceInfo?.promo ?? null,
         priceInfo: item.priceInfo ?? null,
+
+        ...categoryFields,
       };
 
       const prev = map.get(key);
@@ -61,47 +93,56 @@ export function buildPurchaseHistoryFromArchivedLists(archivedLists = []) {
           name: item.name,
           normalizedName,
           barcode,
+          unit: purchase.unit,
 
-          // Última tienda conocida
+          ...categoryFields,
+
           storeId,
-
           frequency: 1,
+          totalUnits: quantity,
+          totalSpent: total,
           lastPurchasedAt: purchasedAt,
-
-          // Último precio conocido
           priceInfo: item.priceInfo ?? null,
-
-          // Detalle histórico usado por PurchaseDetailScreen
           purchases: [purchase],
         });
 
         continue;
       }
 
-      const isMoreRecent = purchasedAt >= prev.lastPurchasedAt;
+      const isMoreRecent =
+        toTimestamp(purchasedAt) >= toTimestamp(prev.lastPurchasedAt);
 
       map.set(key, {
         ...prev,
 
-        // Conserva el nombre más reciente
         name: isMoreRecent ? item.name : prev.name,
-
-        // Aprende barcode si antes no había
         barcode: prev.barcode ?? barcode,
+        unit: isMoreRecent ? purchase.unit : prev.unit,
 
-        // Última tienda conocida
+        categoryId: isMoreRecent
+          ? (categoryFields.categoryId ?? prev.categoryId ?? null)
+          : prev.categoryId,
+        categoryName: isMoreRecent
+          ? (categoryFields.categoryName ?? prev.categoryName ?? null)
+          : prev.categoryName,
+        subcategoryId: isMoreRecent
+          ? (categoryFields.subcategoryId ?? prev.subcategoryId ?? null)
+          : prev.subcategoryId,
+        subcategoryName: isMoreRecent
+          ? (categoryFields.subcategoryName ?? prev.subcategoryName ?? null)
+          : prev.subcategoryName,
+
         storeId: isMoreRecent ? storeId : prev.storeId,
-
         frequency: prev.frequency + 1,
-
-        lastPurchasedAt: Math.max(prev.lastPurchasedAt, purchasedAt),
-
-        // Solo actualizar priceInfo si esta compra es más reciente
+        totalUnits: (prev.totalUnits ?? 0) + quantity,
+        totalSpent: (prev.totalSpent ?? 0) + total,
+        lastPurchasedAt: Math.max(
+          toTimestamp(prev.lastPurchasedAt),
+          toTimestamp(purchasedAt),
+        ),
         priceInfo: isMoreRecent
           ? (item.priceInfo ?? prev.priceInfo)
           : prev.priceInfo,
-
-        // Añadir compra individual
         purchases: [...(prev.purchases ?? []), purchase],
       });
     }
@@ -110,7 +151,7 @@ export function buildPurchaseHistoryFromArchivedLists(archivedLists = []) {
   return Array.from(map.values()).map((product) => ({
     ...product,
     purchases: [...(product.purchases ?? [])].sort(
-      (a, b) => new Date(b.purchasedAt) - new Date(a.purchasedAt),
+      (a, b) => toTimestamp(b.purchasedAt) - toTimestamp(a.purchasedAt),
     ),
   }));
 }

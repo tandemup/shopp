@@ -146,7 +146,10 @@ export default function NewProductScannerScreen2() {
     }, []),
   );
 
-  async function saveDetectedBarcode(code) {
+  async function getDetectedBarcodeProduct(
+    code,
+    { saveToHistory = false } = {},
+  ) {
     const barcode = normalizeBarcode(code);
 
     if (!barcode) return null;
@@ -166,7 +169,9 @@ export default function NewProductScannerScreen2() {
         updatedAt: now,
       };
 
-      await saveScannedEntry(barcode, updatedItem);
+      if (saveToHistory) {
+        await saveScannedEntry(barcode, updatedItem);
+      }
 
       return updatedItem;
     }
@@ -192,7 +197,9 @@ export default function NewProductScannerScreen2() {
       updatedAt: now,
     };
 
-    await saveScannedEntry(barcode, scannedItem);
+    if (saveToHistory) {
+      await saveScannedEntry(barcode, scannedItem);
+    }
 
     return scannedItem;
   }
@@ -211,20 +218,11 @@ export default function NewProductScannerScreen2() {
   function handleToggleTorch() {
     setTorchEnabled((prev) => !prev);
   }
-
-  async function handleBarcodeScanned({ data }) {
-    if (locked || scannedRef.current) return;
-
-    const barcode = normalizeBarcode(data);
-
-    if (!barcode) return;
-
-    scannedRef.current = true;
-    setLocked(true);
-    setTorchEnabled(false);
-
+  async function processDetectedBarcode(barcode, saveToHistory) {
     try {
-      const scannedItem = await saveDetectedBarcode(barcode);
+      const scannedItem = await getDetectedBarcodeProduct(barcode, {
+        saveToHistory,
+      });
 
       navigation.replace(ROUTES.PRODUCT_INFO, {
         barcode,
@@ -234,7 +232,7 @@ export default function NewProductScannerScreen2() {
     } catch (error) {
       console.log("Error handling new product scan:", error);
 
-      safeAlert("Error", "No se pudo guardar el producto escaneado", [
+      safeAlert("Error", "No se pudo procesar el producto escaneado", [
         {
           text: "Cerrar",
           onPress: () => {
@@ -245,6 +243,44 @@ export default function NewProductScannerScreen2() {
     }
   }
 
+  function handleBarcodeScanned({ data }) {
+    if (locked || scannedRef.current) return;
+
+    const barcode = normalizeBarcode(data);
+
+    if (!barcode) return;
+
+    scannedRef.current = true;
+    setLocked(true);
+    setTorchEnabled(false);
+
+    safeAlert(
+      "Producto detectado",
+      `Código: ${barcode}\n\n¿Quieres añadir este producto al historial de escaneos?`,
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+          onPress: () => {
+            scannedRef.current = false;
+            setLocked(false);
+          },
+        },
+        {
+          text: "No añadir",
+          onPress: () => {
+            processDetectedBarcode(barcode, false);
+          },
+        },
+        {
+          text: "Añadir",
+          onPress: () => {
+            processDetectedBarcode(barcode, true);
+          },
+        },
+      ],
+    );
+  }
   if (!permission) {
     return (
       <SafeAreaView style={styles.container}>

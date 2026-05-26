@@ -140,14 +140,20 @@ export function ListsProvider({ children }) {
                 {
                   id: generateId(),
                   name: item?.name ?? "",
-                  quantity: item?.quantity ?? 1,
-                  unitPrice: item?.unitPrice ?? 0,
+                  barcode: item?.barcode ?? "",
+
+                  quantity: item?.quantity ?? item?.priceInfo?.qty ?? 1,
+                  unitPrice: item?.unitPrice ?? item?.priceInfo?.unitPrice ?? 0,
+                  unit: item?.unit ?? item?.priceInfo?.unit ?? "u",
+
                   priceInfo: item?.priceInfo ?? null,
                   checked: item?.checked ?? true,
-                  promo: item?.promo ?? null,
+                  promo: item?.promo ?? item?.priceInfo?.promo ?? null,
 
                   categoryId: item?.categoryId ?? null,
                   categoryName: item?.categoryName ?? null,
+                  subcategoryId: item?.subcategoryId ?? null,
+                  subcategoryName: item?.subcategoryName ?? null,
                 },
                 ...list.items,
               ],
