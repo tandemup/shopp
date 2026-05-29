@@ -6,6 +6,7 @@ import {
   Text,
   StyleSheet,
   TextInput,
+  TouchableOpacity,
   Pressable,
   ScrollView,
   Linking,
@@ -27,6 +28,7 @@ import { DEFAULT_CURRENCY } from "../../constants/currency";
 import { SEARCH_ENGINES } from "../../constants/searchEngines";
 import { PRODUCT_CATEGORIES } from "../../constants/categories";
 import { useLists } from "../../context/ListsContext";
+import BarcodeInput from "../../components/ui/BarcodeInput";
 
 import CategoryImageSelector from "../../components/features/search/CategoryImageSelector";
 
@@ -111,25 +113,12 @@ function CardNombreBarcode({
 
       <Text style={styles.label}>Código de barras</Text>
 
-      <View style={styles.barcodeRow}>
-        <TextInput
-          style={[styles.input, styles.barcodeInput]}
-          value={barcodeItem}
-          onChangeText={onChangeBarcode}
-          placeholder="EAN-13"
-          placeholderTextColor="#9ca3af"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-
-        <Pressable style={styles.iconButton} onPress={onScanner}>
-          <Ionicons name="barcode-outline" size={22} color="#2563eb" />
-        </Pressable>
-
-        <Pressable style={styles.iconButton} onPress={onSearch}>
-          <Ionicons name="search-outline" size={22} color="#2563eb" />
-        </Pressable>
-      </View>
+      <BarcodeInput
+        value={barcodeItem}
+        onChangeText={onChangeBarcode}
+        onPressScanner={onScanner}
+        onPressSearch={onSearch}
+      />
     </View>
   );
 }
@@ -139,9 +128,9 @@ function Categorias({
   selectedSubcategoryId,
   onChangeCategory,
   onChangeSubcategory,
+  expanded,
+  onExpandedChange,
 }) {
-  const [showCategories, setShowCategories] = useState(false);
-
   const selectedCategory = PRODUCT_CATEGORIES.find(
     (category) => category.id === selectedCategoryId,
   );
@@ -149,7 +138,6 @@ function Categorias({
   const selectedSubcategory = selectedCategory?.subcategories?.find(
     (subcategory) => {
       const id = typeof subcategory === "string" ? subcategory : subcategory.id;
-
       return id === selectedSubcategoryId;
     },
   );
@@ -159,70 +147,87 @@ function Categorias({
       ? selectedSubcategory
       : selectedSubcategory?.name;
 
-  const value = selectedCategory
-    ? `${selectedCategory.name}${
-        selectedSubcategoryName ? ` · ${selectedSubcategoryName}` : ""
-      }`
-    : "Sin categoría";
+  const hasCategory = Boolean(selectedCategory);
+  const hasSubcategory = Boolean(selectedSubcategoryName);
 
   return (
-    <View style={[styles.card, styles.categoryCard]}>
-      <SectionTitle
-        icon="albums-outline"
-        title="Categoría"
-        subtitle="Clasifica el producto para encontrarlo mejor en la lista"
-      />
-
+    <View
+      style={[
+        styles.categoryCompactCard,
+        expanded && styles.categoryCompactCardExpanded,
+      ]}
+    >
       <Pressable
-        style={styles.dropdownHeader}
-        onPress={() => setShowCategories((prev) => !prev)}
+        style={[
+          styles.categoryCompactHeader,
+          expanded && styles.categoryCompactHeaderExpanded,
+        ]}
+        onPress={() => onExpandedChange?.(!expanded)}
       >
-        <View style={styles.dropdownHeaderLeft}>
-          <Text style={styles.dropdownLabel}>Asignación</Text>
+        <View style={styles.categoryCompactLeft}>
+          <View style={styles.categoryIconBox}>
+            <Ionicons name="albums-outline" size={18} color="#2563EB" />
+          </View>
+
+          <View style={styles.categoryTextBlock}>
+            <Text style={styles.categoryCompactTitle}>Categoría</Text>
+
+            <View style={styles.categoryChipsRow}>
+              <View
+                style={[
+                  styles.categoryChip,
+                  hasCategory && styles.categoryChipActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.categoryChipText,
+                    hasCategory && styles.categoryChipTextActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {selectedCategory?.name ?? "Sin categoría"}
+                </Text>
+              </View>
+
+              {hasSubcategory ? (
+                <View style={styles.subcategoryChip}>
+                  <Text style={styles.subcategoryChipText} numberOfLines={1}>
+                    {selectedSubcategoryName}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
         </View>
 
-        <View style={styles.dropdownHeaderRight}>
-          <Text
-            style={[
-              styles.dropdownValue,
-              selectedCategory && styles.dropdownValueActive,
-            ]}
-            numberOfLines={1}
-          >
-            {value}
-          </Text>
-
-          <Ionicons
-            name={showCategories ? "chevron-up" : "chevron-down"}
-            size={20}
-            color="#64748b"
-          />
-        </View>
+        <Ionicons
+          name={expanded ? "chevron-up" : "chevron-down"}
+          size={20}
+          color="#64748B"
+        />
       </Pressable>
 
-      {showCategories ? (
-        <View style={styles.categoryDropdownBody}>
-          <View style={styles.categorySelectorInner}>
-            <CategoryImageSelector
-              categories={PRODUCT_CATEGORIES}
-              selectedCategoryId={selectedCategoryId}
-              selectedSubcategoryId={selectedSubcategoryId}
-              showTitle={false}
-              subcategoryTitle="Subcategoría"
-              onChange={(category) => {
-                onChangeCategory(category);
-              }}
-              onSubcategoryChange={(subcategory) => {
-                onChangeSubcategory(subcategory);
-              }}
-            />
-          </View>
+      {expanded ? (
+        <View style={styles.categoryCompactBody}>
+          <CategoryImageSelector
+            categories={PRODUCT_CATEGORIES}
+            selectedCategoryId={selectedCategoryId}
+            selectedSubcategoryId={selectedSubcategoryId}
+            showTitle={false}
+            subcategoryTitle="Subcategoría"
+            onChange={(category) => {
+              onChangeCategory(category);
+            }}
+            onSubcategoryChange={(subcategory) => {
+              onChangeSubcategory(subcategory);
+            }}
+          />
         </View>
       ) : null}
     </View>
   );
 }
-
 function Unidades({
   qty,
   price,
@@ -589,10 +594,11 @@ export default function ItemDetailScreen() {
   const [selectedCategoryId, setSelectedCategoryId] = useState(
     item?.categoryId ?? null,
   );
-
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState(
     item?.subcategoryId ?? null,
   );
+
+  const [categoryExpanded, setCategoryExpanded] = useState(false);
 
   const [pricing, setPricing] = useState({
     qty: String(item?.priceInfo?.qty ?? "1"),
@@ -731,26 +737,6 @@ export default function ItemDetailScreen() {
     );
   };
 
-  const handleSearch1 = async (barcode) => {
-    const url = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`;
-
-    const response = await fetch(url);
-    const data = await response.json();
-
-    if (data.status !== 1 || !data.product) {
-      return null;
-    }
-
-    return {
-      barcode,
-      name: data.product.product_name || "",
-      brand: data.product.brands || "",
-      image: data.product.image_front_url || "",
-      category: data.product.categories || "",
-      quantity: data.product.quantity || "",
-    };
-  };
-
   const handleSearch = async () => {
     const code = barcode.trim();
 
@@ -816,27 +802,36 @@ export default function ItemDetailScreen() {
         >
           <ScrollView
             style={styles.scroll}
-            contentContainerStyle={styles.content}
+            contentContainerStyle={[
+              styles.content,
+              categoryExpanded && styles.contentCategoryExpanded,
+            ]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={
               Platform.OS === "ios" ? "interactive" : "on-drag"
             }
             showsVerticalScrollIndicator={false}
           >
-            <ProductHero name={name} barcode={barcode} />
+            {!categoryExpanded ? (
+              <>
+                <ProductHero name={name} barcode={barcode} />
 
-            <CardNombreBarcode
-              nameItem={name}
-              barcodeItem={barcode}
-              onChangeName={setName}
-              onChangeBarcode={setBarcode}
-              onScanner={handleOpenScanner}
-              onSearch={handleSearch}
-            />
+                <CardNombreBarcode
+                  nameItem={name}
+                  barcodeItem={barcode}
+                  onChangeName={setName}
+                  onChangeBarcode={setBarcode}
+                  onScanner={handleOpenScanner}
+                  onSearch={handleSearch}
+                />
+              </>
+            ) : null}
 
             <Categorias
               selectedCategoryId={selectedCategoryId}
               selectedSubcategoryId={selectedSubcategoryId}
+              expanded={categoryExpanded}
+              onExpandedChange={setCategoryExpanded}
               onChangeCategory={(category) => {
                 setSelectedCategoryId(category.id);
                 setSelectedSubcategoryId(null);
@@ -851,32 +846,40 @@ export default function ItemDetailScreen() {
               }}
             />
 
-            <Contenedor
-              pricing={pricing}
-              onChange={updatePricing}
-              currencySymbol={listCurrencySymbol}
-              isUnitInvalid={isUnitInvalid}
-            />
+            {!categoryExpanded ? (
+              <>
+                <Contenedor
+                  pricing={pricing}
+                  onChange={updatePricing}
+                  currencySymbol={listCurrencySymbol}
+                  isUnitInvalid={isUnitInvalid}
+                />
 
-            <Summary
-              base={priceInfo.subtotal}
-              savings={priceInfo.savings}
-              total={priceInfo.total}
-            />
+                <Summary
+                  base={priceInfo.subtotal}
+                  savings={priceInfo.savings}
+                  total={priceInfo.total}
+                />
+              </>
+            ) : null}
           </ScrollView>
         </KeyboardAvoidingView>
+        {!categoryExpanded ? (
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={handleDelete}
+            >
+              <Ionicons name="trash-outline" size={24} color="#DC2626" />
+              <Text style={styles.deleteButtonText}>Eliminar</Text>
+            </TouchableOpacity>
 
-        <View style={styles.actions}>
-          <Pressable style={styles.deleteBtn} onPress={handleDelete}>
-            <Ionicons name="trash-outline" size={18} color="#dc2626" />
-            <Text style={styles.deleteText}>Eliminar</Text>
-          </Pressable>
-
-          <Pressable style={styles.saveBtn} onPress={handleSave}>
-            <Ionicons name="save-outline" size={18} color="#fff" />
-            <Text style={styles.saveText}>Guardar cambios</Text>
-          </Pressable>
-        </View>
+            <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+              <Ionicons name="save-outline" size={24} color="#FFFFFF" />
+              <Text style={styles.saveButtonText}>Guardar cambios</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -1049,13 +1052,42 @@ const styles = StyleSheet.create({
   barcodeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
+    width: "100%",
   },
 
   barcodeInput: {
     flex: 1,
+    minWidth: 0,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F9FAFB",
+    paddingHorizontal: 18,
+    fontSize: 16,
+    color: "#111827",
   },
 
+  input1: {
+    backgroundColor: "#f9fafb",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: "#111827",
+  },
+  squareButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   iconButton: {
     width: 48,
     height: 48,
@@ -1381,5 +1413,184 @@ const styles = StyleSheet.create({
     color: "#dc2626",
     fontWeight: "800",
     fontSize: 15,
+  },
+  footer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 74,
+    flexDirection: "row",
+    gap: 20,
+    paddingHorizontal: 24,
+    paddingTop: 18,
+    paddingBottom: 20,
+    backgroundColor: "#F9FAFB",
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+  },
+
+  deleteButton: {
+    flex: 0.85,
+    height: 64,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+
+  deleteButtonText: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#DC2626",
+  },
+
+  saveButton: {
+    flex: 1.15,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: "#16A34A",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+
+  saveButtonText: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+
+  categoryCompactCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    overflow: "hidden",
+
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 1,
+  },
+
+  categoryCompactHeader: {
+    minHeight: 72,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 12,
+  },
+
+  categoryCompactLeft: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  categoryIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#DBEAFE",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  categoryTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  categoryCompactTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#374151",
+    marginBottom: 6,
+  },
+
+  categoryChipsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 0,
+  },
+
+  categoryChip: {
+    maxWidth: "58%",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "#F9FAFB",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+
+  categoryChipActive: {
+    backgroundColor: "#EFF6FF",
+    borderColor: "#BFDBFE",
+  },
+
+  categoryChipText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#64748B",
+  },
+
+  categoryChipTextActive: {
+    color: "#1D4ED8",
+  },
+
+  subcategoryChip: {
+    flexShrink: 1,
+    maxWidth: "42%",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+  },
+
+  subcategoryChipText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#15803D",
+  },
+
+  categoryCompactBody: {
+    flex: 1,
+    minHeight: 0,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+    paddingHorizontal: 8,
+    paddingTop: 12,
+    paddingBottom: 12,
+    backgroundColor: "#FFFFFF",
+  },
+
+  contentCategoryExpanded: {
+    flexGrow: 1,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+
+  categoryCompactCardExpanded: {
+    flex: 1,
+    minHeight: 0,
   },
 });
