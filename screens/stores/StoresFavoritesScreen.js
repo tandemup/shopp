@@ -12,7 +12,24 @@ import { formatDistance } from "../../utils/math/formatDistance";
 import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 import { ROUTES } from "../../navigation/ROUTES";
 
-function NoTienesTiendasFavoritas() {
+function ExplorerButton({ display, onPress }) {
+  if (!display) return null;
+
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.exploreButton,
+        pressed && styles.cardPressed,
+      ]}
+      onPress={onPress}
+    >
+      <Ionicons name="search-outline" size={18} color="#FFFFFF" />
+      <Text style={styles.exploreText}>Explorar tiendas</Text>
+    </Pressable>
+  );
+}
+
+function NoTienesTiendasFavoritas({ onExplore }) {
   return (
     <View style={styles.emptyState}>
       <View style={styles.emptyIconBox}>
@@ -24,7 +41,8 @@ function NoTienesTiendasFavoritas() {
       <Text style={styles.emptyText}>
         Marca una tienda con la estrella para acceder rápidamente a ella.
       </Text>
-      <ExplorerButton display />
+
+      <ExplorerButton display onPress={onExplore} />
     </View>
   );
 }
@@ -49,9 +67,12 @@ export default function StoresFavoritesScreen() {
     navigation.setOptions(headerConfig.navigationOptions);
   }, [navigation, headerConfig]);
 
-  /* ---------------------------------------------
-     Navigation
-  ---------------------------------------------- */
+  const goToExploreStores = () => {
+    navigation.navigate(ROUTES.STORES_EXPLORE, {
+      listId,
+    });
+  };
+
   const handlePressStore = (store) => {
     navigation.navigate(ROUTES.STORE_DETAIL, {
       storeId: store.id,
@@ -59,9 +80,6 @@ export default function StoresFavoritesScreen() {
     });
   };
 
-  /* ---------------------------------------------
-     Render fila
-  ---------------------------------------------- */
   const renderStoreRow = ({ item: store }) => {
     const isFavorite = isFavoriteStore(store.id);
 
@@ -125,7 +143,7 @@ export default function StoresFavoritesScreen() {
           </Text>
 
           {isEmpty ? (
-            <NoTienesTiendasFavoritas />
+            <NoTienesTiendasFavoritas onExplore={goToExploreStores} />
           ) : (
             <FlatList
               data={favoriteStores}
@@ -141,9 +159,6 @@ export default function StoresFavoritesScreen() {
   );
 }
 
-/* -------------------------------------------------
-   Styles
--------------------------------------------------- */
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -276,5 +291,24 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: "#6B7280",
     textAlign: "center",
+    marginBottom: 20,
+  },
+
+  exploreButton: {
+    marginTop: 4,
+    backgroundColor: "#2563EB",
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+
+  exploreText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });

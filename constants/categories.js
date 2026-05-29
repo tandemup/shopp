@@ -98,6 +98,7 @@ export const PRODUCT_CATEGORIES = [
       "Huevos",
       "Mantequilla",
       "Nata",
+      "Leche_condensada",
       "Cuajada",
       "Flan",
       "Kefir",
