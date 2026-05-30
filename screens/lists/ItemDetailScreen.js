@@ -41,7 +41,7 @@ import {
 import { validatePromotionUnit } from "../../utils/pricing";
 import { formatCurrency } from "../../utils/store/prices";
 import { formatUnit } from "../../utils/pricing/unitFormat";
-import { safeAlert } from "../../components/ui/alert/safeAlert";
+import { safeAlert, safeMenu } from "../../components/ui/alert/safeAlert";
 
 const normalizeCategoryToken = (value = "") => {
   return String(value)
@@ -790,7 +790,7 @@ export default function ItemDetailScreen() {
   };
 
   const handleOpenActions = () => {
-    safeAlert(
+    safeMenu(
       "Opciones del producto",
       `Selecciona qué quieres hacer con "${item?.name ?? "este producto"}".`,
       [
