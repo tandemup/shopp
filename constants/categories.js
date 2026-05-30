@@ -187,6 +187,8 @@ export const PRODUCT_CATEGORIES = [
     subcategories: [
       "Agua",
       "Refresco",
+      "Cerveza",
+      "Vino",
       "Zumo",
       "Cafe",
       "Te",

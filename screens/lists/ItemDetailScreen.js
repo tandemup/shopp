@@ -43,6 +43,38 @@ import { formatCurrency } from "../../utils/store/prices";
 import { formatUnit } from "../../utils/pricing/unitFormat";
 import { safeAlert } from "../../components/ui/alert/safeAlert";
 
+const normalizeCategoryToken = (value = "") => {
+  return String(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+const makeCategoryTokenId = (value = "") => {
+  return normalizeCategoryToken(value).replace(/\s+/g, "_");
+};
+
+const getSubcategoryName = (subcategory) => {
+  if (!subcategory) return null;
+
+  return typeof subcategory === "string"
+    ? subcategory
+    : (subcategory.name ?? subcategory.label ?? subcategory.title ?? null);
+};
+
+const getSubcategoryId = (subcategory) => {
+  const name = getSubcategoryName(subcategory);
+
+  if (!subcategory) return null;
+
+  return typeof subcategory === "string"
+    ? makeCategoryTokenId(subcategory)
+    : (subcategory.id ?? subcategory.key ?? makeCategoryTokenId(name));
+};
+
 function ProductHero({ name, barcode }) {
   const title = name?.trim() || "Producto sin nombre";
   const subtitle = barcode?.trim()
@@ -137,16 +169,11 @@ function Categorias({
 
   const selectedSubcategory = selectedCategory?.subcategories?.find(
     (subcategory) => {
-      const id = typeof subcategory === "string" ? subcategory : subcategory.id;
-      return id === selectedSubcategoryId;
+      return getSubcategoryId(subcategory) === selectedSubcategoryId;
     },
   );
 
-  const selectedSubcategoryName =
-    typeof selectedSubcategory === "string"
-      ? selectedSubcategory
-      : selectedSubcategory?.name;
-
+  const selectedSubcategoryName = getSubcategoryName(selectedSubcategory);
   const hasCategory = Boolean(selectedCategory);
   const hasSubcategory = Boolean(selectedSubcategoryName);
 
@@ -666,19 +693,44 @@ export default function ItemDetailScreen() {
 
     return (
       selectedCategory.subcategories.find((subcategory) => {
-        const id =
-          typeof subcategory === "string" ? subcategory : subcategory.id;
-
-        return id === selectedSubcategoryId;
+        return getSubcategoryId(subcategory) === selectedSubcategoryId;
       }) ?? null
     );
   }, [selectedCategory, selectedSubcategoryId]);
 
-  const selectedSubcategoryName =
-    typeof selectedSubcategory === "string"
-      ? selectedSubcategory
-      : selectedSubcategory?.name;
+  const selectedSubcategoryName = getSubcategoryName(selectedSubcategory);
+  const handleChangeCategory = (category) => {
+    if (!category) return;
 
+    setSelectedCategoryId(category.id);
+    setSelectedSubcategoryId(null);
+
+    updateItem(listId, itemId, {
+      categoryId: category.id,
+      categoryName: category.name,
+      subcategoryId: null,
+      subcategoryName: null,
+    });
+  };
+
+  const handleChangeSubcategory = (subcategory) => {
+    if (!selectedCategory || !subcategory) return;
+
+    const subcategoryId = getSubcategoryId(subcategory);
+    const subcategoryName = getSubcategoryName(subcategory);
+
+    setSelectedSubcategoryId(subcategoryId);
+
+    updateItem(listId, itemId, {
+      categoryId: selectedCategory.id,
+      categoryName: selectedCategory.name,
+      subcategoryId,
+      subcategoryName,
+    });
+
+    // Cierra automáticamente el selector después de elegir subcategoría.
+    setCategoryExpanded(false);
+  };
   const isUnitInvalid = pricing.unit === "u" && hasDecimals(pricing.qty);
 
   const handleSave = () => {
@@ -732,6 +784,32 @@ export default function ItemDetailScreen() {
             deleteItem(listId, itemId);
             navigation.goBack();
           },
+        },
+      ],
+    );
+  };
+
+  const handleOpenActions = () => {
+    safeAlert(
+      "Opciones del producto",
+      `Selecciona qué quieres hacer con "${item?.name ?? "este producto"}".`,
+      [
+        {
+          text: "Guardar",
+          onPress: handleSave,
+        },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: handleDelete,
+        },
+        {
+          text: "Salir",
+          onPress: () => navigation.goBack(),
+        },
+        {
+          text: "Cancelar",
+          style: "cancel",
         },
       ],
     );
@@ -826,26 +904,14 @@ export default function ItemDetailScreen() {
                 />
               </>
             ) : null}
-
             <Categorias
               selectedCategoryId={selectedCategoryId}
               selectedSubcategoryId={selectedSubcategoryId}
               expanded={categoryExpanded}
               onExpandedChange={setCategoryExpanded}
-              onChangeCategory={(category) => {
-                setSelectedCategoryId(category.id);
-                setSelectedSubcategoryId(null);
-              }}
-              onChangeSubcategory={(subcategory) => {
-                const subcategoryId =
-                  typeof subcategory === "string"
-                    ? subcategory
-                    : subcategory.id;
-
-                setSelectedSubcategoryId(subcategoryId);
-              }}
+              onChangeCategory={handleChangeCategory}
+              onChangeSubcategory={handleChangeSubcategory}
             />
-
             {!categoryExpanded ? (
               <>
                 <Contenedor
@@ -867,16 +933,17 @@ export default function ItemDetailScreen() {
         {!categoryExpanded ? (
           <View style={styles.actions}>
             <TouchableOpacity
-              style={styles.deleteButton}
-              onPress={handleDelete}
+              style={styles.optionsButton}
+              onPress={handleOpenActions}
+              activeOpacity={0.75}
             >
-              <Ionicons name="trash-outline" size={24} color="#DC2626" />
-              <Text style={styles.deleteButtonText}>Eliminar</Text>
-            </TouchableOpacity>
+              <Ionicons
+                name="ellipsis-horizontal-circle-outline"
+                size={23}
+                color="#2563EB"
+              />
 
-            <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-              <Ionicons name="save-outline" size={24} color="#FFFFFF" />
-              <Text style={styles.saveButtonText}>Guardar cambios</Text>
+              <Text style={styles.optionsButtonText}>Opciones</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -1047,6 +1114,36 @@ const styles = StyleSheet.create({
     color: "#111827",
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
+  },
+
+  optionsButton: {
+    flex: 1,
+    height: 50,
+    borderRadius: 10,
+
+    backgroundColor: "#dcfce7",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+
+    shadowColor: "#000000",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    elevation: 1,
+  },
+
+  optionsButtonText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#334155",
   },
 
   barcodeRow: {
@@ -1375,6 +1472,23 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: "#e5e7eb",
     backgroundColor: "#f3f4f6",
+  },
+
+  actionsButton: {
+    flex: 1,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: "#2563EB",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+
+  actionsButtonText: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#FFFFFF",
   },
 
   saveBtn: {

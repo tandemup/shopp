@@ -14,6 +14,7 @@ import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
 import { PRODUCT_CATEGORIES } from "../../constants/categories";
+import { findBestCategoryMatch } from "../../utils/categoryMatcher";
 
 import StoreSelector from "../../components/features/stores/StoreSelector";
 import ItemRow from "../../components/features/items/ItemRow";
@@ -77,9 +78,16 @@ export default function ShoppingListScreen() {
     const trimmed = name?.trim();
     if (!trimmed) return;
 
+    const match = findBestCategoryMatch(trimmed, PRODUCT_CATEGORIES);
+
     addItem(listId, {
       name: trimmed,
       checked: true,
+
+      categoryId: match?.categoryId ?? null,
+      categoryName: match?.categoryName ?? null,
+      subcategoryId: match?.subcategoryId ?? null,
+      subcategoryName: match?.subcategoryName ?? null,
     });
   };
 
@@ -152,6 +160,7 @@ export default function ShoppingListScreen() {
         item={item}
         categoryImage={category?.image ?? null}
         categoryName={category?.name ?? item.categoryName ?? null}
+        subcategoryName={item.subcategoryName ?? null}
         onToggle={() => handleToggleItem(item.id)}
         onEdit={() =>
           navigation.navigate(ROUTES.ITEM_DETAIL, {

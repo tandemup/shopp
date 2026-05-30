@@ -34,7 +34,7 @@ export default function ProductInfoScreen({ route, navigation }) {
   const [selectedProductEngine, setSelectedProductEngine] = useState(
     DEFAULT_SEARCH_SETTINGS?.selectedProductEngine ||
       DEFAULT_SEARCH_SETTINGS?.generalEngine ||
-      "open_food_facts",
+      "openfoodfacts",
   );
 
   const hasAutoOpenedRef = useRef(false);
@@ -51,7 +51,7 @@ export default function ProductInfoScreen({ route, navigation }) {
         const engine =
           searchSettings?.selectedProductEngine ||
           searchSettings?.generalEngine ||
-          "open_food_facts";
+          "openfoodfacts";
 
         if (mounted) {
           setSelectedProductEngine(engine);

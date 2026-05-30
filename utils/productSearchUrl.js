@@ -1,4 +1,33 @@
-// src/utils/productSearchUrl.js
+// utils/productSearchUrl.js
+
+export function normalizeProductSearchEngineId(engineId) {
+  const id = String(engineId || "").trim();
+
+  switch (id) {
+    case "google":
+      return "google";
+
+    case "google_shopping":
+      return "google_shopping";
+
+    case "bing":
+      return "bing";
+
+    case "duckduckgo":
+      return "duckduckgo";
+
+    case "openfoodfacts":
+    case "open_food_facts":
+      return "openfoodfacts";
+
+    case "barcodelookup":
+    case "barcode_lookup":
+      return "barcodelookup";
+
+    default:
+      return "openfoodfacts";
+  }
+}
 
 export function buildProductSearchUrl(engineId, barcode) {
   const safeBarcode = String(barcode || "").trim();
@@ -7,9 +36,10 @@ export function buildProductSearchUrl(engineId, barcode) {
     return null;
   }
 
+  const safeEngineId = normalizeProductSearchEngineId(engineId);
   const encodedBarcode = encodeURIComponent(safeBarcode);
 
-  switch (engineId) {
+  switch (safeEngineId) {
     case "google":
       return `https://www.google.com/search?q=${encodedBarcode}`;
 
@@ -22,10 +52,10 @@ export function buildProductSearchUrl(engineId, barcode) {
     case "duckduckgo":
       return `https://duckduckgo.com/?q=${encodedBarcode}`;
 
-    case "open_food_facts":
+    case "openfoodfacts":
       return `https://world.openfoodfacts.org/product/${encodedBarcode}`;
 
-    case "barcode_lookup":
+    case "barcodelookup":
       return `https://www.barcodelookup.com/${encodedBarcode}`;
 
     default:
@@ -34,7 +64,9 @@ export function buildProductSearchUrl(engineId, barcode) {
 }
 
 export function getProductSearchEngineLabel(engineId) {
-  switch (engineId) {
+  const safeEngineId = normalizeProductSearchEngineId(engineId);
+
+  switch (safeEngineId) {
     case "google":
       return "Google";
 
@@ -47,10 +79,10 @@ export function getProductSearchEngineLabel(engineId) {
     case "duckduckgo":
       return "DuckDuckGo";
 
-    case "open_food_facts":
+    case "openfoodfacts":
       return "OpenFoodFacts";
 
-    case "barcode_lookup":
+    case "barcodelookup":
       return "BarcodeLookup";
 
     default:
