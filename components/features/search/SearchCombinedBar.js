@@ -227,11 +227,12 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 15,
+    minWidth: 0,
+    fontSize: 16,
     color: "#111827",
     paddingVertical: 12,
     marginLeft: 8,
-    outlineStyle: "none", // Web: elimina borde naranja al enfocar
+    outlineStyle: "none",
   },
   resultsBox: {
     backgroundColor: "#fff",
