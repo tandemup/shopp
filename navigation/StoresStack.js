@@ -8,6 +8,7 @@ import StoresBrowseScreen from "../screens/stores/StoresBrowseScreen";
 import StoresFavoritesScreen from "../screens/stores/StoresFavoritesScreen";
 import StoresNearbyScreen from "../screens/stores/StoresNearbyScreen";
 import StoreDetailScreen from "../screens/stores/StoreDetailScreen";
+import StoresExploreScreen from "../screens/stores/StoresExploreScreen";
 
 const Stack = createNativeStackNavigator();
 

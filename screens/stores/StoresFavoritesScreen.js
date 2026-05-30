@@ -67,12 +67,24 @@ export default function StoresFavoritesScreen() {
     navigation.setOptions(headerConfig.navigationOptions);
   }, [navigation, headerConfig]);
 
-  const goToExploreStores = () => {
+  const goToExploreStores1 = () => {
     navigation.navigate(ROUTES.STORES_EXPLORE, {
       listId,
     });
   };
-
+  const goToExploreStores2 = () => {
+    navigation.navigate(ROUTES.STORES_EXPLORE);
+  };
+  const goToExploreStores3 = () => {
+    navigation.navigate("StoresStack", {
+      screen: "StoresExplore",
+    });
+  };
+  const goToExploreStores = () => {
+    navigation.navigate("StoresStack", {
+      screen: "StoresExplore",
+    });
+  };
   const handlePressStore = (store) => {
     navigation.navigate(ROUTES.STORE_DETAIL, {
       storeId: store.id,
