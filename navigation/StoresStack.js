@@ -8,7 +8,6 @@ import StoresBrowseScreen from "../screens/stores/StoresBrowseScreen";
 import StoresFavoritesScreen from "../screens/stores/StoresFavoritesScreen";
 import StoresNearbyScreen from "../screens/stores/StoresNearbyScreen";
 import StoreDetailScreen from "../screens/stores/StoreDetailScreen";
-import StoresExploreScreen from "../screens/stores/StoresExploreScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -17,7 +16,10 @@ export default function StoresStack() {
     <Stack.Navigator
       screenOptions={{
         headerTitleAlign: "center",
-        headerTitleStyle: { fontSize: 20, fontWeight: "700" },
+        headerTitleStyle: {
+          fontSize: 20,
+          fontWeight: "700",
+        },
         headerBackButtonDisplayMode: "minimal",
       }}
     >
@@ -28,8 +30,11 @@ export default function StoresStack() {
           title: "Store Info",
         }}
       />
+
       <Stack.Screen name={ROUTES.STORES_HOME} component={StoresHomeScreen} />
+
       <Stack.Screen name={ROUTES.STORE_SELECT} component={StoreSelectScreen} />
+
       <Stack.Screen
         name={ROUTES.STORES_BROWSE}
         component={StoresBrowseScreen}
