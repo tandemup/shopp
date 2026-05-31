@@ -113,7 +113,7 @@ export default function NewProductScannerScreen2() {
    * Abrimos la cámara nativa inicialmente sin zoom.
    * Esto facilita que el autoenfoque encuentre el código.
    */
-  const [zoomIndex, setZoomIndex] = useState(0);
+  const [zoomIndex, setZoomIndex] = useState(1);
 
   const [torchEnabled, setTorchEnabled] = useState(false);
 
@@ -155,7 +155,7 @@ export default function NewProductScannerScreen2() {
 
       setLocked(false);
       setTorchEnabled(false);
-      setZoomIndex(0);
+      setZoomIndex(1);
 
       return () => {
         scannedRef.current = false;
@@ -387,17 +387,16 @@ export default function NewProductScannerScreen2() {
         />
 
         <BarcodeScannerView
-          onDetected={handleDetected}
-          onClose={handleClose}
+          onDetected={handleWebDetected}
+          onClose={handleCancel}
           continuous={true}
           duplicateCooldownMs={1500}
-          showControls
+          showControls={true}
           barcodeTypes={barcodeTypes}
         />
       </View>
     );
   }
-
   /* -------------------------------------------------
      Native permissions
   -------------------------------------------------- */
