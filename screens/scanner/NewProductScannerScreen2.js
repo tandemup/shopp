@@ -334,7 +334,8 @@ export default function NewProductScannerScreen2() {
           facing="back"
           zoom={ZOOM_VALUES[zoomIndex]}
           enableTorch={torchEnabled}
-          onBarcodeScanned={locked ? undefined : handleBarcodeScanned}
+          autofocus="on"
+          onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
           barcodeScannerSettings={{
             barcodeTypes,
           }}
