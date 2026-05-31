@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+
 import {
   ActivityIndicator,
   Platform,
@@ -15,19 +16,22 @@ import {
   Text,
   View,
 } from "react-native";
+
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
+
 import {
   useFocusEffect,
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
 
+import BarcodeScannerView from "../../components/features/scanner/BarcodeScannerView";
+
 import { ROUTES } from "../../navigation/ROUTES";
 import { buildHeaderConfig } from "../../utils/layout/headerStyles";
-import { getBarcodeSettings } from "../../src/storage/settingsStorage";
 import { safeAlert } from "../../components/ui/alert/safeAlert";
 
 import {
@@ -37,30 +41,26 @@ import {
 
 import { lookupProductByBarcode } from "../../services/productLookup";
 
+/* -------------------------------------------------
+   Scanner configuration
+-------------------------------------------------- */
+
 const ZOOM_VALUES = [0, 0.15, 0.3, 0.45];
+
 const ZOOM_LABELS = ["1x", "1.2x", "1.5x", "2x"];
 
 const DEFAULT_BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e"];
 
-const ALLOWED_BARCODE_TYPES = new Set([
-  "aztec",
-  "codabar",
-  "code39",
-  "code93",
-  "code128",
-  "datamatrix",
-  "ean8",
-  "ean13",
-  "itf14",
-  "pdf417",
-  "qr",
-  "upc_a",
-  "upc_e",
-]);
+const ALLOWED_BARCODE_TYPES = new Set(["ean13", "ean8", "upc_a", "upc_e"]);
+
+/* -------------------------------------------------
+   Helpers
+-------------------------------------------------- */
 
 function normalizeBarcodeTypes(value) {
   if (Array.isArray(value)) {
     const filtered = value.filter((type) => ALLOWED_BARCODE_TYPES.has(type));
+
     return filtered.length > 0 ? filtered : DEFAULT_BARCODE_TYPES;
   }
 
@@ -77,24 +77,53 @@ function normalizeBarcodeTypes(value) {
 }
 
 function normalizeBarcode(code) {
-  return String(code || "")
+  const clean = String(code || "")
     .replace(/\D/g, "")
     .trim();
+
+  /*
+   * EAN-8, UPC-A y EAN-13.
+   *
+   * Para productos de supermercado no necesitamos interpretar
+   * códigos QR ni formatos alfanuméricos.
+   */
+  if (clean.length === 8 || clean.length === 12 || clean.length === 13) {
+    return clean;
+  }
+
+  return null;
 }
+
+/* -------------------------------------------------
+   Component
+-------------------------------------------------- */
 
 export default function NewProductScannerScreen2() {
   const navigation = useNavigation();
   const route = useRoute();
 
   const scannedRef = useRef(false);
+  const handlingScanRef = useRef(false);
 
   const [permission, requestPermission] = useCameraPermissions();
-  const [locked, setLocked] = useState(false);
-  const [zoomIndex, setZoomIndex] = useState(1);
-  const [torchEnabled, setTorchEnabled] = useState(false);
-  const [barcodeTypes, setBarcodeTypes] = useState(DEFAULT_BARCODE_TYPES);
 
-  const { autoOpenEngine = false } = route.params || {};
+  const [locked, setLocked] = useState(false);
+
+  /*
+   * Abrimos la cámara nativa inicialmente sin zoom.
+   * Esto facilita que el autoenfoque encuentre el código.
+   */
+  const [zoomIndex, setZoomIndex] = useState(0);
+
+  const [torchEnabled, setTorchEnabled] = useState(false);
+
+  const { autoOpenEngine = false, barcodeTypes: routeBarcodeTypes = null } =
+    route.params || {};
+
+  const barcodeTypes = useMemo(
+    () => normalizeBarcodeTypes(routeBarcodeTypes),
+    [routeBarcodeTypes],
+  );
 
   const headerConfig = useMemo(
     () =>
@@ -105,6 +134,10 @@ export default function NewProductScannerScreen2() {
     [],
   );
 
+  /* -------------------------------------------------
+     Navigation configuration
+  -------------------------------------------------- */
+
   useLayoutEffect(() => {
     navigation.setOptions({
       ...headerConfig.navigationOptions,
@@ -112,39 +145,31 @@ export default function NewProductScannerScreen2() {
     });
   }, [navigation, headerConfig]);
 
+  /*
+   * Rearmamos el lector cuando la pantalla recupera el foco.
+   */
   useFocusEffect(
     useCallback(() => {
-      let isActive = true;
-
       scannedRef.current = false;
+      handlingScanRef.current = false;
+
       setLocked(false);
       setTorchEnabled(false);
-
-      async function loadBarcodeSettings() {
-        try {
-          const settings = await getBarcodeSettings();
-
-          if (!isActive) return;
-
-          setBarcodeTypes(normalizeBarcodeTypes(settings?.barcodeTypes));
-        } catch (error) {
-          if (!isActive) return;
-
-          console.log("Error loading barcode settings:", error);
-          setBarcodeTypes(DEFAULT_BARCODE_TYPES);
-        }
-      }
-
-      loadBarcodeSettings();
+      setZoomIndex(0);
 
       return () => {
-        isActive = false;
         scannedRef.current = false;
+        handlingScanRef.current = false;
+
         setLocked(false);
         setTorchEnabled(false);
       };
     }, []),
   );
+
+  /* -------------------------------------------------
+     Product lookup and optional history persistence
+  -------------------------------------------------- */
 
   async function getDetectedBarcodeProduct(
     code,
@@ -161,6 +186,10 @@ export default function NewProductScannerScreen2() {
     const hasUsefulCachedData =
       cachedItem?.name?.trim() || cachedItem?.imageUrl?.trim();
 
+    /*
+     * Evitamos repetir una consulta remota si el historial local
+     * ya contiene información útil.
+     */
     if (hasUsefulCachedData) {
       const updatedItem = {
         ...cachedItem,
@@ -204,20 +233,37 @@ export default function NewProductScannerScreen2() {
     return scannedItem;
   }
 
-  function handleCancel() {
+  /* -------------------------------------------------
+     Scanner state
+  -------------------------------------------------- */
+
+  function unlockScanner() {
     scannedRef.current = false;
+    handlingScanRef.current = false;
+
     setLocked(false);
     setTorchEnabled(false);
+  }
+
+  function handleCancel() {
+    unlockScanner();
     navigation.goBack();
   }
 
   function handleChangeZoom() {
-    setZoomIndex((prev) => (prev + 1) % ZOOM_VALUES.length);
+    setZoomIndex((previous) => {
+      return (previous + 1) % ZOOM_VALUES.length;
+    });
   }
 
   function handleToggleTorch() {
-    setTorchEnabled((prev) => !prev);
+    setTorchEnabled((previous) => !previous);
   }
+
+  /* -------------------------------------------------
+     Process detected barcode
+  -------------------------------------------------- */
+
   async function processDetectedBarcode(barcode, saveToHistory) {
     try {
       const scannedItem = await getDetectedBarcodeProduct(barcode, {
@@ -232,25 +278,33 @@ export default function NewProductScannerScreen2() {
     } catch (error) {
       console.log("Error handling new product scan:", error);
 
+      unlockScanner();
+
       safeAlert("Error", "No se pudo procesar el producto escaneado", [
         {
           text: "Cerrar",
-          onPress: () => {
-            navigation.goBack();
-          },
+          onPress: handleCancel,
         },
       ]);
     }
   }
 
-  function handleBarcodeScanned({ data }) {
-    if (locked || scannedRef.current) return;
+  /* -------------------------------------------------
+     Common detected barcode handler
+  -------------------------------------------------- */
 
-    const barcode = normalizeBarcode(data);
+  function handleDetectedBarcode(code) {
+    if (locked) return;
+    if (scannedRef.current) return;
+    if (handlingScanRef.current) return;
+
+    const barcode = normalizeBarcode(code);
 
     if (!barcode) return;
 
     scannedRef.current = true;
+    handlingScanRef.current = true;
+
     setLocked(true);
     setTorchEnabled(false);
 
@@ -261,10 +315,7 @@ export default function NewProductScannerScreen2() {
         {
           text: "Cancelar",
           style: "cancel",
-          onPress: () => {
-            scannedRef.current = false;
-            setLocked(false);
-          },
+          onPress: unlockScanner,
         },
         {
           text: "No añadir",
@@ -281,6 +332,76 @@ export default function NewProductScannerScreen2() {
       ],
     );
   }
+
+  /*
+   * expo-camera devuelve un objeto { data, type }.
+   */
+  function handleNativeBarcodeScanned({ data }) {
+    handleDetectedBarcode(data);
+  }
+
+  /*
+   * BarcodeScannerView devuelve directamente el texto normalizado.
+   */
+  function handleWebDetected(code) {
+    handleDetectedBarcode(code);
+  }
+
+  function handleCameraMountError(event) {
+    console.log("Camera mount error:", event?.message);
+
+    unlockScanner();
+
+    safeAlert(
+      "No se pudo iniciar la cámara",
+      "Comprueba que el navegador o la aplicación tienen permiso para utilizar la cámara.",
+      [
+        {
+          text: "Cerrar",
+          onPress: handleCancel,
+        },
+      ],
+    );
+  }
+
+  /* -------------------------------------------------
+     Web implementation
+  -------------------------------------------------- */
+
+  /*
+   * En navegador delegamos completamente en BarcodeScannerView.
+   *
+   * Ese componente seleccionará automáticamente:
+   *
+   *   UnifiedBarcodeScanner.web.js
+   *
+   * cuando la aplicación se compile para Netlify.
+   */
+  if (Platform.OS === "web") {
+    return (
+      <View style={styles.screen}>
+        <StatusBar
+          style="light"
+          backgroundColor="#000000"
+          translucent={false}
+        />
+
+        <BarcodeScannerView
+          onDetected={handleWebDetected}
+          onClose={handleCancel}
+          continuous={true}
+          duplicateCooldownMs={1500}
+          showControls={true}
+          barcodeTypes={barcodeTypes}
+        />
+      </View>
+    );
+  }
+
+  /* -------------------------------------------------
+     Native permissions
+  -------------------------------------------------- */
+
   if (!permission) {
     return (
       <SafeAreaView style={styles.container}>
@@ -292,6 +413,7 @@ export default function NewProductScannerScreen2() {
 
         <View style={styles.center}>
           <ActivityIndicator color="#111827" />
+
           <Text style={styles.message}>Comprobando permisos de cámara...</Text>
         </View>
       </SafeAreaView>
@@ -324,6 +446,10 @@ export default function NewProductScannerScreen2() {
     );
   }
 
+  /* -------------------------------------------------
+     Native scanner
+  -------------------------------------------------- */
+
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <StatusBar style="light" backgroundColor="#000000" translucent={false} />
@@ -332,10 +458,11 @@ export default function NewProductScannerScreen2() {
         <CameraView
           style={styles.camera}
           facing="back"
+          autofocus="on"
           zoom={ZOOM_VALUES[zoomIndex]}
           enableTorch={torchEnabled}
-          autofocus="on"
-          onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
+          onMountError={handleCameraMountError}
+          onBarcodeScanned={locked ? undefined : handleNativeBarcodeScanned}
           barcodeScannerSettings={{
             barcodeTypes,
           }}
@@ -405,6 +532,7 @@ export default function NewProductScannerScreen2() {
             {locked ? (
               <View style={styles.readingBox}>
                 <ActivityIndicator color="#FFFFFF" />
+
                 <Text style={styles.readingText}>
                   Código leído. Buscando producto...
                 </Text>
@@ -417,9 +545,18 @@ export default function NewProductScannerScreen2() {
   );
 }
 
+/* -------------------------------------------------
+   Styles
+-------------------------------------------------- */
+
 const CORNER_SIZE = 30;
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#000000",
+  },
+
   container: {
     flex: 1,
     backgroundColor: "#000000",

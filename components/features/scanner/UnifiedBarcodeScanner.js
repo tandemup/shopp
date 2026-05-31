@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, Platform } from "react-native";
 
 const DEFAULT_ZOOM_LEVELS = [
+  { label: "1x", value: 0 },
   { label: "1.1x", value: 0.1 },
   { label: "1.2x", value: 0.2 },
   { label: "1.4x", value: 0.35 },
@@ -23,7 +24,7 @@ export default function UnifiedBarcodeScanner({
 
   barcodeTypes = DEFAULT_BARCODE_TYPES,
   zoomLevels = DEFAULT_ZOOM_LEVELS,
-  initialZoomIndex = 1,
+  initialZoomIndex = 0,
 
   showControls = true,
   showHint = true,
