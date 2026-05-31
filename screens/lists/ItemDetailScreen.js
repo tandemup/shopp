@@ -840,10 +840,22 @@ export default function ItemDetailScreen() {
   function handleOpenScanner() {
     navigation.navigate(ROUTES.SCANNER_TAB, {
       screen: ROUTES.PRODUCT_BARCODE_SCANNER,
+
       params: {
         listId,
         itemId,
+
         returnToTab: ROUTES.SHOPPING_TAB,
+
+        /*
+         * Escáner ultraligero:
+         * solo devuelve el número EAN-13.
+         */
+        captureMode: "ean13-input",
+
+        barcodeTypes: ["ean13"],
+
+        showControls: false,
       },
     });
   }

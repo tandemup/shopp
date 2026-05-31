@@ -29,7 +29,6 @@ import {
 } from "@react-navigation/native";
 
 import BarcodeScannerView from "../../components/features/scanner/BarcodeScannerView";
-import QuickEan13Scanner from "../../components/features/scanner/QuickEan13Scanner";
 
 import { ROUTES } from "../../navigation/ROUTES";
 import { buildHeaderConfig } from "../../utils/layout/headerStyles";
@@ -60,24 +59,16 @@ const ALLOWED_BARCODE_TYPES = new Set(["ean13", "ean8", "upc_a", "upc_e"]);
 
 function normalizeBarcodeTypes(value) {
   if (Array.isArray(value)) {
-    const filtered = value.filter((type) => {
-      return ALLOWED_BARCODE_TYPES.has(type);
-    });
+    const filtered = value.filter((type) => ALLOWED_BARCODE_TYPES.has(type));
 
     return filtered.length > 0 ? filtered : DEFAULT_BARCODE_TYPES;
   }
 
   if (value && typeof value === "object") {
     const filtered = Object.entries(value)
-      .filter(([, enabled]) => {
-        return Boolean(enabled);
-      })
-      .map(([type]) => {
-        return type;
-      })
-      .filter((type) => {
-        return ALLOWED_BARCODE_TYPES.has(type);
-      });
+      .filter(([, enabled]) => Boolean(enabled))
+      .map(([type]) => type)
+      .filter((type) => ALLOWED_BARCODE_TYPES.has(type));
 
     return filtered.length > 0 ? filtered : DEFAULT_BARCODE_TYPES;
   }
@@ -86,9 +77,21 @@ function normalizeBarcodeTypes(value) {
 }
 
 function normalizeBarcode(code) {
-  return String(code || "")
+  const clean = String(code || "")
     .replace(/\D/g, "")
     .trim();
+
+  /*
+   * EAN-8, UPC-A y EAN-13.
+   *
+   * Para productos de supermercado no necesitamos interpretar
+   * códigos QR ni formatos alfanuméricos.
+   */
+  if (clean.length === 8 || clean.length === 12 || clean.length === 13) {
+    return clean;
+  }
+
+  return null;
 }
 
 /* -------------------------------------------------
@@ -107,38 +110,29 @@ export default function NewProductScannerScreen2() {
   const [locked, setLocked] = useState(false);
 
   /*
-   * El lector general abre inicialmente en 1.2x.
+   * Abrimos la cámara nativa inicialmente en 1.2x.
+   * En este dispositivo mejora la lectura de códigos EAN.
    */
   const [zoomIndex, setZoomIndex] = useState(1);
 
   const [torchEnabled, setTorchEnabled] = useState(false);
 
-  const {
-    autoOpenEngine = false,
+  const { autoOpenEngine = false, barcodeTypes: routeBarcodeTypes = null } =
+    route.params || {};
 
-    barcodeTypes: routeBarcodeTypes = null,
+  const barcodeTypes = useMemo(
+    () => normalizeBarcodeTypes(routeBarcodeTypes),
+    [routeBarcodeTypes],
+  );
 
-    /*
-     * Parámetros enviados desde ItemDetailScreen.
-     */
-    captureMode = null,
-    listId = null,
-    itemId = null,
-    returnToTab = ROUTES.SHOPPING_TAB,
-  } = route.params || {};
-
-  const isQuickEan13Input = captureMode === "ean13-input";
-
-  const barcodeTypes = useMemo(() => {
-    return normalizeBarcodeTypes(routeBarcodeTypes);
-  }, [routeBarcodeTypes]);
-
-  const headerConfig = useMemo(() => {
-    return buildHeaderConfig({
-      title: "Escanear producto",
-      preset: "light",
-    });
-  }, []);
+  const headerConfig = useMemo(
+    () =>
+      buildHeaderConfig({
+        title: "Escanear producto",
+        preset: "light",
+      }),
+    [],
+  );
 
   /* -------------------------------------------------
      Navigation configuration
@@ -151,6 +145,9 @@ export default function NewProductScannerScreen2() {
     });
   }, [navigation, headerConfig]);
 
+  /*
+   * Rearmamos el lector cuando la pantalla recupera el foco.
+   */
   useFocusEffect(
     useCallback(() => {
       scannedRef.current = false;
@@ -171,53 +168,6 @@ export default function NewProductScannerScreen2() {
   );
 
   /* -------------------------------------------------
-     Fast EAN-13 input mode
-  -------------------------------------------------- */
-
-  function handleQuickEan13Detected(code) {
-    const barcode = normalizeBarcode(code);
-
-    if (barcode.length !== 13) {
-      return;
-    }
-
-    /*
-     * Volvemos inmediatamente a ItemDetailScreen.
-     * No hay historial, búsqueda remota ni safeMenu.
-     */
-    navigation.navigate(returnToTab, {
-      screen: ROUTES.ITEM_DETAIL,
-
-      params: {
-        listId,
-        itemId,
-        scannedBarcode: barcode,
-      },
-    });
-  }
-
-  function handleQuickCancel() {
-    navigation.goBack();
-  }
-
-  if (isQuickEan13Input) {
-    return (
-      <View style={styles.screen}>
-        <StatusBar
-          style="light"
-          backgroundColor="#000000"
-          translucent={false}
-        />
-
-        <QuickEan13Scanner
-          onDetected={handleQuickEan13Detected}
-          onCancel={handleQuickCancel}
-        />
-      </View>
-    );
-  }
-
-  /* -------------------------------------------------
      Product lookup and optional history persistence
   -------------------------------------------------- */
 
@@ -227,9 +177,7 @@ export default function NewProductScannerScreen2() {
   ) {
     const barcode = normalizeBarcode(code);
 
-    if (!barcode) {
-      return null;
-    }
+    if (!barcode) return null;
 
     const now = new Date().toISOString();
 
@@ -238,14 +186,15 @@ export default function NewProductScannerScreen2() {
     const hasUsefulCachedData =
       cachedItem?.name?.trim() || cachedItem?.imageUrl?.trim();
 
+    /*
+     * Evitamos repetir una consulta remota si el historial local
+     * ya contiene información útil.
+     */
     if (hasUsefulCachedData) {
       const updatedItem = {
         ...cachedItem,
-
         barcode,
-
         source: cachedItem.source || "scanner",
-
         updatedAt: now,
       };
 
@@ -257,32 +206,23 @@ export default function NewProductScannerScreen2() {
     }
 
     const lookup = await lookupProductByBarcode(barcode);
-
     const product = lookup?.found ? lookup.product : null;
 
     const scannedItem = {
       id: barcode,
-
       barcode,
 
       name: product?.name || cachedItem?.name || "",
-
       brand: product?.brand || cachedItem?.brand || "",
-
       imageUrl: product?.imageUrl || cachedItem?.imageUrl || "",
-
       thumbnailUri: cachedItem?.thumbnailUri || null,
-
       url: product?.url || cachedItem?.url || "",
-
       notes: cachedItem?.notes || "",
 
       source: "scanner",
-
       lookupSource: product?.lookupSource || cachedItem?.lookupSource || null,
 
       scannedAt: cachedItem?.scannedAt || now,
-
       updatedAt: now,
     };
 
@@ -294,7 +234,7 @@ export default function NewProductScannerScreen2() {
   }
 
   /* -------------------------------------------------
-     General scanner state
+     Scanner state
   -------------------------------------------------- */
 
   function unlockScanner() {
@@ -307,7 +247,6 @@ export default function NewProductScannerScreen2() {
 
   function handleCancel() {
     unlockScanner();
-
     navigation.goBack();
   }
 
@@ -318,10 +257,12 @@ export default function NewProductScannerScreen2() {
   }
 
   function handleToggleTorch() {
-    setTorchEnabled((previous) => {
-      return !previous;
-    });
+    setTorchEnabled((previous) => !previous);
   }
+
+  /* -------------------------------------------------
+     Process detected barcode
+  -------------------------------------------------- */
 
   async function processDetectedBarcode(barcode, saveToHistory) {
     try {
@@ -342,31 +283,24 @@ export default function NewProductScannerScreen2() {
       safeAlert("Error", "No se pudo procesar el producto escaneado", [
         {
           text: "Cerrar",
-
           onPress: handleCancel,
         },
       ]);
     }
   }
 
+  /* -------------------------------------------------
+     Common detected barcode handler
+  -------------------------------------------------- */
+
   function handleDetectedBarcode(code) {
-    if (locked) {
-      return;
-    }
-
-    if (scannedRef.current) {
-      return;
-    }
-
-    if (handlingScanRef.current) {
-      return;
-    }
+    if (locked) return;
+    if (scannedRef.current) return;
+    if (handlingScanRef.current) return;
 
     const barcode = normalizeBarcode(code);
 
-    if (!barcode) {
-      return;
-    }
+    if (!barcode) return;
 
     scannedRef.current = true;
     handlingScanRef.current = true;
@@ -376,29 +310,21 @@ export default function NewProductScannerScreen2() {
 
     safeMenu(
       "Producto detectado",
-
       `Código: ${barcode}\n\n¿Quieres añadir este producto al historial de escaneos?`,
-
       [
         {
           text: "Cancelar",
-
           style: "cancel",
-
           onPress: unlockScanner,
         },
-
         {
           text: "No añadir",
-
           onPress: () => {
             processDetectedBarcode(barcode, false);
           },
         },
-
         {
           text: "Añadir",
-
           onPress: () => {
             processDetectedBarcode(barcode, true);
           },
@@ -407,10 +333,16 @@ export default function NewProductScannerScreen2() {
     );
   }
 
+  /*
+   * expo-camera devuelve un objeto { data, type }.
+   */
   function handleNativeBarcodeScanned({ data }) {
     handleDetectedBarcode(data);
   }
 
+  /*
+   * BarcodeScannerView devuelve directamente el texto normalizado.
+   */
   function handleWebDetected(code) {
     handleDetectedBarcode(code);
   }
@@ -422,13 +354,10 @@ export default function NewProductScannerScreen2() {
 
     safeAlert(
       "No se pudo iniciar la cámara",
-
       "Comprueba que el navegador o la aplicación tienen permiso para utilizar la cámara.",
-
       [
         {
           text: "Cerrar",
-
           onPress: handleCancel,
         },
       ],
@@ -436,9 +365,18 @@ export default function NewProductScannerScreen2() {
   }
 
   /* -------------------------------------------------
-     General web scanner
+     Web implementation
   -------------------------------------------------- */
 
+  /*
+   * En navegador delegamos completamente en BarcodeScannerView.
+   *
+   * Ese componente seleccionará automáticamente:
+   *
+   *   UnifiedBarcodeScanner.web.js
+   *
+   * cuando la aplicación se compile para Netlify.
+   */
   if (Platform.OS === "web") {
     return (
       <View style={styles.screen}>
@@ -459,7 +397,6 @@ export default function NewProductScannerScreen2() {
       </View>
     );
   }
-
   /* -------------------------------------------------
      Native permissions
   -------------------------------------------------- */
@@ -488,7 +425,7 @@ export default function NewProductScannerScreen2() {
         <StatusBar {...headerConfig.statusBar} />
 
         <View style={styles.center}>
-          <Ionicons name="camera-outline" size={42} color="#64748B" />
+          <Ionicons name="camera-outline" size={42} color="#64748b" />
 
           <Text style={styles.title}>Permiso de cámara necesario</Text>
 
@@ -509,7 +446,7 @@ export default function NewProductScannerScreen2() {
   }
 
   /* -------------------------------------------------
-     General native scanner
+     Native scanner
   -------------------------------------------------- */
 
   return (
@@ -542,11 +479,8 @@ export default function NewProductScannerScreen2() {
               <View style={styles.scanLine} />
 
               <View style={styles.cornerTopLeft} />
-
               <View style={styles.cornerTopRight} />
-
               <View style={styles.cornerBottomLeft} />
-
               <View style={styles.cornerBottomRight} />
             </View>
 
@@ -574,7 +508,6 @@ export default function NewProductScannerScreen2() {
               <Pressable
                 style={[
                   styles.actionBtn,
-
                   torchEnabled && styles.actionBtnActive,
                 ]}
                 onPress={handleToggleTorch}
@@ -620,7 +553,6 @@ const CORNER_SIZE = 30;
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    minHeight: 0,
     backgroundColor: "#000000",
   },
 
@@ -636,7 +568,6 @@ const styles = StyleSheet.create({
 
   cameraWrap: {
     flex: 1,
-    minHeight: 0,
     backgroundColor: "#000000",
   },
 
@@ -651,13 +582,9 @@ const styles = StyleSheet.create({
 
   topBar: {
     minHeight: Platform.OS === "android" ? 56 : 48,
-
     paddingHorizontal: 16,
-
     paddingTop: Platform.OS === "android" ? 12 : 8,
-
     alignItems: "flex-end",
-
     justifyContent: "center",
   },
 
@@ -665,9 +592,9 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
+    backgroundColor: "rgba(0,0,0,0.55)",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
   },
 
   middle: {
@@ -678,8 +605,8 @@ const styles = StyleSheet.create({
   scanBox: {
     width: "82%",
     height: 150,
-    position: "relative",
     borderRadius: 18,
+    position: "relative",
     backgroundColor: "rgba(0,0,0,0.12)",
   },
 
@@ -742,14 +669,14 @@ const styles = StyleSheet.create({
 
   centerHint: {
     marginTop: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "600",
     textAlign: "center",
     backgroundColor: "rgba(0,0,0,0.5)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
   },
 
   bottomPanel: {
@@ -768,30 +695,26 @@ const styles = StyleSheet.create({
     marginTop: 6,
     color: "#D1D5DB",
     fontSize: 14,
-    lineHeight: 20,
     textAlign: "center",
+    lineHeight: 20,
   },
 
   actionsRow: {
     marginTop: 16,
     flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
     gap: 10,
   },
 
   actionBtn: {
-    flexGrow: 1,
-    flexBasis: 104,
-    minWidth: 104,
+    flex: 1,
     minHeight: 46,
-    paddingHorizontal: 8,
     borderRadius: 12,
-    flexDirection: "row",
+    backgroundColor: "rgba(37,99,235,0.95)",
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
     gap: 6,
-    backgroundColor: "rgba(37,99,235,0.95)",
+    paddingHorizontal: 8,
   },
 
   actionBtnActive: {
@@ -800,22 +723,20 @@ const styles = StyleSheet.create({
 
   actionText: {
     color: "#FFFFFF",
-    fontSize: 13,
     fontWeight: "700",
+    fontSize: 13,
   },
 
   cancelBtn: {
-    flexGrow: 1,
-    flexBasis: 104,
-    minWidth: 104,
+    flex: 1,
     minHeight: 46,
-    paddingHorizontal: 8,
-    borderWidth: 1,
     borderRadius: 12,
-    borderColor: "rgba(255,255,255,0.25)",
+    backgroundColor: "rgba(255,255,255,0.14)",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    paddingHorizontal: 8,
   },
 
   cancelText: {
@@ -824,9 +745,9 @@ const styles = StyleSheet.create({
   },
 
   readingBox: {
-    alignSelf: "center",
     marginTop: 14,
     flexDirection: "row",
+    alignSelf: "center",
     alignItems: "center",
     gap: 10,
   },
@@ -845,27 +766,27 @@ const styles = StyleSheet.create({
 
   title: {
     marginTop: 14,
-    color: "#111827",
     fontSize: 18,
     fontWeight: "800",
+    color: "#111827",
     textAlign: "center",
   },
 
   message: {
     marginTop: 10,
-    color: "#64748B",
     fontSize: 15,
-    lineHeight: 21,
+    color: "#64748B",
     textAlign: "center",
+    lineHeight: 21,
   },
 
   primaryBtn: {
-    width: "100%",
     marginTop: 20,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
+    width: "100%",
     backgroundColor: "#2563EB",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
   },
 
   primaryText: {
@@ -874,12 +795,12 @@ const styles = StyleSheet.create({
   },
 
   secondaryBtn: {
-    width: "100%",
     marginTop: 10,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
+    width: "100%",
     backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
   },
 
   secondaryText: {
