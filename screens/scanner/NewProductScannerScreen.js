@@ -133,7 +133,9 @@ export default function NewProductScannerScreen() {
       <BarcodeScannerView
         onDetected={handleDetected}
         onClose={handleClose}
-        continuous={false}
+        continuous={true}
+        duplicateCooldownMs={1500}
+        showControls
         barcodeTypes={barcodeTypes}
       />
     </View>
