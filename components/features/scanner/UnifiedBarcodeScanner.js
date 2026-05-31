@@ -1,17 +1,42 @@
+// components/features/scanner/UnifiedBarcodeScanner.js
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+
+import { Pressable, StyleSheet, Text, View } from "react-native";
+
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
+
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View, Platform } from "react-native";
+
+/* -------------------------------------------------
+   Default configuration
+-------------------------------------------------- */
 
 const DEFAULT_ZOOM_LEVELS = [
-  { label: "1x", value: 0 },
-  { label: "1.1x", value: 0.1 },
-  { label: "1.2x", value: 0.2 },
-  { label: "1.4x", value: 0.35 },
+  {
+    label: "1x",
+    value: 0,
+  },
+  {
+    label: "1.1x",
+    value: 0.1,
+  },
+  {
+    label: "1.2x",
+    value: 0.2,
+  },
+  {
+    label: "1.4x",
+    value: 0.35,
+  },
 ];
 
-const DEFAULT_BARCODE_TYPES = ["ean13"];
+const DEFAULT_BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e"];
+
+/* -------------------------------------------------
+   Component
+-------------------------------------------------- */
 
 export default function UnifiedBarcodeScanner({
   onDetected,
@@ -20,29 +45,40 @@ export default function UnifiedBarcodeScanner({
   onStopScanning,
 
   active = true,
-  mode = "manual", // "manual" | "auto"
+  mode = "manual",
 
   barcodeTypes = DEFAULT_BARCODE_TYPES,
+
   zoomLevels = DEFAULT_ZOOM_LEVELS,
-  initialZoomIndex = 0,
+
+  /*
+   * Índice 2: abre inicialmente en 1.2x.
+   * En tu dispositivo mejora la lectura de códigos EAN.
+   */
+  initialZoomIndex = 2,
 
   showControls = true,
   showHint = true,
+
   hintText = "Apunta al código de barras",
 
   statusMessage = "",
-  statusColor = "#2563eb",
+  statusColor = "#2563EB",
 
-  // NUEVO
   continuous = false,
   scanCooldownMs = 1200,
 }) {
   const isFocused = useIsFocused();
+
   const [permission, requestPermission] = useCameraPermissions();
 
   const [torch, setTorch] = useState(false);
+
   const [zoomIndex, setZoomIndex] = useState(initialZoomIndex);
+
   const [scanningEnabled, setScanningEnabled] = useState(mode === "auto");
+
+  const [mountError, setMountError] = useState("");
 
   const lockRef = useRef(false);
   const unlockTimerRef = useRef(null);
@@ -53,11 +89,39 @@ export default function UnifiedBarcodeScanner({
     return zoomLevels[zoomIndex]?.value ?? zoomLevels[0]?.value ?? 0;
   }, [zoomIndex, zoomLevels]);
 
-  useEffect(() => {
-    if (permission && !permission.granted && permission.canAskAgain) {
-      requestPermission();
+  /* -------------------------------------------------
+     Lock helpers
+  -------------------------------------------------- */
+
+  function clearUnlockTimer() {
+    if (unlockTimerRef.current) {
+      clearTimeout(unlockTimerRef.current);
+
+      unlockTimerRef.current = null;
     }
-  }, [permission, requestPermission]);
+  }
+
+  function unlockScanner() {
+    clearUnlockTimer();
+
+    lockRef.current = false;
+  }
+
+  function resetScanner() {
+    unlockScanner();
+
+    setScanningEnabled(mode === "auto");
+
+    setTorch(false);
+
+    setZoomIndex(initialZoomIndex);
+
+    setMountError("");
+  }
+
+  /* -------------------------------------------------
+     Reset scanner when leaving screen
+  -------------------------------------------------- */
 
   useEffect(() => {
     if (!active || !isFocused) {
@@ -67,7 +131,8 @@ export default function UnifiedBarcodeScanner({
 
   useEffect(() => {
     if (mode === "auto" && active && isFocused) {
-      lockRef.current = false;
+      unlockScanner();
+
       setScanningEnabled(true);
     }
 
@@ -78,54 +143,64 @@ export default function UnifiedBarcodeScanner({
 
   useEffect(() => {
     return () => {
-      if (unlockTimerRef.current) {
-        clearTimeout(unlockTimerRef.current);
-      }
+      clearUnlockTimer();
     };
   }, []);
 
-  function resetScanner() {
-    lockRef.current = false;
-
-    if (unlockTimerRef.current) {
-      clearTimeout(unlockTimerRef.current);
-      unlockTimerRef.current = null;
-    }
-
-    setScanningEnabled(mode === "auto");
-    setTorch(false);
-  }
+  /* -------------------------------------------------
+     Scanner controls
+  -------------------------------------------------- */
 
   function startScanning() {
-    lockRef.current = false;
+    unlockScanner();
+
     setScanningEnabled(true);
+
     onStartScanning?.();
   }
 
   function stopScanning() {
-    lockRef.current = false;
+    unlockScanner();
+
     setScanningEnabled(false);
+
     onStopScanning?.();
   }
 
   function scheduleUnlock() {
-    if (!continuous || mode !== "auto") return;
-
-    if (unlockTimerRef.current) {
-      clearTimeout(unlockTimerRef.current);
+    if (!continuous || mode !== "auto") {
+      return;
     }
+
+    clearUnlockTimer();
 
     unlockTimerRef.current = setTimeout(() => {
       lockRef.current = false;
+
       unlockTimerRef.current = null;
     }, scanCooldownMs);
   }
 
+  /* -------------------------------------------------
+     Barcode callback
+  -------------------------------------------------- */
+
   function handleBarcodeScanned({ data, type }) {
-    if (!cameraActive) return;
-    if (!scanningEnabled) return;
-    if (lockRef.current) return;
-    if (!data) return;
+    if (!cameraActive) {
+      return;
+    }
+
+    if (!scanningEnabled) {
+      return;
+    }
+
+    if (lockRef.current) {
+      return;
+    }
+
+    if (!data) {
+      return;
+    }
 
     lockRef.current = true;
 
@@ -136,17 +211,37 @@ export default function UnifiedBarcodeScanner({
     try {
       onDetected?.({
         data: String(data),
-        type: String(type),
+        type: String(type || ""),
       });
     } finally {
       scheduleUnlock();
     }
   }
 
+  function handleCameraMountError(event) {
+    console.log("Camera mount error:", event?.message);
+
+    setMountError(
+      "No se pudo iniciar la cámara. Comprueba los permisos e inténtalo de nuevo.",
+    );
+  }
+
+  function handleClose() {
+    resetScanner();
+
+    onCancel?.();
+  }
+
+  /* -------------------------------------------------
+     Permission screens
+  -------------------------------------------------- */
+
   if (!permission) {
     return (
       <View style={styles.center}>
-        <Text>Solicitando permiso de cámara…</Text>
+        <Text style={styles.permissionText}>
+          Comprobando permisos de cámara...
+        </Text>
       </View>
     );
   }
@@ -165,7 +260,7 @@ export default function UnifiedBarcodeScanner({
         {onCancel ? (
           <Pressable
             style={[styles.primaryButton, styles.cancelPermissionButton]}
-            onPress={onCancel}
+            onPress={handleClose}
           >
             <Text style={styles.primaryButtonText}>Cerrar</Text>
           </Pressable>
@@ -174,26 +269,9 @@ export default function UnifiedBarcodeScanner({
     );
   }
 
-  const isWeb = Platform.OS === "web";
-  const hasWebBarcodeDetector =
-    typeof window !== "undefined" && "BarcodeDetector" in window;
-
-  if (isWeb && !hasWebBarcodeDetector) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.permissionText}>
-          La cámara está disponible, pero este navegador no soporta lectura
-          nativa de códigos de barras.
-        </Text>
-
-        {onCancel ? (
-          <Pressable style={styles.primaryButton} onPress={onCancel}>
-            <Text style={styles.primaryButtonText}>Cerrar</Text>
-          </Pressable>
-        ) : null}
-      </View>
-    );
-  }
+  /* -------------------------------------------------
+     Camera
+  -------------------------------------------------- */
 
   return (
     <View style={styles.container}>
@@ -202,12 +280,12 @@ export default function UnifiedBarcodeScanner({
           style={StyleSheet.absoluteFillObject}
           facing="back"
           autofocus="on"
-          active={cameraActive}
-          enableTorch={torch}
           zoom={zoom}
+          enableTorch={torch}
           barcodeScannerSettings={{
             barcodeTypes,
           }}
+          onMountError={handleCameraMountError}
           onBarcodeScanned={scanningEnabled ? handleBarcodeScanned : undefined}
         />
       ) : (
@@ -221,35 +299,55 @@ export default function UnifiedBarcodeScanner({
       ) : null}
 
       {statusMessage ? (
-        <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+        <View
+          style={[
+            styles.statusBadge,
+            {
+              backgroundColor: statusColor,
+            },
+          ]}
+        >
           <Text style={styles.statusText}>{statusMessage}</Text>
+        </View>
+      ) : null}
+
+      {mountError ? (
+        <View style={styles.errorBadge}>
+          <Text style={styles.errorText}>{mountError}</Text>
         </View>
       ) : null}
 
       {showControls ? (
         <View style={styles.bottomBar}>
           <Pressable
-            style={styles.iconButton}
-            onPress={() => setTorch((prev) => !prev)}
+            style={[styles.iconButton, torch && styles.iconButtonActive]}
+            onPress={() => {
+              setTorch((previous) => {
+                return !previous;
+              });
+            }}
           >
             <MaterialCommunityIcons
               name={torch ? "flashlight" : "flashlight-off"}
               size={26}
-              color="#fff"
+              color="#FFFFFF"
             />
           </Pressable>
 
           <Pressable
             style={styles.iconButton}
-            onPress={() =>
-              setZoomIndex((prev) => (prev + 1) % zoomLevels.length)
-            }
+            onPress={() => {
+              setZoomIndex((previous) => {
+                return (previous + 1) % zoomLevels.length;
+              });
+            }}
           >
             <MaterialCommunityIcons
               name="magnify-plus"
               size={26}
-              color="#fff"
+              color="#FFFFFF"
             />
+
             <Text style={styles.iconButtonText}>
               {zoomLevels[zoomIndex]?.label ?? "Zoom"}
             </Text>
@@ -266,8 +364,9 @@ export default function UnifiedBarcodeScanner({
               <MaterialCommunityIcons
                 name="barcode-scan"
                 size={24}
-                color="#fff"
+                color="#FFFFFF"
               />
+
               <Text style={styles.scanButtonText}>
                 {scanningEnabled ? "Detener" : "Escanear"}
               </Text>
@@ -277,21 +376,16 @@ export default function UnifiedBarcodeScanner({
               <MaterialCommunityIcons
                 name="barcode-scan"
                 size={24}
-                color="#fff"
+                color="#FFFFFF"
               />
+
               <Text style={styles.scanButtonText}>Activo</Text>
             </View>
           )}
 
           {onCancel ? (
-            <Pressable
-              style={styles.iconButton}
-              onPress={() => {
-                resetScanner();
-                onCancel?.();
-              }}
-            >
-              <MaterialCommunityIcons name="close" size={26} color="#fff" />
+            <Pressable style={styles.iconButton} onPress={handleClose}>
+              <MaterialCommunityIcons name="close" size={26} color="#FFFFFF" />
             </Pressable>
           ) : null}
         </View>
@@ -300,58 +394,64 @@ export default function UnifiedBarcodeScanner({
   );
 }
 
+/* -------------------------------------------------
+   Styles
+-------------------------------------------------- */
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    minHeight: 0,
+    backgroundColor: "#000000",
   },
 
   center: {
     flex: 1,
+    padding: 16,
     alignItems: "center",
     justifyContent: "center",
-    padding: 16,
   },
 
   permissionText: {
-    textAlign: "center",
     marginBottom: 12,
+    color: "#374151",
     fontSize: 15,
+    textAlign: "center",
   },
 
   primaryButton: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
-    backgroundColor: "#2563eb",
+    backgroundColor: "#2563EB",
   },
 
   cancelPermissionButton: {
-    backgroundColor: "#ef4444",
     marginTop: 10,
+    backgroundColor: "#EF4444",
   },
 
   primaryButtonText: {
-    color: "#fff",
+    color: "#FFFFFF",
     fontWeight: "700",
   },
 
   hintContainer: {
     position: "absolute",
-    bottom: 96,
+    bottom: 104,
     width: "100%",
-    alignItems: "center",
     paddingHorizontal: 16,
+    alignItems: "center",
   },
 
   hintText: {
-    color: "#fff",
-    fontSize: 14,
-    backgroundColor: "rgba(0,0,0,0.55)",
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 14,
+    color: "#FFFFFF",
+    fontSize: 14,
     textAlign: "center",
+    backgroundColor: "rgba(0,0,0,0.55)",
   },
 
   statusBadge: {
@@ -364,23 +464,44 @@ const styles = StyleSheet.create({
   },
 
   statusText: {
-    color: "#fff",
+    color: "#FFFFFF",
     fontWeight: "700",
+  },
+
+  errorBadge: {
+    position: "absolute",
+    top: 80,
+    left: 16,
+    right: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "rgba(185,28,28,0.92)",
+  },
+
+  errorText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    textAlign: "center",
   },
 
   bottomBar: {
     position: "absolute",
-    bottom: 0,
     left: 0,
     right: 0,
+    bottom: 0,
+
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 24,
-    backgroundColor: "rgba(0,0,0,0.55)",
+
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-around",
     alignItems: "center",
     gap: 10,
+
+    backgroundColor: "rgba(0,0,0,0.55)",
   },
 
   iconButton: {
@@ -388,15 +509,19 @@ const styles = StyleSheet.create({
     minHeight: 56,
     padding: 10,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.18)",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+
+  iconButtonActive: {
+    backgroundColor: "rgba(245,158,11,0.95)",
   },
 
   iconButtonText: {
-    color: "#fff",
-    fontSize: 12,
     marginTop: 2,
+    color: "#FFFFFF",
+    fontSize: 12,
     fontWeight: "600",
   },
 
@@ -406,20 +531,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 12,
     borderRadius: 999,
-    backgroundColor: "#2563eb",
+
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+
+    backgroundColor: "#2563EB",
   },
 
   scanButtonActive: {
-    backgroundColor: "#16a34a",
+    backgroundColor: "#16A34A",
   },
 
   scanButtonText: {
-    color: "#fff",
-    fontWeight: "700",
+    color: "#FFFFFF",
     fontSize: 14,
+    fontWeight: "700",
   },
 });

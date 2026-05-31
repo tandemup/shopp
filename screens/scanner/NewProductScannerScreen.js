@@ -4,7 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { useNavigation, useRoute } from "@react-navigation/native";
 
 import BarcodeScannerView from "../../components/features/scanner/BarcodeScannerView";
-import { safeAlert } from "../../components/ui/alert/safeAlert";
+import { safeAlert, safeMenu } from "../../components/ui/alert/safeAlert";
 import { ROUTES } from "../../navigation/ROUTES";
 
 import {

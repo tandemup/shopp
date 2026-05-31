@@ -1,3 +1,5 @@
+// components/features/scanner/BarcodeScannerView.js
+
 import React, {
   useCallback,
   useEffect,
@@ -5,7 +7,8 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { View, StyleSheet, Pressable } from "react-native";
+
+import { Pressable, StyleSheet, View } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
@@ -16,41 +19,89 @@ import { DEFAULT_BARCODE_SETTINGS } from "../../../constants/barcodeFormats";
 
 import { getBarcodeSettings } from "../../../src/storage/barcodeSettingsStorage";
 
+/* -------------------------------------------------
+   Helpers
+-------------------------------------------------- */
+
+function normalizeBarcode(code) {
+  const clean = String(code || "")
+    .replace(/\D/g, "")
+    .trim();
+
+  /*
+   * EAN-8, UPC-A y EAN-13.
+   */
+  if (clean.length === 8 || clean.length === 12 || clean.length === 13) {
+    return clean;
+  }
+
+  return null;
+}
+
+/* -------------------------------------------------
+   Component
+-------------------------------------------------- */
+
 export default function BarcodeScannerView({
   onDetected,
   onClose,
+
   continuous = true,
   duplicateCooldownMs = 1500,
+
   showControls = true,
+
   barcodeTypes = null,
 }) {
+  const isFocused = useIsFocused();
+
   const handledRef = useRef(false);
   const lastCodeRef = useRef(null);
   const lastTimeRef = useRef(0);
-  const isFocused = useIsFocused();
+
+  /*
+   * Conserva siempre el callback más reciente.
+   *
+   * No incluimos onDetected en las dependencias de handleDetected
+   * para evitar reiniciar innecesariamente la cámara web cuando el
+   * componente padre vuelve a renderizarse.
+   */
+  const onDetectedRef = useRef(onDetected);
+
+  useEffect(() => {
+    onDetectedRef.current = onDetected;
+  }, [onDetected]);
 
   const [barcodeSettings, setBarcodeSettingsState] = useState(
     DEFAULT_BARCODE_SETTINGS,
   );
 
+  /* -------------------------------------------------
+     Load settings
+  -------------------------------------------------- */
+
   useEffect(() => {
     let mounted = true;
 
-    const loadSettings = async () => {
+    async function loadSettings() {
       try {
         const data = await getBarcodeSettings();
 
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
 
         setBarcodeSettingsState(data || DEFAULT_BARCODE_SETTINGS);
       } catch (error) {
-        console.log("❌ Error loading barcode settings in scanner:", error);
+        console.log("Error loading barcode settings in scanner:", error);
 
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
 
         setBarcodeSettingsState(DEFAULT_BARCODE_SETTINGS);
       }
-    };
+    }
 
     if (isFocused) {
       loadSettings();
@@ -61,21 +112,33 @@ export default function BarcodeScannerView({
     };
   }, [isFocused]);
 
+  /* -------------------------------------------------
+     Enabled formats
+  -------------------------------------------------- */
+
   const enabledBarcodeTypes = useMemo(() => {
     const formats =
       barcodeSettings?.formats ?? DEFAULT_BARCODE_SETTINGS.formats;
 
     const enabled = Object.entries(formats)
-      .filter(([, enabled]) => Boolean(enabled))
-      .map(([formatId]) => formatId);
+      .filter(([, enabledValue]) => {
+        return Boolean(enabledValue);
+      })
+      .map(([formatId]) => {
+        return formatId;
+      });
 
     if (enabled.length > 0) {
       return enabled;
     }
 
     return Object.entries(DEFAULT_BARCODE_SETTINGS.formats)
-      .filter(([, enabled]) => Boolean(enabled))
-      .map(([formatId]) => formatId);
+      .filter(([, enabledValue]) => {
+        return Boolean(enabledValue);
+      })
+      .map(([formatId]) => {
+        return formatId;
+      });
   }, [barcodeSettings]);
 
   const effectiveBarcodeTypes = useMemo(() => {
@@ -86,57 +149,78 @@ export default function BarcodeScannerView({
     return enabledBarcodeTypes;
   }, [barcodeTypes, enabledBarcodeTypes]);
 
-  function normalizeBarcode(code) {
-    const clean = String(code || "").replace(/\D/g, "");
+  /* -------------------------------------------------
+     Duplicate protection
+  -------------------------------------------------- */
 
-    if (clean.length === 13 || clean.length === 8 || clean.length === 12) {
-      return clean;
-    }
+  const isDuplicateTooSoon = useCallback(
+    (code) => {
+      const now = Date.now();
 
-    return null;
-  }
+      const sameCode = lastCodeRef.current === code;
 
-  function isDuplicateTooSoon(code) {
-    const now = Date.now();
+      const tooSoon = now - lastTimeRef.current < duplicateCooldownMs;
 
-    const sameCode = lastCodeRef.current === code;
-    const tooSoon = now - lastTimeRef.current < duplicateCooldownMs;
+      if (sameCode && tooSoon) {
+        return true;
+      }
 
-    if (sameCode && tooSoon) {
-      return true;
-    }
+      lastCodeRef.current = code;
+      lastTimeRef.current = now;
 
-    lastCodeRef.current = code;
-    lastTimeRef.current = now;
+      return false;
+    },
+    [duplicateCooldownMs],
+  );
 
-    return false;
-  }
+  /* -------------------------------------------------
+     Detection
+  -------------------------------------------------- */
 
   const handleDetected = useCallback(
     ({ data }) => {
-      if (!data) return;
+      if (!data) {
+        return;
+      }
 
       const normalized = normalizeBarcode(data);
-      if (!normalized) return;
 
-      if (!continuous && handledRef.current) return;
+      if (!normalized) {
+        return;
+      }
 
-      if (continuous && isDuplicateTooSoon(normalized)) return;
+      if (!continuous && handledRef.current) {
+        return;
+      }
+
+      if (continuous && isDuplicateTooSoon(normalized)) {
+        return;
+      }
 
       handledRef.current = true;
 
-      onDetected?.(normalized);
+      onDetectedRef.current?.(normalized);
     },
-    [onDetected, continuous, duplicateCooldownMs],
+    [continuous, isDuplicateTooSoon],
   );
 
+  /* -------------------------------------------------
+     Reset when screen receives focus
+  -------------------------------------------------- */
+
   useEffect(() => {
-    if (isFocused) {
-      handledRef.current = false;
-      lastCodeRef.current = null;
-      lastTimeRef.current = 0;
+    if (!isFocused) {
+      return;
     }
+
+    handledRef.current = false;
+    lastCodeRef.current = null;
+    lastTimeRef.current = 0;
   }, [isFocused]);
+
+  /* -------------------------------------------------
+     Render
+  -------------------------------------------------- */
 
   return (
     <View style={styles.container}>
@@ -145,7 +229,7 @@ export default function BarcodeScannerView({
         active={true}
         barcodeTypes={effectiveBarcodeTypes}
         showControls={showControls}
-        showHint
+        showHint={true}
         hintText="Apunta al código"
         onDetected={handleDetected}
         onCancel={onClose}
@@ -155,29 +239,38 @@ export default function BarcodeScannerView({
 
       {!showControls ? (
         <Pressable style={styles.closeBtn} onPress={onClose}>
-          <Ionicons name="close" size={24} color="#fff" />
+          <Ionicons name="close" size={24} color="#FFFFFF" />
         </Pressable>
       ) : null}
     </View>
   );
 }
 
+/* -------------------------------------------------
+   Styles
+-------------------------------------------------- */
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    minHeight: 0,
+    backgroundColor: "#000000",
   },
 
   closeBtn: {
     position: "absolute",
     top: 60,
     right: 20,
+
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "rgba(0,0,0,0.6)",
+
     alignItems: "center",
     justifyContent: "center",
+
+    backgroundColor: "rgba(0,0,0,0.6)",
+
     zIndex: 999,
   },
 });

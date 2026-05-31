@@ -32,7 +32,7 @@ import BarcodeScannerView from "../../components/features/scanner/BarcodeScanner
 
 import { ROUTES } from "../../navigation/ROUTES";
 import { buildHeaderConfig } from "../../utils/layout/headerStyles";
-import { safeAlert } from "../../components/ui/alert/safeAlert";
+import { safeAlert, safeMenu } from "../../components/ui/alert/safeAlert";
 
 import {
   getScannedEntryByBarcode,
@@ -110,8 +110,8 @@ export default function NewProductScannerScreen2() {
   const [locked, setLocked] = useState(false);
 
   /*
-   * Abrimos la cámara nativa inicialmente sin zoom.
-   * Esto facilita que el autoenfoque encuentre el código.
+   * Abrimos la cámara nativa inicialmente en 1.2x.
+   * En este dispositivo mejora la lectura de códigos EAN.
    */
   const [zoomIndex, setZoomIndex] = useState(1);
 
@@ -308,7 +308,7 @@ export default function NewProductScannerScreen2() {
     setLocked(true);
     setTorchEnabled(false);
 
-    safeAlert(
+    safeMenu(
       "Producto detectado",
       `Código: ${barcode}\n\n¿Quieres añadir este producto al historial de escaneos?`,
       [

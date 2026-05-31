@@ -7,29 +7,51 @@ import React, {
   useRef,
   useState,
 } from "react";
+
 import { Pressable, StyleSheet, Text, View } from "react-native";
+
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 
+/* -------------------------------------------------
+   Default configuration
+-------------------------------------------------- */
+
 const DEFAULT_BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e"];
 
 const FORMAT_MAP = {
   aztec: Html5QrcodeSupportedFormats.AZTEC,
+
   codabar: Html5QrcodeSupportedFormats.CODABAR,
+
   code39: Html5QrcodeSupportedFormats.CODE_39,
+
   code93: Html5QrcodeSupportedFormats.CODE_93,
+
   code128: Html5QrcodeSupportedFormats.CODE_128,
+
   datamatrix: Html5QrcodeSupportedFormats.DATA_MATRIX,
+
   ean8: Html5QrcodeSupportedFormats.EAN_8,
+
   ean13: Html5QrcodeSupportedFormats.EAN_13,
+
   itf14: Html5QrcodeSupportedFormats.ITF,
+
   pdf417: Html5QrcodeSupportedFormats.PDF_417,
+
   qr: Html5QrcodeSupportedFormats.QR_CODE,
+
   upc_a: Html5QrcodeSupportedFormats.UPC_A,
+
   upc_e: Html5QrcodeSupportedFormats.UPC_E,
 };
+
+/* -------------------------------------------------
+   Helpers
+-------------------------------------------------- */
 
 function getFormatsToSupport(barcodeTypes) {
   const source =
@@ -38,18 +60,45 @@ function getFormatsToSupport(barcodeTypes) {
       : DEFAULT_BARCODE_TYPES;
 
   const formats = source
-    .map((type) => FORMAT_MAP[type])
-    .filter((format) => format !== undefined);
+    .map((type) => {
+      return FORMAT_MAP[type];
+    })
+    .filter((format) => {
+      return format !== undefined;
+    });
 
-  return formats.length > 0
-    ? formats
-    : DEFAULT_BARCODE_TYPES.map((type) => FORMAT_MAP[type]);
+  if (formats.length > 0) {
+    return formats;
+  }
+
+  return DEFAULT_BARCODE_TYPES.map((type) => {
+    return FORMAT_MAP[type];
+  }).filter((format) => {
+    return format !== undefined;
+  });
 }
 
+/*
+ * Ventana horizontal adecuada para códigos EAN y UPC.
+ */
 function getScanBox(viewfinderWidth, viewfinderHeight) {
+  const safeWidth = Math.max(1, viewfinderWidth);
+
+  const safeHeight = Math.max(1, viewfinderHeight);
+
+  const width = Math.max(
+    1,
+    Math.min(Math.floor(safeWidth * 0.9), safeWidth - 4),
+  );
+
+  const height = Math.max(
+    1,
+    Math.min(Math.max(84, Math.floor(safeHeight * 0.28)), safeHeight - 4),
+  );
+
   return {
-    width: Math.floor(viewfinderWidth * 0.88),
-    height: Math.max(90, Math.floor(viewfinderHeight * 0.22)),
+    width,
+    height,
   };
 }
 
@@ -61,7 +110,7 @@ function getErrorMessage(error) {
   }
 
   if (text.includes("NotFoundError")) {
-    return "No se ha encontrado una cámara compatible.";
+    return "No se ha encontrado una cámara disponible.";
   }
 
   if (text.includes("NotReadableError")) {
@@ -69,11 +118,29 @@ function getErrorMessage(error) {
   }
 
   if (text.includes("OverconstrainedError")) {
-    return "No se ha podido seleccionar la cámara trasera.";
+    return "El navegador no ha podido seleccionar la cámara solicitada.";
   }
 
-  return "No se pudo iniciar el lector de códigos de barras.";
+  return "No se pudo iniciar el lector. Comprueba los permisos e inténtalo de nuevo.";
 }
+
+function findPreferredCamera(cameras) {
+  if (!Array.isArray(cameras) || cameras.length === 0) {
+    return null;
+  }
+
+  const rearCamera = cameras.find((camera) => {
+    const label = String(camera?.label || "");
+
+    return /back|rear|environment|trasera|posterior/i.test(label);
+  });
+
+  return rearCamera || cameras[cameras.length - 1] || cameras[0];
+}
+
+/* -------------------------------------------------
+   Component
+-------------------------------------------------- */
 
 export default function UnifiedBarcodeScanner({
   onDetected,
@@ -88,10 +155,11 @@ export default function UnifiedBarcodeScanner({
 
   showControls = true,
   showHint = true,
+
   hintText = "Apunta al código de barras",
 
   statusMessage = "",
-  statusColor = "#2563eb",
+  statusColor = "#2563EB",
 
   continuous = false,
   scanCooldownMs = 1200,
@@ -103,15 +171,28 @@ export default function UnifiedBarcodeScanner({
   );
 
   const scannerRef = useRef(null);
-  const scannerStartedRef = useRef(false);
-  const scannerStartingRef = useRef(false);
+
+  /*
+   * Invalida operaciones de arranque pendientes.
+   */
+  const operationIdRef = useRef(0);
 
   const lockRef = useRef(false);
   const unlockTimerRef = useRef(null);
 
+  /*
+   * Evita reiniciar la cámara cuando cambia el callback
+   * del componente padre.
+   */
+  const onDetectedRef = useRef(onDetected);
+
   const [scanningEnabled, setScanningEnabled] = useState(mode === "auto");
+
   const [starting, setStarting] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState("");
+
+  const [restartToken, setRestartToken] = useState(0);
 
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
@@ -119,101 +200,169 @@ export default function UnifiedBarcodeScanner({
   const [zoomCapability, setZoomCapability] = useState(null);
   const [zoomValue, setZoomValue] = useState(null);
 
-  const formatsToSupport = useMemo(
-    () => getFormatsToSupport(barcodeTypes),
-    [barcodeTypes],
-  );
+  useEffect(() => {
+    onDetectedRef.current = onDetected;
+  }, [onDetected]);
 
-  const formatsKey = formatsToSupport.join(",");
+  const formatsToSupport = useMemo(() => {
+    return getFormatsToSupport(barcodeTypes);
+  }, [barcodeTypes]);
+
+  const formatsKey = useMemo(() => {
+    return formatsToSupport.join(",");
+  }, [formatsToSupport]);
 
   const cameraShouldRun = active && isFocused && scanningEnabled;
 
+  /* -------------------------------------------------
+     Lock helpers
+  -------------------------------------------------- */
+
   const clearUnlockTimer = useCallback(() => {
-    if (unlockTimerRef.current) {
-      clearTimeout(unlockTimerRef.current);
-      unlockTimerRef.current = null;
+    if (!unlockTimerRef.current) {
+      return;
     }
+
+    clearTimeout(unlockTimerRef.current);
+
+    unlockTimerRef.current = null;
   }, []);
 
   const unlockScanner = useCallback(() => {
-    lockRef.current = false;
     clearUnlockTimer();
+
+    lockRef.current = false;
   }, [clearUnlockTimer]);
 
   const scheduleUnlock = useCallback(() => {
-    if (!continuous || mode !== "auto") return;
+    if (!continuous || mode !== "auto") {
+      return;
+    }
 
     clearUnlockTimer();
 
     unlockTimerRef.current = setTimeout(() => {
       lockRef.current = false;
+
       unlockTimerRef.current = null;
     }, scanCooldownMs);
   }, [clearUnlockTimer, continuous, mode, scanCooldownMs]);
 
-  const stopScanner = useCallback(async () => {
-    clearUnlockTimer();
+  /* -------------------------------------------------
+     Camera cleanup
+  -------------------------------------------------- */
 
-    const scanner = scannerRef.current;
-
-    scannerRef.current = null;
-    scannerStartedRef.current = false;
-    scannerStartingRef.current = false;
-
-    setStarting(false);
-    setTorchEnabled(false);
-    setTorchSupported(false);
-    setZoomCapability(null);
-    setZoomValue(null);
-
-    if (!scanner) return;
+  const stopScannerInstance = useCallback(async (scanner) => {
+    if (!scanner) {
+      return;
+    }
 
     try {
       await scanner.stop();
     } catch (error) {
-      // Puede ocurrir si la cámara todavía no había terminado de arrancar.
+      /*
+       * Puede ocurrir si el lector todavía estaba
+       * arrancando o ya se había detenido.
+       */
     }
 
     try {
       scanner.clear();
     } catch (error) {
-      // La limpieza es defensiva: no bloqueamos la navegación.
-    }
-  }, [clearUnlockTimer]);
-
-  const inspectCameraCapabilities = useCallback((scanner) => {
-    try {
-      const capabilities = scanner.getRunningTrackCapabilities();
-
-      setTorchSupported(capabilities?.torch === true);
-
-      const zoom = capabilities?.zoom;
-
-      if (
-        zoom &&
-        typeof zoom.min === "number" &&
-        typeof zoom.max === "number"
-      ) {
-        setZoomCapability({
-          min: zoom.min,
-          max: zoom.max,
-          step:
-            typeof zoom.step === "number" && zoom.step > 0 ? zoom.step : 0.1,
-        });
-
-        setZoomValue(zoom.min);
-      }
-    } catch (error) {
-      setTorchSupported(false);
-      setZoomCapability(null);
-      setZoomValue(null);
+      /*
+       * Limpieza defensiva.
+       */
     }
   }, []);
 
+  const resetCapabilities = useCallback(() => {
+    setTorchSupported(false);
+    setTorchEnabled(false);
+
+    setZoomCapability(null);
+    setZoomValue(null);
+  }, []);
+
+  const stopCurrentScanner = useCallback(async () => {
+    clearUnlockTimer();
+
+    /*
+     * Invalida cualquier arranque todavía pendiente.
+     */
+    operationIdRef.current += 1;
+
+    const scanner = scannerRef.current;
+
+    scannerRef.current = null;
+
+    setStarting(false);
+
+    resetCapabilities();
+
+    await stopScannerInstance(scanner);
+  }, [clearUnlockTimer, resetCapabilities, stopScannerInstance]);
+
+  /* -------------------------------------------------
+     Camera capabilities
+  -------------------------------------------------- */
+
+  const inspectCameraCapabilities = useCallback(
+    (scanner) => {
+      try {
+        const capabilities = scanner.getRunningTrackCapabilities();
+
+        const settings = scanner.getRunningTrackSettings?.() || {};
+
+        setTorchSupported(capabilities?.torch === true);
+
+        const zoom = capabilities?.zoom;
+
+        if (
+          zoom &&
+          typeof zoom.min === "number" &&
+          typeof zoom.max === "number"
+        ) {
+          setZoomCapability({
+            min: zoom.min,
+            max: zoom.max,
+
+            step:
+              typeof zoom.step === "number" && zoom.step > 0 ? zoom.step : 0.1,
+          });
+
+          setZoomValue(
+            typeof settings.zoom === "number" ? settings.zoom : zoom.min,
+          );
+
+          return;
+        }
+
+        setZoomCapability(null);
+        setZoomValue(null);
+      } catch (error) {
+        /*
+         * Safari puede mostrar la cámara sin ofrecer
+         * zoom o linterna. No es un error bloqueante.
+         */
+        resetCapabilities();
+      }
+    },
+    [resetCapabilities],
+  );
+
+  /* -------------------------------------------------
+     Successful read
+  -------------------------------------------------- */
+
   const handleSuccessfulRead = useCallback(
     (decodedText, decodedResult) => {
-      if (!decodedText) return;
-      if (lockRef.current) return;
+      if (!decodedText) {
+        return;
+      }
+
+      if (lockRef.current) {
+        return;
+      }
 
       lockRef.current = true;
 
@@ -222,60 +371,132 @@ export default function UnifiedBarcodeScanner({
         decodedResult?.result?.format ||
         "unknown";
 
-      onDetected?.({
+      onDetectedRef.current?.({
         data: String(decodedText),
         type: String(type),
       });
 
       scheduleUnlock();
     },
-    [onDetected, scheduleUnlock],
+    [scheduleUnlock],
   );
+
+  /* -------------------------------------------------
+     Start camera
+  -------------------------------------------------- */
 
   useEffect(() => {
     let disposed = false;
 
-    async function startScanner() {
-      if (!cameraShouldRun) return;
-      if (scannerRef.current) return;
-      if (scannerStartingRef.current) return;
+    if (!cameraShouldRun) {
+      stopCurrentScanner();
 
-      scannerStartingRef.current = true;
+      return () => {
+        disposed = true;
+      };
+    }
 
-      setStarting(true);
-      setErrorMessage("");
+    const operationId = operationIdRef.current + 1;
 
+    operationIdRef.current = operationId;
+
+    let ownedScanner = null;
+
+    async function createScannerAndStart(cameraConfig) {
       const scanner = new Html5Qrcode(readerIdRef.current, {
         formatsToSupport,
+
+        /*
+         * En Safari interesa mantener el
+         * decodificador JavaScript para códigos EAN.
+         */
         useBarCodeDetectorIfSupported: false,
+
         verbose: false,
       });
+
+      ownedScanner = scanner;
 
       scannerRef.current = scanner;
 
       try {
         await scanner.start(
-          {
-            facingMode: "environment",
-          },
+          cameraConfig,
           {
             fps: 12,
+
+            /*
+             * No forzamos aspectRatio.
+             * El navegador selecciona una resolución
+             * compatible con la cámara disponible.
+             */
             qrbox: getScanBox,
-            aspectRatio: 1.777778,
-            disableFlip: true,
           },
           handleSuccessfulRead,
           () => {
-            // No mostramos errores durante cada fotograma sin coincidencias.
+            /*
+             * No mostramos errores por cada fotograma
+             * sin coincidencias.
+             */
           },
         );
 
-        if (disposed) {
-          await stopScanner();
+        return scanner;
+      } catch (error) {
+        if (scannerRef.current === scanner) {
+          scannerRef.current = null;
+        }
+
+        await stopScannerInstance(scanner);
+
+        throw error;
+      }
+    }
+
+    async function startScanner() {
+      setStarting(true);
+      setErrorMessage("");
+
+      let scanner = null;
+
+      try {
+        /*
+         * Primer intento: pedir la cámara trasera.
+         */
+        try {
+          scanner = await createScannerAndStart({
+            facingMode: "environment",
+          });
+        } catch (firstError) {
+          /*
+           * Segundo intento: elegir una cámara
+           * concreta de la lista disponible.
+           */
+          const cameras = await Html5Qrcode.getCameras();
+
+          const preferredCamera = findPreferredCamera(cameras);
+
+          if (!preferredCamera?.id) {
+            throw firstError;
+          }
+
+          scanner = await createScannerAndStart(preferredCamera.id);
+        }
+
+        /*
+         * Cerramos el stream si la pantalla ya no
+         * está activa cuando termina el arranque.
+         */
+        if (disposed || operationId !== operationIdRef.current) {
+          await stopScannerInstance(scanner);
+
           return;
         }
 
-        scannerStartedRef.current = true;
+        scannerRef.current = scanner;
+
+        ownedScanner = scanner;
+
         inspectCameraCapabilities(scanner);
       } catch (error) {
         console.log("Error starting web barcode scanner:", error);
@@ -283,11 +504,7 @@ export default function UnifiedBarcodeScanner({
         if (!disposed) {
           setErrorMessage(getErrorMessage(error));
         }
-
-        await stopScanner();
       } finally {
-        scannerStartingRef.current = false;
-
         if (!disposed) {
           setStarting(false);
         }
@@ -298,34 +515,48 @@ export default function UnifiedBarcodeScanner({
 
     return () => {
       disposed = true;
-      stopScanner();
+
+      operationIdRef.current += 1;
+
+      if (scannerRef.current === ownedScanner) {
+        scannerRef.current = null;
+      }
+
+      stopScannerInstance(ownedScanner);
     };
   }, [
     cameraShouldRun,
     formatsKey,
-    formatsToSupport,
     handleSuccessfulRead,
     inspectCameraCapabilities,
-    stopScanner,
+    restartToken,
+    stopCurrentScanner,
+    stopScannerInstance,
   ]);
+
+  /* -------------------------------------------------
+     Scanner mode
+  -------------------------------------------------- */
 
   useEffect(() => {
     if (!active || !isFocused) {
       unlockScanner();
+
       setScanningEnabled(mode === "auto");
-    }
-  }, [active, isFocused, mode, unlockScanner]);
 
-  useEffect(() => {
-    if (mode === "auto" && active && isFocused) {
+      return;
+    }
+
+    if (mode === "auto") {
       unlockScanner();
+
       setScanningEnabled(true);
+
+      return;
     }
 
-    if (mode === "manual") {
-      setScanningEnabled(false);
-    }
-  }, [mode, active, isFocused, unlockScanner]);
+    setScanningEnabled(false);
+  }, [active, isFocused, mode, unlockScanner]);
 
   useEffect(() => {
     return () => {
@@ -333,35 +564,52 @@ export default function UnifiedBarcodeScanner({
     };
   }, [clearUnlockTimer]);
 
+  /* -------------------------------------------------
+     Controls
+  -------------------------------------------------- */
+
   function startScanning() {
     unlockScanner();
+
     setErrorMessage("");
+
     setScanningEnabled(true);
+
     onStartScanning?.();
   }
 
   async function stopScanning() {
     unlockScanner();
+
     setScanningEnabled(false);
-    await stopScanner();
+
+    await stopCurrentScanner();
+
     onStopScanning?.();
   }
 
   async function toggleTorch() {
     const scanner = scannerRef.current;
 
-    if (!scanner || !torchSupported) return;
+    if (!scanner || !torchSupported) {
+      return;
+    }
 
     const nextValue = !torchEnabled;
 
     try {
       await scanner.applyVideoConstraints({
-        advanced: [{ torch: nextValue }],
+        advanced: [
+          {
+            torch: nextValue,
+          },
+        ],
       });
 
       setTorchEnabled(nextValue);
     } catch (error) {
       console.log("Torch is not available in this browser:", error);
+
       setTorchSupported(false);
       setTorchEnabled(false);
     }
@@ -370,21 +618,31 @@ export default function UnifiedBarcodeScanner({
   async function changeZoom() {
     const scanner = scannerRef.current;
 
-    if (!scanner || !zoomCapability) return;
+    if (!scanner || !zoomCapability) {
+      return;
+    }
 
     const { min, max, step } = zoomCapability;
 
-    const nextValue =
-      zoomValue == null || zoomValue + step > max ? min : zoomValue + step;
+    const currentValue = typeof zoomValue === "number" ? zoomValue : min;
+
+    const proposedValue = currentValue + step;
+
+    const nextValue = proposedValue > max ? min : proposedValue;
 
     try {
       await scanner.applyVideoConstraints({
-        advanced: [{ zoom: nextValue }],
+        advanced: [
+          {
+            zoom: nextValue,
+          },
+        ],
       });
 
       setZoomValue(nextValue);
     } catch (error) {
       console.log("Zoom is not available in this browser:", error);
+
       setZoomCapability(null);
       setZoomValue(null);
     }
@@ -392,9 +650,25 @@ export default function UnifiedBarcodeScanner({
 
   async function handleCancel() {
     unlockScanner();
-    await stopScanner();
+
+    await stopCurrentScanner();
+
     onCancel?.();
   }
+
+  function retryScanner() {
+    unlockScanner();
+
+    setErrorMessage("");
+
+    setRestartToken((previous) => {
+      return previous + 1;
+    });
+  }
+
+  /* -------------------------------------------------
+     Render
+  -------------------------------------------------- */
 
   return (
     <View style={styles.container}>
@@ -421,11 +695,24 @@ export default function UnifiedBarcodeScanner({
           ) : null}
 
           {errorMessage ? (
-            <Text style={styles.errorText}>{errorMessage}</Text>
+            <>
+              <Text style={styles.errorText}>{errorMessage}</Text>
+
+              <Pressable style={styles.retryButton} onPress={retryScanner}>
+                <Text style={styles.retryText}>Reintentar</Text>
+              </Pressable>
+            </>
           ) : null}
 
           {statusMessage ? (
-            <Text style={[styles.statusText, { backgroundColor: statusColor }]}>
+            <Text
+              style={[
+                styles.statusText,
+                {
+                  backgroundColor: statusColor,
+                },
+              ]}
+            >
               {statusMessage}
             </Text>
           ) : null}
@@ -461,7 +748,9 @@ export default function UnifiedBarcodeScanner({
                   />
 
                   <Text style={styles.actionText}>
-                    {zoomValue == null ? "Zoom" : `${zoomValue.toFixed(1)}x`}
+                    {typeof zoomValue === "number"
+                      ? `${zoomValue.toFixed(1)}x`
+                      : "Zoom"}
                   </Text>
                 </Pressable>
               ) : null}
@@ -503,17 +792,23 @@ export default function UnifiedBarcodeScanner({
   );
 }
 
+/* -------------------------------------------------
+   Styles
+-------------------------------------------------- */
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000000",
+    minHeight: 0,
     position: "relative",
     overflow: "hidden",
+    backgroundColor: "#000000",
   },
 
   reader: {
     flex: 1,
     width: "100%",
+    minHeight: 320,
     backgroundColor: "#000000",
   },
 
@@ -532,9 +827,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "rgba(0,0,0,0.62)",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.62)",
   },
 
   middle: {
@@ -544,12 +839,12 @@ const styles = StyleSheet.create({
 
   scanFrame: {
     width: "88%",
-    height: 130,
-    borderWidth: 3,
-    borderColor: "#FFFFFF",
-    borderRadius: 16,
-    backgroundColor: "rgba(0,0,0,0.08)",
+    height: 132,
     justifyContent: "center",
+    borderWidth: 3,
+    borderRadius: 16,
+    borderColor: "#FFFFFF",
+    backgroundColor: "rgba(0,0,0,0.08)",
   },
 
   scanLine: {
@@ -560,64 +855,80 @@ const styles = StyleSheet.create({
 
   hintText: {
     marginTop: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "700",
     textAlign: "center",
     backgroundColor: "rgba(0,0,0,0.62)",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
   },
 
   bottomPanel: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 24,
+    paddingBottom: 28,
     backgroundColor: "rgba(0,0,0,0.72)",
   },
 
   message: {
-    color: "#FFFFFF",
-    textAlign: "center",
-    fontWeight: "600",
     marginBottom: 10,
+    color: "#FFFFFF",
+    fontWeight: "600",
+    textAlign: "center",
   },
 
   errorText: {
-    color: "#FCA5A5",
-    textAlign: "center",
-    fontWeight: "700",
     marginBottom: 10,
+    color: "#FCA5A5",
+    fontWeight: "700",
+    textAlign: "center",
+  },
+
+  retryButton: {
+    alignSelf: "center",
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "#2563EB",
+  },
+
+  retryText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
 
   statusText: {
     alignSelf: "center",
-    color: "#FFFFFF",
-    fontWeight: "700",
+    marginBottom: 10,
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 999,
-    marginBottom: 10,
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
 
   actionsRow: {
     flexDirection: "row",
-    justifyContent: "center",
     flexWrap: "wrap",
+    justifyContent: "center",
     gap: 10,
   },
 
   actionButton: {
-    minHeight: 48,
     minWidth: 108,
+    minHeight: 48,
     paddingHorizontal: 14,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.18)",
+
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 7,
+
+    backgroundColor: "rgba(255,255,255,0.18)",
   },
 
   actionButtonActive: {
