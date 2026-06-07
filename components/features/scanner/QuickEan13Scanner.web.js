@@ -41,7 +41,6 @@ function isValidEan13(value) {
 
 function getScanBox(viewfinderWidth, viewfinderHeight) {
   const safeWidth = Math.max(1, viewfinderWidth);
-
   const safeHeight = Math.max(1, viewfinderHeight);
 
   return {
@@ -52,6 +51,20 @@ function getScanBox(viewfinderWidth, viewfinderHeight) {
       Math.min(Math.max(84, Math.floor(safeHeight * 0.28)), safeHeight - 4),
     ),
   };
+}
+
+function findPreferredCamera(cameras) {
+  if (!Array.isArray(cameras) || cameras.length === 0) {
+    return null;
+  }
+
+  const rearCamera = cameras.find((camera) => {
+    const label = String(camera?.label || "");
+
+    return /back|rear|environment|trasera|posterior/i.test(label);
+  });
+
+  return rearCamera || cameras[cameras.length - 1] || cameras[0];
 }
 
 function getErrorMessage(error) {
@@ -85,13 +98,10 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
 
   const scannerRef = useRef(null);
   const lockRef = useRef(false);
-
   const onDetectedRef = useRef(onDetected);
 
   const [starting, setStarting] = useState(true);
-
   const [errorMessage, setErrorMessage] = useState("");
-
   const [restartToken, setRestartToken] = useState(0);
 
   useEffect(() => {
@@ -149,9 +159,8 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
         formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13],
 
         /*
-         * En Safari para iPhone el detector nativo
-         * puede producir resultados inconsistentes
-         * con códigos lineales.
+         * En Safari para iPhone forzamos el motor JavaScript.
+         * BarcodeDetector todavía no ofrece un comportamiento uniforme.
          */
         useBarCodeDetectorIfSupported: false,
 
@@ -160,50 +169,74 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
 
       scannerRef.current = scanner;
 
-      try {
+      async function handleDecodedText(decodedText) {
+        if (lockRef.current) {
+          return;
+        }
+
+        const barcode = normalizeEan13(decodedText);
+
+        if (!barcode || !isValidEan13(barcode)) {
+          return;
+        }
+
+        lockRef.current = true;
+
+        await stopScanner();
+
+        if (!disposed) {
+          onDetectedRef.current?.(barcode);
+        }
+      }
+
+      function handleDecodeFailure() {
+        /*
+         * Ignoramos los fotogramas que todavía no contienen
+         * un código EAN-13 válido.
+         */
+      }
+
+      async function startWithCamera(cameraConfig) {
         await scanner.start(
-          {
-            facingMode: "environment",
-          },
+          cameraConfig,
           {
             /*
-             * Moderadamente alto para priorizar rapidez
-             * sin saturar el teléfono.
+             * En Safari resulta más estable que analizar 15 fps.
              */
-            fps: 15,
+            fps: 10,
 
             qrbox: getScanBox,
-          },
-          async (decodedText) => {
-            if (lockRef.current) {
-              return;
-            }
 
-            const barcode = normalizeEan13(decodedText);
-
-            if (!barcode) {
-              return;
-            }
-
-            if (!isValidEan13(barcode)) {
-              return;
-            }
-
-            lockRef.current = true;
-
-            await stopScanner();
-
-            if (!disposed) {
-              onDetectedRef.current?.(barcode);
-            }
-          },
-          () => {
             /*
-             * No mostramos errores por cada fotograma
-             * que todavía no contiene un EAN válido.
+             * La cámara trasera no necesita una segunda pasada reflejada.
              */
+            disableFlip: true,
           },
+          handleDecodedText,
+          handleDecodeFailure,
         );
+      }
+
+      try {
+        try {
+          await startWithCamera({
+            facingMode: "environment",
+          });
+        } catch (firstError) {
+          /*
+           * Algunos navegadores móviles no respetan correctamente
+           * facingMode. Como fallback elegimos explícitamente
+           * una cámara trasera disponible.
+           */
+          const cameras = await Html5Qrcode.getCameras();
+          const preferredCamera = findPreferredCamera(cameras);
+
+          if (!preferredCamera?.id) {
+            throw firstError;
+          }
+
+          await startWithCamera(preferredCamera.id);
+        }
       } catch (error) {
         console.log("Quick EAN-13 web scanner error:", error);
 
@@ -239,7 +272,6 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
 
   function handleRetry() {
     lockRef.current = false;
-
     setErrorMessage("");
 
     setRestartToken((previous) => {
@@ -331,40 +363,40 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.62)",
+    backgroundColor: "rgba(0,0,0,0.6)",
   },
 
   middle: {
     alignItems: "center",
     justifyContent: "center",
+    gap: 14,
   },
 
   scanFrame: {
     width: "90%",
-    height: 132,
-    borderWidth: 3,
+    maxWidth: 560,
+    height: 120,
+    borderWidth: 2,
     borderRadius: 16,
-    borderColor: "#FFFFFF",
+    borderColor: "#22C55E",
+    overflow: "hidden",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.08)",
   },
 
   scanLine: {
     height: 2,
-    marginHorizontal: 16,
-    backgroundColor: "rgba(255,255,255,0.9)",
+    width: "100%",
+    backgroundColor: "#22C55E",
   },
 
   hint: {
-    marginTop: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
-    textAlign: "center",
-    backgroundColor: "rgba(0,0,0,0.62)",
+    textShadowColor: "rgba(0,0,0,0.8)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
 
   bottomPanel: {
@@ -382,8 +414,8 @@ const styles = StyleSheet.create({
   },
 
   subtitle: {
-    marginTop: 6,
-    color: "#D1D5DB",
+    marginTop: 8,
+    color: "#E5E7EB",
     fontSize: 14,
     lineHeight: 20,
     textAlign: "center",
@@ -391,29 +423,32 @@ const styles = StyleSheet.create({
 
   statusText: {
     marginTop: 12,
-    color: "#FFFFFF",
-    fontWeight: "600",
+    color: "#BFDBFE",
+    fontSize: 13,
+    fontWeight: "700",
     textAlign: "center",
   },
 
   errorText: {
     marginTop: 12,
     color: "#FCA5A5",
-    fontWeight: "700",
+    fontSize: 13,
+    lineHeight: 18,
     textAlign: "center",
   },
 
   retryButton: {
     alignSelf: "center",
-    marginTop: 12,
+    marginTop: 14,
     paddingHorizontal: 18,
-    paddingVertical: 11,
-    borderRadius: 12,
+    paddingVertical: 10,
+    borderRadius: 999,
     backgroundColor: "#2563EB",
   },
 
   retryButtonText: {
     color: "#FFFFFF",
-    fontWeight: "700",
+    fontSize: 14,
+    fontWeight: "800",
   },
 });

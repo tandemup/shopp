@@ -32,13 +32,14 @@ export const ROUTES = {
   // Scanner stack
   SCANNER_HOME: "Scanner Home",
 
-  // Scanner básico:
-  // Se usa desde ItemDetailScreen.js.
-  // Lee un código de barras y lo devuelve como route.params.scannedBarcode.
+  // Scanner básico heredado:
+  // Se conserva como pantalla auxiliar.
   PRODUCT_BARCODE_SCANNER: "ProductBarcodeScanner",
 
   // Scanner principal:
   // Se usa desde el tab Scanner para escanear un producto nuevo.
+  // ItemDetailScreen también abre NEW_PRODUCT_SCANNER2 con
+  // captureMode: "ean13-input" para activar el lector rápido.
   NEW_PRODUCT_SCANNER: "NewProductScanner",
   NEW_PRODUCT_SCANNER1: "NewProductScanner1",
   NEW_PRODUCT_SCANNER2: "NewProductScanner2",

@@ -27,7 +27,7 @@ import {
 } from "@react-navigation/native";
 import { ROUTES } from "../../navigation/ROUTES";
 import { buildHeaderConfig } from "../../utils/layout/headerStyles";
-import { getBarcodeSettings } from "../../src/storage/settingsStorage";
+import { getBarcodeSettings } from "../../src/storage/barcodeSettingsStorage";
 
 const ZOOM_VALUES = [0, 0.15, 0.3, 0.45];
 const ZOOM_LABELS = ["1x", "1.2x", "1.5x", "2x"];
@@ -114,7 +114,7 @@ export default function ProductBarcodeScannerScreen() {
 
           if (!isActive) return;
 
-          setBarcodeTypes(normalizeBarcodeTypes(settings?.barcodeTypes));
+          setBarcodeTypes(normalizeBarcodeTypes(settings?.formats));
         } catch (error) {
           if (!isActive) return;
 

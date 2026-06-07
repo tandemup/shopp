@@ -839,7 +839,7 @@ export default function ItemDetailScreen() {
 
   function handleOpenScanner() {
     navigation.navigate(ROUTES.SCANNER_TAB, {
-      screen: ROUTES.PRODUCT_BARCODE_SCANNER,
+      screen: ROUTES.NEW_PRODUCT_SCANNER2,
 
       params: {
         listId,
