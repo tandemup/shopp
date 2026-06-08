@@ -5,6 +5,25 @@ import { Ionicons } from "@expo/vector-icons";
 import { formatCurrency } from "../../../utils/store/formatters";
 import { formatUnit } from "../../../utils/pricing/unitFormat";
 
+function CategoriaImg({ categoryImage }) {
+  {
+    categoryImage ? (
+      <View style={styles.categoryImageBox}>
+        <Image
+          source={categoryImage}
+          style={styles.categoryImage}
+          resizeMode="contain"
+          accessibilityLabel={displayCategoryName ?? "Categoría"}
+        />
+      </View>
+    ) : (
+      <View style={styles.categoryPlaceholder}>
+        <Ionicons name="cube-outline" size={24} color="#9ca3af" />
+      </View>
+    );
+  }
+}
+
 export default function ItemRow({
   item,
   categoryImage,
@@ -30,21 +49,7 @@ export default function ItemRow({
           color={item.checked ? "#2e7d32" : "#999"}
         />
       </Pressable>
-
-      {categoryImage ? (
-        <View style={styles.categoryImageBox}>
-          <Image
-            source={categoryImage}
-            style={styles.categoryImage}
-            resizeMode="contain"
-            accessibilityLabel={displayCategoryName ?? "Categoría"}
-          />
-        </View>
-      ) : (
-        <View style={styles.categoryPlaceholder}>
-          <Ionicons name="cube-outline" size={24} color="#9ca3af" />
-        </View>
-      )}
+      {/*<CategoriaImg /> */}
 
       <View style={styles.content}>
         <View style={styles.nameRow}>
@@ -189,7 +194,7 @@ const styles = StyleSheet.create({
   },
 
   name: {
-    fontSize: 15,
+    fontSize: 20,
     fontWeight: "700",
     color: "#222",
     marginRight: 6,

@@ -799,13 +799,13 @@ export default function ItemDetailScreen() {
           onPress: handleSave,
         },
         {
+          text: "Salir",
+          onPress: () => navigation.goBack(),
+        },
+        {
           text: "Eliminar",
           style: "destructive",
           onPress: handleDelete,
-        },
-        {
-          text: "Salir",
-          onPress: () => navigation.goBack(),
         },
         {
           text: "Cancelar",
