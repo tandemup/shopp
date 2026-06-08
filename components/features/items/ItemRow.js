@@ -1,55 +1,31 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable, Image } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { formatCurrency } from "../../../utils/store/formatters";
 import { formatUnit } from "../../../utils/pricing/unitFormat";
 
-function CategoriaImg({ categoryImage }) {
-  {
-    categoryImage ? (
-      <View style={styles.categoryImageBox}>
-        <Image
-          source={categoryImage}
-          style={styles.categoryImage}
-          resizeMode="contain"
-          accessibilityLabel={displayCategoryName ?? "Categoría"}
-        />
-      </View>
-    ) : (
-      <View style={styles.categoryPlaceholder}>
-        <Ionicons name="cube-outline" size={24} color="#9ca3af" />
-      </View>
-    );
-  }
-}
-
-export default function ItemRow({
-  item,
-  categoryImage,
-  categoryName,
-  onToggle,
-  onEdit,
-}) {
+export default function ItemRow({ item, onToggle, onEdit }) {
   const priceInfo = item.priceInfo || {};
+
   const subtotal = priceInfo.total ?? 0;
-  const hasPromo = priceInfo.promo && priceInfo.promo !== "none";
   const savings = priceInfo.savings ?? 0;
 
-  const displayCategoryName = categoryName ?? item.categoryName ?? null;
-  const displaySubcategoryName = item.subcategoryName ?? null;
-  const hasCategoryInfo = displayCategoryName || displaySubcategoryName;
+  const hasPromo = Boolean(priceInfo.promo) && priceInfo.promo !== "none";
+
+  const unit = item.unit ?? priceInfo.unit ?? "u";
+  const qty = priceInfo.qty ?? 1;
+  const unitPrice = priceInfo.unitPrice ?? 0;
 
   return (
     <View style={[styles.container, !item.checked && styles.containerInactive]}>
       <Pressable style={styles.checkbox} onPress={onToggle} hitSlop={10}>
         <Ionicons
           name={item.checked ? "checkbox-outline" : "square-outline"}
-          size={20}
+          size={21}
           color={item.checked ? "#2e7d32" : "#999"}
         />
       </Pressable>
-      {/*<CategoriaImg /> */}
 
       <View style={styles.content}>
         <View style={styles.nameRow}>
@@ -61,71 +37,38 @@ export default function ItemRow({
           </Text>
 
           {hasPromo ? (
-            <>
-              <View style={styles.promoBadge}>
-                <Text style={styles.promoText}>
-                  {priceInfo.promoLabel || "Oferta"}
-                </Text>
-              </View>
+            <View style={styles.promoBadge}>
+              <Text style={styles.promoText}>
+                {priceInfo.promoLabel || "Oferta"}
+              </Text>
+            </View>
+          ) : null}
 
-              {savings > 0 ? (
-                <Text style={styles.savingsInline}>
-                  {" "}
-                  −{formatCurrency(savings)}
-                </Text>
-              ) : null}
-            </>
+          {hasPromo && savings > 0 ? (
+            <Text style={styles.savingsInline} numberOfLines={1}>
+              −{formatCurrency(savings, priceInfo.currency)}
+            </Text>
           ) : null}
         </View>
-
-        {hasCategoryInfo ? (
-          <View style={styles.categoryInfoRow}>
-            {displayCategoryName ? (
-              <View style={styles.categoryPill}>
-                <Text
-                  style={[
-                    styles.categoryPillText,
-                    !item.checked && styles.textInactive,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {displayCategoryName}
-                </Text>
-              </View>
-            ) : null}
-
-            {displaySubcategoryName ? (
-              <View style={styles.subcategoryPill}>
-                <Text
-                  style={[
-                    styles.subcategoryPillText,
-                    !item.checked && styles.textInactive,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {displaySubcategoryName}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
 
         <Text
           style={[styles.meta, !item.checked && styles.textInactive]}
           numberOfLines={1}
         >
-          {priceInfo.qty} {formatUnit(item.unit)} ×{" "}
-          {formatCurrency(priceInfo.unitPrice, priceInfo.currency)}/
-          {formatUnit(item.unit)}
+          {qty} {formatUnit(unit)} ×{" "}
+          {formatCurrency(unitPrice, priceInfo.currency)}/{formatUnit(unit)}
         </Text>
       </View>
 
-      <Text style={[styles.subtotal, !item.checked && styles.subtotalInactive]}>
+      <Text
+        style={[styles.subtotal, !item.checked && styles.subtotalInactive]}
+        numberOfLines={1}
+      >
         {formatCurrency(subtotal, priceInfo.currency)}
       </Text>
 
       <Pressable style={styles.chevron} onPress={onEdit} hitSlop={10}>
-        <Ionicons name="chevron-forward" size={18} color="#999" />
+        <Ionicons name="chevron-forward" size={19} color="#999" />
       </Pressable>
     </View>
   );
@@ -135,12 +78,17 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#ffffff",
-    paddingVertical: 8,
+
+    minHeight: 68,
+
+    marginBottom: 6,
+
     paddingHorizontal: 10,
+    paddingVertical: 8,
+
     borderRadius: 12,
-    marginBottom: 8,
-    minHeight: 88,
+
+    backgroundColor: "#ffffff",
   },
 
   containerInactive: {
@@ -151,137 +99,81 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
 
-  categoryImageBox: {
-    width: 72,
-    height: 72,
-    borderRadius: 8,
-    backgroundColor: "#f8fafc",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-    overflow: "hidden",
-  },
-
-  categoryImage: {
-    width: 68,
-    height: 68,
-  },
-
-  categoryPlaceholder: {
-    width: 72,
-    height: 72,
-    borderRadius: 8,
-    backgroundColor: "#f8fafc",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-
   content: {
     flex: 1,
-    marginRight: 8,
     minWidth: 0,
+    marginRight: 8,
   },
 
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "nowrap",
+    minWidth: 0,
   },
 
   name: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#222",
+    flexShrink: 1,
     marginRight: 6,
-    maxWidth: "68%",
+
+    fontSize: 18,
+    fontWeight: "700",
+
+    color: "#222",
   },
 
   nameInactive: {
     color: "#999",
   },
 
-  categoryInfoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+  promoBadge: {
+    flexShrink: 0,
+
+    marginRight: 5,
+
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+
+    borderRadius: 6,
+
+    backgroundColor: "#ffeb3b",
+  },
+
+  promoText: {
+    fontSize: 11,
+    fontWeight: "800",
+
+    color: "#000",
+  },
+
+  savingsInline: {
+    flexShrink: 0,
+
+    fontSize: 11,
+    fontWeight: "700",
+
+    color: "#15803d",
+  },
+
+  meta: {
     marginTop: 4,
-    maxWidth: "100%",
-  },
 
-  categoryPill: {
-    flexShrink: 1,
-    maxWidth: "52%",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 999,
-    backgroundColor: "#eff6ff",
-    borderWidth: 1,
-    borderColor: "#bfdbfe",
-  },
+    fontSize: 12,
 
-  subcategoryPill: {
-    flexShrink: 1,
-    maxWidth: "48%",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 999,
-    backgroundColor: "#f8fafc",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-
-  categoryPillText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#2563eb",
-  },
-
-  subcategoryPillText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#475569",
+    color: "#555",
   },
 
   textInactive: {
     color: "#999",
   },
 
-  promoBadge: {
-    backgroundColor: "#ffeb3b",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginRight: 4,
-  },
-
-  promoText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#000",
-  },
-
-  savingsInline: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#15803d",
-  },
-
-  meta: {
-    marginTop: 4,
-    fontSize: 12,
-    color: "#555",
-  },
-
   subtotal: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#2e7d32",
+    marginLeft: 6,
     marginRight: 4,
+
+    fontSize: 16,
+    fontWeight: "800",
+
+    color: "#2e7d32",
   },
 
   subtotalInactive: {
@@ -289,6 +181,6 @@ const styles = StyleSheet.create({
   },
 
   chevron: {
-    paddingLeft: 2,
+    paddingLeft: 3,
   },
 });

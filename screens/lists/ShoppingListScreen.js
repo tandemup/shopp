@@ -13,7 +13,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
-import { PRODUCT_CATEGORIES } from "../../constants/categories";
 import { findBestCategoryMatch } from "../../utils/categoryMatcher";
 
 import StoreSelector from "../../components/features/stores/StoreSelector";
@@ -46,13 +45,6 @@ export default function ShoppingListScreen() {
     () => activeLists.find((l) => l.id === listId),
     [activeLists, listId],
   );
-
-  const categoriesById = useMemo(() => {
-    return PRODUCT_CATEGORIES.reduce((acc, category) => {
-      acc[category.id] = category;
-      return acc;
-    }, {});
-  }, []);
 
   useEffect(() => {
     navigation.setOptions(headerConfig.navigationOptions);
@@ -153,14 +145,9 @@ export default function ShoppingListScreen() {
   };
 
   const renderItem = ({ item }) => {
-    const category = item.categoryId ? categoriesById[item.categoryId] : null;
-
     return (
       <ItemRow
         item={item}
-        categoryImage={category?.image ?? null}
-        categoryName={category?.name ?? item.categoryName ?? null}
-        subcategoryName={item.subcategoryName ?? null}
         onToggle={() => handleToggleItem(item.id)}
         onEdit={() =>
           navigation.navigate(ROUTES.ITEM_DETAIL, {

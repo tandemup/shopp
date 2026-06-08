@@ -1,6 +1,4 @@
 import React, { useCallback, useLayoutEffect, useMemo, useState } from "react";
-import { UNITS } from "../../constants/unitTypes";
-import { ROUTES } from "../../navigation/ROUTES";
 import {
   View,
   Text,
@@ -21,16 +19,16 @@ import {
   useRoute,
 } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 
+import { UNITS } from "../../constants/unitTypes";
+import { ROUTES } from "../../navigation/ROUTES";
+import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 import { getSearchSettings } from "../../src/storage/settingsStorage";
 import { DEFAULT_CURRENCY } from "../../constants/currency";
 import { SEARCH_ENGINES } from "../../constants/searchEngines";
 import { PRODUCT_CATEGORIES } from "../../constants/categories";
 import { useLists } from "../../context/ListsContext";
 import BarcodeInput from "../../components/ui/BarcodeInput";
-
-import CategoryImageSelector from "../../components/features/search/CategoryImageSelector";
 
 import {
   PricingEngine,
@@ -66,9 +64,9 @@ const getSubcategoryName = (subcategory) => {
 };
 
 const getSubcategoryId = (subcategory) => {
-  const name = getSubcategoryName(subcategory);
-
   if (!subcategory) return null;
+
+  const name = getSubcategoryName(subcategory);
 
   return typeof subcategory === "string"
     ? makeCategoryTokenId(subcategory)
@@ -77,9 +75,10 @@ const getSubcategoryId = (subcategory) => {
 
 function ProductHero({ name, barcode }) {
   const title = name?.trim() || "Producto sin nombre";
+
   const subtitle = barcode?.trim()
     ? `EAN: ${barcode.trim()}`
-    : "Edita cantidad, precio, unidad y ofertas";
+    : "Edita los datos principales del producto";
 
   return (
     <View style={styles.productHero}>
@@ -105,10 +104,63 @@ function SectionTitle({ icon, title, subtitle }) {
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleRow}>
         {icon ? <Ionicons name={icon} size={18} color="#2563eb" /> : null}
+
         <Text style={styles.sectionTitle}>{title}</Text>
       </View>
 
       {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
+    </View>
+  );
+}
+
+function EditViewSelector({ activeView, onChange }) {
+  return (
+    <View style={styles.editViewSelector}>
+      <Pressable
+        style={[
+          styles.editViewButton,
+          activeView === "basic" && styles.editViewButtonActive,
+        ]}
+        onPress={() => onChange("basic")}
+      >
+        <Ionicons
+          name="create-outline"
+          size={18}
+          color={activeView === "basic" ? "#ffffff" : "#475569"}
+        />
+
+        <Text
+          style={[
+            styles.editViewButtonText,
+            activeView === "basic" && styles.editViewButtonTextActive,
+          ]}
+        >
+          Básico
+        </Text>
+      </Pressable>
+
+      <Pressable
+        style={[
+          styles.editViewButton,
+          activeView === "advanced" && styles.editViewButtonActive,
+        ]}
+        onPress={() => onChange("advanced")}
+      >
+        <Ionicons
+          name="options-outline"
+          size={18}
+          color={activeView === "advanced" ? "#ffffff" : "#475569"}
+        />
+
+        <Text
+          style={[
+            styles.editViewButtonText,
+            activeView === "advanced" && styles.editViewButtonTextActive,
+          ]}
+        >
+          Más opciones
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -155,6 +207,86 @@ function CardNombreBarcode({
   );
 }
 
+function CategoryBadgeSelector({
+  categories,
+  selectedCategoryId,
+  selectedSubcategoryId,
+  onChange,
+  onSubcategoryChange,
+}) {
+  const selectedCategory = categories.find(
+    (category) => category.id === selectedCategoryId,
+  );
+
+  return (
+    <View>
+      <Text style={styles.badgeGroupTitle}>Categoría</Text>
+
+      <View style={styles.badgeGrid}>
+        {categories.map((category) => {
+          const selected = category.id === selectedCategoryId;
+
+          return (
+            <Pressable
+              key={category.id}
+              onPress={() => onChange(category)}
+              style={({ pressed }) => [
+                styles.categoryBadge,
+                selected && styles.categoryBadgeSelected,
+                pressed && styles.badgePressed,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.categoryBadgeText,
+                  selected && styles.categoryBadgeTextSelected,
+                ]}
+              >
+                {category.name}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {selectedCategory ? (
+        <View style={styles.subcategorySection}>
+          <Text style={styles.badgeGroupTitle}>Subcategoría</Text>
+
+          <View style={styles.badgeGrid}>
+            {(selectedCategory.subcategories ?? []).map((subcategory) => {
+              const subcategoryId = getSubcategoryId(subcategory);
+              const subcategoryName = getSubcategoryName(subcategory);
+              const selected = subcategoryId === selectedSubcategoryId;
+
+              return (
+                <Pressable
+                  key={subcategoryId}
+                  onPress={() => onSubcategoryChange(subcategory)}
+                  style={({ pressed }) => [
+                    styles.subcategoryBadge,
+                    selected && styles.subcategoryBadgeSelected,
+                    pressed && styles.badgePressed,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.subcategoryBadgeText,
+                      selected && styles.subcategoryBadgeTextSelected,
+                    ]}
+                  >
+                    {subcategoryName}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function Categorias({
   selectedCategoryId,
   selectedSubcategoryId,
@@ -168,48 +300,36 @@ function Categorias({
   );
 
   const selectedSubcategory = selectedCategory?.subcategories?.find(
-    (subcategory) => {
-      return getSubcategoryId(subcategory) === selectedSubcategoryId;
-    },
+    (subcategory) => getSubcategoryId(subcategory) === selectedSubcategoryId,
   );
 
   const selectedSubcategoryName = getSubcategoryName(selectedSubcategory);
-  const hasCategory = Boolean(selectedCategory);
-  const hasSubcategory = Boolean(selectedSubcategoryName);
 
   return (
-    <View
-      style={[
-        styles.categoryCompactCard,
-        expanded && styles.categoryCompactCardExpanded,
-      ]}
-    >
+    <View style={styles.card}>
       <Pressable
-        style={[
-          styles.categoryCompactHeader,
-          expanded && styles.categoryCompactHeaderExpanded,
-        ]}
-        onPress={() => onExpandedChange?.(!expanded)}
+        style={styles.compactHeader}
+        onPress={() => onExpandedChange(!expanded)}
       >
-        <View style={styles.categoryCompactLeft}>
-          <View style={styles.categoryIconBox}>
-            <Ionicons name="albums-outline" size={18} color="#2563EB" />
+        <View style={styles.compactHeaderLeft}>
+          <View style={styles.compactIconBox}>
+            <Ionicons name="albums-outline" size={18} color="#2563eb" />
           </View>
 
-          <View style={styles.categoryTextBlock}>
-            <Text style={styles.categoryCompactTitle}>Categoría</Text>
+          <View style={styles.compactTextBlock}>
+            <Text style={styles.compactTitle}>Clasificación</Text>
 
-            <View style={styles.categoryChipsRow}>
+            <View style={styles.compactChipsRow}>
               <View
                 style={[
-                  styles.categoryChip,
-                  hasCategory && styles.categoryChipActive,
+                  styles.compactCategoryChip,
+                  selectedCategory && styles.compactCategoryChipActive,
                 ]}
               >
                 <Text
                   style={[
-                    styles.categoryChipText,
-                    hasCategory && styles.categoryChipTextActive,
+                    styles.compactCategoryChipText,
+                    selectedCategory && styles.compactCategoryChipTextActive,
                   ]}
                   numberOfLines={1}
                 >
@@ -217,9 +337,12 @@ function Categorias({
                 </Text>
               </View>
 
-              {hasSubcategory ? (
-                <View style={styles.subcategoryChip}>
-                  <Text style={styles.subcategoryChipText} numberOfLines={1}>
+              {selectedSubcategoryName ? (
+                <View style={styles.compactSubcategoryChip}>
+                  <Text
+                    style={styles.compactSubcategoryChipText}
+                    numberOfLines={1}
+                  >
                     {selectedSubcategoryName}
                   </Text>
                 </View>
@@ -231,104 +354,41 @@ function Categorias({
         <Ionicons
           name={expanded ? "chevron-up" : "chevron-down"}
           size={20}
-          color="#64748B"
+          color="#64748b"
         />
       </Pressable>
 
       {expanded ? (
-        <View style={styles.categoryCompactBody}>
-          <CategoryImageSelector
+        <View style={styles.compactBody}>
+          <CategoryBadgeSelector
             categories={PRODUCT_CATEGORIES}
             selectedCategoryId={selectedCategoryId}
             selectedSubcategoryId={selectedSubcategoryId}
-            showTitle={false}
-            subcategoryTitle="Subcategoría"
-            onChange={(category) => {
-              onChangeCategory(category);
-            }}
-            onSubcategoryChange={(subcategory) => {
-              onChangeSubcategory(subcategory);
-            }}
+            onChange={onChangeCategory}
+            onSubcategoryChange={onChangeSubcategory}
           />
         </View>
       ) : null}
     </View>
   );
 }
-function Unidades({
+
+function CantidadPrecioCard({
   qty,
   price,
   unit,
   currencySymbol,
   onChangeQty,
   onChangePrice,
-  onChangeUnit,
   showError,
 }) {
-  const [showUnits, setShowUnits] = useState(false);
-
-  const unitLabel =
-    {
-      u: "Unidad",
-      kg: "Kilogramos",
-      g: "Gramos",
-      l: "Litros",
-    }[unit] ?? "Unidad";
-
-  const handleToggleUnits = () => {
-    setShowUnits((prev) => !prev);
-  };
-
-  const handleSelectUnit = (nextUnit) => {
-    onChangeUnit(nextUnit);
-    setShowUnits(false);
-  };
-
   return (
     <View style={styles.card}>
       <SectionTitle
         icon="calculator-outline"
         title="Precio y cantidad"
-        subtitle="Define cómo se calcula el importe del producto"
+        subtitle="Datos principales para calcular el importe"
       />
-
-      <Pressable style={styles.dropdownHeader} onPress={handleToggleUnits}>
-        <View style={styles.dropdownHeaderLeft}>
-          <Text style={styles.dropdownLabel}>Unidad</Text>
-        </View>
-
-        <View style={styles.dropdownHeaderRight}>
-          <Text style={styles.dropdownValue} numberOfLines={1}>
-            {unitLabel}
-          </Text>
-
-          <Ionicons
-            name={showUnits ? "chevron-up" : "chevron-down"}
-            size={20}
-            color="#64748b"
-          />
-        </View>
-      </Pressable>
-
-      {showUnits ? (
-        <View style={styles.dropdownBody}>
-          <View style={styles.chipRow}>
-            {UNITS.map((u) => (
-              <Pressable
-                key={u}
-                style={[styles.unitBtn, unit === u && styles.unitBtnActive]}
-                onPress={() => handleSelectUnit(u)}
-              >
-                <Text
-                  style={[styles.unitText, unit === u && styles.unitTextActive]}
-                >
-                  {formatUnit(u)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      ) : null}
 
       <View style={styles.priceGrid}>
         <View style={styles.inlineField}>
@@ -356,8 +416,8 @@ function Unidades({
 
           <TextInput
             inputMode="decimal"
-            style={styles.inputNum}
             keyboardType="decimal-pad"
+            style={styles.inputNum}
             value={price}
             onChangeText={onChangePrice}
           />
@@ -367,12 +427,81 @@ function Unidades({
   );
 }
 
+function UnidadCard({ unit, onChangeUnit }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const unitLabel =
+    {
+      u: "Unidad",
+      kg: "Kilogramos",
+      g: "Gramos",
+      l: "Litros",
+    }[unit] ?? "Unidad";
+
+  const handleSelectUnit = (nextUnit) => {
+    onChangeUnit(nextUnit);
+    setExpanded(false);
+  };
+
+  return (
+    <View style={styles.card}>
+      <SectionTitle
+        icon="scale-outline"
+        title="Unidad de medida"
+        subtitle="Cambia la unidad utilizada para calcular el precio"
+      />
+
+      <Pressable
+        style={styles.dropdownHeader}
+        onPress={() => setExpanded((previous) => !previous)}
+      >
+        <Text style={styles.dropdownLabel}>Unidad</Text>
+
+        <View style={styles.dropdownRight}>
+          <Text style={styles.dropdownValue}>{unitLabel}</Text>
+
+          <Ionicons
+            name={expanded ? "chevron-up" : "chevron-down"}
+            size={20}
+            color="#64748b"
+          />
+        </View>
+      </Pressable>
+
+      {expanded ? (
+        <View style={styles.dropdownBody}>
+          <View style={styles.chipRow}>
+            {UNITS.map((currentUnit) => (
+              <Pressable
+                key={currentUnit}
+                style={[
+                  styles.unitBtn,
+                  unit === currentUnit && styles.unitBtnActive,
+                ]}
+                onPress={() => handleSelectUnit(currentUnit)}
+              >
+                <Text
+                  style={[
+                    styles.unitText,
+                    unit === currentUnit && styles.unitTextActive,
+                  ]}
+                >
+                  {formatUnit(currentUnit)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
-  const [showPromos, setShowPromos] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const qty = Number(String(quantity).replace(",", ".")) || 0;
   const price = Number(String(unitPrice).replace(",", ".")) || 0;
-
   const selectedPromoSafe = selectedPromo ?? "none";
   const selectedPromoNormalized = normalizePromotion(selectedPromoSafe);
 
@@ -388,15 +517,9 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
     selectedOption?.label ??
     (selectedPromoSafe === "none" ? "Sin oferta" : String(selectedPromoSafe));
 
-  const hint = selectedOption?.hint;
-
-  const handleTogglePromos = () => {
-    setShowPromos((prev) => !prev);
-  };
-
   const handleSelectPromo = (promoId) => {
     onSelect(promoId);
-    setShowPromos(false);
+    setExpanded(false);
   };
 
   return (
@@ -407,12 +530,13 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
         subtitle="Aplica promociones compatibles con la unidad elegida"
       />
 
-      <Pressable style={styles.dropdownHeader} onPress={handleTogglePromos}>
-        <View style={styles.dropdownHeaderLeft}>
-          <Text style={styles.dropdownLabel}>Promoción</Text>
-        </View>
+      <Pressable
+        style={styles.dropdownHeader}
+        onPress={() => setExpanded((previous) => !previous)}
+      >
+        <Text style={styles.dropdownLabel}>Promoción</Text>
 
-        <View style={styles.dropdownHeaderRight}>
+        <View style={styles.dropdownRight}>
           <Text
             style={[
               styles.dropdownValue,
@@ -424,27 +548,19 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
           </Text>
 
           <Ionicons
-            name={showPromos ? "chevron-up" : "chevron-down"}
+            name={expanded ? "chevron-up" : "chevron-down"}
             size={20}
             color="#64748b"
           />
         </View>
       </Pressable>
 
-      {showPromos ? (
+      {expanded ? (
         <View style={styles.dropdownBody}>
-          {selectedPromoSafe !== "none" && hint ? (
-            <View style={styles.promoHintBox}>
-              <Ionicons name="bulb-outline" size={16} color="#92400e" />
-              <Text style={styles.promoHintText}>{hint}</Text>
-            </View>
-          ) : null}
-
           <View style={styles.chipRow}>
             {Object.values(PROMOTIONS)
               .filter((option) => {
-                const id = option.id;
-                const isMulti = id === "2x1" || id === "3x2";
+                const isMulti = option.id === "2x1" || option.id === "3x2";
 
                 return !(isMulti && unit !== "u");
               })
@@ -457,11 +573,10 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
                 return (
                   <Pressable
                     key={option.id}
-                    onPress={() => {
-                      if (disabled) return;
-                      handleSelectPromo(option.id);
-                    }}
                     disabled={disabled}
+                    onPress={() => {
+                      if (!disabled) handleSelectPromo(option.id);
+                    }}
                     style={({ pressed }) => [
                       styles.promoChip,
                       selected && styles.promoChipSelected,
@@ -488,58 +603,13 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
       {!promoValidation.valid ? (
         <View style={styles.offerWarningBox}>
           <Ionicons name="warning-outline" size={16} color="#9a3412" />
+
           <Text style={styles.offerWarning}>
             {promoValidation.message ?? "Oferta no válida"}
           </Text>
         </View>
       ) : null}
     </View>
-  );
-}
-
-function Contenedor({ pricing, onChange, currencySymbol, isUnitInvalid }) {
-  return (
-    <>
-      <Unidades
-        qty={pricing.qty}
-        price={pricing.unitPrice}
-        unit={pricing.unit}
-        currencySymbol={currencySymbol}
-        onChangeQty={(v) => {
-          if (pricing.unit === "u") {
-            const cleaned = v.replace(/[^0-9]/g, "");
-            onChange({ qty: cleaned });
-          } else {
-            onChange({ qty: v });
-          }
-        }}
-        onChangePrice={(v) => onChange({ unitPrice: v })}
-        onChangeUnit={(v) => {
-          if (v !== "u" && pricing.promo !== "none") {
-            const promo = normalizePromotion(pricing.promo);
-
-            if (promo.type === "multi") {
-              onChange({
-                unit: v,
-                promo: "none",
-              });
-              return;
-            }
-          }
-
-          onChange({ unit: v });
-        }}
-        showError={isUnitInvalid}
-      />
-
-      <Ofertas
-        quantity={pricing.qty}
-        unitPrice={pricing.unitPrice}
-        selectedPromo={pricing.promo}
-        onSelect={(v) => onChange({ promo: v })}
-        unit={pricing.unit}
-      />
-    </>
   );
 }
 
@@ -610,22 +680,23 @@ export default function ItemDetailScreen() {
   );
 
   const { listId, itemId } = route.params || {};
-
   const { lists, updateItem, deleteItem } = useLists();
-  const list = lists.find((l) => l.id === listId);
-  const item = list?.items.find((i) => i.id === itemId);
 
+  const list = lists.find((currentList) => currentList.id === listId);
+  const item = list?.items.find((currentItem) => currentItem.id === itemId);
+
+  const [activeView, setActiveView] = useState("basic");
+  const [categoryExpanded, setCategoryExpanded] = useState(false);
   const [name, setName] = useState(item?.name ?? "");
   const [barcode, setBarcode] = useState(item?.barcode ?? "");
 
   const [selectedCategoryId, setSelectedCategoryId] = useState(
     item?.categoryId ?? null,
   );
+
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState(
     item?.subcategoryId ?? null,
   );
-
-  const [categoryExpanded, setCategoryExpanded] = useState(false);
 
   const [pricing, setPricing] = useState({
     qty: String(item?.priceInfo?.qty ?? "1"),
@@ -651,10 +722,6 @@ export default function ItemDetailScreen() {
       });
     }, [navigation, route.params?.scannedBarcode]),
   );
-
-  const updatePricing = (patch) => {
-    setPricing((prev) => ({ ...prev, ...patch }));
-  };
 
   const rawListCurrency = list?.currency ?? DEFAULT_CURRENCY;
 
@@ -692,13 +759,63 @@ export default function ItemDetailScreen() {
     }
 
     return (
-      selectedCategory.subcategories.find((subcategory) => {
-        return getSubcategoryId(subcategory) === selectedSubcategoryId;
-      }) ?? null
+      selectedCategory.subcategories.find(
+        (subcategory) =>
+          getSubcategoryId(subcategory) === selectedSubcategoryId,
+      ) ?? null
     );
   }, [selectedCategory, selectedSubcategoryId]);
 
   const selectedSubcategoryName = getSubcategoryName(selectedSubcategory);
+
+  const updatePricing = (patch) => {
+    setPricing((previousPricing) => ({
+      ...previousPricing,
+      ...patch,
+    }));
+  };
+
+  const handleSelectView = (nextView) => {
+    if (nextView === "basic") {
+      setCategoryExpanded(false);
+    }
+
+    setActiveView(nextView);
+  };
+
+  const handleChangeQty = (value) => {
+    if (pricing.unit === "u") {
+      updatePricing({
+        qty: value.replace(/[^0-9]/g, ""),
+      });
+
+      return;
+    }
+
+    updatePricing({
+      qty: value,
+    });
+  };
+
+  const handleChangeUnit = (nextUnit) => {
+    if (nextUnit !== "u" && pricing.promo !== "none") {
+      const promo = normalizePromotion(pricing.promo);
+
+      if (promo.type === "multi") {
+        updatePricing({
+          unit: nextUnit,
+          promo: "none",
+        });
+
+        return;
+      }
+    }
+
+    updatePricing({
+      unit: nextUnit,
+    });
+  };
+
   const handleChangeCategory = (category) => {
     if (!category) return;
 
@@ -728,14 +845,15 @@ export default function ItemDetailScreen() {
       subcategoryName,
     });
 
-    // Cierra automáticamente el selector después de elegir subcategoría.
     setCategoryExpanded(false);
   };
+
   const isUnitInvalid = pricing.unit === "u" && hasDecimals(pricing.qty);
 
   const handleSave = () => {
     if (!name.trim()) {
       safeAlert("Nombre vacío", "El producto debe tener un nombre");
+
       return;
     }
 
@@ -744,6 +862,7 @@ export default function ItemDetailScreen() {
         "Cantidad inválida",
         "Para unidades (u) la cantidad debe ser un número entero",
       );
+
       return;
     }
 
@@ -754,6 +873,7 @@ export default function ItemDetailScreen() {
 
     if (!promoValidation.valid) {
       safeAlert("Oferta inválida", promoValidation.message);
+
       return;
     }
 
@@ -776,12 +896,16 @@ export default function ItemDetailScreen() {
       "Eliminar producto",
       `¿Seguro que quieres eliminar "${item?.name}"?`,
       [
-        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
         {
           text: "Eliminar",
           style: "destructive",
           onPress: () => {
             deleteItem(listId, itemId);
+
             navigation.goBack();
           },
         },
@@ -823,6 +947,7 @@ export default function ItemDetailScreen() {
         "Código vacío",
         "Introduce o escanea un código de barras primero",
       );
+
       return;
     }
 
@@ -832,7 +957,7 @@ export default function ItemDetailScreen() {
       const engine = SEARCH_ENGINES[engineKey] || SEARCH_ENGINES.google;
 
       Linking.openURL(engine.buildUrl(code));
-    } catch (e) {
+    } catch (error) {
       safeAlert("Error", "No se pudo abrir el buscador");
     }
   };
@@ -844,26 +969,20 @@ export default function ItemDetailScreen() {
       params: {
         listId,
         itemId,
-
         returnToTab: ROUTES.SHOPPING_TAB,
-
-        /*
-         * Escáner ultraligero:
-         * solo devuelve el número EAN-13.
-         */
         captureMode: "ean13-input",
-
         barcodeTypes: ["ean13"],
-
         showControls: false,
       },
     });
   }
 
   function hasDecimals(value) {
-    const n = Number(String(value).replace(",", "."));
-    if (Number.isNaN(n)) return false;
-    return !Number.isInteger(n);
+    const number = Number(String(value).replace(",", "."));
+
+    if (Number.isNaN(number)) return false;
+
+    return !Number.isInteger(number);
   }
 
   if (!item) {
@@ -892,17 +1011,19 @@ export default function ItemDetailScreen() {
         >
           <ScrollView
             style={styles.scroll}
-            contentContainerStyle={[
-              styles.content,
-              categoryExpanded && styles.contentCategoryExpanded,
-            ]}
+            contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={
               Platform.OS === "ios" ? "interactive" : "on-drag"
             }
             showsVerticalScrollIndicator={false}
           >
-            {!categoryExpanded ? (
+            <EditViewSelector
+              activeView={activeView}
+              onChange={handleSelectView}
+            />
+
+            {activeView === "basic" ? (
               <>
                 <ProductHero name={name} barcode={barcode} />
 
@@ -914,23 +1035,19 @@ export default function ItemDetailScreen() {
                   onScanner={handleOpenScanner}
                   onSearch={handleSearch}
                 />
-              </>
-            ) : null}
-            <Categorias
-              selectedCategoryId={selectedCategoryId}
-              selectedSubcategoryId={selectedSubcategoryId}
-              expanded={categoryExpanded}
-              onExpandedChange={setCategoryExpanded}
-              onChangeCategory={handleChangeCategory}
-              onChangeSubcategory={handleChangeSubcategory}
-            />
-            {!categoryExpanded ? (
-              <>
-                <Contenedor
-                  pricing={pricing}
-                  onChange={updatePricing}
+
+                <CantidadPrecioCard
+                  qty={pricing.qty}
+                  price={pricing.unitPrice}
+                  unit={pricing.unit}
                   currencySymbol={listCurrencySymbol}
-                  isUnitInvalid={isUnitInvalid}
+                  onChangeQty={handleChangeQty}
+                  onChangePrice={(value) =>
+                    updatePricing({
+                      unitPrice: value,
+                    })
+                  }
+                  showError={isUnitInvalid}
                 />
 
                 <Summary
@@ -939,26 +1056,53 @@ export default function ItemDetailScreen() {
                   total={priceInfo.total}
                 />
               </>
-            ) : null}
+            ) : (
+              <>
+                <Categorias
+                  selectedCategoryId={selectedCategoryId}
+                  selectedSubcategoryId={selectedSubcategoryId}
+                  expanded={categoryExpanded}
+                  onExpandedChange={setCategoryExpanded}
+                  onChangeCategory={handleChangeCategory}
+                  onChangeSubcategory={handleChangeSubcategory}
+                />
+
+                <UnidadCard
+                  unit={pricing.unit}
+                  onChangeUnit={handleChangeUnit}
+                />
+
+                <Ofertas
+                  quantity={pricing.qty}
+                  unitPrice={pricing.unitPrice}
+                  selectedPromo={pricing.promo}
+                  onSelect={(value) =>
+                    updatePricing({
+                      promo: value,
+                    })
+                  }
+                  unit={pricing.unit}
+                />
+              </>
+            )}
           </ScrollView>
         </KeyboardAvoidingView>
-        {!categoryExpanded ? (
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={styles.optionsButton}
-              onPress={handleOpenActions}
-              activeOpacity={0.75}
-            >
-              <Ionicons
-                name="ellipsis-horizontal-circle-outline"
-                size={23}
-                color="#2563EB"
-              />
 
-              <Text style={styles.optionsButtonText}>Opciones</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
+        <View style={styles.actions}>
+          <TouchableOpacity
+            style={styles.optionsButton}
+            onPress={handleOpenActions}
+            activeOpacity={0.75}
+          >
+            <Ionicons
+              name="ellipsis-horizontal-circle-outline"
+              size={23}
+              color="#2563eb"
+            />
+
+            <Text style={styles.optionsButtonText}>Opciones</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -1000,15 +1144,50 @@ const styles = StyleSheet.create({
     gap: 16,
   },
 
+  editViewSelector: {
+    flexDirection: "row",
+    gap: 8,
+    padding: 5,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#ffffff",
+  },
+
+  editViewButton: {
+    flex: 1,
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    borderRadius: 12,
+    backgroundColor: "#f8fafc",
+  },
+
+  editViewButtonActive: {
+    backgroundColor: "#2563eb",
+  },
+
+  editViewButtonText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#475569",
+  },
+
+  editViewButtonTextActive: {
+    color: "#ffffff",
+  },
+
   productHero: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#eff6ff",
+    gap: 14,
+    padding: 16,
     borderWidth: 1,
     borderColor: "#bfdbfe",
     borderRadius: 20,
-    padding: 16,
-    gap: 14,
+    backgroundColor: "#eff6ff",
   },
 
   productIconCircle: {
@@ -1034,17 +1213,17 @@ const styles = StyleSheet.create({
   productHeroSubtitle: {
     marginTop: 3,
     fontSize: 13,
-    color: "#475569",
     fontWeight: "500",
+    color: "#475569",
   },
 
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
     padding: 16,
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    shadowColor: "#000",
+    borderRadius: 20,
+    backgroundColor: "#ffffff",
+    shadowColor: "#000000",
     shadowOpacity: 0.04,
     shadowRadius: 10,
     shadowOffset: {
@@ -1052,10 +1231,6 @@ const styles = StyleSheet.create({
       height: 4,
     },
     elevation: 1,
-  },
-
-  categoryCard: {
-    paddingBottom: 10,
   },
 
   sectionHeader: {
@@ -1077,29 +1252,42 @@ const styles = StyleSheet.create({
   sectionSubtitle: {
     marginTop: 4,
     fontSize: 13,
-    color: "#64748b",
     lineHeight: 18,
+    color: "#64748b",
+  },
+
+  label: {
+    marginBottom: 8,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#374151",
   },
 
   fieldGap: {
     height: 12,
   },
 
-  label: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#374151",
-    marginBottom: 8,
-  },
-
   input: {
-    backgroundColor: "#f9fafb",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderWidth: 1,
     borderColor: "#e5e7eb",
     borderRadius: 14,
+    backgroundColor: "#f9fafb",
+    fontSize: 16,
+    color: "#111827",
+  },
+
+  inputNum: {
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 16,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 14,
+    backgroundColor: "#f9fafb",
+    fontSize: 22,
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
     color: "#111827",
   },
 
@@ -1111,120 +1299,199 @@ const styles = StyleSheet.create({
   inputError: {
     marginTop: 6,
     fontSize: 13,
-    color: "#b91c1c",
     fontWeight: "600",
+    color: "#b91c1c",
   },
 
-  inputNum: {
-    backgroundColor: "#f9fafb",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 22,
-    color: "#111827",
-    fontWeight: "700",
-    fontVariant: ["tabular-nums"],
+  priceGrid: {
+    flexDirection: "row",
+    gap: 12,
   },
 
-  optionsButton: {
+  inlineField: {
     flex: 1,
-    height: 50,
-    borderRadius: 10,
+  },
 
-    backgroundColor: "#dcfce7",
-    borderWidth: 1,
-    borderColor: "#CBD5E1",
-
+  compactHeader: {
+    minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-
-    shadowColor: "#000000",
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    elevation: 1,
+    justifyContent: "space-between",
+    gap: 12,
   },
 
-  optionsButtonText: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#334155",
-  },
-
-  barcodeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    width: "100%",
-  },
-
-  barcodeInput: {
+  compactHeaderLeft: {
     flex: 1,
     minWidth: 0,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#F9FAFB",
-    paddingHorizontal: 18,
-    fontSize: 16,
-    color: "#111827",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
 
-  input1: {
-    backgroundColor: "#f9fafb",
+  compactIconBox: {
+    width: 42,
+    height: 42,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "#dbeafe",
     borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: "#111827",
-  },
-  squareButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-    backgroundColor: "#EFF6FF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#bfdbfe",
     backgroundColor: "#eff6ff",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  dropdownHeader: {
+  compactTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  compactTitle: {
+    marginBottom: 6,
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#374151",
+  },
+
+  compactChipsRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 8,
+    minWidth: 0,
+  },
+
+  compactCategoryChip: {
+    maxWidth: "58%",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderWidth: 1,
     borderColor: "#e5e7eb",
+    borderRadius: 999,
     backgroundColor: "#f9fafb",
-    borderRadius: 16,
+  },
+
+  compactCategoryChipActive: {
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+
+  compactCategoryChipText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+
+  compactCategoryChipTextActive: {
+    color: "#1d4ed8",
+  },
+
+  compactSubcategoryChip: {
+    flexShrink: 1,
+    maxWidth: "42%",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    borderRadius: 999,
+    backgroundColor: "#f0fdf4",
+  },
+
+  compactSubcategoryChipText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#15803d",
+  },
+
+  compactBody: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
+  },
+
+  badgeGroupTitle: {
+    marginBottom: 10,
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#374151",
+  },
+
+  badgeGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  categoryBadge: {
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    borderRadius: 999,
+    backgroundColor: "#eff6ff",
+  },
+
+  categoryBadgeSelected: {
+    borderColor: "#2563eb",
+    backgroundColor: "#2563eb",
+  },
+
+  categoryBadgeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#1d4ed8",
+  },
+
+  categoryBadgeTextSelected: {
+    color: "#ffffff",
+  },
+
+  subcategorySection: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
+  },
+
+  subcategoryBadge: {
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    borderRadius: 999,
+    backgroundColor: "#f0fdf4",
+  },
+
+  subcategoryBadgeSelected: {
+    borderColor: "#16a34a",
+    backgroundColor: "#16a34a",
+  },
+
+  subcategoryBadgeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#15803d",
+  },
+
+  subcategoryBadgeTextSelected: {
+    color: "#ffffff",
+  },
+
+  badgePressed: {
+    opacity: 0.75,
+  },
+
+  dropdownHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 14,
     paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 16,
+    backgroundColor: "#f9fafb",
   },
 
-  dropdownHeaderLeft: {
-    flexShrink: 0,
-  },
-
-  dropdownHeaderRight: {
+  dropdownRight: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
@@ -1240,11 +1507,11 @@ const styles = StyleSheet.create({
   },
 
   dropdownValue: {
+    flexShrink: 1,
+    textAlign: "right",
     fontSize: 14,
     fontWeight: "700",
     color: "#64748b",
-    flexShrink: 1,
-    textAlign: "right",
   },
 
   dropdownValueActive: {
@@ -1256,17 +1523,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 
-  categoryDropdownBody: {
-    marginTop: 12,
-    marginHorizontal: 0,
-    marginBottom: -4,
-    overflow: "hidden",
-  },
-
-  categorySelectorInner: {
-    marginHorizontal: -4,
-  },
-
   chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1274,17 +1530,17 @@ const styles = StyleSheet.create({
   },
 
   unitBtn: {
-    paddingVertical: 9,
     paddingHorizontal: 15,
-    borderRadius: 999,
+    paddingVertical: 9,
     borderWidth: 1,
     borderColor: "#e5e7eb",
+    borderRadius: 999,
     backgroundColor: "#f9fafb",
   },
 
   unitBtnActive: {
-    backgroundColor: "#111827",
     borderColor: "#111827",
+    backgroundColor: "#111827",
   },
 
   unitText: {
@@ -1294,56 +1550,26 @@ const styles = StyleSheet.create({
   },
 
   unitTextActive: {
-    color: "#fff",
-  },
-
-  priceGrid: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 14,
-  },
-
-  inlineField: {
-    flex: 1,
-  },
-
-  promoHintBox: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    marginBottom: 12,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: "#fffbeb",
-    borderWidth: 1,
-    borderColor: "#fde68a",
-  },
-
-  promoHintText: {
-    flex: 1,
-    fontSize: 13,
-    color: "#92400e",
-    lineHeight: 18,
-    fontWeight: "500",
+    color: "#ffffff",
   },
 
   promoChip: {
-    paddingVertical: 9,
     paddingHorizontal: 15,
-    borderRadius: 999,
+    paddingVertical: 9,
     borderWidth: 1,
     borderColor: "#e5e7eb",
+    borderRadius: 999,
     backgroundColor: "#f9fafb",
   },
 
   promoChipSelected: {
-    backgroundColor: "#111827",
     borderColor: "#111827",
+    backgroundColor: "#111827",
   },
 
   promoChipDisabled: {
-    backgroundColor: "#f8fafc",
     borderColor: "#e5e7eb",
+    backgroundColor: "#f8fafc",
   },
 
   promoChipText: {
@@ -1353,7 +1579,7 @@ const styles = StyleSheet.create({
   },
 
   promoChipTextSelected: {
-    color: "#fff",
+    color: "#ffffff",
   },
 
   promoChipTextDisabled: {
@@ -1370,27 +1596,27 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 12,
     padding: 12,
-    borderRadius: 14,
-    backgroundColor: "#fff7ed",
     borderWidth: 1,
     borderColor: "#fdba74",
+    borderRadius: 14,
+    backgroundColor: "#fff7ed",
   },
 
   offerWarning: {
     flex: 1,
-    color: "#9a3412",
     fontSize: 13,
     fontWeight: "600",
     lineHeight: 18,
+    color: "#9a3412",
   },
 
   summaryCard: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
     padding: 16,
     borderWidth: 1,
     borderColor: "#dcfce7",
-    shadowColor: "#000",
+    borderRadius: 20,
+    backgroundColor: "#ffffff",
+    shadowColor: "#000000",
     shadowOpacity: 0.04,
     shadowRadius: 10,
     shadowOffset: {
@@ -1402,8 +1628,8 @@ const styles = StyleSheet.create({
 
   summaryHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 14,
   },
 
@@ -1416,8 +1642,8 @@ const styles = StyleSheet.create({
   summarySubtitle: {
     marginTop: 3,
     fontSize: 13,
-    color: "#64748b",
     fontWeight: "500",
+    color: "#64748b",
   },
 
   summaryIconCircle: {
@@ -1435,14 +1661,14 @@ const styles = StyleSheet.create({
 
   summaryRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
   },
 
   summaryLabel: {
     fontSize: 14,
-    color: "#374151",
     fontWeight: "500",
+    color: "#374151",
   },
 
   summaryLabelBold: {
@@ -1453,9 +1679,9 @@ const styles = StyleSheet.create({
 
   summaryValue: {
     fontSize: 14,
-    color: "#111827",
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
+    color: "#111827",
   },
 
   summaryValueBold: {
@@ -1465,14 +1691,14 @@ const styles = StyleSheet.create({
   },
 
   summaryValueDiscount: {
-    color: "#16a34a",
     fontWeight: "800",
+    color: "#16a34a",
   },
 
   summaryDivider: {
     height: 1,
-    backgroundColor: "#e5e7eb",
     marginVertical: 4,
+    backgroundColor: "#e5e7eb",
   },
 
   actions: {
@@ -1486,237 +1712,30 @@ const styles = StyleSheet.create({
     backgroundColor: "#f3f4f6",
   },
 
-  actionsButton: {
+  optionsButton: {
     flex: 1,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: "#2563EB",
+    height: 50,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
-  },
-
-  actionsButtonText: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#FFFFFF",
-  },
-
-  saveBtn: {
-    flex: 1.4,
-    flexDirection: "row",
-    gap: 7,
-    backgroundColor: "#16a34a",
-    paddingVertical: 15,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  saveText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 15,
-  },
-
-  deleteBtn: {
-    flex: 1,
-    flexDirection: "row",
-    gap: 7,
-    backgroundColor: "#fff",
+    gap: 8,
     borderWidth: 1,
-    borderColor: "#fecaca",
-    paddingVertical: 15,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  deleteText: {
-    color: "#dc2626",
-    fontWeight: "800",
-    fontSize: 15,
-  },
-  footer: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 74,
-    flexDirection: "row",
-    gap: 20,
-    paddingHorizontal: 24,
-    paddingTop: 18,
-    paddingBottom: 20,
-    backgroundColor: "#F9FAFB",
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-  },
-
-  deleteButton: {
-    flex: 0.85,
-    height: 64,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#FCA5A5",
-    backgroundColor: "#FFFFFF",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-  },
-
-  deleteButtonText: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#DC2626",
-  },
-
-  saveButton: {
-    flex: 1.15,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: "#16A34A",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-  },
-
-  saveButtonText: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#FFFFFF",
-  },
-
-  categoryCompactCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    overflow: "hidden",
-
-    shadowColor: "#000",
+    borderColor: "#cbd5e1",
+    borderRadius: 10,
+    backgroundColor: "#dcfce7",
+    shadowColor: "#000000",
     shadowOpacity: 0.04,
-    shadowRadius: 10,
+    shadowRadius: 8,
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 3,
     },
     elevation: 1,
   },
 
-  categoryCompactHeader: {
-    minHeight: 72,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 12,
-  },
-
-  categoryCompactLeft: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-
-  categoryIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1,
-    borderColor: "#DBEAFE",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  categoryTextBlock: {
-    flex: 1,
-    minWidth: 0,
-  },
-
-  categoryCompactTitle: {
-    fontSize: 13,
+  optionsButtonText: {
+    fontSize: 16,
     fontWeight: "800",
-    color: "#374151",
-    marginBottom: 6,
-  },
-
-  categoryChipsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    minWidth: 0,
-  },
-
-  categoryChip: {
-    maxWidth: "58%",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: "#F9FAFB",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-
-  categoryChipActive: {
-    backgroundColor: "#EFF6FF",
-    borderColor: "#BFDBFE",
-  },
-
-  categoryChipText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#64748B",
-  },
-
-  categoryChipTextActive: {
-    color: "#1D4ED8",
-  },
-
-  subcategoryChip: {
-    flexShrink: 1,
-    maxWidth: "42%",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: "#F0FDF4",
-    borderWidth: 1,
-    borderColor: "#BBF7D0",
-  },
-
-  subcategoryChipText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#15803D",
-  },
-
-  categoryCompactBody: {
-    flex: 1,
-    minHeight: 0,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-    paddingHorizontal: 8,
-    paddingTop: 12,
-    paddingBottom: 12,
-    backgroundColor: "#FFFFFF",
-  },
-
-  contentCategoryExpanded: {
-    flexGrow: 1,
-    paddingTop: 16,
-    paddingBottom: 24,
-  },
-
-  categoryCompactCardExpanded: {
-    flex: 1,
-    minHeight: 0,
+    color: "#334155",
   },
 });
