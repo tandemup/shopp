@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "Shopp",
+    "slug": "shopp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "shopp",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/images/icon.png",
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ramnworksshopp.shopp"
+    },
+    "android": {
+      "package": "com.ramnworksshopp.shopp",
+      "versionCode": 1,
+      "edgeToEdgeEnabled": false,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "androidStatusBar": {
+        "backgroundColor": "#2563EB",
+        "barStyle": "light-content",
+        "translucent": false
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "output": "single",
+      "bundler": "metro",
+      "favicon": "./assets/images/favicon.png",
+      "display": "standalone"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "plugins": [
+      "expo-asset",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Permitir que Shopp use la cámara para escanear códigos de barras.",
+          "microphonePermission": "Permitir que Shopp use el micrófono.",
+          "recordAudioAndroid": true,
+          "barcodeScannerEnabled": true
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c8e6a715-3bf1-4bd1-9ad0-f7daf5eb2d90"
+      }
+    }
+  }
+}
