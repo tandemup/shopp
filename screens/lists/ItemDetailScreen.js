@@ -666,6 +666,68 @@ function Summary({ base, savings, total }) {
   );
 }
 
+function BotonOpciones1({ onPress }) {
+  return (
+    <View style={styles.actions}>
+      <TouchableOpacity
+        style={styles.optionsButton}
+        onPress={onPress}
+        activeOpacity={0.75}
+      >
+        <Ionicons
+          name="ellipsis-horizontal-circle-outline"
+          size={23}
+          color="#2563eb"
+        />
+
+        <Text style={styles.optionsButtonText}>Opciones</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function BotonesAcciones({ onSave, onDelete, onCancel }) {
+  return (
+    <View style={styles.actions}>
+      <TouchableOpacity
+        style={[styles.actionButton, styles.cancelButton]}
+        onPress={onCancel}
+        activeOpacity={0.75}
+      >
+        <Ionicons name="close-outline" size={21} color="#475569" />
+
+        <Text style={[styles.actionButtonText, styles.cancelButtonText]}>
+          Cancelar
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.actionButton, styles.deleteButton]}
+        onPress={onDelete}
+        activeOpacity={0.75}
+      >
+        <Ionicons name="trash-outline" size={20} color="#dc2626" />
+
+        <Text style={[styles.actionButtonText, styles.deleteButtonText]}>
+          Borrar
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.actionButton, styles.saveButton]}
+        onPress={onSave}
+        activeOpacity={0.75}
+      >
+        <Ionicons name="checkmark-outline" size={22} color="#ffffff" />
+
+        <Text style={[styles.actionButtonText, styles.saveButtonText]}>
+          Guardar
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function ItemDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute();
@@ -1088,21 +1150,12 @@ export default function ItemDetailScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
 
-        <View style={styles.actions}>
-          <TouchableOpacity
-            style={styles.optionsButton}
-            onPress={handleOpenActions}
-            activeOpacity={0.75}
-          >
-            <Ionicons
-              name="ellipsis-horizontal-circle-outline"
-              size={23}
-              color="#2563eb"
-            />
-
-            <Text style={styles.optionsButtonText}>Opciones</Text>
-          </TouchableOpacity>
-        </View>
+        {/* <BotonOpciones onPress={handleOpenActions} />*/}
+        <BotonesAcciones
+          onSave={handleSave}
+          onDelete={handleDelete}
+          onCancel={() => navigation.goBack()}
+        />
       </View>
     </SafeAreaView>
   );
@@ -1737,5 +1790,59 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     color: "#334155",
+  },
+  actions: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#f3f4f6",
+  },
+
+  actionButton: {
+    flex: 1,
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+  },
+
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+
+  cancelButton: {
+    borderColor: "#cbd5e1",
+    backgroundColor: "#ffffff",
+  },
+
+  cancelButtonText: {
+    color: "#475569",
+  },
+
+  deleteButton: {
+    borderColor: "#fecaca",
+    backgroundColor: "#fff7f7",
+  },
+
+  deleteButtonText: {
+    color: "#dc2626",
+  },
+
+  saveButton: {
+    borderColor: "#16a34a",
+    backgroundColor: "#16a34a",
+  },
+
+  saveButtonText: {
+    color: "#ffffff",
   },
 });

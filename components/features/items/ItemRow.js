@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import { View, Text, StyleSheet, Pressable, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { formatCurrency } from "../../../utils/store/formatters";
@@ -17,17 +17,23 @@ export default function ItemRow({ item, onToggle, onEdit }) {
   const qty = priceInfo.qty ?? 1;
   const unitPrice = priceInfo.unitPrice ?? 0;
 
+  const categoryName = item.categoryName ?? null;
+  const subcategoryName = item.subcategoryName ?? null;
+
+  const hasCategory = Boolean(categoryName);
+  const hasSubcategory = Boolean(subcategoryName);
+
   return (
     <View style={[styles.container, !item.checked && styles.containerInactive]}>
       <Pressable style={styles.checkbox} onPress={onToggle} hitSlop={10}>
         <Ionicons
           name={item.checked ? "checkbox-outline" : "square-outline"}
-          size={21}
-          color={item.checked ? "#2e7d32" : "#999"}
+          size={22}
+          color={item.checked ? "#16a34a" : "#94a3b8"}
         />
       </Pressable>
 
-      <View style={styles.content}>
+      <Pressable style={styles.content} onPress={onEdit}>
         <View style={styles.nameRow}>
           <Text
             style={[styles.name, !item.checked && styles.nameInactive]}
@@ -51,6 +57,48 @@ export default function ItemRow({ item, onToggle, onEdit }) {
           ) : null}
         </View>
 
+        {hasCategory || hasSubcategory ? (
+          <View style={styles.categoryRow}>
+            {hasCategory ? (
+              <View
+                style={[
+                  styles.categoryBadge,
+                  !item.checked && styles.badgeInactive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.categoryBadgeText,
+                    !item.checked && styles.badgeTextInactive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {categoryName}
+                </Text>
+              </View>
+            ) : null}
+
+            {hasSubcategory ? (
+              <View
+                style={[
+                  styles.subcategoryBadge,
+                  !item.checked && styles.badgeInactive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.subcategoryBadgeText,
+                    !item.checked && styles.badgeTextInactive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {subcategoryName}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
         <Text
           style={[styles.meta, !item.checked && styles.textInactive]}
           numberOfLines={1}
@@ -58,7 +106,7 @@ export default function ItemRow({ item, onToggle, onEdit }) {
           {qty} {formatUnit(unit)} ×{" "}
           {formatCurrency(unitPrice, priceInfo.currency)}/{formatUnit(unit)}
         </Text>
-      </View>
+      </Pressable>
 
       <Text
         style={[styles.subtotal, !item.checked && styles.subtotalInactive]}
@@ -68,7 +116,7 @@ export default function ItemRow({ item, onToggle, onEdit }) {
       </Text>
 
       <Pressable style={styles.chevron} onPress={onEdit} hitSlop={10}>
-        <Ionicons name="chevron-forward" size={19} color="#999" />
+        <Ionicons name="chevron-forward" size={19} color="#94a3b8" />
       </Pressable>
     </View>
   );
@@ -79,24 +127,44 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
 
-    minHeight: 68,
+    minHeight: 84,
 
-    marginBottom: 6,
+    marginBottom: 10,
 
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
 
-    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 14,
 
     backgroundColor: "#ffffff",
+
+    ...Platform.select({
+      web: {
+        boxShadow: "0 2px 6px rgba(15, 23, 42, 0.06)",
+      },
+
+      default: {
+        shadowColor: "#000000",
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
+        shadowOffset: {
+          width: 0,
+          height: 2,
+        },
+        elevation: 2,
+      },
+    }),
   },
 
   containerInactive: {
-    backgroundColor: "#f2f2f2",
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
   },
 
   checkbox: {
-    marginRight: 8,
+    marginRight: 10,
   },
 
   content: {
@@ -115,14 +183,14 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     marginRight: 6,
 
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
 
-    color: "#222",
+    color: "#1f2937",
   },
 
   nameInactive: {
-    color: "#999",
+    color: "#94a3b8",
   },
 
   promoBadge: {
@@ -130,40 +198,100 @@ const styles = StyleSheet.create({
 
     marginRight: 5,
 
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
 
-    borderRadius: 6,
+    borderRadius: 999,
 
-    backgroundColor: "#ffeb3b",
+    backgroundColor: "#fef08a",
   },
 
   promoText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "800",
 
-    color: "#000",
+    color: "#854d0e",
   },
 
   savingsInline: {
     flexShrink: 0,
 
     fontSize: 11,
+    fontWeight: "800",
+
+    color: "#15803d",
+  },
+
+  categoryRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+
+    gap: 5,
+
+    marginTop: 6,
+  },
+
+  categoryBadge: {
+    maxWidth: "58%",
+
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    borderRadius: 999,
+
+    backgroundColor: "#eff6ff",
+  },
+
+  categoryBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+
+    color: "#1d4ed8",
+  },
+
+  subcategoryBadge: {
+    maxWidth: "58%",
+
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    borderRadius: 999,
+
+    backgroundColor: "#f0fdf4",
+  },
+
+  subcategoryBadgeText: {
+    fontSize: 11,
     fontWeight: "700",
 
     color: "#15803d",
   },
 
+  badgeInactive: {
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f1f5f9",
+  },
+
+  badgeTextInactive: {
+    color: "#94a3b8",
+  },
+
   meta: {
-    marginTop: 4,
+    marginTop: 5,
 
     fontSize: 12,
+    fontWeight: "500",
 
-    color: "#555",
+    color: "#64748b",
   },
 
   textInactive: {
-    color: "#999",
+    color: "#94a3b8",
   },
 
   subtotal: {
@@ -171,16 +299,19 @@ const styles = StyleSheet.create({
     marginRight: 4,
 
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "900",
 
-    color: "#2e7d32",
+    fontVariant: ["tabular-nums"],
+
+    color: "#15803d",
   },
 
   subtotalInactive: {
-    color: "#999",
+    color: "#94a3b8",
   },
 
   chevron: {
-    paddingLeft: 3,
+    marginLeft: 4,
+    padding: 4,
   },
 });

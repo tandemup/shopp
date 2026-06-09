@@ -39,6 +39,7 @@ export const PRODUCT_CATEGORIES = [
       "Zanahoria",
       "Patata",
       "Cebolla",
+      "Otros",
     ],
   },
   {
@@ -62,6 +63,7 @@ export const PRODUCT_CATEGORIES = [
       "Sardina",
       "Bacalao",
       "Gambas",
+      "Otros",
     ],
   },
   {
@@ -85,6 +87,7 @@ export const PRODUCT_CATEGORIES = [
       "Bizcocho",
       "Palmeras",
       "Bolleria",
+      "Otros",
     ],
   },
   {
@@ -109,6 +112,7 @@ export const PRODUCT_CATEGORIES = [
       "Requeson",
       "Batido",
       "Natillas",
+      "Otros",
     ],
   },
   {
@@ -132,6 +136,7 @@ export const PRODUCT_CATEGORIES = [
       "Pasta",
       "Queso",
       "Sushi",
+      "Otros",
     ],
   },
   {
@@ -155,6 +160,7 @@ export const PRODUCT_CATEGORIES = [
       "Empanadillas",
       "Nuggets",
       "Wok",
+      "Otros",
     ],
   },
   {
@@ -178,6 +184,7 @@ export const PRODUCT_CATEGORIES = [
       "Tomate",
       "Cereales",
       "Cafe",
+      "Otros",
     ],
   },
   {
@@ -203,6 +210,7 @@ export const PRODUCT_CATEGORIES = [
       "Infusion",
       "Soda",
       "Kombucha",
+      "Otros",
     ],
   },
   {
@@ -226,6 +234,7 @@ export const PRODUCT_CATEGORIES = [
       "Turron",
       "Bombones",
       "Nachos",
+      "Otros",
     ],
   },
   {
@@ -249,6 +258,7 @@ export const PRODUCT_CATEGORIES = [
       "Bastoncillos",
       "Crema",
       "Toallitas",
+      "Otros",
     ],
   },
   {
@@ -272,6 +282,7 @@ export const PRODUCT_CATEGORIES = [
       "Cristales",
       "Quitagrasas",
       "Insecticida",
+      "Otros",
     ],
   },
   {
@@ -295,6 +306,7 @@ export const PRODUCT_CATEGORIES = [
       "Babero",
       "Juguete",
       "Mordedor",
+      "Otros",
     ],
   },
   {
@@ -318,6 +330,7 @@ export const PRODUCT_CATEGORIES = [
       "Gato",
       "Pajaros",
       "Roedores",
+      "Otros",
     ],
   },
   {
@@ -341,6 +354,7 @@ export const PRODUCT_CATEGORIES = [
       "Fregonas",
       "Bombillas",
       "Cuerda",
+      "Otros",
     ],
   },
   {
@@ -364,6 +378,7 @@ export const PRODUCT_CATEGORIES = [
       "Pastillero",
       "Repelente",
       "Algodon",
+      "Otros",
     ],
   },
   {
@@ -387,6 +402,7 @@ export const PRODUCT_CATEGORIES = [
       "Granola",
       "Muesli",
       "Almendra",
+      "Otros",
     ],
   },
 ];

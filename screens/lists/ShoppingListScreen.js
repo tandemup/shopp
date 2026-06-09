@@ -14,6 +14,7 @@ import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
 import { findBestCategoryMatch } from "../../utils/categoryMatcher";
+import { PRODUCT_CATEGORIES } from "../../constants/categories";
 
 import StoreSelector from "../../components/features/stores/StoreSelector";
 import ItemRow from "../../components/features/items/ItemRow";
@@ -23,6 +24,7 @@ import CurrencyBadge from "../../components/ui/CurrencyBadge";
 
 import { ROUTES } from "../../navigation/ROUTES";
 import { safeAlert } from "../../components/ui/alert/safeAlert";
+import WebZoomResetButton from "../../components/WebZoomResetButton";
 
 export default function ShoppingListScreen() {
   const route = useRoute();
@@ -167,9 +169,9 @@ export default function ShoppingListScreen() {
       <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
         <View style={styles.listHeader}>
           <Text style={styles.listName}>{list.name}</Text>
+          <WebZoomResetButton />
           <CurrencyBadge currency={list.currency} size="sm" />
         </View>
-
         <View style={styles.storeSelectorWrapper}>
           <StoreSelector
             store={assignedStore}
@@ -186,13 +188,11 @@ export default function ShoppingListScreen() {
             }
           />
         </View>
-
         <SearchCombinedBar
           currentList={list}
           onCreateNew={handleCreateNew}
           onAddFromHistory={handleAddFromHistory}
         />
-
         <FlatList
           data={list.items}
           keyExtractor={(item) => item.id}
@@ -200,7 +200,6 @@ export default function ShoppingListScreen() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         />
-
         <CheckoutBar
           total={total}
           currency={list.currency}
@@ -255,5 +254,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 32,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
   },
 });
