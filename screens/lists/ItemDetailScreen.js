@@ -1,4 +1,5 @@
 import React, { useCallback, useLayoutEffect, useMemo, useState } from "react";
+
 import {
   View,
   Text,
@@ -10,13 +11,16 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+
 import {
   useFocusEffect,
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
+
 import { StatusBar } from "expo-status-bar";
 
 import { UNITS } from "../../constants/unitTypes";
@@ -26,19 +30,29 @@ import { getSearchSettings } from "../../src/storage/settingsStorage";
 import { DEFAULT_CURRENCY } from "../../constants/currency";
 import { SEARCH_ENGINES } from "../../constants/searchEngines";
 import { PRODUCT_CATEGORIES } from "../../constants/categories";
+
 import { useLists } from "../../context/ListsContext";
+
 import BarcodeInput from "../../components/ui/BarcodeInput";
+
 import { openExternalUrl } from "../../utils/openExternalUrl";
+
 import {
   PricingEngine,
   PROMOTIONS,
   normalizePromotion,
   validatePromotion,
 } from "../../utils/pricing/PricingEngine";
+
 import { validatePromotionUnit } from "../../utils/pricing";
 import { formatCurrency } from "../../utils/store/prices";
 import { formatUnit } from "../../utils/pricing/unitFormat";
-import { safeAlert, safeMenu } from "../../components/ui/alert/safeAlert";
+
+import { safeAlert } from "../../components/ui/alert/safeAlert";
+
+/* ────────────────────────────────────────────────
+   CATEGORY HELPERS
+──────────────────────────────────────────────── */
 
 const normalizeCategoryToken = (value = "") => {
   return String(value)
@@ -55,7 +69,9 @@ const makeCategoryTokenId = (value = "") => {
 };
 
 const getSubcategoryName = (subcategory) => {
-  if (!subcategory) return null;
+  if (!subcategory) {
+    return null;
+  }
 
   return typeof subcategory === "string"
     ? subcategory
@@ -63,7 +79,9 @@ const getSubcategoryName = (subcategory) => {
 };
 
 const getSubcategoryId = (subcategory) => {
-  if (!subcategory) return null;
+  if (!subcategory) {
+    return null;
+  }
 
   const name = getSubcategoryName(subcategory);
 
@@ -71,6 +89,10 @@ const getSubcategoryId = (subcategory) => {
     ? makeCategoryTokenId(subcategory)
     : (subcategory.id ?? subcategory.key ?? makeCategoryTokenId(name));
 };
+
+/* ────────────────────────────────────────────────
+   PRODUCT HERO
+──────────────────────────────────────────────── */
 
 function ProductHero({ name, barcode }) {
   const title = name?.trim() || "Producto sin nombre";
@@ -98,6 +120,10 @@ function ProductHero({ name, barcode }) {
   );
 }
 
+/* ────────────────────────────────────────────────
+   SECTION TITLE
+──────────────────────────────────────────────── */
+
 function SectionTitle({ icon, title, subtitle }) {
   return (
     <View style={styles.sectionHeader}>
@@ -111,6 +137,10 @@ function SectionTitle({ icon, title, subtitle }) {
     </View>
   );
 }
+
+/* ────────────────────────────────────────────────
+   BASIC / ADVANCED SELECTOR
+──────────────────────────────────────────────── */
 
 function EditViewSelector({ activeView, onChange }) {
   return (
@@ -164,6 +194,10 @@ function EditViewSelector({ activeView, onChange }) {
   );
 }
 
+/* ────────────────────────────────────────────────
+   PRODUCT AND BARCODE CARD
+──────────────────────────────────────────────── */
+
 function CardNombreBarcode({
   nameItem,
   barcodeItem,
@@ -206,6 +240,10 @@ function CardNombreBarcode({
   );
 }
 
+/* ────────────────────────────────────────────────
+   CATEGORY SELECTOR
+──────────────────────────────────────────────── */
+
 function CategoryBadgeSelector({
   categories,
   selectedCategoryId,
@@ -213,9 +251,9 @@ function CategoryBadgeSelector({
   onChange,
   onSubcategoryChange,
 }) {
-  const selectedCategory = categories.find(
-    (category) => category.id === selectedCategoryId,
-  );
+  const selectedCategory = categories.find((category) => {
+    return category.id === selectedCategoryId;
+  });
 
   return (
     <View>
@@ -228,7 +266,9 @@ function CategoryBadgeSelector({
           return (
             <Pressable
               key={category.id}
-              onPress={() => onChange(category)}
+              onPress={() => {
+                onChange(category);
+              }}
               style={({ pressed }) => [
                 styles.categoryBadge,
                 selected && styles.categoryBadgeSelected,
@@ -256,12 +296,15 @@ function CategoryBadgeSelector({
             {(selectedCategory.subcategories ?? []).map((subcategory) => {
               const subcategoryId = getSubcategoryId(subcategory);
               const subcategoryName = getSubcategoryName(subcategory);
+
               const selected = subcategoryId === selectedSubcategoryId;
 
               return (
                 <Pressable
                   key={subcategoryId}
-                  onPress={() => onSubcategoryChange(subcategory)}
+                  onPress={() => {
+                    onSubcategoryChange(subcategory);
+                  }}
                   style={({ pressed }) => [
                     styles.subcategoryBadge,
                     selected && styles.subcategoryBadgeSelected,
@@ -286,6 +329,10 @@ function CategoryBadgeSelector({
   );
 }
 
+/* ────────────────────────────────────────────────
+   CATEGORIES CARD
+──────────────────────────────────────────────── */
+
 function Categorias({
   selectedCategoryId,
   selectedSubcategoryId,
@@ -294,12 +341,14 @@ function Categorias({
   expanded,
   onExpandedChange,
 }) {
-  const selectedCategory = PRODUCT_CATEGORIES.find(
-    (category) => category.id === selectedCategoryId,
-  );
+  const selectedCategory = PRODUCT_CATEGORIES.find((category) => {
+    return category.id === selectedCategoryId;
+  });
 
   const selectedSubcategory = selectedCategory?.subcategories?.find(
-    (subcategory) => getSubcategoryId(subcategory) === selectedSubcategoryId,
+    (subcategory) => {
+      return getSubcategoryId(subcategory) === selectedSubcategoryId;
+    },
   );
 
   const selectedSubcategoryName = getSubcategoryName(selectedSubcategory);
@@ -308,7 +357,9 @@ function Categorias({
     <View style={styles.card}>
       <Pressable
         style={styles.compactHeader}
-        onPress={() => onExpandedChange(!expanded)}
+        onPress={() => {
+          onExpandedChange(!expanded);
+        }}
       >
         <View style={styles.compactHeaderLeft}>
           <View style={styles.compactIconBox}>
@@ -372,6 +423,10 @@ function Categorias({
   );
 }
 
+/* ────────────────────────────────────────────────
+   PRICE AND QUANTITY CARD
+──────────────────────────────────────────────── */
+
 function CantidadPrecioCard({
   qty,
   price,
@@ -426,6 +481,10 @@ function CantidadPrecioCard({
   );
 }
 
+/* ────────────────────────────────────────────────
+   UNIT CARD
+──────────────────────────────────────────────── */
+
 function UnidadCard({ unit, onChangeUnit }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -439,6 +498,7 @@ function UnidadCard({ unit, onChangeUnit }) {
 
   const handleSelectUnit = (nextUnit) => {
     onChangeUnit(nextUnit);
+
     setExpanded(false);
   };
 
@@ -452,7 +512,9 @@ function UnidadCard({ unit, onChangeUnit }) {
 
       <Pressable
         style={styles.dropdownHeader}
-        onPress={() => setExpanded((previous) => !previous)}
+        onPress={() => {
+          setExpanded((previous) => !previous);
+        }}
       >
         <Text style={styles.dropdownLabel}>Unidad</Text>
 
@@ -470,25 +532,29 @@ function UnidadCard({ unit, onChangeUnit }) {
       {expanded ? (
         <View style={styles.dropdownBody}>
           <View style={styles.chipRow}>
-            {UNITS.map((currentUnit) => (
-              <Pressable
-                key={currentUnit}
-                style={[
-                  styles.unitBtn,
-                  unit === currentUnit && styles.unitBtnActive,
-                ]}
-                onPress={() => handleSelectUnit(currentUnit)}
-              >
-                <Text
+            {UNITS.map((currentUnit) => {
+              return (
+                <Pressable
+                  key={currentUnit}
                   style={[
-                    styles.unitText,
-                    unit === currentUnit && styles.unitTextActive,
+                    styles.unitBtn,
+                    unit === currentUnit && styles.unitBtnActive,
                   ]}
+                  onPress={() => {
+                    handleSelectUnit(currentUnit);
+                  }}
                 >
-                  {formatUnit(currentUnit)}
-                </Text>
-              </Pressable>
-            ))}
+                  <Text
+                    style={[
+                      styles.unitText,
+                      unit === currentUnit && styles.unitTextActive,
+                    ]}
+                  >
+                    {formatUnit(currentUnit)}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
       ) : null}
@@ -496,12 +562,18 @@ function UnidadCard({ unit, onChangeUnit }) {
   );
 }
 
+/* ────────────────────────────────────────────────
+   OFFERS CARD
+──────────────────────────────────────────────── */
+
 function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
   const [expanded, setExpanded] = useState(false);
 
   const qty = Number(String(quantity).replace(",", ".")) || 0;
   const price = Number(String(unitPrice).replace(",", ".")) || 0;
+
   const selectedPromoSafe = selectedPromo ?? "none";
+
   const selectedPromoNormalized = normalizePromotion(selectedPromoSafe);
 
   const promoValidation = validatePromotion(
@@ -518,6 +590,7 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
 
   const handleSelectPromo = (promoId) => {
     onSelect(promoId);
+
     setExpanded(false);
   };
 
@@ -531,7 +604,9 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
 
       <Pressable
         style={styles.dropdownHeader}
-        onPress={() => setExpanded((previous) => !previous)}
+        onPress={() => {
+          setExpanded((previous) => !previous);
+        }}
       >
         <Text style={styles.dropdownLabel}>Promoción</Text>
 
@@ -565,7 +640,9 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
               })
               .map((option) => {
                 const promo = normalizePromotion(option.id);
+
                 const validation = validatePromotion(promo, qty, price);
+
                 const disabled = !validation.valid;
                 const selected = selectedPromoSafe === option.id;
 
@@ -574,7 +651,9 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
                     key={option.id}
                     disabled={disabled}
                     onPress={() => {
-                      if (!disabled) handleSelectPromo(option.id);
+                      if (!disabled) {
+                        handleSelectPromo(option.id);
+                      }
                     }}
                     style={({ pressed }) => [
                       styles.promoChip,
@@ -612,6 +691,10 @@ function Ofertas({ quantity, unitPrice, selectedPromo, onSelect, unit }) {
   );
 }
 
+/* ────────────────────────────────────────────────
+   SUMMARY
+──────────────────────────────────────────────── */
+
 function SummaryRow({ label, value, bold, valueStyle }) {
   return (
     <View style={styles.summaryRow}>
@@ -638,6 +721,7 @@ function Summary({ base, savings, total }) {
       <View style={styles.summaryHeader}>
         <View>
           <Text style={styles.summaryTitle}>Resumen</Text>
+
           <Text style={styles.summarySubtitle}>Importe calculado</Text>
         </View>
 
@@ -665,41 +749,13 @@ function Summary({ base, savings, total }) {
   );
 }
 
-function BotonOpciones1({ onPress }) {
+/* ────────────────────────────────────────────────
+   ACTION BUTTONS
+──────────────────────────────────────────────── */
+
+function BotonesAcciones({ onSave, onDelete }) {
   return (
     <View style={styles.actions}>
-      <TouchableOpacity
-        style={styles.optionsButton}
-        onPress={onPress}
-        activeOpacity={0.75}
-      >
-        <Ionicons
-          name="ellipsis-horizontal-circle-outline"
-          size={23}
-          color="#2563eb"
-        />
-
-        <Text style={styles.optionsButtonText}>Opciones</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-function BotonesAcciones({ onSave, onDelete, onCancel }) {
-  return (
-    <View style={styles.actions}>
-      <TouchableOpacity
-        style={[styles.actionButton, styles.cancelButton]}
-        onPress={onCancel}
-        activeOpacity={0.75}
-      >
-        <Ionicons name="close-outline" size={21} color="#475569" />
-
-        <Text style={[styles.actionButtonText, styles.cancelButtonText]}>
-          Cancelar
-        </Text>
-      </TouchableOpacity>
-
       <TouchableOpacity
         style={[styles.actionButton, styles.deleteButton]}
         onPress={onDelete}
@@ -727,28 +783,40 @@ function BotonesAcciones({ onSave, onDelete, onCancel }) {
   );
 }
 
+/* ────────────────────────────────────────────────
+   SCREEN
+──────────────────────────────────────────────── */
+
 export default function ItemDetailScreen() {
   const navigation = useNavigation();
+
   const route = useRoute();
 
-  const headerConfig = useMemo(
-    () =>
-      buildHeaderConfig({
-        title: "Editar producto",
-        preset: "light",
-      }),
-    [],
-  );
+  const headerConfig = useMemo(() => {
+    return buildHeaderConfig({
+      title: "Editar producto",
+      preset: "light",
+    });
+  }, []);
 
   const { listId, itemId } = route.params || {};
+
   const { lists, updateItem, deleteItem } = useLists();
 
-  const list = lists.find((currentList) => currentList.id === listId);
-  const item = list?.items.find((currentItem) => currentItem.id === itemId);
+  const list = lists.find((currentList) => {
+    return currentList.id === listId;
+  });
+
+  const item = list?.items.find((currentItem) => {
+    return currentItem.id === itemId;
+  });
 
   const [activeView, setActiveView] = useState("basic");
+
   const [categoryExpanded, setCategoryExpanded] = useState(false);
+
   const [name, setName] = useState(item?.name ?? "");
+
   const [barcode, setBarcode] = useState(item?.barcode ?? "");
 
   const [selectedCategoryId, setSelectedCategoryId] = useState(
@@ -774,7 +842,9 @@ export default function ItemDetailScreen() {
     useCallback(() => {
       const scannedBarcode = route.params?.scannedBarcode;
 
-      if (!scannedBarcode) return;
+      if (!scannedBarcode) {
+        return;
+      }
 
       setBarcode(String(scannedBarcode));
 
@@ -808,9 +878,9 @@ export default function ItemDetailScreen() {
 
   const selectedCategory = useMemo(() => {
     return (
-      PRODUCT_CATEGORIES.find(
-        (category) => category.id === selectedCategoryId,
-      ) ?? null
+      PRODUCT_CATEGORIES.find((category) => {
+        return category.id === selectedCategoryId;
+      }) ?? null
     );
   }, [selectedCategoryId]);
 
@@ -820,20 +890,21 @@ export default function ItemDetailScreen() {
     }
 
     return (
-      selectedCategory.subcategories.find(
-        (subcategory) =>
-          getSubcategoryId(subcategory) === selectedSubcategoryId,
-      ) ?? null
+      selectedCategory.subcategories.find((subcategory) => {
+        return getSubcategoryId(subcategory) === selectedSubcategoryId;
+      }) ?? null
     );
   }, [selectedCategory, selectedSubcategoryId]);
 
   const selectedSubcategoryName = getSubcategoryName(selectedSubcategory);
 
   const updatePricing = (patch) => {
-    setPricing((previousPricing) => ({
-      ...previousPricing,
-      ...patch,
-    }));
+    setPricing((previousPricing) => {
+      return {
+        ...previousPricing,
+        ...patch,
+      };
+    });
   };
 
   const handleSelectView = (nextView) => {
@@ -878,9 +949,12 @@ export default function ItemDetailScreen() {
   };
 
   const handleChangeCategory = (category) => {
-    if (!category) return;
+    if (!category) {
+      return;
+    }
 
     setSelectedCategoryId(category.id);
+
     setSelectedSubcategoryId(null);
 
     updateItem(listId, itemId, {
@@ -892,9 +966,12 @@ export default function ItemDetailScreen() {
   };
 
   const handleChangeSubcategory = (subcategory) => {
-    if (!selectedCategory || !subcategory) return;
+    if (!selectedCategory || !subcategory) {
+      return;
+    }
 
     const subcategoryId = getSubcategoryId(subcategory);
+
     const subcategoryName = getSubcategoryName(subcategory);
 
     setSelectedSubcategoryId(subcategoryId);
@@ -908,6 +985,16 @@ export default function ItemDetailScreen() {
 
     setCategoryExpanded(false);
   };
+
+  function hasDecimals(value) {
+    const number = Number(String(value).replace(",", "."));
+
+    if (Number.isNaN(number)) {
+      return false;
+    }
+
+    return !Number.isInteger(number);
+  }
 
   const isUnitInvalid = pricing.unit === "u" && hasDecimals(pricing.qty);
 
@@ -974,32 +1061,6 @@ export default function ItemDetailScreen() {
     );
   };
 
-  const handleOpenActions = () => {
-    safeMenu(
-      "Opciones del producto",
-      `Selecciona qué quieres hacer con "${item?.name ?? "este producto"}".`,
-      [
-        {
-          text: "Guardar",
-          onPress: handleSave,
-        },
-        {
-          text: "Salir",
-          onPress: () => navigation.goBack(),
-        },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: handleDelete,
-        },
-        {
-          text: "Cancelar",
-          style: "cancel",
-        },
-      ],
-    );
-  };
-
   const handleSearch = async () => {
     const code = barcode.trim();
 
@@ -1014,10 +1075,13 @@ export default function ItemDetailScreen() {
 
     try {
       const settings = await getSearchSettings();
+
       const engineKey = settings?.generalEngine || "google";
+
       const engine = SEARCH_ENGINES[engineKey] || SEARCH_ENGINES.google;
 
       const result = await openExternalUrl(engine.buildUrl(code));
+
       if (!result.ok) {
         safeAlert("Error", "No se pudo abrir el buscador");
       }
@@ -1039,14 +1103,6 @@ export default function ItemDetailScreen() {
         showControls: false,
       },
     });
-  }
-
-  function hasDecimals(value) {
-    const number = Number(String(value).replace(",", "."));
-
-    if (Number.isNaN(number)) return false;
-
-    return !Number.isInteger(number);
   }
 
   if (!item) {
@@ -1106,11 +1162,11 @@ export default function ItemDetailScreen() {
                   unit={pricing.unit}
                   currencySymbol={listCurrencySymbol}
                   onChangeQty={handleChangeQty}
-                  onChangePrice={(value) =>
+                  onChangePrice={(value) => {
                     updatePricing({
                       unitPrice: value,
-                    })
-                  }
+                    });
+                  }}
                   showError={isUnitInvalid}
                 />
 
@@ -1140,28 +1196,27 @@ export default function ItemDetailScreen() {
                   quantity={pricing.qty}
                   unitPrice={pricing.unitPrice}
                   selectedPromo={pricing.promo}
-                  onSelect={(value) =>
+                  onSelect={(value) => {
                     updatePricing({
                       promo: value,
-                    })
-                  }
+                    });
+                  }}
                   unit={pricing.unit}
                 />
               </>
             )}
+
+            <BotonesAcciones onSave={handleSave} onDelete={handleDelete} />
           </ScrollView>
         </KeyboardAvoidingView>
-
-        {/* <BotonOpciones onPress={handleOpenActions} />*/}
-        <BotonesAcciones
-          onSave={handleSave}
-          onDelete={handleDelete}
-          onCancel={() => navigation.goBack()}
-        />
       </View>
     </SafeAreaView>
   );
 }
+
+/* ────────────────────────────────────────────────
+   STYLES
+──────────────────────────────────────────────── */
 
 const styles = StyleSheet.create({
   keyboardView: {
@@ -1195,7 +1250,7 @@ const styles = StyleSheet.create({
 
   content: {
     padding: 16,
-    paddingBottom: 120,
+    paddingBottom: 28,
     gap: 16,
   },
 
@@ -1203,9 +1258,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     padding: 5,
-    borderRadius: 16,
     borderWidth: 1,
     borderColor: "#e5e7eb",
+    borderRadius: 16,
     backgroundColor: "#ffffff",
   },
 
@@ -1407,10 +1462,10 @@ const styles = StyleSheet.create({
   },
 
   compactChipsRow: {
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    minWidth: 0,
   },
 
   compactCategoryChip: {
@@ -1758,50 +1813,13 @@ const styles = StyleSheet.create({
 
   actions: {
     flexDirection: "row",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    borderTopWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#f3f4f6",
-  },
-
-  optionsButton: {
-    flex: 1,
-    height: 50,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
     gap: 8,
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 10,
-    backgroundColor: "#dcfce7",
-    shadowColor: "#000000",
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    elevation: 1,
-  },
-
-  optionsButtonText: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#334155",
-  },
-  actions: {
-    flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
+    marginTop: 4,
+    paddingTop: 14,
+    paddingBottom: 4,
     borderTopWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#f3f4f6",
+    borderTopColor: "#e5e7eb",
+    backgroundColor: "transparent",
   },
 
   actionButton: {
@@ -1819,15 +1837,6 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 14,
     fontWeight: "800",
-  },
-
-  cancelButton: {
-    borderColor: "#cbd5e1",
-    backgroundColor: "#ffffff",
-  },
-
-  cancelButtonText: {
-    color: "#475569",
   },
 
   deleteButton: {

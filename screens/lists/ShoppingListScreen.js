@@ -169,7 +169,7 @@ export default function ShoppingListScreen() {
       <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
         <View style={styles.listHeader}>
           <Text style={styles.listName}>{list.name}</Text>
-          <WebZoomResetButton />
+
           <CurrencyBadge currency={list.currency} size="sm" />
         </View>
         <View style={styles.storeSelectorWrapper}>
