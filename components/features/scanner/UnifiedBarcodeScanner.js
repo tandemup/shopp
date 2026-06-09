@@ -8,7 +8,13 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 
 import { CameraView, useCameraPermissions } from "expo-camera";
+import Slider from "@react-native-community/slider";
 
+import {
+  DEFAULT_SCANNER_ZOOM,
+  loadScannerZoom,
+  saveScannerZoom,
+} from "../utils/scannerZoomStorage";
 /* -------------------------------------------------
    Default configuration
 -------------------------------------------------- */

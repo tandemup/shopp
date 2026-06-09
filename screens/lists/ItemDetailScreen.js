@@ -29,7 +29,7 @@ import { SEARCH_ENGINES } from "../../constants/searchEngines";
 import { PRODUCT_CATEGORIES } from "../../constants/categories";
 import { useLists } from "../../context/ListsContext";
 import BarcodeInput from "../../components/ui/BarcodeInput";
-
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import {
   PricingEngine,
   PROMOTIONS,
@@ -1018,7 +1018,8 @@ export default function ItemDetailScreen() {
       const engineKey = settings?.generalEngine || "google";
       const engine = SEARCH_ENGINES[engineKey] || SEARCH_ENGINES.google;
 
-      Linking.openURL(engine.buildUrl(code));
+      // Linking.openURL(engine.buildUrl(code));
+      openExternalUrl(engine.buildUrl(code));
     } catch (error) {
       safeAlert("Error", "No se pudo abrir el buscador");
     }
