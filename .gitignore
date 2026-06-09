@@ -4,6 +4,10 @@
 node_modules/
 secrets.txt
 old/
+secret.md
+.env
+.env.*
+
 # Expo
 .expo/
 dist/

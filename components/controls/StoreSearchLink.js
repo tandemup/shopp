@@ -19,7 +19,7 @@ export function StoreSearchLink({ store, onPressStore }) {
       return;
     }
 
-    Linking.openURL(
+    openExternalUrl(
       `https://www.google.com/search?q=${encodeURIComponent(store.name)}`,
     );
   };

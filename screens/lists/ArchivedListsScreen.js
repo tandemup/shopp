@@ -215,7 +215,7 @@ export default function ArchivedListsScreen({ navigation }) {
 
     if (!store?.name) return;
 
-    Linking.openURL(
+    openExternalUrl(
       `https://www.google.com/search?q=${encodeURIComponent(store.name)}`,
     );
   };
