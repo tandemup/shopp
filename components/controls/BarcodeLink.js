@@ -1,7 +1,10 @@
 // components/controls/BarcodeLink.js
 
 import React, { useCallback } from "react";
-import { Linking, Pressable, Text } from "react-native";
+import { Pressable, Text } from "react-native";
+
+import { openExternalUrl } from "../../utils/openExternalUrl";
+
 import * as Clipboard from "expo-clipboard";
 
 import { showOptions } from "../../utils/ui/primitives/ActionSheet";
@@ -39,7 +42,7 @@ export default function BarcodeLink({ barcode, label, iconColor = "#2563eb" }) {
       }
 
       const url = engine.buildUrl(query);
-      await Linking.openURL(url);
+      await openExternalUrl(url);
     } catch (error) {
       console.warn("Error abriendo búsqueda de barcode:", error);
     }

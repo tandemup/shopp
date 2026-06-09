@@ -1,69 +1,104 @@
-import React, { useState, useMemo } from "react";
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  FlatList,
-  Linking,
-} from "react-native";
+// screens/lists/ArchivedListsScreen.js
+
+import React, { useMemo, useState } from "react";
+
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+
+import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import DatePill from "../../components/controls/DatePill";
 import StorePill from "../../components/controls/StorePill";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import SearchBar from "../../components/features/search/SearchBar";
-import { Ionicons } from "@expo/vector-icons";
-import { formatCurrency } from "../../utils/store/formatters";
-import { ROUTES } from "../../navigation/ROUTES";
+
 import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
+
+import { ROUTES } from "../../navigation/ROUTES";
+
 import { normalizePriceInfo } from "../../utils/core/defaultItem";
-
-const HeaderRow = ({ title, expanded, onToggle }) => (
-  <View style={styles.topRow}>
-    <Text style={styles.listTitle} numberOfLines={1}>
-      {title}
-    </Text>
-
-    <Pressable onPress={onToggle} style={styles.chevronPressable} hitSlop={10}>
-      <Ionicons
-        name="chevron-forward"
-        size={22}
-        color="#9CA3AF"
-        style={{
-          transform: [{ rotate: expanded ? "90deg" : "0deg" }],
-        }}
-      />
-    </Pressable>
-  </View>
-);
-
-const InfoRow = ({ archivedAt, store, onPressStore }) => (
-  <View style={styles.infoRow}>
-    <DatePill date={archivedAt} fallback="Sin fecha" icon="calendar-outline" />
-    <StorePill store={store} onPressStore={onPressStore} />
-  </View>
-);
-
-const ProductsAndTotalRow = ({ count, total }) => (
-  <View style={styles.bottomRow}>
-    <View style={styles.iconRow}>
-      <Ionicons name="cart-outline" size={17} color="#6B7280" />
-      <Text style={styles.productsText}>{count} productos</Text>
-    </View>
-    <Text style={styles.totalPrice}>{formatCurrency(total.toFixed(2))}</Text>
-  </View>
-);
+import { formatCurrency } from "../../utils/store/formatters";
 
 /* ────────────────────────────────────────────────
-   ITEM ROW
+   HEADER ROW
+──────────────────────────────────────────────── */
+
+const HeaderRow = ({ title, expanded, onToggle }) => {
+  return (
+    <View style={styles.topRow}>
+      <Text style={styles.listTitle} numberOfLines={1}>
+        {title}
+      </Text>
+
+      <Pressable
+        style={styles.chevronPressable}
+        hitSlop={10}
+        onPress={onToggle}
+      >
+        <Ionicons
+          name="chevron-forward"
+          size={22}
+          color="#9CA3AF"
+          style={{
+            transform: [
+              {
+                rotate: expanded ? "90deg" : "0deg",
+              },
+            ],
+          }}
+        />
+      </Pressable>
+    </View>
+  );
+};
+
+/* ────────────────────────────────────────────────
+   INFO ROW
+──────────────────────────────────────────────── */
+
+const InfoRow = ({ archivedAt, store, onPressStore }) => {
+  return (
+    <View style={styles.infoRow}>
+      <DatePill
+        date={archivedAt}
+        fallback="Sin fecha"
+        icon="calendar-outline"
+      />
+
+      <StorePill store={store} onPressStore={onPressStore} />
+    </View>
+  );
+};
+
+/* ────────────────────────────────────────────────
+   PRODUCTS AND TOTAL ROW
+──────────────────────────────────────────────── */
+
+const ProductsAndTotalRow = ({ count, total }) => {
+  return (
+    <View style={styles.bottomRow}>
+      <View style={styles.iconRow}>
+        <Ionicons name="cart-outline" size={17} color="#6B7280" />
+
+        <Text style={styles.productsText}>{count} productos</Text>
+      </View>
+
+      <Text style={styles.totalPrice}>{formatCurrency(total.toFixed(2))}</Text>
+    </View>
+  );
+};
+
+/* ────────────────────────────────────────────────
+   ARCHIVED ITEM ROW
 ──────────────────────────────────────────────── */
 
 const ArchivedItemRow = ({ item, isLast }) => {
-  const pi = normalizePriceInfo(item.priceInfo);
-  const { total, currency, promo, promoLabel, savings, summary, warning } = pi;
-  const hasOffer = !!(promo || promoLabel);
+  const priceInfo = normalizePriceInfo(item.priceInfo);
+
+  const { total, promo, promoLabel, savings, summary, warning } = priceInfo;
+
+  const hasOffer = Boolean(promo || promoLabel);
 
   return (
     <View style={[styles.itemRow, isLast && styles.itemRowLast]}>
@@ -77,40 +112,41 @@ const ArchivedItemRow = ({ item, isLast }) => {
             {item.name}
           </Text>
 
-          {hasOffer && (
+          {hasOffer ? (
             <View style={styles.offerBadgeInline}>
               <Text style={styles.offerText}>{promoLabel || promo}</Text>
             </View>
-          )}
+          ) : null}
         </View>
 
-        {summary && summary.length > 0 && (
+        {summary && summary.length > 0 ? (
           <Text style={styles.summaryText}>{summary}</Text>
-        )}
+        ) : null}
 
-        {typeof item.barcode === "string" && item.barcode.length > 0 && (
+        {typeof item.barcode === "string" && item.barcode.length > 0 ? (
           <Text style={styles.barcode}>🔎 {item.barcode}</Text>
-        )}
+        ) : null}
 
-        {typeof savings === "number" && savings > 0 && (
+        {typeof savings === "number" && savings > 0 ? (
           <Text style={styles.savingText}>💸 {formatCurrency(savings)}</Text>
-        )}
+        ) : null}
 
-        {typeof warning === "string" && (
+        {typeof warning === "string" && warning.length > 0 ? (
           <Text style={styles.warningText}>⚠ {warning}</Text>
-        )}
+        ) : null}
       </View>
 
       <View style={styles.itemPriceColumn}>
-        {typeof total === "number" && (
+        {typeof total === "number" ? (
           <Text style={styles.itemPrice}>{formatCurrency(total)}</Text>
-        )}
+        ) : null}
       </View>
     </View>
   );
 };
+
 /* ────────────────────────────────────────────────
-   CARD
+   ARCHIVED LIST CARD
 ──────────────────────────────────────────────── */
 
 const ArchivedListCard = ({
@@ -121,10 +157,10 @@ const ArchivedListCard = ({
   onPressStore,
 }) => {
   const items = list.items || [];
-  const total = items.reduce(
-    (sum, it) => sum + Number(it.priceInfo?.total ?? it.price ?? 0),
-    0,
-  );
+
+  const total = items.reduce((sum, item) => {
+    return sum + Number(item.priceInfo?.total ?? item.price ?? 0);
+  }, 0);
 
   return (
     <View style={styles.card}>
@@ -139,6 +175,7 @@ const ArchivedListCard = ({
             expanded={expanded}
             onToggle={onToggle}
           />
+
           <InfoRow
             archivedAt={list.archivedAt || list.createdAt}
             store={store}
@@ -151,17 +188,19 @@ const ArchivedListCard = ({
 
       <ProductsAndTotalRow count={items.length} total={total} />
 
-      {expanded && (
+      {expanded ? (
         <View style={styles.itemsContainer}>
-          {items.map((item, index) => (
-            <ArchivedItemRow
-              key={item.id}
-              item={item}
-              isLast={index === items.length - 1}
-            />
-          ))}
+          {items.map((item, index) => {
+            return (
+              <ArchivedItemRow
+                key={item.id}
+                item={item}
+                isLast={index === items.length - 1}
+              />
+            );
+          })}
         </View>
-      )}
+      ) : null}
     </View>
   );
 };
@@ -172,34 +211,51 @@ const ArchivedListCard = ({
 
 export default function ArchivedListsScreen({ navigation }) {
   const { archivedLists } = useLists();
+
   const { getStoreById } = useStores();
+
   const [expandedListId, setExpandedListId] = useState(null);
+
   const [search, setSearch] = useState("");
 
+  /* ────────────────────────────────────────────────
+     SORT LISTS
+  ──────────────────────────────────────────────── */
+
   const sortedLists = useMemo(() => {
-    return [...(archivedLists ?? [])].sort(
-      (a, b) =>
-        new Date(b.archivedAt || b.createdAt) -
-        new Date(a.archivedAt || a.createdAt),
-    );
+    return [...(archivedLists ?? [])].sort((listA, listB) => {
+      const dateA = new Date(listA.archivedAt || listA.createdAt);
+
+      const dateB = new Date(listB.archivedAt || listB.createdAt);
+
+      return dateB - dateA;
+    });
   }, [archivedLists]);
 
-  const filteredLists = useMemo(() => {
-    if (!search.trim()) return sortedLists;
+  /* ────────────────────────────────────────────────
+     FILTER LISTS
+  ──────────────────────────────────────────────── */
 
-    const q = search.toLowerCase();
+  const filteredLists = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) {
+      return sortedLists;
+    }
 
     return sortedLists.filter((list) => {
-      const listNameMatch = list.name?.toLowerCase().includes(q);
+      const listNameMatch = list.name?.toLowerCase().includes(query);
 
       const store = list.storeId ? getStoreById(list.storeId) : null;
-      const storeMatch = store?.name?.toLowerCase().includes(q);
+
+      const storeMatch = store?.name?.toLowerCase().includes(query);
 
       const itemsMatch = (list.items || []).some((item) => {
-        const nameMatch = item.name?.toLowerCase().includes(q);
+        const nameMatch = item.name?.toLowerCase().includes(query);
+
         const barcodeMatch =
           typeof item.barcode === "string" &&
-          item.barcode.toLowerCase().includes(q);
+          item.barcode.toLowerCase().includes(query);
 
         return nameMatch || barcodeMatch;
       });
@@ -208,48 +264,55 @@ export default function ArchivedListsScreen({ navigation }) {
     });
   }, [search, sortedLists, getStoreById]);
 
-  const openStoreInfo1 = (storeId) => {
-    if (!storeId) return;
+  /* ────────────────────────────────────────────────
+     NAVIGATE TO STORE DETAIL
+  ──────────────────────────────────────────────── */
 
-    const store = getStoreById(storeId);
-
-    if (!store?.name) return;
-
-    openExternalUrl(
-      `https://www.google.com/search?q=${encodeURIComponent(store.name)}`,
-    );
-  };
-
-  const openStoreInfo11 = (storeId) => {
-    if (!storeId) return;
-
-    navigation.navigate(ROUTES.STORE_INFO, {
-      storeId,
-    });
-  };
-
-  const openStoreInfo = (storeId) => {
-    if (!storeId) return;
+  function openStoreInfo(storeId) {
+    if (!storeId) {
+      return;
+    }
 
     navigation.navigate(ROUTES.STORES_TAB, {
       screen: ROUTES.STORE_DETAIL,
+
       params: {
         storeId,
       },
     });
-  };
+  }
 
-  const renderItem = ({ item }) => (
-    <ArchivedListCard
-      list={item}
-      store={item.storeId ? getStoreById(item.storeId) : null}
-      expanded={expandedListId === item.id}
-      onToggle={() =>
-        setExpandedListId(expandedListId === item.id ? null : item.id)
-      }
-      onPressStore={openStoreInfo}
-    />
-  );
+  /* ────────────────────────────────────────────────
+     TOGGLE LIST DETAILS
+  ──────────────────────────────────────────────── */
+
+  function toggleExpandedList(listId) {
+    setExpandedListId((currentListId) => {
+      return currentListId === listId ? null : listId;
+    });
+  }
+
+  /* ────────────────────────────────────────────────
+     RENDER ITEM
+  ──────────────────────────────────────────────── */
+
+  function renderItem({ item }) {
+    return (
+      <ArchivedListCard
+        list={item}
+        store={item.storeId ? getStoreById(item.storeId) : null}
+        expanded={expandedListId === item.id}
+        onToggle={() => {
+          toggleExpandedList(item.id);
+        }}
+        onPressStore={openStoreInfo}
+      />
+    );
+  }
+
+  /* ────────────────────────────────────────────────
+     RENDER
+  ──────────────────────────────────────────────── */
 
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
@@ -270,7 +333,9 @@ export default function ArchivedListsScreen({ navigation }) {
 
         <FlatList
           data={filteredLists}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => {
+            return item.id;
+          }}
           extraData={expandedListId}
           renderItem={renderItem}
           showsVerticalScrollIndicator={false}
@@ -281,7 +346,9 @@ export default function ArchivedListsScreen({ navigation }) {
               <View style={styles.emptyIconBox}>
                 <Ionicons name="archive-outline" size={30} color="#9CA3AF" />
               </View>
+
               <Text style={styles.emptyTitle}>No hay listas archivadas</Text>
+
               <Text style={styles.emptySubtitle}>
                 Cuando archives una lista de compra aparecerá aquí.
               </Text>
@@ -310,17 +377,17 @@ const styles = StyleSheet.create({
   },
 
   title: {
+    marginBottom: 8,
+    color: "#111827",
     fontSize: 28,
     fontWeight: "800",
-    color: "#111827",
-    marginBottom: 8,
   },
 
   subtitle: {
+    marginBottom: 20,
+    color: "#6B7280",
     fontSize: 15,
     lineHeight: 22,
-    color: "#6B7280",
-    marginBottom: 20,
   },
 
   searchBar: {
@@ -332,23 +399,25 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
+    marginBottom: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    marginBottom: 14,
+
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    shadowColor: "#000",
+    borderRadius: 18,
+
+    backgroundColor: "#FFFFFF",
+
+    shadowColor: "#000000",
     shadowOpacity: 0.05,
     shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
 
-  cardPressed: {
-    opacity: 0.75,
-    transform: [{ scale: 0.99 }],
+    elevation: 2,
   },
 
   cardHeaderRow: {
@@ -359,11 +428,14 @@ const styles = StyleSheet.create({
   iconBox: {
     width: 48,
     height: 48,
-    borderRadius: 16,
-    backgroundColor: "#F3F4F6",
+    marginRight: 14,
+
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 14,
+
+    borderRadius: 16,
+
+    backgroundColor: "#F3F4F6",
   },
 
   cardText: {
@@ -376,34 +448,32 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
 
-  titlePressable: {
-    flex: 1,
-    paddingVertical: 2,
-  },
-
   listTitle: {
+    color: "#111827",
     fontSize: 17,
     fontWeight: "700",
-    color: "#111827",
   },
 
   chevronPressable: {
-    padding: 6,
     marginLeft: 8,
+    padding: 6,
   },
 
   infoRow: {
+    marginTop: 8,
+
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
+
     gap: 8,
-    marginTop: 8,
   },
 
   separator: {
     height: 1,
-    backgroundColor: "#E5E7EB",
     marginVertical: 12,
+
+    backgroundColor: "#E5E7EB",
   },
 
   bottomRow: {
@@ -415,32 +485,37 @@ const styles = StyleSheet.create({
   iconRow: {
     flexDirection: "row",
     alignItems: "center",
+
     gap: 6,
   },
 
   productsText: {
-    fontSize: 14,
     color: "#6B7280",
+    fontSize: 14,
     fontWeight: "600",
   },
 
   totalPrice: {
+    color: "#16A34A",
     fontSize: 20,
     fontWeight: "800",
-    color: "#16A34A",
   },
 
   itemsContainer: {
     marginTop: 12,
+
     borderTopWidth: 1,
     borderTopColor: "#E5E7EB",
   },
 
   itemRow: {
+    paddingVertical: 12,
+
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingVertical: 12,
+
     gap: 12,
+
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },
@@ -452,10 +527,13 @@ const styles = StyleSheet.create({
   itemIconBox: {
     width: 34,
     height: 34,
-    borderRadius: 12,
-    backgroundColor: "#F3F4F6",
+
     alignItems: "center",
     justifyContent: "center",
+
+    borderRadius: 12,
+
+    backgroundColor: "#F3F4F6",
   },
 
   itemContent: {
@@ -465,105 +543,128 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
+
     gap: 8,
   },
 
   itemName: {
+    flexShrink: 1,
+
+    color: "#111827",
     fontSize: 15,
     fontWeight: "700",
-    color: "#111827",
-    flexShrink: 1,
   },
 
   barcode: {
-    fontSize: 12,
-    color: "#2563EB",
     marginTop: 4,
+
+    color: "#2563EB",
+    fontSize: 12,
   },
 
   summaryText: {
-    fontSize: 12,
-    color: "#6B7280",
     marginTop: 4,
+
+    color: "#6B7280",
+    fontSize: 12,
     lineHeight: 17,
   },
 
   savingText: {
+    marginTop: 4,
+
+    color: "#16A34A",
     fontSize: 12,
     fontWeight: "700",
-    color: "#16A34A",
-    marginTop: 4,
   },
 
   warningText: {
-    fontSize: 12,
-    color: "#B45309",
     marginTop: 4,
+
+    color: "#B45309",
+    fontSize: 12,
   },
 
   itemPriceColumn: {
+    minWidth: 82,
+
     alignItems: "flex-end",
     justifyContent: "flex-start",
-    minWidth: 82,
   },
 
   itemPrice: {
+    marginLeft: 8,
+
+    color: "#111827",
     fontSize: 15,
     fontWeight: "800",
-    color: "#111827",
-    marginLeft: 8,
   },
 
   offerBadgeInline: {
-    backgroundColor: "#FEF3C7",
+    flexShrink: 0,
+
     paddingHorizontal: 8,
     paddingVertical: 3,
+
     borderRadius: 999,
-    flexShrink: 0,
+
+    backgroundColor: "#FEF3C7",
   },
 
   offerText: {
+    color: "#92400E",
     fontSize: 11,
     fontWeight: "700",
-    color: "#92400E",
   },
 
   emptyCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
     paddingHorizontal: 20,
     paddingVertical: 28,
+
     alignItems: "center",
+
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    shadowColor: "#000",
+    borderRadius: 18,
+
+    backgroundColor: "#FFFFFF",
+
+    shadowColor: "#000000",
     shadowOpacity: 0.05,
     shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+
     elevation: 2,
   },
 
   emptyIconBox: {
     width: 56,
     height: 56,
-    borderRadius: 18,
-    backgroundColor: "#F3F4F6",
+    marginBottom: 14,
+
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 14,
+
+    borderRadius: 18,
+
+    backgroundColor: "#F3F4F6",
   },
 
   emptyTitle: {
+    marginBottom: 6,
+
+    color: "#111827",
     fontSize: 17,
     fontWeight: "800",
-    color: "#111827",
-    marginBottom: 6,
   },
 
   emptySubtitle: {
+    color: "#6B7280",
     fontSize: 14,
     lineHeight: 20,
-    color: "#6B7280",
     textAlign: "center",
   },
 });

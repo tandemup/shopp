@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Pressable,
   ScrollView,
-  Linking,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
@@ -1018,8 +1017,10 @@ export default function ItemDetailScreen() {
       const engineKey = settings?.generalEngine || "google";
       const engine = SEARCH_ENGINES[engineKey] || SEARCH_ENGINES.google;
 
-      // Linking.openURL(engine.buildUrl(code));
-      openExternalUrl(engine.buildUrl(code));
+      const result = await openExternalUrl(engine.buildUrl(code));
+      if (!result.ok) {
+        safeAlert("Error", "No se pudo abrir el buscador");
+      }
     } catch (error) {
       safeAlert("Error", "No se pudo abrir el buscador");
     }

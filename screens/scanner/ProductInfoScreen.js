@@ -3,7 +3,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Image,
-  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { ROUTES } from "../../navigation/ROUTES";
 
 import {
@@ -93,7 +92,10 @@ export default function ProductInfoScreen({ route, navigation }) {
     if (!url) return;
 
     try {
-      await Linking.openURL(url);
+      const result = await openExternalUrl(url);
+      if (!result.ok) {
+        console.log("Error opening product search URL");
+      }
     } catch (error) {
       console.log("Error opening product search URL:", error);
     }
@@ -102,7 +104,7 @@ export default function ProductInfoScreen({ route, navigation }) {
   function handleOpenProductUrl() {
     if (!safeProduct.url) return;
 
-    Linking.openURL(safeProduct.url).catch((error) => {
+    openExternalUrl(safeProduct.url).catch((error) => {
       console.log("Error opening product URL:", error);
     });
   }

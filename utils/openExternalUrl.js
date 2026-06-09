@@ -3,33 +3,57 @@
 import { Linking, Platform } from "react-native";
 
 export async function openExternalUrl(url) {
-  if (!url) {
+  const safeUrl = String(url || "").trim();
+
+  if (!safeUrl) {
     console.warn("No se ha indicado ninguna URL");
-    return;
+
+    return {
+      ok: false,
+      error: "missing_url",
+    };
   }
 
   try {
     if (Platform.OS === "web") {
-      const newWindow = window.open(url, "_blank", "noopener,noreferrer");
-
-      if (!newWindow) {
-        console.warn(
-          "El navegador ha bloqueado la apertura de la nueva pestaña",
-        );
+      if (typeof window === "undefined") {
+        return {
+          ok: false,
+          error: "window_unavailable",
+        };
       }
 
-      return;
+      window.open(safeUrl, "_blank", "noopener,noreferrer");
+
+      return {
+        ok: true,
+        url: safeUrl,
+      };
     }
 
-    const supported = await Linking.canOpenURL(url);
+    const supported = await Linking.canOpenURL(safeUrl);
 
     if (!supported) {
-      console.warn("No se puede abrir la URL:", url);
-      return;
+      console.warn("No se puede abrir la URL:", safeUrl);
+
+      return {
+        ok: false,
+        error: "unsupported_url",
+      };
     }
 
-    await Linking.openURL(url);
+    await Linking.openURL(safeUrl);
+
+    return {
+      ok: true,
+      url: safeUrl,
+    };
   } catch (error) {
     console.error("Error al abrir la URL externa:", error);
+
+    return {
+      ok: false,
+      error: "open_failed",
+    };
   }
 }

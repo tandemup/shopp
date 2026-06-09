@@ -1,4 +1,4 @@
-import { Linking } from "react-native";
+import { openExternalUrl } from "../utils/openExternalUrl";
 
 export const PRODUCT_SEARCH_ENGINES = {
   GOOGLE: "google",
@@ -75,28 +75,17 @@ export async function openProductSearchEngine(engine, barcode) {
     };
   }
 
-  try {
-    const supported = await Linking.canOpenURL(url);
+  const result = await openExternalUrl(url);
 
-    if (!supported) {
-      return {
-        ok: false,
-        error: "No se puede abrir este motor de búsqueda.",
-      };
-    }
-
-    await Linking.openURL(url);
-
-    return {
-      ok: true,
-      url,
-    };
-  } catch (error) {
-    console.log("Error opening product search engine:", error);
-
+  if (!result.ok) {
     return {
       ok: false,
       error: "No se pudo abrir el motor de búsqueda.",
     };
   }
+
+  return {
+    ok: true,
+    url,
+  };
 }

@@ -1,5 +1,6 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, Linking } from "react-native";
+import { Pressable, StyleSheet, Text } from "react-native";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { Ionicons } from "@expo/vector-icons";
 
 /* -------------------------------------------------
@@ -46,7 +47,7 @@ export default function StoreLink({
 
     if (!query) return;
 
-    Linking.openURL(buildGoogleSearchUrl(query));
+    openExternalUrl(buildGoogleSearchUrl(query));
   };
 
   return (
