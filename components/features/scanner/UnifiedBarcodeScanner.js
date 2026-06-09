@@ -8,13 +8,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 
 import { CameraView, useCameraPermissions } from "expo-camera";
-import Slider from "@react-native-community/slider";
 
-import {
-  DEFAULT_SCANNER_ZOOM,
-  loadScannerZoom,
-  saveScannerZoom,
-} from "../utils/scannerZoomStorage";
 /* -------------------------------------------------
    Default configuration
 -------------------------------------------------- */
@@ -58,8 +52,10 @@ export default function UnifiedBarcodeScanner({
   zoomLevels = DEFAULT_ZOOM_LEVELS,
 
   /*
-   * Índice 2: abre inicialmente en 1.2x.
-   * En tu dispositivo mejora la lectura de códigos EAN.
+   * Índice 2: abre inicialmente con un pequeño zoom.
+   *
+   * En el dispositivo probado mejora la lectura de
+   * códigos EAN.
    */
   initialZoomIndex = 2,
 
@@ -298,6 +294,12 @@ export default function UnifiedBarcodeScanner({
         <View style={StyleSheet.absoluteFillObject} />
       )}
 
+      {!showControls && onCancel ? (
+        <Pressable style={styles.floatingCloseButton} onPress={handleClose}>
+          <MaterialCommunityIcons name="close" size={26} color="#FFFFFF" />
+        </Pressable>
+      ) : null}
+
       {showHint ? (
         <View style={styles.hintContainer} pointerEvents="none">
           <Text style={styles.hintText}>{hintText}</Text>
@@ -440,6 +442,23 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: "#FFFFFF",
     fontWeight: "700",
+  },
+
+  floatingCloseButton: {
+    position: "absolute",
+    top: 18,
+    right: 18,
+
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    backgroundColor: "rgba(0,0,0,0.62)",
+
+    zIndex: 10,
   },
 
   hintContainer: {

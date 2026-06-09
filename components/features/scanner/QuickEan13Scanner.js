@@ -20,11 +20,13 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 -------------------------------------------------- */
 
 function normalizeEan13(value) {
-  const code = String(value || "")
-    .replace(/\D/g, "")
-    .trim();
+  const code = String(value || "").trim();
 
-  return code.length === 13 ? code : null;
+  if (!/^\d{13}$/.test(code)) {
+    return null;
+  }
+
+  return code;
 }
 
 function isValidEan13(value) {
@@ -63,6 +65,7 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
   useEffect(() => {
     if (isFocused) {
       lockedRef.current = false;
+
       setMountError("");
     }
 
@@ -96,7 +99,9 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
 
   function handleRetry() {
     lockedRef.current = false;
+
     setMountError("");
+
     setCameraKey((previous) => {
       return previous + 1;
     });
@@ -165,17 +170,17 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
           facing="back"
           autofocus="on"
           /*
-           * Has comprobado que un pequeño zoom mejora
-           * la lectura en tu dispositivo.
+           * Zoom inicial normalizado.
+           *
+           * Un valor pequeño mejora la lectura en el
+           * dispositivo probado.
            */
           zoom={0.15}
           barcodeScannerSettings={{
             barcodeTypes: ["ean13"],
           }}
           onMountError={handleCameraMountError}
-          onBarcodeScanned={
-            lockedRef.current ? undefined : handleBarcodeScanned
-          }
+          onBarcodeScanned={handleBarcodeScanned}
         />
       ) : null}
 

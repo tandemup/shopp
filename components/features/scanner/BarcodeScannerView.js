@@ -8,9 +8,8 @@ import React, {
   useState,
 } from "react";
 
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
-import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 
 import UnifiedBarcodeScanner from "./UnifiedBarcodeScanner";
@@ -24,9 +23,17 @@ import { getBarcodeSettings } from "../../../src/storage/barcodeSettingsStorage"
 -------------------------------------------------- */
 
 function normalizeBarcode(code) {
-  const clean = String(code || "")
-    .replace(/\D/g, "")
-    .trim();
+  const clean = String(code || "").trim();
+
+  /*
+   * No eliminamos caracteres arbitrarios.
+   *
+   * Un texto como PRODUCT-1234567890123 no debe
+   * convertirse silenciosamente en 1234567890123.
+   */
+  if (!/^\d+$/.test(clean)) {
+    return null;
+  }
 
   /*
    * EAN-8, UPC-A y EAN-13.
@@ -62,8 +69,9 @@ export default function BarcodeScannerView({
   /*
    * Conserva siempre el callback más reciente.
    *
-   * No incluimos onDetected en las dependencias de handleDetected
-   * para evitar reiniciar innecesariamente la cámara web cuando el
+   * No incluimos onDetected en las dependencias de
+   * handleDetected para evitar reiniciar
+   * innecesariamente la cámara web cuando el
    * componente padre vuelve a renderizarse.
    */
   const onDetectedRef = useRef(onDetected);
@@ -76,6 +84,13 @@ export default function BarcodeScannerView({
     DEFAULT_BARCODE_SETTINGS,
   );
 
+  /*
+   * Evita arrancar inicialmente el lector con la
+   * configuración por defecto y reiniciarlo unos
+   * milisegundos después con la configuración guardada.
+   */
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
   /* -------------------------------------------------
      Load settings
   -------------------------------------------------- */
@@ -84,6 +99,8 @@ export default function BarcodeScannerView({
     let mounted = true;
 
     async function loadSettings() {
+      setSettingsLoaded(false);
+
       try {
         const data = await getBarcodeSettings();
 
@@ -92,6 +109,8 @@ export default function BarcodeScannerView({
         }
 
         setBarcodeSettingsState(data || DEFAULT_BARCODE_SETTINGS);
+
+        setSettingsLoaded(true);
       } catch (error) {
         console.log("Error loading barcode settings in scanner:", error);
 
@@ -100,6 +119,8 @@ export default function BarcodeScannerView({
         }
 
         setBarcodeSettingsState(DEFAULT_BARCODE_SETTINGS);
+
+        setSettingsLoaded(true);
       }
     }
 
@@ -224,23 +245,19 @@ export default function BarcodeScannerView({
 
   return (
     <View style={styles.container}>
-      <UnifiedBarcodeScanner
-        mode="auto"
-        active={true}
-        barcodeTypes={effectiveBarcodeTypes}
-        showControls={showControls}
-        showHint={true}
-        hintText="Apunta al código"
-        onDetected={handleDetected}
-        onCancel={onClose}
-        continuous={continuous}
-        scanCooldownMs={duplicateCooldownMs}
-      />
-
-      {!showControls ? (
-        <Pressable style={styles.closeBtn} onPress={onClose}>
-          <Ionicons name="close" size={24} color="#FFFFFF" />
-        </Pressable>
+      {settingsLoaded ? (
+        <UnifiedBarcodeScanner
+          mode="auto"
+          active={true}
+          barcodeTypes={effectiveBarcodeTypes}
+          showControls={showControls}
+          showHint={true}
+          hintText="Apunta al código"
+          onDetected={handleDetected}
+          onCancel={onClose}
+          continuous={continuous}
+          scanCooldownMs={duplicateCooldownMs}
+        />
       ) : null}
     </View>
   );
@@ -255,22 +272,5 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     backgroundColor: "#000000",
-  },
-
-  closeBtn: {
-    position: "absolute",
-    top: 60,
-    right: 20,
-
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-
-    alignItems: "center",
-    justifyContent: "center",
-
-    backgroundColor: "rgba(0,0,0,0.6)",
-
-    zIndex: 999,
   },
 });

@@ -181,8 +181,8 @@ export default function UnifiedBarcodeScanner({
   const unlockTimerRef = useRef(null);
 
   /*
-   * Evita reiniciar la cámara cuando cambia el callback
-   * del componente padre.
+   * Evita reiniciar la cámara cuando cambia el
+   * callback del componente padre.
    */
   const onDetectedRef = useRef(onDetected);
 
@@ -277,9 +277,11 @@ export default function UnifiedBarcodeScanner({
 
   const resetCapabilities = useCallback(() => {
     setTorchSupported(false);
+
     setTorchEnabled(false);
 
     setZoomCapability(null);
+
     setZoomValue(null);
   }, []);
 
@@ -324,6 +326,7 @@ export default function UnifiedBarcodeScanner({
         ) {
           setZoomCapability({
             min: zoom.min,
+
             max: zoom.max,
 
             step:
@@ -338,11 +341,14 @@ export default function UnifiedBarcodeScanner({
         }
 
         setZoomCapability(null);
+
         setZoomValue(null);
       } catch (error) {
         /*
          * Safari puede mostrar la cámara sin ofrecer
-         * zoom o linterna. No es un error bloqueante.
+         * zoom o linterna.
+         *
+         * No es un error bloqueante.
          */
         resetCapabilities();
       }
@@ -427,10 +433,17 @@ export default function UnifiedBarcodeScanner({
 
             /*
              * No forzamos aspectRatio.
+             *
              * El navegador selecciona una resolución
              * compatible con la cámara disponible.
              */
             qrbox: getScanBox,
+
+            /*
+             * La cámara trasera no necesita una
+             * segunda pasada reflejada.
+             */
+            disableFlip: true,
           },
           handleSuccessfulRead,
           () => {
@@ -455,13 +468,14 @@ export default function UnifiedBarcodeScanner({
 
     async function startScanner() {
       setStarting(true);
+
       setErrorMessage("");
 
       let scanner = null;
 
       try {
         /*
-         * Primer intento: pedir la cámara trasera.
+         * Primer intento: solicitar la cámara trasera.
          */
         try {
           scanner = await createScannerAndStart({
@@ -501,11 +515,11 @@ export default function UnifiedBarcodeScanner({
       } catch (error) {
         console.log("Error starting web barcode scanner:", error);
 
-        if (!disposed) {
+        if (!disposed && operationId === operationIdRef.current) {
           setErrorMessage(getErrorMessage(error));
         }
       } finally {
-        if (!disposed) {
+        if (!disposed && operationId === operationIdRef.current) {
           setStarting(false);
         }
       }
@@ -611,6 +625,7 @@ export default function UnifiedBarcodeScanner({
       console.log("Torch is not available in this browser:", error);
 
       setTorchSupported(false);
+
       setTorchEnabled(false);
     }
   }
@@ -644,6 +659,7 @@ export default function UnifiedBarcodeScanner({
       console.log("Zoom is not available in this browser:", error);
 
       setZoomCapability(null);
+
       setZoomValue(null);
     }
   }
@@ -676,9 +692,11 @@ export default function UnifiedBarcodeScanner({
 
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.topBar} pointerEvents="box-none">
-          <Pressable style={styles.closeButton} onPress={handleCancel}>
-            <MaterialCommunityIcons name="close" size={26} color="#FFFFFF" />
-          </Pressable>
+          {onCancel ? (
+            <Pressable style={styles.closeButton} onPress={handleCancel}>
+              <MaterialCommunityIcons name="close" size={26} color="#FFFFFF" />
+            </Pressable>
+          ) : null}
         </View>
 
         <View style={styles.middle} pointerEvents="none">
@@ -818,6 +836,7 @@ const styles = StyleSheet.create({
   },
 
   topBar: {
+    minHeight: 62,
     paddingTop: 18,
     paddingHorizontal: 18,
     alignItems: "flex-end",

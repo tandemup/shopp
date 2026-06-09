@@ -14,11 +14,13 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 -------------------------------------------------- */
 
 function normalizeEan13(value) {
-  const code = String(value || "")
-    .replace(/\D/g, "")
-    .trim();
+  const code = String(value || "").trim();
 
-  return code.length === 13 ? code : null;
+  if (!/^\d{13}$/.test(code)) {
+    return null;
+  }
+
+  return code;
 }
 
 function isValidEan13(value) {
@@ -82,6 +84,10 @@ function getErrorMessage(error) {
     return "La cámara está siendo utilizada por otra aplicación o pestaña.";
   }
 
+  if (text.includes("OverconstrainedError")) {
+    return "El navegador no ha podido seleccionar la cámara solicitada.";
+  }
+
   return "No se pudo iniciar la cámara. Comprueba los permisos e inténtalo de nuevo.";
 }
 
@@ -97,22 +103,31 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
   );
 
   const scannerRef = useRef(null);
+
+  /*
+   * Invalida cualquier operación de arranque antigua.
+   */
+  const operationIdRef = useRef(0);
+
   const lockRef = useRef(false);
+
   const onDetectedRef = useRef(onDetected);
 
   const [starting, setStarting] = useState(true);
+
   const [errorMessage, setErrorMessage] = useState("");
+
   const [restartToken, setRestartToken] = useState(0);
 
   useEffect(() => {
     onDetectedRef.current = onDetected;
   }, [onDetected]);
 
-  const stopScanner = useCallback(async () => {
-    const scanner = scannerRef.current;
+  /* -------------------------------------------------
+     Camera cleanup
+  -------------------------------------------------- */
 
-    scannerRef.current = null;
-
+  const stopScannerInstance = useCallback(async (scanner) => {
     if (!scanner) {
       return;
     }
@@ -121,7 +136,8 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
       await scanner.stop();
     } catch (error) {
       /*
-       * Puede ocurrir si todavía estaba arrancando.
+       * Puede ocurrir si el lector todavía estaba
+       * arrancando o ya se había detenido.
        */
     }
 
@@ -134,11 +150,28 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
     }
   }, []);
 
+  const stopCurrentScanner = useCallback(async () => {
+    /*
+     * Cualquier arranque pendiente deja de ser válido.
+     */
+    operationIdRef.current += 1;
+
+    const scanner = scannerRef.current;
+
+    scannerRef.current = null;
+
+    await stopScannerInstance(scanner);
+  }, [stopScannerInstance]);
+
+  /* -------------------------------------------------
+     Start scanner
+  -------------------------------------------------- */
+
   useEffect(() => {
     let disposed = false;
 
     if (!isFocused) {
-      stopScanner();
+      stopCurrentScanner();
 
       return () => {
         disposed = true;
@@ -147,25 +180,34 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
 
     lockRef.current = false;
 
-    async function startScanner() {
-      setStarting(true);
-      setErrorMessage("");
+    const operationId = operationIdRef.current + 1;
 
+    operationIdRef.current = operationId;
+
+    let ownedScanner = null;
+
+    async function createScannerAndStart(cameraConfig) {
       const scanner = new Html5Qrcode(readerIdRef.current, {
         /*
          * Solo EAN-13.
+         *
          * Evitamos decodificadores innecesarios.
          */
         formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13],
 
         /*
-         * En Safari para iPhone forzamos el motor JavaScript.
-         * BarcodeDetector todavía no ofrece un comportamiento uniforme.
+         * En Safari para iPhone forzamos el motor
+         * JavaScript.
+         *
+         * BarcodeDetector todavía no ofrece un
+         * comportamiento uniforme.
          */
         useBarCodeDetectorIfSupported: false,
 
         verbose: false,
       });
+
+      ownedScanner = scanner;
 
       scannerRef.current = scanner;
 
@@ -182,7 +224,21 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
 
         lockRef.current = true;
 
-        await stopScanner();
+        /*
+         * Dejamos de considerar activa esta instancia
+         * antes de detenerla.
+         */
+        if (scannerRef.current === scanner) {
+          scannerRef.current = null;
+        }
+
+        /*
+         * Evita que cualquier operación anterior o
+         * posterior interfiera durante la navegación.
+         */
+        operationIdRef.current += 1;
+
+        await stopScannerInstance(scanner);
 
         if (!disposed) {
           onDetectedRef.current?.(barcode);
@@ -191,62 +247,105 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
 
       function handleDecodeFailure() {
         /*
-         * Ignoramos los fotogramas que todavía no contienen
-         * un código EAN-13 válido.
+         * Ignoramos los fotogramas que todavía no
+         * contienen un código EAN-13 válido.
          */
       }
 
-      async function startWithCamera(cameraConfig) {
+      try {
         await scanner.start(
           cameraConfig,
           {
             /*
-             * En Safari resulta más estable que analizar 15 fps.
+             * En Safari resulta más estable que
+             * analizar 15 fps.
              */
             fps: 10,
 
             qrbox: getScanBox,
 
             /*
-             * La cámara trasera no necesita una segunda pasada reflejada.
+             * La cámara trasera no necesita una
+             * segunda pasada reflejada.
              */
             disableFlip: true,
           },
           handleDecodedText,
           handleDecodeFailure,
         );
+
+        return scanner;
+      } catch (error) {
+        if (scannerRef.current === scanner) {
+          scannerRef.current = null;
+        }
+
+        await stopScannerInstance(scanner);
+
+        throw error;
       }
+    }
+
+    async function startScanner() {
+      setStarting(true);
+
+      setErrorMessage("");
+
+      let scanner = null;
 
       try {
+        /*
+         * Primer intento: solicitar directamente
+         * la cámara trasera.
+         */
         try {
-          await startWithCamera({
+          scanner = await createScannerAndStart({
             facingMode: "environment",
           });
         } catch (firstError) {
           /*
-           * Algunos navegadores móviles no respetan correctamente
-           * facingMode. Como fallback elegimos explícitamente
-           * una cámara trasera disponible.
+           * Algunos navegadores móviles no respetan
+           * correctamente facingMode.
+           *
+           * Como fallback elegimos explícitamente una
+           * cámara trasera disponible.
            */
           const cameras = await Html5Qrcode.getCameras();
+
           const preferredCamera = findPreferredCamera(cameras);
 
           if (!preferredCamera?.id) {
             throw firstError;
           }
 
-          await startWithCamera(preferredCamera.id);
+          scanner = await createScannerAndStart(preferredCamera.id);
         }
+
+        /*
+         * Cerramos el stream si la pantalla ya no
+         * está activa cuando termina el arranque.
+         */
+        if (disposed || operationId !== operationIdRef.current) {
+          if (scannerRef.current === scanner) {
+            scannerRef.current = null;
+          }
+
+          await stopScannerInstance(scanner);
+
+          return;
+        }
+
+        scannerRef.current = scanner;
+
+        ownedScanner = scanner;
       } catch (error) {
         console.log("Quick EAN-13 web scanner error:", error);
 
-        if (!disposed) {
+        if (!disposed && operationId === operationIdRef.current) {
           setErrorMessage(getErrorMessage(error));
         }
-
-        await stopScanner();
       } finally {
-        if (!disposed) {
+        if (!disposed && operationId === operationIdRef.current) {
           setStarting(false);
         }
       }
@@ -256,28 +355,44 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
 
     return () => {
       disposed = true;
+
       lockRef.current = false;
 
-      stopScanner();
+      operationIdRef.current += 1;
+
+      if (scannerRef.current === ownedScanner) {
+        scannerRef.current = null;
+      }
+
+      stopScannerInstance(ownedScanner);
     };
-  }, [isFocused, restartToken, stopScanner]);
+  }, [isFocused, restartToken, stopCurrentScanner, stopScannerInstance]);
+
+  /* -------------------------------------------------
+     Controls
+  -------------------------------------------------- */
 
   async function handleClose() {
     lockRef.current = true;
 
-    await stopScanner();
+    await stopCurrentScanner();
 
     onCancel?.();
   }
 
   function handleRetry() {
     lockRef.current = false;
+
     setErrorMessage("");
 
     setRestartToken((previous) => {
       return previous + 1;
     });
   }
+
+  /* -------------------------------------------------
+     Render
+  -------------------------------------------------- */
 
   return (
     <View style={styles.container}>
@@ -395,7 +510,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     textShadowColor: "rgba(0,0,0,0.8)",
-    textShadowOffset: { width: 0, height: 1 },
+    textShadowOffset: {
+      width: 0,
+      height: 1,
+    },
     textShadowRadius: 4,
   },
 
