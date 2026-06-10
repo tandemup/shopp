@@ -127,8 +127,7 @@ export default function NewProductScannerScreen2() {
     returnToTab = ROUTES.SHOPPING_TAB,
   } = route.params || {};
 
-  //  const isQuickEan13Input = captureMode === "ean13-input";
-  const isQuickEan13Input = false;
+  const isQuickEan13Input = captureMode === "ean13-input";
 
   const barcodeTypes = useMemo(() => {
     return normalizeBarcodeTypes(routeBarcodeTypes);

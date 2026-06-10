@@ -51,7 +51,15 @@ function isValidEan13(value) {
    Component
 -------------------------------------------------- */
 
-export default function QuickEan13Scanner({ onDetected, onCancel }) {
+export default function QuickEan13Scanner({
+  onDetected,
+  onCancel,
+  zoom = 0.15,
+  zoomLabel = "1.2x",
+  torchEnabled = false,
+  onChangeZoom,
+  onToggleTorch,
+}) {
   const isFocused = useIsFocused();
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -169,13 +177,8 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
           style={StyleSheet.absoluteFillObject}
           facing="back"
           autofocus="on"
-          /*
-           * Zoom inicial normalizado.
-           *
-           * Un valor pequeño mejora la lectura en el
-           * dispositivo probado.
-           */
-          zoom={0.15}
+          zoom={zoom}
+          enableTorch={torchEnabled}
           barcodeScannerSettings={{
             barcodeTypes: ["ean13"],
           }}
@@ -206,6 +209,32 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
             El número se copiará automáticamente al producto cuando sea
             detectado.
           </Text>
+
+          <View style={styles.actionsRow}>
+            <Pressable style={styles.actionButton} onPress={onChangeZoom}>
+              <Ionicons name="scan-outline" size={18} color="#FFFFFF" />
+
+              <Text style={styles.actionText}>Zoom {zoomLabel}</Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.actionButton,
+                torchEnabled && styles.actionButtonActive,
+              ]}
+              onPress={onToggleTorch}
+            >
+              <Ionicons
+                name={torchEnabled ? "flashlight" : "flashlight-outline"}
+                size={18}
+                color="#FFFFFF"
+              />
+
+              <Text style={styles.actionText}>
+                {torchEnabled ? "Luz ON" : "Linterna"}
+              </Text>
+            </Pressable>
+          </View>
 
           {mountError ? (
             <>
@@ -371,6 +400,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     textAlign: "center",
+  },
+
+  actionsRow: {
+    marginTop: 16,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 10,
+  },
+
+  actionButton: {
+    flex: 1,
+    minHeight: 46,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "rgba(37,99,235,0.95)",
+  },
+
+  actionButtonActive: {
+    backgroundColor: "rgba(245,158,11,0.95)",
+  },
+
+  actionText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
   },
 
   errorText: {

@@ -353,63 +353,49 @@ function Categorias({
 
   const selectedSubcategoryName = getSubcategoryName(selectedSubcategory);
 
+  const selectedClassification = selectedCategory
+    ? selectedSubcategoryName
+      ? `${selectedCategory.name} · ${selectedSubcategoryName}`
+      : selectedCategory.name
+    : "Sin categoría";
+
   return (
     <View style={styles.card}>
+      <SectionTitle
+        icon="albums-outline"
+        title="Categorías"
+        subtitle="Clasifica el producto por categoría y subcategoría"
+      />
+
       <Pressable
-        style={styles.compactHeader}
+        style={styles.dropdownHeader}
         onPress={() => {
           onExpandedChange(!expanded);
         }}
       >
-        <View style={styles.compactHeaderLeft}>
-          <View style={styles.compactIconBox}>
-            <Ionicons name="albums-outline" size={18} color="#2563eb" />
-          </View>
+        <Text style={styles.dropdownLabel}>Categoría</Text>
 
-          <View style={styles.compactTextBlock}>
-            <Text style={styles.compactTitle}>Clasificación</Text>
+        <View style={styles.dropdownRight}>
+          <Text
+            style={[
+              styles.dropdownValue,
+              selectedCategory && styles.dropdownValueActive,
+            ]}
+            numberOfLines={1}
+          >
+            {selectedClassification}
+          </Text>
 
-            <View style={styles.compactChipsRow}>
-              <View
-                style={[
-                  styles.compactCategoryChip,
-                  selectedCategory && styles.compactCategoryChipActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.compactCategoryChipText,
-                    selectedCategory && styles.compactCategoryChipTextActive,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {selectedCategory?.name ?? "Sin categoría"}
-                </Text>
-              </View>
-
-              {selectedSubcategoryName ? (
-                <View style={styles.compactSubcategoryChip}>
-                  <Text
-                    style={styles.compactSubcategoryChipText}
-                    numberOfLines={1}
-                  >
-                    {selectedSubcategoryName}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-          </View>
+          <Ionicons
+            name={expanded ? "chevron-up" : "chevron-down"}
+            size={20}
+            color="#64748b"
+          />
         </View>
-
-        <Ionicons
-          name={expanded ? "chevron-up" : "chevron-down"}
-          size={20}
-          color="#64748b"
-        />
       </Pressable>
 
       {expanded ? (
-        <View style={styles.compactBody}>
+        <View style={styles.dropdownBody}>
           <CategoryBadgeSelector
             categories={PRODUCT_CATEGORIES}
             selectedCategoryId={selectedCategoryId}
@@ -422,7 +408,6 @@ function Categorias({
     </View>
   );
 }
-
 /* ────────────────────────────────────────────────
    PRICE AND QUANTITY CARD
 ──────────────────────────────────────────────── */
@@ -1169,12 +1154,13 @@ export default function ItemDetailScreen() {
                   }}
                   showError={isUnitInvalid}
                 />
-
+                {/* 
                 <Summary
                   base={priceInfo.subtotal}
                   savings={priceInfo.savings}
                   total={priceInfo.total}
                 />
+                */}
               </>
             ) : (
               <>
@@ -1202,6 +1188,12 @@ export default function ItemDetailScreen() {
                     });
                   }}
                   unit={pricing.unit}
+                />
+
+                <Summary
+                  base={priceInfo.subtotal}
+                  savings={priceInfo.savings}
+                  total={priceInfo.total}
                 />
               </>
             )}

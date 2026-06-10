@@ -13,7 +13,6 @@ import { useLists } from "../../context/ListsContext";
 import { useStores } from "../../context/StoresContext";
 import { ROUTES } from "../../navigation/ROUTES";
 
-import BarcodeLink from "../../components/controls/BarcodeLink";
 import StoreFilterBadges from "../../components/features/stores/StoreFilterBadges";
 
 import {
@@ -21,7 +20,7 @@ import {
   getStoresFromPurchaseHistory,
 } from "../../utils/queries/products";
 
-import { formatCurrency, priceText } from "../../utils/store/formatters";
+import { formatCurrency } from "../../utils/store/formatters";
 
 /* -------------------------------------------------
    Helpers
@@ -38,9 +37,32 @@ const toTimestamp = (value) => {
   return Number.isNaN(time) ? 0 : time;
 };
 
+const toNumber = (value, fallback = 0) => {
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : fallback;
+};
+
+const normalizeLabel = (value, fallback) => {
+  const text = String(value ?? "").trim();
+
+  return text || fallback;
+};
+
 const getPurchaseQuantity = (purchase) => {
   const quantity = Number(purchase?.quantity ?? purchase?.qty ?? 1);
+
   return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+};
+
+const getProductTotalSpent = (product) => {
+  if (Array.isArray(product?.purchases) && product.purchases.length > 0) {
+    return product.purchases.reduce((sum, purchase) => {
+      return sum + toNumber(purchase?.priceInfo?.total ?? purchase?.total, 0);
+    }, 0);
+  }
+
+  return toNumber(product?.totalSpent ?? product?.priceInfo?.total, 0);
 };
 
 const groupPurchasesByStore = (purchases = [], getStoreById) => {
@@ -48,6 +70,7 @@ const groupPurchasesByStore = (purchases = [], getStoreById) => {
 
   purchases.forEach((purchase) => {
     const key = purchase.storeId ?? "__no_store__";
+
     const store = purchase.storeId ? getStoreById(purchase.storeId) : null;
 
     if (!map.has(key)) {
@@ -64,8 +87,13 @@ const groupPurchasesByStore = (purchases = [], getStoreById) => {
     const group = map.get(key);
 
     group.purchases.push(purchase);
+
     group.totalUnits += getPurchaseQuantity(purchase);
-    group.totalSpent += Number(purchase.priceInfo?.total ?? 0);
+
+    group.totalSpent += toNumber(
+      purchase?.priceInfo?.total ?? purchase?.total,
+      0,
+    );
 
     if (
       toTimestamp(purchase.purchasedAt) > toTimestamp(group.lastPurchasedAt)
@@ -74,9 +102,69 @@ const groupPurchasesByStore = (purchases = [], getStoreById) => {
     }
   });
 
-  return Array.from(map.values()).sort(
-    (a, b) => toTimestamp(b.lastPurchasedAt) - toTimestamp(a.lastPurchasedAt),
-  );
+  return Array.from(map.values()).sort((a, b) => {
+    return toTimestamp(b.lastPurchasedAt) - toTimestamp(a.lastPurchasedAt);
+  });
+};
+
+const groupProductsByClassification = (products = []) => {
+  const map = new Map();
+
+  products.forEach((product) => {
+    const categoryName = normalizeLabel(product?.categoryName, "Sin categoría");
+
+    const subcategoryName = normalizeLabel(
+      product?.subcategoryName,
+      "Sin subcategoría",
+    );
+
+    const categoryKey = product?.categoryId ?? categoryName;
+
+    const subcategoryKey = product?.subcategoryId ?? subcategoryName;
+
+    const key = `${categoryKey}::${subcategoryKey}`;
+
+    if (!map.has(key)) {
+      map.set(key, {
+        id: key,
+        categoryName,
+        subcategoryName,
+        products: [],
+        purchases: [],
+        totalUnits: 0,
+        totalPurchases: 0,
+        totalSpent: 0,
+        lastPurchasedAt: product?.lastPurchasedAt,
+        storeId: product?.storeId ?? null,
+      });
+    }
+
+    const group = map.get(key);
+
+    group.products.push(product);
+
+    if (Array.isArray(product?.purchases)) {
+      group.purchases.push(...product.purchases);
+    }
+
+    group.totalUnits += toNumber(product?.totalUnits, 0);
+
+    group.totalPurchases += toNumber(product?.frequency, 0);
+
+    group.totalSpent += getProductTotalSpent(product);
+
+    if (
+      toTimestamp(product?.lastPurchasedAt) > toTimestamp(group.lastPurchasedAt)
+    ) {
+      group.lastPurchasedAt = product.lastPurchasedAt;
+
+      group.storeId = product?.storeId ?? null;
+    }
+  });
+
+  return Array.from(map.values()).sort((a, b) => {
+    return toTimestamp(b.lastPurchasedAt) - toTimestamp(a.lastPurchasedAt);
+  });
 };
 
 /* -------------------------------------------------
@@ -85,11 +173,13 @@ const groupPurchasesByStore = (purchases = [], getStoreById) => {
 
 const ProductCountText = ({ units, purchases }) => {
   const safeUnits = Number(units ?? 0);
+
   const safePurchases = Number(purchases ?? 0);
 
   return (
     <View style={styles.iconRow}>
       <Ionicons name="cart-outline" size={17} color="#6B7280" />
+
       <Text style={styles.productsText}>
         {safeUnits === 1 ? "1 producto" : `${safeUnits} productos`} ·{" "}
         {safePurchases === 1 ? "1 compra" : `${safePurchases} compras`}
@@ -126,12 +216,51 @@ const StoreSummaryRow = ({ group, onPressStore }) => {
   );
 };
 
+const ProductSummaryRow = ({ product, onPress }) => {
+  return (
+    <Pressable
+      onPress={() => onPress(product)}
+      style={({ pressed }) => [
+        styles.productSummaryRow,
+        pressed && styles.productSummaryRowPressed,
+      ]}
+    >
+      <View style={styles.productSummaryLeft}>
+        <View style={styles.productIconBox}>
+          <Ionicons name="basket-outline" size={19} color="#2563EB" />
+        </View>
+
+        <View style={styles.productSummaryText}>
+          <Text style={styles.productName} numberOfLines={1}>
+            {product.name || "Producto sin nombre"}
+          </Text>
+
+          <Text style={styles.productMeta}>
+            {toNumber(product.totalUnits, 0)} producto
+            {toNumber(product.totalUnits, 0) === 1 ? "" : "s"} ·{" "}
+            {toNumber(product.frequency, 0)} compra
+            {toNumber(product.frequency, 0) === 1 ? "" : "s"}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.productSummaryRight}>
+        <Text style={styles.productTotal}>
+          {formatCurrency(getProductTotalSpent(product))}
+        </Text>
+
+        <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+      </View>
+    </Pressable>
+  );
+};
+
 const PurchaseHistoryCard = ({
   item,
   expanded,
   onToggle,
-  onPressDetails,
   onPressStore,
+  onPressProduct,
   getStoreById,
 }) => {
   const storeGroups = useMemo(() => {
@@ -144,20 +273,14 @@ const PurchaseHistoryCard = ({
     <View style={styles.card}>
       <View style={styles.cardHeaderRow}>
         <View style={styles.iconBox}>
-          <Ionicons name="receipt-outline" size={26} color="#111827" />
+          <Ionicons name="albums-outline" size={26} color="#111827" />
         </View>
 
         <View style={styles.cardText}>
           <View style={styles.topRow}>
-            <Pressable
-              onPress={onPressDetails}
-              style={styles.titlePressable}
-              hitSlop={6}
-            >
-              <Text style={styles.cardTitle} numberOfLines={1}>
-                {item.name}
-              </Text>
-            </Pressable>
+            <Text style={styles.cardTitle} numberOfLines={1}>
+              {item.categoryName}
+            </Text>
 
             <Pressable onPress={onToggle} style={styles.chevronPressable}>
               <Ionicons
@@ -171,33 +294,13 @@ const PurchaseHistoryCard = ({
             </Pressable>
           </View>
 
-          {item.barcode ? (
-            <BarcodeLink
-              barcode={item.barcode}
-              label="Buscar código"
-              iconColor="#0F52BA"
-            />
-          ) : null}
-
-          {Boolean(item.categoryName || item.subcategoryName) && (
-            <View style={styles.categoryRow}>
-              {item.categoryName ? (
-                <View style={styles.categoryPill}>
-                  <Text style={styles.categoryPillText} numberOfLines={1}>
-                    {item.categoryName}
-                  </Text>
-                </View>
-              ) : null}
-
-              {item.subcategoryName ? (
-                <View style={styles.subcategoryPill}>
-                  <Text style={styles.subcategoryPillText} numberOfLines={1}>
-                    {item.subcategoryName}
-                  </Text>
-                </View>
-              ) : null}
+          <View style={styles.categoryRow}>
+            <View style={styles.subcategoryPill}>
+              <Text style={styles.subcategoryPillText} numberOfLines={1}>
+                {item.subcategoryName}
+              </Text>
             </View>
-          )}
+          </View>
 
           <View style={styles.infoRow}>
             <DatePill
@@ -205,6 +308,7 @@ const PurchaseHistoryCard = ({
               fallback="Sin fecha"
               icon="calendar-outline"
             />
+
             <StorePill store={lastStore} onPressStore={onPressStore} />
           </View>
         </View>
@@ -213,27 +317,48 @@ const PurchaseHistoryCard = ({
       <View style={styles.separator} />
 
       <View style={styles.bottomRow}>
-        <ProductCountText units={item.totalUnits} purchases={item.frequency} />
+        <ProductCountText
+          units={item.totalUnits}
+          purchases={item.totalPurchases}
+        />
 
         <View style={styles.priceBox}>
           <Ionicons name="pricetag-outline" size={17} color="#059669" />
-          <Text style={styles.price}>{priceText(item.priceInfo)}</Text>
+
+          <Text style={styles.price}>{formatCurrency(item.totalSpent)}</Text>
         </View>
       </View>
 
-      {expanded && (
+      {expanded ? (
         <View style={styles.storesContainer}>
-          <Text style={styles.sectionTitle}>Comprado en tiendas</Text>
+          <Text style={styles.sectionTitle}>Productos</Text>
 
-          {storeGroups.map((group) => (
-            <StoreSummaryRow
-              key={group.storeId ?? "no-store"}
-              group={group}
-              onPressStore={onPressStore}
+          {item.products.map((product) => (
+            <ProductSummaryRow
+              key={product.id}
+              product={product}
+              onPress={onPressProduct}
             />
           ))}
+
+          <View style={styles.innerSeparator} />
+          <Text style={styles.sectionTitle}>Comprado en tiendas</Text>
+
+          {storeGroups.length > 0 ? (
+            storeGroups.map((group) => (
+              <StoreSummaryRow
+                key={group.storeId ?? "no-store"}
+                group={group}
+                onPressStore={onPressStore}
+              />
+            ))
+          ) : (
+            <Text style={styles.emptyStoresText}>
+              No hay información de tiendas disponible.
+            </Text>
+          )}
         </View>
-      )}
+      ) : null}
     </View>
   );
 };
@@ -244,14 +369,19 @@ const PurchaseHistoryCard = ({
 
 export default function PurchaseHistoryScreen() {
   const navigation = useNavigation();
+
   const lists = useLists();
 
   const { purchaseHistory = [] } = lists;
+
   const { getStoreById } = useStores();
 
   const [search, setSearch] = useState("");
+
   const [selectedStore, setSelectedStore] = useState(null);
-  const [expandedProductId, setExpandedProductId] = useState(null);
+
+  const [expandedClassificationId, setExpandedClassificationId] =
+    useState(null);
 
   const sourceProducts = useMemo(() => {
     return purchaseHistory;
@@ -261,16 +391,14 @@ export default function PurchaseHistoryScreen() {
     return getStoresFromPurchaseHistory(sourceProducts, getStoreById);
   }, [sourceProducts, getStoreById]);
 
-  const products = useMemo(() => {
-    const base = queryProducts({
+  const classifications = useMemo(() => {
+    const filteredProducts = queryProducts({
       purchaseHistory: sourceProducts,
       search,
       storeId: selectedStore,
     });
 
-    return [...base].sort(
-      (a, b) => toTimestamp(b.lastPurchasedAt) - toTimestamp(a.lastPurchasedAt),
-    );
+    return groupProductsByClassification(filteredProducts);
   }, [sourceProducts, search, selectedStore]);
 
   const openStoreDetail = (storeId) => {
@@ -278,6 +406,7 @@ export default function PurchaseHistoryScreen() {
 
     navigation.navigate(ROUTES.STORES_TAB, {
       screen: ROUTES.STORE_DETAIL,
+
       params: {
         storeId,
       },
@@ -285,24 +414,29 @@ export default function PurchaseHistoryScreen() {
   };
 
   const openPurchaseDetail = (product) => {
+    if (!product) return;
+
     navigation.navigate(ROUTES.PURCHASE_DETAIL, {
       productId: product.id,
-      product,
     });
   };
 
-  const renderItem = ({ item }) => (
-    <PurchaseHistoryCard
-      item={item}
-      expanded={expandedProductId === item.id}
-      onToggle={() =>
-        setExpandedProductId(expandedProductId === item.id ? null : item.id)
-      }
-      onPressDetails={() => openPurchaseDetail(item)}
-      onPressStore={openStoreDetail}
-      getStoreById={getStoreById}
-    />
-  );
+  const renderItem = ({ item }) => {
+    const expanded = expandedClassificationId === item.id;
+
+    return (
+      <PurchaseHistoryCard
+        item={item}
+        expanded={expanded}
+        onToggle={() => {
+          setExpandedClassificationId(expanded ? null : item.id);
+        }}
+        onPressStore={openStoreDetail}
+        onPressProduct={openPurchaseDetail}
+        getStoreById={getStoreById}
+      />
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
@@ -310,14 +444,14 @@ export default function PurchaseHistoryScreen() {
         <Text style={styles.title}>Historial de compras</Text>
 
         <Text style={styles.subtitle}>
-          Consulta productos comprados anteriormente, cuántas unidades has
-          comprado y en qué tiendas.
+          Consulta los productos comprados agrupados por categoría, subcategoría
+          y supermercado.
         </Text>
 
         <SearchBar
           value={search}
           onChange={setSearch}
-          placeholder="Buscar producto, supermercado o código..."
+          placeholder="Buscar categoría, producto o supermercado..."
           style={styles.searchBar}
         />
 
@@ -328,26 +462,28 @@ export default function PurchaseHistoryScreen() {
         />
 
         <FlatList
-          data={products}
+          data={classifications}
           keyExtractor={(item) => item.id}
-          extraData={expandedProductId}
+          extraData={expandedClassificationId}
           renderItem={renderItem}
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.listContent,
-            products.length === 0 && styles.emptyContainer,
+            classifications.length === 0 && styles.emptyContainer,
           ]}
           ListEmptyComponent={
             <View style={styles.emptyCard}>
               <View style={styles.emptyIconBox}>
                 <Ionicons name="receipt-outline" size={30} color="#9CA3AF" />
               </View>
+
               <Text style={styles.emptyTitle}>No hay historial de compras</Text>
+
               <Text style={styles.emptySubtitle}>
                 Cuando archives una lista de compra aparecerán aquí sus
-                productos agrupados.
+                productos agrupados por categoría y subcategoría.
               </Text>
             </View>
           }
@@ -374,17 +510,17 @@ const styles = StyleSheet.create({
   },
 
   title: {
+    marginBottom: 8,
+    color: "#111827",
     fontSize: 28,
     fontWeight: "800",
-    color: "#111827",
-    marginBottom: 8,
   },
 
   subtitle: {
+    marginBottom: 20,
+    color: "#6B7280",
     fontSize: 15,
     lineHeight: 22,
-    color: "#6B7280",
-    marginBottom: 20,
   },
 
   searchBar: {
@@ -401,17 +537,20 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
+    marginBottom: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    marginBottom: 14,
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    shadowColor: "#000",
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000000",
     shadowOpacity: 0.05,
     shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
     elevation: 2,
   },
 
@@ -423,89 +562,73 @@ const styles = StyleSheet.create({
   iconBox: {
     width: 48,
     height: 48,
+    marginRight: 14,
     borderRadius: 16,
-    backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 14,
+    backgroundColor: "#F3F4F6",
   },
 
   cardText: {
     flex: 1,
+    minWidth: 0,
   },
 
   topRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-  },
-
-  titlePressable: {
-    flex: 1,
-    paddingVertical: 2,
+    gap: 8,
   },
 
   cardTitle: {
-    fontSize: 17,
-    fontWeight: "700",
+    flex: 1,
     color: "#111827",
+    fontSize: 17,
+    fontWeight: "800",
   },
 
   chevronPressable: {
-    padding: 6,
     marginLeft: 8,
+    padding: 6,
   },
 
   categoryRow: {
+    marginTop: 6,
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     gap: 6,
-    marginTop: 8,
-  },
-
-  categoryPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
   },
 
   subcategoryPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: "#F8FAFC",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-
-  categoryPillText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#2563EB",
+    borderColor: "#BFDBFE",
+    borderRadius: 999,
+    backgroundColor: "#EFF6FF",
   },
 
   subcategoryPillText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#475569",
+    color: "#2563EB",
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: "700",
   },
 
   infoRow: {
+    marginTop: 8,
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     gap: 8,
-    marginTop: 8,
   },
 
   separator: {
     height: 1,
-    backgroundColor: "#E5E7EB",
     marginVertical: 12,
+    backgroundColor: "#E5E7EB",
   },
 
   bottomRow: {
@@ -516,20 +639,21 @@ const styles = StyleSheet.create({
   },
 
   iconRow: {
+    flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    flexShrink: 1,
   },
 
   productsText: {
-    fontSize: 14,
-    color: "#6B7280",
-    fontWeight: "600",
     flexShrink: 1,
+    color: "#6B7280",
+    fontSize: 14,
+    fontWeight: "600",
   },
 
   priceBox: {
+    flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -537,13 +661,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: "#ECFDF5",
-    flexShrink: 0,
   },
 
   price: {
+    color: "#059669",
     fontSize: 15,
     fontWeight: "800",
-    color: "#059669",
   },
 
   storePillWrap: {
@@ -552,46 +675,33 @@ const styles = StyleSheet.create({
 
   storesContainer: {
     marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: "#E5E7EB",
-    paddingTop: 12,
     gap: 10,
   },
 
   sectionTitle: {
+    marginBottom: 2,
+    color: "#6B7280",
     fontSize: 13,
     fontWeight: "800",
-    color: "#6B7280",
     textTransform: "uppercase",
     letterSpacing: 0.4,
-    marginBottom: 2,
   },
 
   storeSummaryRow: {
+    paddingVertical: 6,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-    paddingVertical: 6,
   },
 
   storeSummaryLeft: {
     flex: 1,
     minWidth: 0,
     gap: 6,
-  },
-
-  storeTotal: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#111827",
-    flexShrink: 0,
-  },
-
-  storeSummaryLeft: {
-    flex: 1,
-    gap: 6,
-    minWidth: 0,
   },
 
   storeMetaRow: {
@@ -602,53 +712,128 @@ const styles = StyleSheet.create({
   },
 
   storeUnitsText: {
-    fontSize: 13,
     color: "#6B7280",
+    fontSize: 13,
     fontWeight: "600",
   },
 
   storeTotal: {
+    flexShrink: 0,
+    color: "#111827",
     fontSize: 15,
     fontWeight: "800",
-    color: "#111827",
+  },
+
+  emptyStoresText: {
+    color: "#6B7280",
+    fontSize: 13,
+    lineHeight: 18,
   },
 
   emptyCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
     paddingHorizontal: 20,
     paddingVertical: 28,
-    alignItems: "center",
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    shadowColor: "#000",
+    borderRadius: 18,
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000000",
     shadowOpacity: 0.05,
     shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
     elevation: 2,
   },
 
   emptyIconBox: {
     width: 56,
     height: 56,
+    marginBottom: 14,
     borderRadius: 18,
-    backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 14,
+    backgroundColor: "#F3F4F6",
   },
 
   emptyTitle: {
+    marginBottom: 6,
+    color: "#111827",
     fontSize: 17,
     fontWeight: "800",
-    color: "#111827",
-    marginBottom: 6,
   },
 
   emptySubtitle: {
+    color: "#6B7280",
     fontSize: 14,
     lineHeight: 20,
-    color: "#6B7280",
     textAlign: "center",
+  },
+  productSummaryRow: {
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+
+  productSummaryRowPressed: {
+    opacity: 0.65,
+  },
+
+  productSummaryLeft: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  productIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EFF6FF",
+  },
+
+  productSummaryText: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  productName: {
+    color: "#111827",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+
+  productMeta: {
+    marginTop: 3,
+    color: "#6B7280",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  productSummaryRight: {
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  productTotal: {
+    color: "#059669",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+
+  innerSeparator: {
+    height: 1,
+    marginVertical: 4,
+    backgroundColor: "#E5E7EB",
   },
 });

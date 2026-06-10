@@ -119,6 +119,12 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
 
   const [restartToken, setRestartToken] = useState(0);
 
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchEnabled, setTorchEnabled] = useState(false);
+
+  const [zoomCapability, setZoomCapability] = useState(null);
+  const [zoomValue, setZoomValue] = useState(null);
+
   useEffect(() => {
     onDetectedRef.current = onDetected;
   }, [onDetected]);
@@ -150,6 +156,16 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
     }
   }, []);
 
+  const resetCapabilities = useCallback(() => {
+    setTorchSupported(false);
+
+    setTorchEnabled(false);
+
+    setZoomCapability(null);
+
+    setZoomValue(null);
+  }, []);
+
   const stopCurrentScanner = useCallback(async () => {
     /*
      * Cualquier arranque pendiente deja de ser válido.
@@ -160,8 +176,64 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
 
     scannerRef.current = null;
 
+    setStarting(false);
+
+    resetCapabilities();
+
     await stopScannerInstance(scanner);
-  }, [stopScannerInstance]);
+  }, [resetCapabilities, stopScannerInstance]);
+
+  /* -------------------------------------------------
+     Camera capabilities
+  -------------------------------------------------- */
+
+  const inspectCameraCapabilities = useCallback(
+    (scanner) => {
+      try {
+        const capabilities = scanner.getRunningTrackCapabilities();
+
+        const settings = scanner.getRunningTrackSettings?.() || {};
+
+        setTorchSupported(capabilities?.torch === true);
+
+        const zoom = capabilities?.zoom;
+
+        if (
+          zoom &&
+          typeof zoom.min === "number" &&
+          typeof zoom.max === "number"
+        ) {
+          setZoomCapability({
+            min: zoom.min,
+
+            max: zoom.max,
+
+            step:
+              typeof zoom.step === "number" && zoom.step > 0 ? zoom.step : 0.1,
+          });
+
+          setZoomValue(
+            typeof settings.zoom === "number" ? settings.zoom : zoom.min,
+          );
+
+          return;
+        }
+
+        setZoomCapability(null);
+
+        setZoomValue(null);
+      } catch (error) {
+        /*
+         * Safari puede mostrar la cámara sin ofrecer
+         * zoom o linterna.
+         *
+         * No es un error bloqueante.
+         */
+        resetCapabilities();
+      }
+    },
+    [resetCapabilities],
+  );
 
   /* -------------------------------------------------
      Start scanner
@@ -238,6 +310,8 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
          */
         operationIdRef.current += 1;
 
+        resetCapabilities();
+
         await stopScannerInstance(scanner);
 
         if (!disposed) {
@@ -291,6 +365,8 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
 
       setErrorMessage("");
 
+      resetCapabilities();
+
       let scanner = null;
 
       try {
@@ -338,6 +414,8 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
         scannerRef.current = scanner;
 
         ownedScanner = scanner;
+
+        inspectCameraCapabilities(scanner);
       } catch (error) {
         console.log("Quick EAN-13 web scanner error:", error);
 
@@ -364,9 +442,18 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
         scannerRef.current = null;
       }
 
+      resetCapabilities();
+
       stopScannerInstance(ownedScanner);
     };
-  }, [isFocused, restartToken, stopCurrentScanner, stopScannerInstance]);
+  }, [
+    inspectCameraCapabilities,
+    isFocused,
+    resetCapabilities,
+    restartToken,
+    stopCurrentScanner,
+    stopScannerInstance,
+  ]);
 
   /* -------------------------------------------------
      Controls
@@ -388,6 +475,68 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
     setRestartToken((previous) => {
       return previous + 1;
     });
+  }
+
+  async function handleToggleTorch() {
+    const scanner = scannerRef.current;
+
+    if (!scanner || !torchSupported) {
+      return;
+    }
+
+    const nextValue = !torchEnabled;
+
+    try {
+      await scanner.applyVideoConstraints({
+        advanced: [
+          {
+            torch: nextValue,
+          },
+        ],
+      });
+
+      setTorchEnabled(nextValue);
+    } catch (error) {
+      console.log("Torch is not available in this browser:", error);
+
+      setTorchSupported(false);
+
+      setTorchEnabled(false);
+    }
+  }
+
+  async function handleChangeZoom() {
+    const scanner = scannerRef.current;
+
+    if (!scanner || !zoomCapability) {
+      return;
+    }
+
+    const { min, max, step } = zoomCapability;
+
+    const currentValue = typeof zoomValue === "number" ? zoomValue : min;
+
+    const proposedValue = currentValue + step;
+
+    const nextValue = proposedValue > max ? min : proposedValue;
+
+    try {
+      await scanner.applyVideoConstraints({
+        advanced: [
+          {
+            zoom: nextValue,
+          },
+        ],
+      });
+
+      setZoomValue(nextValue);
+    } catch (error) {
+      console.log("Zoom is not available in this browser:", error);
+
+      setZoomCapability(null);
+
+      setZoomValue(null);
+    }
   }
 
   /* -------------------------------------------------
@@ -420,6 +569,45 @@ export default function QuickEan13Scanner({ onDetected, onCancel }) {
             El número se copiará automáticamente al producto cuando sea
             detectado.
           </Text>
+
+          {torchSupported || zoomCapability ? (
+            <View style={styles.actionsRow}>
+              {zoomCapability ? (
+                <Pressable
+                  style={styles.actionButton}
+                  onPress={handleChangeZoom}
+                >
+                  <Ionicons name="scan-outline" size={18} color="#FFFFFF" />
+
+                  <Text style={styles.actionText}>
+                    {typeof zoomValue === "number"
+                      ? `Zoom ${zoomValue.toFixed(1)}x`
+                      : "Zoom"}
+                  </Text>
+                </Pressable>
+              ) : null}
+
+              {torchSupported ? (
+                <Pressable
+                  style={[
+                    styles.actionButton,
+                    torchEnabled && styles.actionButtonActive,
+                  ]}
+                  onPress={handleToggleTorch}
+                >
+                  <Ionicons
+                    name={torchEnabled ? "flashlight" : "flashlight-outline"}
+                    size={18}
+                    color="#FFFFFF"
+                  />
+
+                  <Text style={styles.actionText}>
+                    {torchEnabled ? "Luz ON" : "Linterna"}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
 
           {starting ? (
             <Text style={styles.statusText}>Iniciando cámara...</Text>
@@ -537,6 +725,36 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     textAlign: "center",
+  },
+
+  actionsRow: {
+    marginTop: 16,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 10,
+  },
+
+  actionButton: {
+    flex: 1,
+    maxWidth: 210,
+    minHeight: 46,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "rgba(37,99,235,0.95)",
+  },
+
+  actionButtonActive: {
+    backgroundColor: "rgba(245,158,11,0.95)",
+  },
+
+  actionText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
   },
 
   statusText: {
