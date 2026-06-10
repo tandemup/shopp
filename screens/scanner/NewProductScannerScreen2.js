@@ -127,7 +127,8 @@ export default function NewProductScannerScreen2() {
     returnToTab = ROUTES.SHOPPING_TAB,
   } = route.params || {};
 
-  const isQuickEan13Input = captureMode === "ean13-input";
+  //  const isQuickEan13Input = captureMode === "ean13-input";
+  const isQuickEan13Input = false;
 
   const barcodeTypes = useMemo(() => {
     return normalizeBarcodeTypes(routeBarcodeTypes);
@@ -212,6 +213,11 @@ export default function NewProductScannerScreen2() {
         <QuickEan13Scanner
           onDetected={handleQuickEan13Detected}
           onCancel={handleQuickCancel}
+          zoom={ZOOM_VALUES[zoomIndex]}
+          zoomLabel={ZOOM_LABELS[zoomIndex]}
+          torchEnabled={torchEnabled}
+          onChangeZoom={handleChangeZoom}
+          onToggleTorch={handleToggleTorch}
         />
       </View>
     );
