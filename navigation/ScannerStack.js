@@ -6,8 +6,6 @@ import { ROUTES } from "./ROUTES";
 
 import ScannerTabScreen from "../screens/scanner/ScannerTabScreen";
 import ProductBarcodeScannerScreen from "../screens/scanner/ProductBarcodeScannerScreen";
-import NewProductScannerScreen from "../screens/scanner/NewProductScannerScreen";
-import NewProductScannerScreen1 from "../screens/scanner/NewProductScannerScreen1";
 import NewProductScannerScreen2 from "../screens/scanner/NewProductScannerScreen2";
 import ProductInfoScreen from "../screens/scanner/ProductInfoScreen";
 import EditScannedItemScreen from "../screens/scanner/EditScannedItemScreen";
@@ -38,26 +36,6 @@ export default function ScannerStack() {
         component={ProductBarcodeScannerScreen}
         options={{
           title: "Leer código de barras",
-          headerShown: false,
-          presentation: "fullScreenModal",
-        }}
-      />
-
-      <Stack.Screen
-        name={ROUTES.NEW_PRODUCT_SCANNER}
-        component={NewProductScannerScreen}
-        options={{
-          title: "Escanear nuevo producto",
-          headerShown: false,
-          presentation: "fullScreenModal",
-        }}
-      />
-
-      <Stack.Screen
-        name={ROUTES.NEW_PRODUCT_SCANNER1}
-        component={NewProductScannerScreen1}
-        options={{
-          title: "Escanear nuevo producto1",
           headerShown: false,
           presentation: "fullScreenModal",
         }}

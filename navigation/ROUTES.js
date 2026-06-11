@@ -40,8 +40,6 @@ export const ROUTES = {
   // Se usa desde el tab Scanner para escanear un producto nuevo.
   // ItemDetailScreen también abre NEW_PRODUCT_SCANNER2 con
   // captureMode: "ean13-input" para activar el lector rápido.
-  NEW_PRODUCT_SCANNER: "NewProductScanner",
-  NEW_PRODUCT_SCANNER1: "NewProductScanner1",
   NEW_PRODUCT_SCANNER2: "NewProductScanner2",
   // Pantalla para mostrar información obtenida del producto escaneado
   PRODUCT_INFO: "ProductInfo",

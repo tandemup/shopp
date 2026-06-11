@@ -78,20 +78,6 @@ export default function ScannerTabScreen({ navigation }) {
   const enabledBarcodeTypes = getEnabledBarcodeTypes(barcodeSettings);
   const enabledFormatsLabel = enabledBarcodeTypes.join(", ");
 
-  const goToScanner = () => {
-    navigation.navigate(ROUTES.NEW_PRODUCT_SCANNER, {
-      saveToHistory: true,
-      barcodeTypes: enabledBarcodeTypes,
-    });
-  };
-
-  const goToScanner1 = () => {
-    navigation.navigate(ROUTES.NEW_PRODUCT_SCANNER1, {
-      saveToHistory: true,
-      barcodeTypes: enabledBarcodeTypes,
-    });
-  };
-
   const goToScanner2 = () => {
     navigation.navigate(ROUTES.NEW_PRODUCT_SCANNER2, {
       saveToHistory: true,
@@ -121,60 +107,6 @@ export default function ScannerTabScreen({ navigation }) {
                 styles.card,
                 pressed && styles.cardPressed,
               ]}
-              onPress={goToScanner}
-            >
-              <View style={styles.iconBox}>
-                <Ionicons name="barcode-outline" size={26} color="#111827" />
-              </View>
-
-              <View style={styles.cardText}>
-                <Text style={styles.cardTitle}>Escanear nuevo producto 1</Text>
-
-                <Text style={styles.cardSubtitle}>
-                  Abrir la cámara para leer un código de barras. Abrir luego el
-                  Historial de escaneos.
-                </Text>
-
-                <Text style={styles.cardMeta} numberOfLines={1}>
-                  Formatos activos: {enabledFormatsLabel}
-                </Text>
-              </View>
-
-              <Ionicons name="chevron-forward" size={22} color="#9CA3AF" />
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.card,
-                pressed && styles.cardPressed,
-              ]}
-              onPress={goToScanner1}
-            >
-              <View style={styles.iconBox}>
-                <Ionicons name="barcode-outline" size={26} color="#111827" />
-              </View>
-
-              <View style={styles.cardText}>
-                <Text style={styles.cardTitle}>Escanear nuevo producto 2</Text>
-
-                <Text style={styles.cardSubtitle}>
-                  Abrir la cámara para leer un código de barras. Luego mostrar
-                  ProductBarcodeScannerScreen
-                </Text>
-
-                <Text style={styles.cardMeta} numberOfLines={1}>
-                  Formatos activos: {enabledFormatsLabel}
-                </Text>
-              </View>
-
-              <Ionicons name="chevron-forward" size={22} color="#9CA3AF" />
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.card,
-                pressed && styles.cardPressed,
-              ]}
               onPress={goToScanner2}
             >
               <View style={styles.iconBox}>
@@ -182,7 +114,7 @@ export default function ScannerTabScreen({ navigation }) {
               </View>
 
               <View style={styles.cardText}>
-                <Text style={styles.cardTitle}>Escanear nuevo producto 3</Text>
+                <Text style={styles.cardTitle}>Escanear nuevo producto</Text>
 
                 <Text style={styles.cardSubtitle}>
                   Método alternativo: Abrir la cámara para leer un código de
