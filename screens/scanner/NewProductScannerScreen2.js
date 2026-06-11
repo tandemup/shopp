@@ -105,30 +105,19 @@ export default function NewProductScannerScreen2() {
   const [permission, requestPermission] = useCameraPermissions();
 
   const [locked, setLocked] = useState(false);
-
-  /*
-   * El lector general abre inicialmente en 1.2x.
-   */
   const [zoomIndex, setZoomIndex] = useState(1);
-
   const [torchEnabled, setTorchEnabled] = useState(false);
 
   const {
     autoOpenEngine = false,
-
     barcodeTypes: routeBarcodeTypes = null,
-
-    /*
-     * Parámetros enviados desde ItemDetailScreen.
-     */
     captureMode = null,
     listId = null,
     itemId = null,
     returnToTab = ROUTES.SHOPPING_TAB,
   } = route.params || {};
 
-  //  const isQuickEan13Input = captureMode === "ean13-input";
-  const isQuickEan13Input = false;
+  const isQuickEan13Input = captureMode === "ean13-input";
 
   const barcodeTypes = useMemo(() => {
     return normalizeBarcodeTypes(routeBarcodeTypes);
@@ -172,6 +161,36 @@ export default function NewProductScannerScreen2() {
   );
 
   /* -------------------------------------------------
+     Common actions
+  -------------------------------------------------- */
+
+  function unlockScanner() {
+    scannedRef.current = false;
+    handlingScanRef.current = false;
+
+    setLocked(false);
+    setTorchEnabled(false);
+  }
+
+  function handleCancel() {
+    unlockScanner();
+
+    navigation.goBack();
+  }
+
+  function handleChangeZoom() {
+    setZoomIndex((previous) => {
+      return (previous + 1) % ZOOM_VALUES.length;
+    });
+  }
+
+  function handleToggleTorch() {
+    setTorchEnabled((previous) => {
+      return !previous;
+    });
+  }
+
+  /* -------------------------------------------------
      Fast EAN-13 input mode
   -------------------------------------------------- */
 
@@ -182,10 +201,6 @@ export default function NewProductScannerScreen2() {
       return;
     }
 
-    /*
-     * Volvemos inmediatamente a ItemDetailScreen.
-     * No hay historial, búsqueda remota ni safeMenu.
-     */
     navigation.navigate(returnToTab, {
       screen: ROUTES.ITEM_DETAIL,
 
@@ -195,10 +210,6 @@ export default function NewProductScannerScreen2() {
         scannedBarcode: barcode,
       },
     });
-  }
-
-  function handleQuickCancel() {
-    navigation.goBack();
   }
 
   if (isQuickEan13Input) {
@@ -212,7 +223,7 @@ export default function NewProductScannerScreen2() {
 
         <QuickEan13Scanner
           onDetected={handleQuickEan13Detected}
-          onCancel={handleQuickCancel}
+          onCancel={handleCancel}
           zoom={ZOOM_VALUES[zoomIndex]}
           zoomLabel={ZOOM_LABELS[zoomIndex]}
           torchEnabled={torchEnabled}
@@ -247,11 +258,8 @@ export default function NewProductScannerScreen2() {
     if (hasUsefulCachedData) {
       const updatedItem = {
         ...cachedItem,
-
         barcode,
-
         source: cachedItem.source || "scanner",
-
         updatedAt: now,
       };
 
@@ -268,27 +276,16 @@ export default function NewProductScannerScreen2() {
 
     const scannedItem = {
       id: barcode,
-
       barcode,
-
       name: product?.name || cachedItem?.name || "",
-
       brand: product?.brand || cachedItem?.brand || "",
-
       imageUrl: product?.imageUrl || cachedItem?.imageUrl || "",
-
       thumbnailUri: cachedItem?.thumbnailUri || null,
-
       url: product?.url || cachedItem?.url || "",
-
       notes: cachedItem?.notes || "",
-
       source: "scanner",
-
       lookupSource: product?.lookupSource || cachedItem?.lookupSource || null,
-
       scannedAt: cachedItem?.scannedAt || now,
-
       updatedAt: now,
     };
 
@@ -297,36 +294,6 @@ export default function NewProductScannerScreen2() {
     }
 
     return scannedItem;
-  }
-
-  /* -------------------------------------------------
-     General scanner state
-  -------------------------------------------------- */
-
-  function unlockScanner() {
-    scannedRef.current = false;
-    handlingScanRef.current = false;
-
-    setLocked(false);
-    setTorchEnabled(false);
-  }
-
-  function handleCancel() {
-    unlockScanner();
-
-    navigation.goBack();
-  }
-
-  function handleChangeZoom() {
-    setZoomIndex((previous) => {
-      return (previous + 1) % ZOOM_VALUES.length;
-    });
-  }
-
-  function handleToggleTorch() {
-    setTorchEnabled((previous) => {
-      return !previous;
-    });
   }
 
   async function processDetectedBarcode(barcode, saveToHistory) {
@@ -348,7 +315,6 @@ export default function NewProductScannerScreen2() {
       safeAlert("Error", "No se pudo procesar el producto escaneado", [
         {
           text: "Cerrar",
-
           onPress: handleCancel,
         },
       ]);
@@ -388,15 +354,12 @@ export default function NewProductScannerScreen2() {
       [
         {
           text: "Cancelar",
-
           style: "cancel",
-
           onPress: unlockScanner,
         },
 
         {
           text: "No añadir",
-
           onPress: () => {
             processDetectedBarcode(barcode, false);
           },
@@ -404,7 +367,6 @@ export default function NewProductScannerScreen2() {
 
         {
           text: "Añadir",
-
           onPress: () => {
             processDetectedBarcode(barcode, true);
           },
@@ -434,10 +396,82 @@ export default function NewProductScannerScreen2() {
       [
         {
           text: "Cerrar",
-
           onPress: handleCancel,
         },
       ],
+    );
+  }
+
+  /* -------------------------------------------------
+     Shared overlay: Web + ExpoGo
+  -------------------------------------------------- */
+
+  function renderScannerOverlay() {
+    return (
+      <View style={styles.overlay} pointerEvents="box-none">
+        <Pressable
+          style={styles.closeButton}
+          onPress={handleCancel}
+          pointerEvents="auto"
+        >
+          <Ionicons name="close" size={54} color="#FFFFFF" />
+        </Pressable>
+
+        <View style={styles.scanBox} pointerEvents="none">
+          <View style={styles.scanLine} />
+        </View>
+
+        <Text style={styles.scanHint} pointerEvents="none">
+          Apunta al código EAN-13
+        </Text>
+
+        <View style={styles.controlsRow} pointerEvents="box-none">
+          <Pressable
+            style={styles.pillButton}
+            onPress={handleChangeZoom}
+            pointerEvents="auto"
+          >
+            <Text style={styles.pillButtonText}>
+              Zoom {ZOOM_LABELS[zoomIndex]}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={[styles.pillButton, torchEnabled && styles.pillButtonActive]}
+            onPress={handleToggleTorch}
+            pointerEvents="auto"
+          >
+            <Text style={styles.pillButtonText}>
+              Linterna {torchEnabled ? "ON" : "OFF"}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.bottomPanel} pointerEvents="box-none">
+          <Text style={styles.title}>Leer código de barras</Text>
+
+          <Text style={styles.subtitle}>
+            El número se copiará automáticamente al producto cuando sea
+            detectado.
+          </Text>
+
+          <Pressable
+            style={styles.cancelButton}
+            onPress={handleCancel}
+            pointerEvents="auto"
+          >
+            <Text style={styles.cancelButtonText}>Cancelar</Text>
+          </Pressable>
+
+          {locked ? (
+            <View style={styles.readingBox} pointerEvents="none">
+              <ActivityIndicator color="#FFFFFF" />
+
+              <Text style={styles.readingText}>Procesando...</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
     );
   }
 
@@ -453,14 +487,14 @@ export default function NewProductScannerScreen2() {
           backgroundColor="#000000"
           translucent={false}
         />
-
-        <BarcodeScannerView
+        <QuickEan13Scanner
           onDetected={handleWebDetected}
-          onClose={handleCancel}
-          continuous={true}
-          duplicateCooldownMs={1500}
-          showControls={true}
-          barcodeTypes={barcodeTypes}
+          onCancel={handleCancel}
+          zoom={ZOOM_VALUES[zoomIndex]}
+          zoomLabel={ZOOM_LABELS[zoomIndex]}
+          torchEnabled={torchEnabled}
+          onChangeZoom={handleChangeZoom}
+          onToggleTorch={handleToggleTorch}
         />
       </View>
     );
@@ -480,9 +514,11 @@ export default function NewProductScannerScreen2() {
         />
 
         <View style={styles.center}>
-          <ActivityIndicator color="#111827" />
+          <ActivityIndicator color="#FFFFFF" />
 
-          <Text style={styles.message}>Comprobando permisos de cámara...</Text>
+          <Text style={styles.messageLight}>
+            Comprobando permisos de cámara...
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -496,9 +532,11 @@ export default function NewProductScannerScreen2() {
         <View style={styles.center}>
           <Ionicons name="camera-outline" size={42} color="#64748B" />
 
-          <Text style={styles.title}>Permiso de cámara necesario</Text>
+          <Text style={styles.permissionTitle}>
+            Permiso de cámara necesario
+          </Text>
 
-          <Text style={styles.message}>
+          <Text style={styles.permissionMessage}>
             Necesitas permitir el acceso a la cámara para escanear productos.
           </Text>
 
@@ -536,82 +574,7 @@ export default function NewProductScannerScreen2() {
           }}
         />
 
-        <View style={styles.overlay} pointerEvents="box-none">
-          <View style={styles.topBar} pointerEvents="box-none">
-            <Pressable style={styles.closeButton} onPress={handleCancel}>
-              <Ionicons name="close" size={24} color="#FFFFFF" />
-            </Pressable>
-          </View>
-
-          <View style={styles.middle} pointerEvents="none">
-            <View style={styles.scanBox}>
-              <View style={styles.scanLine} />
-
-              <View style={styles.cornerTopLeft} />
-
-              <View style={styles.cornerTopRight} />
-
-              <View style={styles.cornerBottomLeft} />
-
-              <View style={styles.cornerBottomRight} />
-            </View>
-
-            <Text style={styles.centerHint}>
-              Coloca el código dentro del recuadro
-            </Text>
-          </View>
-
-          <View style={styles.bottomPanel}>
-            <Text style={styles.scanTitle}>Escanear nuevo producto</Text>
-
-            <Text style={styles.scanHint}>
-              Lee el código, guarda el escaneo y muestra la ficha del producto.
-            </Text>
-
-            <View style={styles.actionsRow}>
-              <Pressable style={styles.actionBtn} onPress={handleChangeZoom}>
-                <Ionicons name="scan-outline" size={18} color="#FFFFFF" />
-
-                <Text style={styles.actionText}>
-                  Zoom {ZOOM_LABELS[zoomIndex]}
-                </Text>
-              </Pressable>
-
-              <Pressable
-                style={[
-                  styles.actionBtn,
-
-                  torchEnabled && styles.actionBtnActive,
-                ]}
-                onPress={handleToggleTorch}
-              >
-                <Ionicons
-                  name={torchEnabled ? "flashlight" : "flashlight-outline"}
-                  size={18}
-                  color="#FFFFFF"
-                />
-
-                <Text style={styles.actionText}>
-                  {torchEnabled ? "Luz ON" : "Linterna"}
-                </Text>
-              </Pressable>
-
-              <Pressable style={styles.cancelBtn} onPress={handleCancel}>
-                <Text style={styles.cancelText}>Cancelar</Text>
-              </Pressable>
-            </View>
-
-            {locked ? (
-              <View style={styles.readingBox}>
-                <ActivityIndicator color="#FFFFFF" />
-
-                <Text style={styles.readingText}>
-                  Código leído. Buscando producto...
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        </View>
+        {renderScannerOverlay()}
       </View>
     </SafeAreaView>
   );
@@ -620,8 +583,6 @@ export default function NewProductScannerScreen2() {
 /* -------------------------------------------------
    Styles
 -------------------------------------------------- */
-
-const CORNER_SIZE = 30;
 
 const styles = StyleSheet.create({
   screen: {
@@ -644,6 +605,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     backgroundColor: "#000000",
+    position: "relative",
   },
 
   camera: {
@@ -652,186 +614,123 @@ const styles = StyleSheet.create({
 
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: "space-between",
-  },
-
-  topBar: {
-    minHeight: Platform.OS === "android" ? 56 : 48,
-
-    paddingHorizontal: 16,
-
-    paddingTop: Platform.OS === "android" ? 12 : 8,
-
-    alignItems: "flex-end",
-
-    justifyContent: "center",
+    paddingTop: Platform.OS === "web" ? 70 : 60,
+    paddingHorizontal: 28,
+    alignItems: "center",
   },
 
   closeButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
-  },
-
-  middle: {
+    position: "absolute",
+    top: Platform.OS === "web" ? 34 : 48,
+    right: 24,
+    zIndex: 20,
+    width: 60,
+    height: 60,
     alignItems: "center",
     justifyContent: "center",
   },
 
   scanBox: {
-    width: "82%",
-    height: 150,
-    position: "relative",
-    borderRadius: 18,
-    backgroundColor: "rgba(0,0,0,0.12)",
+    marginTop: Platform.OS === "web" ? 220 : 140,
+    width: "92%",
+    height: 130,
+    borderWidth: 4,
+    borderColor: "#FFFFFF",
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   scanLine: {
-    position: "absolute",
-    left: 18,
-    right: 18,
-    top: "50%",
-    height: 2,
-    backgroundColor: "rgba(255,255,255,0.85)",
+    width: "88%",
+    height: 4,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 4,
   },
 
-  cornerTopLeft: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    width: CORNER_SIZE,
-    height: CORNER_SIZE,
-    borderTopWidth: 4,
-    borderLeftWidth: 4,
-    borderColor: "#FFFFFF",
-    borderTopLeftRadius: 18,
-  },
-
-  cornerTopRight: {
-    position: "absolute",
-    right: 0,
-    top: 0,
-    width: CORNER_SIZE,
-    height: CORNER_SIZE,
-    borderTopWidth: 4,
-    borderRightWidth: 4,
-    borderColor: "#FFFFFF",
-    borderTopRightRadius: 18,
-  },
-
-  cornerBottomLeft: {
-    position: "absolute",
-    left: 0,
-    bottom: 0,
-    width: CORNER_SIZE,
-    height: CORNER_SIZE,
-    borderBottomWidth: 4,
-    borderLeftWidth: 4,
-    borderColor: "#FFFFFF",
-    borderBottomLeftRadius: 18,
-  },
-
-  cornerBottomRight: {
-    position: "absolute",
-    right: 0,
-    bottom: 0,
-    width: CORNER_SIZE,
-    height: CORNER_SIZE,
-    borderBottomWidth: 4,
-    borderRightWidth: 4,
-    borderColor: "#FFFFFF",
-    borderBottomRightRadius: 18,
-  },
-
-  centerHint: {
-    marginTop: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center",
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
-
-  bottomPanel: {
-    padding: 20,
-    backgroundColor: "rgba(0,0,0,0.68)",
-  },
-
-  scanTitle: {
+  scanHint: {
+    marginTop: 52,
     color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "800",
     textAlign: "center",
   },
 
-  scanHint: {
-    marginTop: 6,
-    color: "#D1D5DB",
-    fontSize: 14,
-    lineHeight: 20,
+  controlsRow: {
+    marginTop: 26,
+    flexDirection: "row",
+    gap: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  pillButton: {
+    minWidth: 150,
+    height: 56,
+    borderRadius: 30,
+    backgroundColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    borderWidth: 1,
+    borderColor: "#FFFFFF",
+  },
+
+  pillButtonActive: {
+    backgroundColor: "#FDE68A",
+  },
+
+  pillButtonText: {
+    color: "#111827",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+
+  bottomPanel: {
+    position: "absolute",
+    left: 24,
+    right: 24,
+    bottom: Platform.OS === "web" ? 48 : 70,
+    alignItems: "center",
+    backgroundColor: "transparent",
+  },
+
+  title: {
+    color: "#FFFFFF",
+    fontSize: 28,
+    fontWeight: "900",
     textAlign: "center",
   },
 
-  actionsRow: {
+  subtitle: {
     marginTop: 16,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 10,
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: "center",
   },
 
-  actionBtn: {
-    flexGrow: 1,
-    flexBasis: 104,
-    minWidth: 104,
-    minHeight: 46,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    flexDirection: "row",
+  cancelButton: {
+    marginTop: 34,
+    minWidth: 220,
+    height: 60,
+    borderRadius: 32,
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    backgroundColor: "rgba(37,99,235,0.95)",
+    backgroundColor: "rgba(0,0,0,0.25)",
   },
 
-  actionBtnActive: {
-    backgroundColor: "rgba(245,158,11,0.95)",
-  },
-
-  actionText: {
+  cancelButtonText: {
     color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
-  cancelBtn: {
-    flexGrow: 1,
-    flexBasis: 104,
-    minWidth: 104,
-    minHeight: 46,
-    paddingHorizontal: 8,
-    borderWidth: 1,
-    borderRadius: 12,
-    borderColor: "rgba(255,255,255,0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.14)",
-  },
-
-  cancelText: {
-    color: "#FFFFFF",
-    fontWeight: "700",
+    fontSize: 18,
+    fontWeight: "800",
   },
 
   readingBox: {
     alignSelf: "center",
-    marginTop: 14,
+    marginTop: 18,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
@@ -839,7 +738,7 @@ const styles = StyleSheet.create({
 
   readingText: {
     color: "#FFFFFF",
-    fontWeight: "600",
+    fontWeight: "700",
   },
 
   center: {
@@ -849,7 +748,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  title: {
+  messageLight: {
+    marginTop: 10,
+    color: "#FFFFFF",
+    fontSize: 15,
+    lineHeight: 21,
+    textAlign: "center",
+  },
+
+  permissionTitle: {
     marginTop: 14,
     color: "#111827",
     fontSize: 18,
@@ -857,7 +764,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  message: {
+  permissionMessage: {
     marginTop: 10,
     color: "#64748B",
     fontSize: 15,

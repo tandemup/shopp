@@ -63,7 +63,18 @@ const ProductsAndTotalRow = ({ count, total }) => (
 const ArchivedItemRow = ({ item, isLast }) => {
   const pi = normalizePriceInfo(item.priceInfo);
   const { total, currency, promo, promoLabel, savings, summary, warning } = pi;
-  const hasOffer = !!(promo || promoLabel);
+
+  const normalizedPromo = String(promo || "")
+    .trim()
+    .toLowerCase();
+  const normalizedPromoLabel = String(promoLabel || "")
+    .trim()
+    .toLowerCase();
+
+  const hasOffer =
+    !!(promo || promoLabel) &&
+    normalizedPromo !== "none" &&
+    normalizedPromoLabel !== "none";
 
   return (
     <View style={[styles.itemRow, isLast && styles.itemRowLast]}>

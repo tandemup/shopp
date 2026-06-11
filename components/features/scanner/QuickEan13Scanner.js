@@ -1,454 +1,425 @@
-// components/features/scanner/QuickEan13Scanner.js
-
-import React, { useCallback, useEffect, useRef, useState } from "react";
-
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-
-import { Ionicons } from "@expo/vector-icons";
-import { useIsFocused } from "@react-navigation/native";
-
 import { CameraView, useCameraPermissions } from "expo-camera";
 
-/* -------------------------------------------------
-   Helpers
--------------------------------------------------- */
-
-function normalizeEan13(value) {
-  const code = String(value || "").trim();
-
-  if (!/^\d{13}$/.test(code)) {
-    return null;
-  }
-
-  return code;
-}
-
-function isValidEan13(value) {
-  const code = normalizeEan13(value);
-
-  if (!code) {
-    return false;
-  }
-
-  const digits = code.split("").map(Number);
-
-  const checksum = digits.slice(0, 12).reduce((sum, digit, index) => {
-    return sum + digit * (index % 2 === 0 ? 1 : 3);
-  }, 0);
-
-  const expectedCheckDigit = (10 - (checksum % 10)) % 10;
-
-  return expectedCheckDigit === digits[12];
-}
-
-/* -------------------------------------------------
-   Component
--------------------------------------------------- */
+const ZOOM_VALUES = [0, 0.08, 0.16, 0.25];
 
 export default function QuickEan13Scanner({
   onDetected,
+  onBarcode,
+  onBarcodeScanned,
+  onScan,
+  onRead,
   onCancel,
-  zoom = 0.15,
-  zoomLabel = "1.2x",
-  torchEnabled = false,
-  onChangeZoom,
-  onToggleTorch,
+  onClose,
+  title = "Leer código de barras",
+  subtitle = "El número se copiará automáticamente al producto cuando sea detectado.",
 }) {
-  const isFocused = useIsFocused();
-
   const [permission, requestPermission] = useCameraPermissions();
+  const [torchOn, setTorchOn] = useState(false);
+  const [zoomIndex, setZoomIndex] = useState(1);
+  const [locked, setLocked] = useState(false);
 
-  const lockedRef = useRef(false);
+  const lastBarcodeRef = useRef(null);
+  const lastTimeRef = useRef(0);
 
-  const [mountError, setMountError] = useState("");
-
-  const [cameraKey, setCameraKey] = useState(0);
+  const zoom = ZOOM_VALUES[zoomIndex] || 0;
+  const zoomLabel = useMemo(() => {
+    if (zoomIndex === 0) return "1.0x";
+    if (zoomIndex === 1) return "1.2x";
+    if (zoomIndex === 2) return "1.4x";
+    return "1.6x";
+  }, [zoomIndex]);
 
   useEffect(() => {
-    if (isFocused) {
-      lockedRef.current = false;
-
-      setMountError("");
+    if (!permission) return;
+    if (!permission.granted && permission.canAskAgain) {
+      requestPermission();
     }
+  }, [permission, requestPermission]);
 
-    return () => {
-      lockedRef.current = false;
-    };
-  }, [isFocused]);
+  const emitBarcode = useCallback(
+    (code) => {
+      const value = String(code || "").trim();
 
-  const handleBarcodeScanned = useCallback(
-    ({ data }) => {
-      if (lockedRef.current) {
-        return;
-      }
+      if (!/^\d{13}$/.test(value)) return;
 
-      const barcode = normalizeEan13(data);
+      setLocked(true);
 
-      if (!barcode) {
-        return;
-      }
-
-      if (!isValidEan13(barcode)) {
-        return;
-      }
-
-      lockedRef.current = true;
-
-      onDetected?.(barcode);
+      onDetected?.(value);
+      onBarcode?.(value);
+      onBarcodeScanned?.(value);
+      onScan?.(value);
+      onRead?.(value);
     },
-    [onDetected],
+    [onBarcode, onBarcodeScanned, onDetected, onRead, onScan],
   );
 
-  function handleRetry() {
-    lockedRef.current = false;
+  const handleBarcodeScanned = useCallback(
+    ({ data, type }) => {
+      if (locked) return;
 
-    setMountError("");
+      const now = Date.now();
+      const value = String(data || "").trim();
 
-    setCameraKey((previous) => {
-      return previous + 1;
-    });
-  }
+      if (!/^\d{13}$/.test(value)) return;
 
-  function handleClose() {
-    lockedRef.current = false;
+      const typeText = String(type || "").toLowerCase();
+      const looksEan13 =
+        typeText.includes("ean13") ||
+        typeText.includes("ean-13") ||
+        typeText.includes("ean_13") ||
+        typeText.includes("ean");
 
+      if (!looksEan13 && Platform.OS !== "ios") return;
+
+      if (lastBarcodeRef.current === value && now - lastTimeRef.current < 900) {
+        return;
+      }
+
+      lastBarcodeRef.current = value;
+      lastTimeRef.current = now;
+
+      emitBarcode(value);
+    },
+    [emitBarcode, locked],
+  );
+
+  const cycleZoom = useCallback(() => {
+    setZoomIndex((current) => (current + 1) % ZOOM_VALUES.length);
+  }, []);
+
+  const toggleTorch = useCallback(() => {
+    setTorchOn((current) => !current);
+  }, []);
+
+  const closeScanner = useCallback(() => {
     onCancel?.();
-  }
-
-  function handleCameraMountError(event) {
-    console.log("Quick EAN-13 camera mount error:", event?.message);
-
-    setMountError(
-      "No se pudo iniciar la cámara. Comprueba los permisos e inténtalo de nuevo.",
-    );
-  }
-
-  /* -------------------------------------------------
-     Permissions
-  -------------------------------------------------- */
+    onClose?.();
+  }, [onCancel, onClose]);
 
   if (!permission) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color="#FFFFFF" />
-
-        <Text style={styles.message}>Preparando cámara...</Text>
+        <ActivityIndicator size="large" color="#fff" />
+        <Text style={styles.loadingText}>Preparando cámara...</Text>
       </View>
     );
   }
 
   if (!permission.granted) {
     return (
-      <View style={styles.permissionScreen}>
-        <Ionicons name="camera-outline" size={44} color="#64748B" />
-
+      <View style={styles.center}>
         <Text style={styles.permissionTitle}>Permiso de cámara necesario</Text>
-
         <Text style={styles.permissionText}>
-          Permite el acceso a la cámara para leer el código EAN-13 del producto.
+          Activa la cámara para poder leer códigos EAN-13.
         </Text>
 
         <Pressable style={styles.primaryButton} onPress={requestPermission}>
           <Text style={styles.primaryButtonText}>Permitir cámara</Text>
         </Pressable>
 
-        <Pressable style={styles.secondaryButton} onPress={handleClose}>
+        <Pressable style={styles.secondaryButton} onPress={closeScanner}>
           <Text style={styles.secondaryButtonText}>Cancelar</Text>
         </Pressable>
       </View>
     );
   }
 
-  /* -------------------------------------------------
-     Camera
-  -------------------------------------------------- */
-
   return (
     <View style={styles.container}>
-      {isFocused ? (
-        <CameraView
-          key={cameraKey}
-          style={StyleSheet.absoluteFillObject}
-          facing="back"
-          autofocus="on"
-          zoom={zoom}
-          enableTorch={torchEnabled}
-          barcodeScannerSettings={{
-            barcodeTypes: ["ean13"],
-          }}
-          onMountError={handleCameraMountError}
-          onBarcodeScanned={handleBarcodeScanned}
-        />
-      ) : null}
+      <CameraView
+        style={StyleSheet.absoluteFill}
+        facing="back"
+        zoom={zoom}
+        enableTorch={torchOn}
+        barcodeScannerSettings={{
+          barcodeTypes: ["ean13"],
+        }}
+        onBarcodeScanned={locked ? undefined : handleBarcodeScanned}
+      />
 
-      <View style={styles.overlay} pointerEvents="box-none">
-        <View style={styles.topBar}>
-          <Pressable style={styles.closeButton} onPress={handleClose}>
-            <Ionicons name="close" size={25} color="#FFFFFF" />
+      <View pointerEvents="none" style={styles.darkOverlay} />
+
+      <Pressable style={styles.closeButton} onPress={closeScanner}>
+        <Text style={styles.closeButtonText}>×</Text>
+      </Pressable>
+
+      <View style={styles.scanArea}>
+        <View style={styles.scanBox}>
+          <View style={styles.scanLine} />
+        </View>
+
+        <Text style={styles.scanHint}>Apunta al código EAN-13</Text>
+
+        <View style={styles.controlsRow}>
+          <Pressable style={styles.controlButton} onPress={cycleZoom}>
+            <Text style={styles.controlButtonText}>Zoom {zoomLabel}</Text>
+          </Pressable>
+
+          <Pressable
+            style={[
+              styles.controlButton,
+              torchOn && styles.controlButtonActive,
+            ]}
+            onPress={toggleTorch}
+          >
+            <Text
+              style={[
+                styles.controlButtonText,
+                torchOn && styles.controlButtonTextActive,
+              ]}
+            >
+              Linterna {torchOn ? "ON" : "OFF"}
+            </Text>
           </Pressable>
         </View>
-
-        <View style={styles.middle} pointerEvents="none">
-          <View style={styles.scanFrame}>
-            <View style={styles.scanLine} />
-          </View>
-
-          <Text style={styles.hint}>Apunta al código EAN-13</Text>
-        </View>
-
-        <View style={styles.bottomPanel}>
-          <Text style={styles.title}>Leer código de barras</Text>
-
-          <Text style={styles.subtitle}>
-            El número se copiará automáticamente al producto cuando sea
-            detectado.
-          </Text>
-
-          <View style={styles.actionsRow}>
-            <Pressable style={styles.actionButton} onPress={onChangeZoom}>
-              <Ionicons name="scan-outline" size={18} color="#FFFFFF" />
-
-              <Text style={styles.actionText}>Zoom {zoomLabel}</Text>
-            </Pressable>
-
-            <Pressable
-              style={[
-                styles.actionButton,
-                torchEnabled && styles.actionButtonActive,
-              ]}
-              onPress={onToggleTorch}
-            >
-              <Ionicons
-                name={torchEnabled ? "flashlight" : "flashlight-outline"}
-                size={18}
-                color="#FFFFFF"
-              />
-
-              <Text style={styles.actionText}>
-                {torchEnabled ? "Luz ON" : "Linterna"}
-              </Text>
-            </Pressable>
-          </View>
-
-          {mountError ? (
-            <>
-              <Text style={styles.errorText}>{mountError}</Text>
-
-              <Pressable style={styles.retryButton} onPress={handleRetry}>
-                <Text style={styles.retryButtonText}>Reintentar</Text>
-              </Pressable>
-            </>
-          ) : null}
-        </View>
       </View>
+
+      <View style={styles.bottomPanel}>
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
+
+        <Pressable style={styles.cancelButton} onPress={closeScanner}>
+          <Text style={styles.cancelButtonText}>Cancelar</Text>
+        </Pressable>
+      </View>
+
+      {locked && (
+        <View style={styles.detectedBanner}>
+          <Text style={styles.detectedText}>Código detectado</Text>
+        </View>
+      )}
     </View>
   );
 }
 
-/* -------------------------------------------------
-   Styles
--------------------------------------------------- */
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    minHeight: 0,
-    backgroundColor: "#000000",
+    backgroundColor: "#000",
   },
 
   center: {
     flex: 1,
+    backgroundColor: "#000",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
-    backgroundColor: "#000000",
-  },
-
-  message: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-
-  permissionScreen: {
-    flex: 1,
     padding: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F2F2F7",
+  },
+
+  loadingText: {
+    marginTop: 12,
+    color: "#fff",
+    fontSize: 16,
   },
 
   permissionTitle: {
-    marginTop: 14,
-    color: "#111827",
-    fontSize: 18,
+    color: "#fff",
+    fontSize: 22,
     fontWeight: "800",
     textAlign: "center",
+    marginBottom: 10,
   },
 
   permissionText: {
-    marginTop: 10,
-    color: "#64748B",
-    fontSize: 15,
-    lineHeight: 21,
+    color: "#d1d5db",
+    fontSize: 16,
     textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 22,
   },
 
   primaryButton: {
-    width: "100%",
-    marginTop: 20,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-    backgroundColor: "#2563EB",
+    backgroundColor: "#fff",
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 999,
+    marginBottom: 12,
   },
 
   primaryButtonText: {
-    color: "#FFFFFF",
-    fontWeight: "700",
+    color: "#111827",
+    fontSize: 16,
+    fontWeight: "800",
   },
 
   secondaryButton: {
-    width: "100%",
-    marginTop: 10,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-    backgroundColor: "#E5E7EB",
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#fff",
   },
 
   secondaryButtonText: {
-    color: "#374151",
+    color: "#fff",
+    fontSize: 16,
     fontWeight: "700",
   },
 
-  overlay: {
+  darkOverlay: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: "space-between",
-  },
-
-  topBar: {
-    paddingTop: 16,
-    paddingHorizontal: 16,
-    alignItems: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.18)",
   },
 
   closeButton: {
+    position: "absolute",
+    top: 42,
+    right: 22,
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.62)",
+    zIndex: 50,
   },
 
-  middle: {
+  closeButtonText: {
+    color: "#fff",
+    fontSize: 46,
+    lineHeight: 46,
+    fontWeight: "300",
+  },
+
+  scanArea: {
+    position: "absolute",
+    top: "38%",
+    left: 20,
+    right: 20,
+    alignItems: "center",
+    transform: [{ translateY: -130 }],
+    zIndex: 20,
+  },
+
+  scanBox: {
+    width: "92%",
+    maxWidth: 380,
+    height: 132,
+    borderWidth: 3,
+    borderColor: "#fff",
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  scanFrame: {
-    width: "88%",
-    height: 132,
-    borderWidth: 3,
-    borderRadius: 16,
-    borderColor: "#FFFFFF",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.08)",
-  },
-
   scanLine: {
-    height: 2,
-    marginHorizontal: 16,
-    backgroundColor: "rgba(255,255,255,0.9)",
+    width: "90%",
+    height: 3,
+    backgroundColor: "#fff",
+    opacity: 0.95,
   },
 
-  hint: {
-    marginTop: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "700",
-    textAlign: "center",
-    backgroundColor: "rgba(0,0,0,0.62)",
-  },
-
-  bottomPanel: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 28,
-    backgroundColor: "rgba(0,0,0,0.72)",
-  },
-
-  title: {
-    color: "#FFFFFF",
-    fontSize: 18,
+  scanHint: {
+    marginTop: 28,
+    color: "#fff",
+    fontSize: 19,
     fontWeight: "800",
     textAlign: "center",
   },
 
-  subtitle: {
-    marginTop: 6,
-    color: "#D1D5DB",
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: "center",
-  },
-
-  actionsRow: {
-    marginTop: 16,
+  controlsRow: {
+    marginTop: 26,
     flexDirection: "row",
     justifyContent: "center",
-    gap: 10,
-  },
-
-  actionButton: {
-    flex: 1,
-    minHeight: 46,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: "rgba(37,99,235,0.95)",
+    gap: 12,
+    zIndex: 40,
   },
 
-  actionButtonActive: {
-    backgroundColor: "rgba(245,158,11,0.95)",
-  },
-
-  actionText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
-  errorText: {
-    marginTop: 12,
-    color: "#FCA5A5",
-    fontWeight: "700",
-    textAlign: "center",
-  },
-
-  retryButton: {
-    alignSelf: "center",
-    marginTop: 12,
-    paddingHorizontal: 18,
+  controlButton: {
+    backgroundColor: "rgba(255,255,255,0.94)",
+    paddingHorizontal: 16,
     paddingVertical: 11,
-    borderRadius: 12,
-    backgroundColor: "#2563EB",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#fff",
+    minWidth: 118,
+    alignItems: "center",
   },
 
-  retryButtonText: {
-    color: "#FFFFFF",
-    fontWeight: "700",
+  controlButtonActive: {
+    backgroundColor: "#facc15",
+    borderColor: "#facc15",
+  },
+
+  controlButtonText: {
+    color: "#111827",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+
+  controlButtonTextActive: {
+    color: "#111827",
+  },
+
+  bottomPanel: {
+    position: "absolute",
+    left: 22,
+    right: 22,
+    bottom: 34,
+    alignItems: "center",
+    zIndex: 20,
+  },
+
+  title: {
+    color: "#fff",
+    fontSize: 27,
+    fontWeight: "900",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+
+  subtitle: {
+    color: "#d1d5db",
+    fontSize: 18,
+    lineHeight: 25,
+    textAlign: "center",
+    marginBottom: 22,
+  },
+
+  cancelButton: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.75)",
+    borderRadius: 999,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+
+  cancelButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+
+  detectedBanner: {
+    position: "absolute",
+    top: 100,
+    alignSelf: "center",
+    backgroundColor: "rgba(34,197,94,0.96)",
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 999,
+    zIndex: 60,
+  },
+
+  detectedText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "900",
   },
 });

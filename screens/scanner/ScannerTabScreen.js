@@ -117,8 +117,7 @@ export default function ScannerTabScreen({ navigation }) {
                 <Text style={styles.cardTitle}>Escanear nuevo producto</Text>
 
                 <Text style={styles.cardSubtitle}>
-                  Método alternativo: Abrir la cámara para leer un código de
-                  barras. Luego mostrar ProductBarcodeScannerScreen
+                  Abrir la cámara para leer un código de barras.
                 </Text>
 
                 <Text style={styles.cardMeta} numberOfLines={1}>
