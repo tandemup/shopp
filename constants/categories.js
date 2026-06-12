@@ -354,6 +354,7 @@ export const PRODUCT_CATEGORIES = [
       "Fregonas",
       "Bombillas",
       "Cuerda",
+      "Pajitas",
       "Otros",
     ],
   },

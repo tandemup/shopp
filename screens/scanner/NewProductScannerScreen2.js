@@ -28,8 +28,8 @@ import {
   useRoute,
 } from "@react-navigation/native";
 
-import BarcodeScannerView from "../../components/features/scanner/BarcodeScannerView";
 import QuickEan13Scanner from "../../components/features/scanner/QuickEan13Scanner";
+import ScannerOverlay from "../../components/features/scanner/ScannerOverlay";
 
 import { ROUTES } from "../../navigation/ROUTES";
 import { buildHeaderConfig } from "../../utils/layout/headerStyles";
@@ -91,31 +91,97 @@ function normalizeBarcode(code) {
     .trim();
 }
 
+/**
+ * Busca el navegador que contiene la ruta solicitada.
+ *
+ * NewProductScannerScreen2 pertenece al stack Scanner.
+ * ItemDetailScreen pertenece al stack Shopping.
+ */
+function navigateToAvailableRoute(navigation, routeName, params) {
+  let currentNavigation = navigation;
+
+  while (currentNavigation) {
+    const state = currentNavigation.getState?.();
+
+    if (state?.routeNames?.includes(routeName)) {
+      currentNavigation.navigate(routeName, params);
+
+      return true;
+    }
+
+    currentNavigation = currentNavigation.getParent?.();
+  }
+
+  try {
+    navigation.navigate(routeName, params);
+
+    return true;
+  } catch (error) {
+    console.log("No se pudo navegar a la ruta:", routeName, error);
+
+    return false;
+  }
+}
+
 /* -------------------------------------------------
    Component
 -------------------------------------------------- */
 
 export default function NewProductScannerScreen2() {
   const navigation = useNavigation();
+
   const route = useRoute();
 
   const scannedRef = useRef(false);
+
   const handlingScanRef = useRef(false);
 
   const [permission, requestPermission] = useCameraPermissions();
 
-  const [locked, setLocked] = useState(false);
-  const [zoomIndex, setZoomIndex] = useState(1);
-  const [torchEnabled, setTorchEnabled] = useState(false);
-
+  /*
+   * Leemos primero los parámetros de navegación.
+   */
   const {
     autoOpenEngine = false,
+
     barcodeTypes: routeBarcodeTypes = null,
+
     captureMode = null,
+
     listId = null,
+
     itemId = null,
+
     returnToTab = ROUTES.SHOPPING_TAB,
+
+    returnToScreen = ROUTES.ITEM_DETAIL,
+
+    showControls = true,
+
+    initialZoomIndex = 1,
+
+    initialTorchEnabled = false,
+
+    showStatusBadges = true,
   } = route.params || {};
+
+  /*
+   * Evita índices inexistentes.
+   */
+  const safeInitialZoomIndex =
+    Number.isInteger(initialZoomIndex) &&
+    initialZoomIndex >= 0 &&
+    initialZoomIndex < ZOOM_VALUES.length
+      ? initialZoomIndex
+      : 1;
+
+  const safeInitialTorchEnabled = Boolean(initialTorchEnabled);
+
+  const [locked, setLocked] = useState(false);
+
+  const [zoomIndex, setZoomIndex] = useState(safeInitialZoomIndex);
+
+  const [torchEnabled, setTorchEnabled] = useState(safeInitialTorchEnabled);
 
   const isQuickEan13Input = captureMode === "ean13-input";
 
@@ -137,6 +203,7 @@ export default function NewProductScannerScreen2() {
   useLayoutEffect(() => {
     navigation.setOptions({
       ...headerConfig.navigationOptions,
+
       headerShown: false,
     });
   }, [navigation, headerConfig]);
@@ -144,20 +211,33 @@ export default function NewProductScannerScreen2() {
   useFocusEffect(
     useCallback(() => {
       scannedRef.current = false;
+
       handlingScanRef.current = false;
 
       setLocked(false);
-      setTorchEnabled(false);
-      setZoomIndex(1);
+
+      /*
+       * Recuperamos los valores iniciales cada vez
+       * que se abre el lector.
+       */
+      setZoomIndex(safeInitialZoomIndex);
+
+      setTorchEnabled(safeInitialTorchEnabled);
 
       return () => {
         scannedRef.current = false;
+
         handlingScanRef.current = false;
 
         setLocked(false);
+
+        /*
+         * La linterna siempre debe apagarse
+         * al abandonar la pantalla.
+         */
         setTorchEnabled(false);
       };
-    }, []),
+    }, [safeInitialTorchEnabled, safeInitialZoomIndex]),
   );
 
   /* -------------------------------------------------
@@ -166,9 +246,11 @@ export default function NewProductScannerScreen2() {
 
   function unlockScanner() {
     scannedRef.current = false;
+
     handlingScanRef.current = false;
 
     setLocked(false);
+
     setTorchEnabled(false);
   }
 
@@ -195,23 +277,74 @@ export default function NewProductScannerScreen2() {
   -------------------------------------------------- */
 
   function handleQuickEan13Detected(code) {
+    if (scannedRef.current || handlingScanRef.current) {
+      return;
+    }
+
     const barcode = normalizeBarcode(code);
 
     if (barcode.length !== 13) {
       return;
     }
 
-    navigation.navigate(returnToTab, {
-      screen: ROUTES.ITEM_DETAIL,
+    /*
+     * Bloqueamos inmediatamente el lector para evitar
+     * detecciones consecutivas del mismo código.
+     */
+    scannedRef.current = true;
+
+    handlingScanRef.current = true;
+
+    setLocked(true);
+
+    setTorchEnabled(false);
+
+    const navigationParams = {
+      screen: returnToScreen,
 
       params: {
         listId,
+
         itemId,
+
         scannedBarcode: barcode,
       },
-    });
+    };
+
+    const didNavigate = navigateToAvailableRoute(
+      navigation,
+
+      returnToTab,
+
+      navigationParams,
+    );
+
+    if (!didNavigate) {
+      console.log("No se encontró la ruta de retorno:", {
+        returnToTab,
+
+        returnToScreen,
+
+        listId,
+
+        itemId,
+
+        scannedBarcode: barcode,
+      });
+
+      unlockScanner();
+
+      safeAlert(
+        "Error de navegación",
+
+        "Se detectó el código, pero no se pudo regresar al producto.",
+      );
+    }
   }
 
+  /*
+   * Desde ItemDetailScreen utilizamos únicamente EAN-13.
+   */
   if (isQuickEan13Input) {
     return (
       <View style={styles.screen}>
@@ -224,6 +357,8 @@ export default function NewProductScannerScreen2() {
         <QuickEan13Scanner
           onDetected={handleQuickEan13Detected}
           onCancel={handleCancel}
+          showControls={showControls}
+          showStatusBadges={showStatusBadges}
           zoom={ZOOM_VALUES[zoomIndex]}
           zoomLabel={ZOOM_LABELS[zoomIndex]}
           torchEnabled={torchEnabled}
@@ -240,6 +375,7 @@ export default function NewProductScannerScreen2() {
 
   async function getDetectedBarcodeProduct(
     code,
+
     { saveToHistory = false } = {},
   ) {
     const barcode = normalizeBarcode(code);
@@ -258,8 +394,11 @@ export default function NewProductScannerScreen2() {
     if (hasUsefulCachedData) {
       const updatedItem = {
         ...cachedItem,
+
         barcode,
+
         source: cachedItem.source || "scanner",
+
         updatedAt: now,
       };
 
@@ -276,16 +415,27 @@ export default function NewProductScannerScreen2() {
 
     const scannedItem = {
       id: barcode,
+
       barcode,
+
       name: product?.name || cachedItem?.name || "",
+
       brand: product?.brand || cachedItem?.brand || "",
+
       imageUrl: product?.imageUrl || cachedItem?.imageUrl || "",
+
       thumbnailUri: cachedItem?.thumbnailUri || null,
+
       url: product?.url || cachedItem?.url || "",
+
       notes: cachedItem?.notes || "",
+
       source: "scanner",
+
       lookupSource: product?.lookupSource || cachedItem?.lookupSource || null,
+
       scannedAt: cachedItem?.scannedAt || now,
+
       updatedAt: now,
     };
 
@@ -304,7 +454,9 @@ export default function NewProductScannerScreen2() {
 
       navigation.replace(ROUTES.PRODUCT_INFO, {
         barcode,
+
         product: scannedItem,
+
         autoOpenEngine,
       });
     } catch (error) {
@@ -315,6 +467,7 @@ export default function NewProductScannerScreen2() {
       safeAlert("Error", "No se pudo procesar el producto escaneado", [
         {
           text: "Cerrar",
+
           onPress: handleCancel,
         },
       ]);
@@ -322,15 +475,7 @@ export default function NewProductScannerScreen2() {
   }
 
   function handleDetectedBarcode(code) {
-    if (locked) {
-      return;
-    }
-
-    if (scannedRef.current) {
-      return;
-    }
-
-    if (handlingScanRef.current) {
+    if (locked || scannedRef.current || handlingScanRef.current) {
       return;
     }
 
@@ -341,9 +486,11 @@ export default function NewProductScannerScreen2() {
     }
 
     scannedRef.current = true;
+
     handlingScanRef.current = true;
 
     setLocked(true);
+
     setTorchEnabled(false);
 
     safeMenu(
@@ -354,12 +501,15 @@ export default function NewProductScannerScreen2() {
       [
         {
           text: "Cancelar",
+
           style: "cancel",
+
           onPress: unlockScanner,
         },
 
         {
           text: "No añadir",
+
           onPress: () => {
             processDetectedBarcode(barcode, false);
           },
@@ -367,6 +517,7 @@ export default function NewProductScannerScreen2() {
 
         {
           text: "Añadir",
+
           onPress: () => {
             processDetectedBarcode(barcode, true);
           },
@@ -396,82 +547,10 @@ export default function NewProductScannerScreen2() {
       [
         {
           text: "Cerrar",
+
           onPress: handleCancel,
         },
       ],
-    );
-  }
-
-  /* -------------------------------------------------
-     Shared overlay: Web + ExpoGo
-  -------------------------------------------------- */
-
-  function renderScannerOverlay() {
-    return (
-      <View style={styles.overlay} pointerEvents="box-none">
-        <Pressable
-          style={styles.closeButton}
-          onPress={handleCancel}
-          pointerEvents="auto"
-        >
-          <Ionicons name="close" size={54} color="#FFFFFF" />
-        </Pressable>
-
-        <View style={styles.scanBox} pointerEvents="none">
-          <View style={styles.scanLine} />
-        </View>
-
-        <Text style={styles.scanHint} pointerEvents="none">
-          Apunta al código EAN-13
-        </Text>
-
-        <View style={styles.controlsRow} pointerEvents="box-none">
-          <Pressable
-            style={styles.pillButton}
-            onPress={handleChangeZoom}
-            pointerEvents="auto"
-          >
-            <Text style={styles.pillButtonText}>
-              Zoom {ZOOM_LABELS[zoomIndex]}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[styles.pillButton, torchEnabled && styles.pillButtonActive]}
-            onPress={handleToggleTorch}
-            pointerEvents="auto"
-          >
-            <Text style={styles.pillButtonText}>
-              Linterna {torchEnabled ? "ON" : "OFF"}
-            </Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.bottomPanel} pointerEvents="box-none">
-          <Text style={styles.title}>Leer código de barras</Text>
-
-          <Text style={styles.subtitle}>
-            El número se copiará automáticamente al producto cuando sea
-            detectado.
-          </Text>
-
-          <Pressable
-            style={styles.cancelButton}
-            onPress={handleCancel}
-            pointerEvents="auto"
-          >
-            <Text style={styles.cancelButtonText}>Cancelar</Text>
-          </Pressable>
-
-          {locked ? (
-            <View style={styles.readingBox} pointerEvents="none">
-              <ActivityIndicator color="#FFFFFF" />
-
-              <Text style={styles.readingText}>Procesando...</Text>
-            </View>
-          ) : null}
-        </View>
-      </View>
     );
   }
 
@@ -487,9 +566,12 @@ export default function NewProductScannerScreen2() {
           backgroundColor="#000000"
           translucent={false}
         />
+
         <QuickEan13Scanner
           onDetected={handleWebDetected}
           onCancel={handleCancel}
+          showControls={showControls}
+          showStatusBadges={showStatusBadges}
           zoom={ZOOM_VALUES[zoomIndex]}
           zoomLabel={ZOOM_LABELS[zoomIndex]}
           torchEnabled={torchEnabled}
@@ -561,20 +643,38 @@ export default function NewProductScannerScreen2() {
       <StatusBar style="light" backgroundColor="#000000" translucent={false} />
 
       <View style={styles.cameraWrap}>
-        <CameraView
-          style={styles.camera}
-          facing="back"
-          autofocus="on"
-          zoom={ZOOM_VALUES[zoomIndex]}
-          enableTorch={torchEnabled}
-          onMountError={handleCameraMountError}
-          onBarcodeScanned={locked ? undefined : handleNativeBarcodeScanned}
-          barcodeScannerSettings={{
-            barcodeTypes,
-          }}
-        />
+        {/*
+         * CameraView solo muestra la vista previa.
+         *
+         * pointerEvents="none" evita que bloquee
+         * los botones del overlay.
+         */}
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+          <CameraView
+            style={styles.camera}
+            facing="back"
+            autofocus="on"
+            zoom={ZOOM_VALUES[zoomIndex]}
+            enableTorch={torchEnabled}
+            onMountError={handleCameraMountError}
+            onBarcodeScanned={locked ? undefined : handleNativeBarcodeScanned}
+            barcodeScannerSettings={{
+              barcodeTypes,
+            }}
+          />
+        </View>
 
-        {renderScannerOverlay()}
+        <ScannerOverlay
+          onCancel={handleCancel}
+          onChangeZoom={handleChangeZoom}
+          onToggleTorch={handleToggleTorch}
+          zoomLabel={ZOOM_LABELS[zoomIndex]}
+          torchEnabled={torchEnabled}
+          showControls={showControls}
+          showStatusBadges={showStatusBadges}
+          badgeLabel="Scanner"
+          processing={locked}
+        />
       </View>
     </SafeAreaView>
   );
@@ -604,141 +704,12 @@ const styles = StyleSheet.create({
   cameraWrap: {
     flex: 1,
     minHeight: 0,
-    backgroundColor: "#000000",
     position: "relative",
+    backgroundColor: "#000000",
   },
 
   camera: {
     flex: 1,
-  },
-
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    paddingTop: Platform.OS === "web" ? 70 : 60,
-    paddingHorizontal: 28,
-    alignItems: "center",
-  },
-
-  closeButton: {
-    position: "absolute",
-    top: Platform.OS === "web" ? 34 : 48,
-    right: 24,
-    zIndex: 20,
-    width: 60,
-    height: 60,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  scanBox: {
-    marginTop: Platform.OS === "web" ? 220 : 140,
-    width: "92%",
-    height: 130,
-    borderWidth: 4,
-    borderColor: "#FFFFFF",
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  scanLine: {
-    width: "88%",
-    height: 4,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 4,
-  },
-
-  scanHint: {
-    marginTop: 52,
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "800",
-    textAlign: "center",
-  },
-
-  controlsRow: {
-    marginTop: 26,
-    flexDirection: "row",
-    gap: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  pillButton: {
-    minWidth: 150,
-    height: 56,
-    borderRadius: 30,
-    backgroundColor: "#E5E7EB",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-    borderWidth: 1,
-    borderColor: "#FFFFFF",
-  },
-
-  pillButtonActive: {
-    backgroundColor: "#FDE68A",
-  },
-
-  pillButtonText: {
-    color: "#111827",
-    fontSize: 18,
-    fontWeight: "800",
-  },
-
-  bottomPanel: {
-    position: "absolute",
-    left: 24,
-    right: 24,
-    bottom: Platform.OS === "web" ? 48 : 70,
-    alignItems: "center",
-    backgroundColor: "transparent",
-  },
-
-  title: {
-    color: "#FFFFFF",
-    fontSize: 28,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-
-  subtitle: {
-    marginTop: 16,
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 16,
-    lineHeight: 24,
-    textAlign: "center",
-  },
-
-  cancelButton: {
-    marginTop: 34,
-    minWidth: 220,
-    height: 60,
-    borderRadius: 32,
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.25)",
-  },
-
-  cancelButtonText: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "800",
-  },
-
-  readingBox: {
-    alignSelf: "center",
-    marginTop: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-
-  readingText: {
-    color: "#FFFFFF",
-    fontWeight: "700",
   },
 
   center: {

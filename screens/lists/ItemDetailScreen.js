@@ -1047,7 +1047,7 @@ export default function ItemDetailScreen() {
   };
 
   const handleSearch = async () => {
-    const code = barcode.trim();
+    const code = String(barcode ?? "").trim();
 
     if (!code) {
       safeAlert(
@@ -1065,12 +1065,26 @@ export default function ItemDetailScreen() {
 
       const engine = SEARCH_ENGINES[engineKey] || SEARCH_ENGINES.google;
 
-      const result = await openExternalUrl(engine.buildUrl(code));
+      if (!engine || typeof engine.buildUrl !== "function") {
+        throw new Error(`Motor de búsqueda no válido: ${engineKey}`);
+      }
+
+      const url = engine.buildUrl(code);
+
+      console.log("Abriendo buscador externo:", {
+        engineKey,
+        code,
+        url,
+      });
+
+      const result = await openExternalUrl(url);
 
       if (!result.ok) {
         safeAlert("Error", "No se pudo abrir el buscador");
       }
     } catch (error) {
+      console.error("Error al buscar el código de barras:", error);
+
       safeAlert("Error", "No se pudo abrir el buscador");
     }
   };
@@ -1081,11 +1095,51 @@ export default function ItemDetailScreen() {
 
       params: {
         listId,
+
         itemId,
+
+        /*
+         * Ruta utilizada para regresar al editor
+         * después de leer correctamente el EAN-13.
+         */
         returnToTab: ROUTES.SHOPPING_TAB,
+
+        returnToScreen: ROUTES.ITEM_DETAIL,
+
+        /*
+         * Modo rápido:
+         * únicamente copia el EAN-13 al producto.
+         *
+         * No consulta información externa ni muestra
+         * el menú para guardar en el historial.
+         */
         captureMode: "ean13-input",
+
         barcodeTypes: ["ean13"],
-        showControls: false,
+
+        /*
+         * Controles visibles desde el primer renderizado.
+         */
+        showControls: true,
+
+        /*
+         * 0 = 1x
+         * 1 = 1.2x
+         * 2 = 1.5x
+         * 3 = 2x
+         */
+        initialZoomIndex: 1,
+
+        /*
+         * La linterna comienza apagada por seguridad.
+         */
+        initialTorchEnabled: false,
+
+        /*
+         * Muestra los badges:
+         * Zoom, Luz y EAN-13.
+         */
+        showStatusBadges: true,
       },
     });
   }

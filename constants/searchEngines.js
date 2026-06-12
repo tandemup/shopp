@@ -1,22 +1,50 @@
 // constants/searchEngines.js
 
+/* ────────────────────────────────────────────────
+   HELPERS
+──────────────────────────────────────────────── */
+
+/**
+ * Convierte cualquier valor recibido en un texto seguro para incluirlo
+ * como parámetro de una URL.
+ *
+ * También elimina espacios accidentales al principio y al final.
+ */
+const encodeQuery = (query) => {
+  return encodeURIComponent(String(query ?? "").trim());
+};
+
+/* ────────────────────────────────────────────────
+   PRODUCT SEARCH ENGINES
+──────────────────────────────────────────────── */
+
 export const SEARCH_ENGINES = {
+  /**
+   * Se conserva esta clave por compatibilidad con configuraciones antiguas.
+   * Actualmente abre directamente Google Shopping.
+   */
   google: {
     id: "google",
-    label: "Google",
+    label: "Google Shopping",
     family: "Ionicons",
     icon: "logo-google",
-    buildUrl: (query) =>
-      `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+    buildUrl: (query) => {
+      return `https://www.google.com/search?tbm=shop&q=${encodeQuery(query)}`;
+    },
   },
 
+  /**
+   * Alias explícito para Google Shopping.
+   * Puede utilizarse desde la pantalla de ajustes.
+   */
   google_shopping: {
     id: "google_shopping",
     label: "Google Shopping",
     family: "Ionicons",
     icon: "logo-google",
-    buildUrl: (query) =>
-      `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(query)}`,
+    buildUrl: (query) => {
+      return `https://www.google.com/search?tbm=shop&q=${encodeQuery(query)}`;
+    },
   },
 
   bing: {
@@ -24,8 +52,9 @@ export const SEARCH_ENGINES = {
     label: "Bing",
     family: "Fontisto",
     icon: "bing",
-    buildUrl: (query) =>
-      `https://www.bing.com/search?q=${encodeURIComponent(query)}`,
+    buildUrl: (query) => {
+      return `https://www.bing.com/search?q=${encodeQuery(query)}`;
+    },
   },
 
   duckduckgo: {
@@ -33,30 +62,35 @@ export const SEARCH_ENGINES = {
     label: "DuckDuckGo",
     family: "Ionicons",
     icon: "search-outline",
-    buildUrl: (query) =>
-      `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
+    buildUrl: (query) => {
+      return `https://duckduckgo.com/?q=${encodeQuery(query)}`;
+    },
   },
 
   openfoodfacts: {
     id: "openfoodfacts",
     label: "OpenFoodFacts",
-
     family: "Ionicons",
     icon: "nutrition-outline",
-    buildUrl: (query) =>
-      `https://world.openfoodfacts.org/product/${encodeURIComponent(query)}`,
+    buildUrl: (query) => {
+      return `https://world.openfoodfacts.org/product/${encodeQuery(query)}`;
+    },
   },
 
   barcodelookup: {
     id: "barcodelookup",
     label: "BarcodeLookup",
-
     family: "Ionicons",
     icon: "barcode-outline",
-    buildUrl: (query) =>
-      `https://www.barcodelookup.com/${encodeURIComponent(query)}`,
+    buildUrl: (query) => {
+      return `https://www.barcodelookup.com/${encodeQuery(query)}`;
+    },
   },
 };
+
+/* ────────────────────────────────────────────────
+   BOOK SEARCH ENGINES
+──────────────────────────────────────────────── */
 
 export const BOOK_ENGINES = {
   google_books: {
@@ -64,8 +98,9 @@ export const BOOK_ENGINES = {
     label: "Google Books",
     family: "Ionicons",
     icon: "book-outline",
-    buildUrl: (query) =>
-      `https://www.google.com/search?tbm=bks&q=${encodeURIComponent(query)}`,
+    buildUrl: (query) => {
+      return `https://www.google.com/search?tbm=bks&q=${encodeQuery(query)}`;
+    },
   },
 
   open_library: {
@@ -73,8 +108,9 @@ export const BOOK_ENGINES = {
     label: "Open Library",
     family: "Ionicons",
     icon: "library-outline",
-    buildUrl: (query) =>
-      `https://openlibrary.org/search?q=${encodeURIComponent(query)}`,
+    buildUrl: (query) => {
+      return `https://openlibrary.org/search?q=${encodeQuery(query)}`;
+    },
   },
 
   amazon_books: {
@@ -82,10 +118,16 @@ export const BOOK_ENGINES = {
     label: "Amazon Books",
     family: "Ionicons",
     icon: "cart-outline",
-    buildUrl: (query) =>
-      `https://www.amazon.com/s?k=${encodeURIComponent(query)}&i=stripbooks`,
+    buildUrl: (query) => {
+      return `https://www.amazon.com/s?k=${encodeQuery(query)}&i=stripbooks`;
+    },
   },
 };
 
+/* ────────────────────────────────────────────────
+   DEFAULT VALUES
+──────────────────────────────────────────────── */
+
 export const DEFAULT_ENGINE = "google";
+
 export const DEFAULT_BOOK_ENGINE = "google_books";

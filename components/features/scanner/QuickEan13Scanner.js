@@ -1,120 +1,172 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+// components/features/scanner/QuickEan13Scanner.js
+
+import React, { useCallback, useEffect, useRef, useState } from "react";
+
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+
+import { Ionicons } from "@expo/vector-icons";
+import { useIsFocused } from "@react-navigation/native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 
-const ZOOM_VALUES = [0, 0.08, 0.16, 0.25];
+import ScannerOverlay from "./ScannerOverlay";
+
+/* -------------------------------------------------
+   Helpers
+-------------------------------------------------- */
+
+function normalizeEan13(value) {
+  const code = String(value || "").trim();
+
+  if (!/^\d{13}$/.test(code)) {
+    return null;
+  }
+
+  return code;
+}
+
+function isValidEan13(value) {
+  const code = normalizeEan13(value);
+
+  if (!code) {
+    return false;
+  }
+
+  const digits = code.split("").map(Number);
+
+  const checksum = digits.slice(0, 12).reduce((sum, digit, index) => {
+    return sum + digit * (index % 2 === 0 ? 1 : 3);
+  }, 0);
+
+  const expectedCheckDigit = (10 - (checksum % 10)) % 10;
+
+  return expectedCheckDigit === digits[12];
+}
+
+function clampZoom(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(1, number));
+}
+
+/* -------------------------------------------------
+   Component
+-------------------------------------------------- */
 
 export default function QuickEan13Scanner({
   onDetected,
-  onBarcode,
-  onBarcodeScanned,
-  onScan,
-  onRead,
   onCancel,
-  onClose,
-  title = "Leer código de barras",
-  subtitle = "El número se copiará automáticamente al producto cuando sea detectado.",
+
+  showControls = true,
+  showStatusBadges = true,
+
+  /*
+   * expo-camera espera un valor de zoom entre 0 y 1.
+   */
+  zoom = 0.15,
+  zoomLabel = "1.2x",
+  torchEnabled = false,
+
+  onChangeZoom,
+  onToggleTorch,
 }) {
+  const isFocused = useIsFocused();
+
   const [permission, requestPermission] = useCameraPermissions();
-  const [torchOn, setTorchOn] = useState(false);
-  const [zoomIndex, setZoomIndex] = useState(1);
-  const [locked, setLocked] = useState(false);
 
-  const lastBarcodeRef = useRef(null);
-  const lastTimeRef = useRef(0);
+  const lockedRef = useRef(false);
 
-  const zoom = ZOOM_VALUES[zoomIndex] || 0;
-  const zoomLabel = useMemo(() => {
-    if (zoomIndex === 0) return "1.0x";
-    if (zoomIndex === 1) return "1.2x";
-    if (zoomIndex === 2) return "1.4x";
-    return "1.6x";
-  }, [zoomIndex]);
+  const [mountError, setMountError] = useState("");
+
+  const [cameraKey, setCameraKey] = useState(0);
+
+  const normalizedZoom = clampZoom(zoom);
+
+  /* -------------------------------------------------
+     Screen lifecycle
+  -------------------------------------------------- */
 
   useEffect(() => {
-    if (!permission) return;
-    if (!permission.granted && permission.canAskAgain) {
-      requestPermission();
+    if (isFocused) {
+      lockedRef.current = false;
+
+      setMountError("");
     }
-  }, [permission, requestPermission]);
 
-  const emitBarcode = useCallback(
-    (code) => {
-      const value = String(code || "").trim();
+    return () => {
+      lockedRef.current = false;
+    };
+  }, [isFocused]);
 
-      if (!/^\d{13}$/.test(value)) return;
-
-      setLocked(true);
-
-      onDetected?.(value);
-      onBarcode?.(value);
-      onBarcodeScanned?.(value);
-      onScan?.(value);
-      onRead?.(value);
-    },
-    [onBarcode, onBarcodeScanned, onDetected, onRead, onScan],
-  );
+  /* -------------------------------------------------
+     Detection
+  -------------------------------------------------- */
 
   const handleBarcodeScanned = useCallback(
-    ({ data, type }) => {
-      if (locked) return;
-
-      const now = Date.now();
-      const value = String(data || "").trim();
-
-      if (!/^\d{13}$/.test(value)) return;
-
-      const typeText = String(type || "").toLowerCase();
-      const looksEan13 =
-        typeText.includes("ean13") ||
-        typeText.includes("ean-13") ||
-        typeText.includes("ean_13") ||
-        typeText.includes("ean");
-
-      if (!looksEan13 && Platform.OS !== "ios") return;
-
-      if (lastBarcodeRef.current === value && now - lastTimeRef.current < 900) {
+    ({ data }) => {
+      if (lockedRef.current) {
         return;
       }
 
-      lastBarcodeRef.current = value;
-      lastTimeRef.current = now;
+      const barcode = normalizeEan13(data);
 
-      emitBarcode(value);
+      if (!barcode || !isValidEan13(barcode)) {
+        return;
+      }
+
+      lockedRef.current = true;
+
+      onDetected?.(barcode);
     },
-    [emitBarcode, locked],
+    [onDetected],
   );
 
-  const cycleZoom = useCallback(() => {
-    setZoomIndex((current) => (current + 1) % ZOOM_VALUES.length);
-  }, []);
+  /* -------------------------------------------------
+     Controls
+  -------------------------------------------------- */
 
-  const toggleTorch = useCallback(() => {
-    setTorchOn((current) => !current);
-  }, []);
+  function handleRetry() {
+    lockedRef.current = false;
 
-  const closeScanner = useCallback(() => {
+    setMountError("");
+
+    setCameraKey((previous) => {
+      return previous + 1;
+    });
+  }
+
+  function handleClose() {
+    lockedRef.current = false;
+
     onCancel?.();
-    onClose?.();
-  }, [onCancel, onClose]);
+  }
+
+  function handleCameraMountError(event) {
+    console.log("Quick EAN-13 camera mount error:", event?.message);
+
+    setMountError(
+      "No se pudo iniciar la cámara. Comprueba los permisos e inténtalo de nuevo.",
+    );
+  }
+
+  /* -------------------------------------------------
+     Permissions
+  -------------------------------------------------- */
 
   if (!permission) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#fff" />
+        <ActivityIndicator color="#FFFFFF" />
+
         <Text style={styles.loadingText}>Preparando cámara...</Text>
       </View>
     );
@@ -122,304 +174,145 @@ export default function QuickEan13Scanner({
 
   if (!permission.granted) {
     return (
-      <View style={styles.center}>
+      <View style={styles.permissionScreen}>
+        <Ionicons name="camera-outline" size={44} color="#64748B" />
+
         <Text style={styles.permissionTitle}>Permiso de cámara necesario</Text>
+
         <Text style={styles.permissionText}>
-          Activa la cámara para poder leer códigos EAN-13.
+          Permite el acceso a la cámara para leer el código EAN-13 del producto.
         </Text>
 
         <Pressable style={styles.primaryButton} onPress={requestPermission}>
           <Text style={styles.primaryButtonText}>Permitir cámara</Text>
         </Pressable>
 
-        <Pressable style={styles.secondaryButton} onPress={closeScanner}>
+        <Pressable style={styles.secondaryButton} onPress={handleClose}>
           <Text style={styles.secondaryButtonText}>Cancelar</Text>
         </Pressable>
       </View>
     );
   }
 
+  /* -------------------------------------------------
+     Camera
+  -------------------------------------------------- */
+
   return (
     <View style={styles.container}>
-      <CameraView
-        style={StyleSheet.absoluteFill}
-        facing="back"
-        zoom={zoom}
-        enableTorch={torchOn}
-        barcodeScannerSettings={{
-          barcodeTypes: ["ean13"],
-        }}
-        onBarcodeScanned={locked ? undefined : handleBarcodeScanned}
+      {isFocused ? (
+        /*
+         * CameraView solo muestra la vista previa.
+         *
+         * pointerEvents="none" evita que la cámara
+         * intercepte los taps de los botones.
+         */
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+          <CameraView
+            key={cameraKey}
+            style={StyleSheet.absoluteFillObject}
+            facing="back"
+            autofocus="on"
+            zoom={normalizedZoom}
+            enableTorch={Boolean(torchEnabled)}
+            barcodeScannerSettings={{
+              barcodeTypes: ["ean13"],
+            }}
+            onMountError={handleCameraMountError}
+            onBarcodeScanned={handleBarcodeScanned}
+          />
+        </View>
+      ) : null}
+
+      <ScannerOverlay
+        onCancel={handleClose}
+        onChangeZoom={onChangeZoom}
+        onToggleTorch={onToggleTorch}
+        zoomLabel={zoomLabel}
+        torchEnabled={torchEnabled}
+        showControls={showControls}
+        showStatusBadges={showStatusBadges}
+        badgeLabel="Scanner"
+        errorMessage={mountError}
+        onRetry={handleRetry}
       />
-
-      <View pointerEvents="none" style={styles.darkOverlay} />
-
-      <Pressable style={styles.closeButton} onPress={closeScanner}>
-        <Text style={styles.closeButtonText}>×</Text>
-      </Pressable>
-
-      <View style={styles.scanArea}>
-        <View style={styles.scanBox}>
-          <View style={styles.scanLine} />
-        </View>
-
-        <Text style={styles.scanHint}>Apunta al código EAN-13</Text>
-
-        <View style={styles.controlsRow}>
-          <Pressable style={styles.controlButton} onPress={cycleZoom}>
-            <Text style={styles.controlButtonText}>Zoom {zoomLabel}</Text>
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.controlButton,
-              torchOn && styles.controlButtonActive,
-            ]}
-            onPress={toggleTorch}
-          >
-            <Text
-              style={[
-                styles.controlButtonText,
-                torchOn && styles.controlButtonTextActive,
-              ]}
-            >
-              Linterna {torchOn ? "ON" : "OFF"}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.bottomPanel}>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.subtitle}>{subtitle}</Text>
-
-        <Pressable style={styles.cancelButton} onPress={closeScanner}>
-          <Text style={styles.cancelButtonText}>Cancelar</Text>
-        </Pressable>
-      </View>
-
-      {locked && (
-        <View style={styles.detectedBanner}>
-          <Text style={styles.detectedText}>Código detectado</Text>
-        </View>
-      )}
     </View>
   );
 }
 
+/* -------------------------------------------------
+   Styles
+-------------------------------------------------- */
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    minHeight: 0,
+    backgroundColor: "#000000",
   },
 
   center: {
     flex: 1,
-    backgroundColor: "#000",
     alignItems: "center",
     justifyContent: "center",
-    padding: 24,
+    gap: 10,
+    backgroundColor: "#000000",
   },
 
   loadingText: {
-    marginTop: 12,
-    color: "#fff",
-    fontSize: 16,
+    color: "#FFFFFF",
+    fontWeight: "600",
+  },
+
+  permissionScreen: {
+    flex: 1,
+    padding: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F2F2F7",
   },
 
   permissionTitle: {
-    color: "#fff",
-    fontSize: 22,
+    marginTop: 14,
+    color: "#111827",
+    fontSize: 18,
     fontWeight: "800",
     textAlign: "center",
-    marginBottom: 10,
   },
 
   permissionText: {
-    color: "#d1d5db",
-    fontSize: 16,
+    marginTop: 10,
+    color: "#64748B",
+    fontSize: 15,
+    lineHeight: 21,
     textAlign: "center",
-    lineHeight: 22,
-    marginBottom: 22,
   },
 
   primaryButton: {
-    backgroundColor: "#fff",
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 999,
-    marginBottom: 12,
+    width: "100%",
+    marginTop: 20,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: "#2563EB",
   },
 
   primaryButtonText: {
-    color: "#111827",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-
-  secondaryButton: {
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#fff",
-  },
-
-  secondaryButtonText: {
-    color: "#fff",
-    fontSize: 16,
+    color: "#FFFFFF",
     fontWeight: "700",
   },
 
-  darkOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.18)",
-  },
-
-  closeButton: {
-    position: "absolute",
-    top: 42,
-    right: 22,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  secondaryButton: {
+    width: "100%",
+    marginTop: 10,
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: "center",
-    justifyContent: "center",
-    zIndex: 50,
+    backgroundColor: "#E5E7EB",
   },
 
-  closeButtonText: {
-    color: "#fff",
-    fontSize: 46,
-    lineHeight: 46,
-    fontWeight: "300",
-  },
-
-  scanArea: {
-    position: "absolute",
-    top: "38%",
-    left: 20,
-    right: 20,
-    alignItems: "center",
-    transform: [{ translateY: -130 }],
-    zIndex: 20,
-  },
-
-  scanBox: {
-    width: "92%",
-    maxWidth: 380,
-    height: 132,
-    borderWidth: 3,
-    borderColor: "#fff",
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  scanLine: {
-    width: "90%",
-    height: 3,
-    backgroundColor: "#fff",
-    opacity: 0.95,
-  },
-
-  scanHint: {
-    marginTop: 28,
-    color: "#fff",
-    fontSize: 19,
-    fontWeight: "800",
-    textAlign: "center",
-  },
-
-  controlsRow: {
-    marginTop: 26,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 12,
-    zIndex: 40,
-  },
-
-  controlButton: {
-    backgroundColor: "rgba(255,255,255,0.94)",
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#fff",
-    minWidth: 118,
-    alignItems: "center",
-  },
-
-  controlButtonActive: {
-    backgroundColor: "#facc15",
-    borderColor: "#facc15",
-  },
-
-  controlButtonText: {
-    color: "#111827",
-    fontSize: 15,
-    fontWeight: "800",
-  },
-
-  controlButtonTextActive: {
-    color: "#111827",
-  },
-
-  bottomPanel: {
-    position: "absolute",
-    left: 22,
-    right: 22,
-    bottom: 34,
-    alignItems: "center",
-    zIndex: 20,
-  },
-
-  title: {
-    color: "#fff",
-    fontSize: 27,
-    fontWeight: "900",
-    textAlign: "center",
-    marginBottom: 12,
-  },
-
-  subtitle: {
-    color: "#d1d5db",
-    fontSize: 18,
-    lineHeight: 25,
-    textAlign: "center",
-    marginBottom: 22,
-  },
-
-  cancelButton: {
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.75)",
-    borderRadius: 999,
-    paddingHorizontal: 28,
-    paddingVertical: 12,
-    backgroundColor: "rgba(0,0,0,0.35)",
-  },
-
-  cancelButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-
-  detectedBanner: {
-    position: "absolute",
-    top: 100,
-    alignSelf: "center",
-    backgroundColor: "rgba(34,197,94,0.96)",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 999,
-    zIndex: 60,
-  },
-
-  detectedText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "900",
+  secondaryButtonText: {
+    color: "#374151",
+    fontWeight: "700",
   },
 });
