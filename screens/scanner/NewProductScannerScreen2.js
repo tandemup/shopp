@@ -132,8 +132,15 @@ export default function NewProductScannerScreen2() {
 
   const route = useRoute();
 
+  /*
+   * Impide que un mismo código sea procesado varias veces
+   * durante los fotogramas consecutivos de la cámara.
+   */
   const scannedRef = useRef(false);
 
+  /*
+   * Evita iniciar varias operaciones asíncronas simultáneas.
+   */
   const handlingScanRef = useRef(false);
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -177,11 +184,24 @@ export default function NewProductScannerScreen2() {
 
   const safeInitialTorchEnabled = Boolean(initialTorchEnabled);
 
+  /*
+   * locked bloquea las detecciones mientras se procesa
+   * un código o se muestra el menú de opciones.
+   */
   const [locked, setLocked] = useState(false);
 
   const [zoomIndex, setZoomIndex] = useState(safeInitialZoomIndex);
 
   const [torchEnabled, setTorchEnabled] = useState(safeInitialTorchEnabled);
+
+  /*
+   * Al incrementar scannerSession se desmonta el lector
+   * actual y se crea una nueva instancia completamente limpia.
+   *
+   * Esto evita que el lector web o CameraView conserven
+   * el último código leído al iniciar otro escaneo.
+   */
+  const [scannerSession, setScannerSession] = useState(0);
 
   const isQuickEan13Input = captureMode === "ean13-input";
 
@@ -224,6 +244,14 @@ export default function NewProductScannerScreen2() {
 
       setTorchEnabled(safeInitialTorchEnabled);
 
+      /*
+       * Forzamos una instancia limpia del lector
+       * al regresar a esta pantalla.
+       */
+      setScannerSession((previous) => {
+        return previous + 1;
+      });
+
       return () => {
         scannedRef.current = false;
 
@@ -244,7 +272,14 @@ export default function NewProductScannerScreen2() {
      Common actions
   -------------------------------------------------- */
 
-  function unlockScanner() {
+  /**
+   * Limpia completamente el scanner para permitir
+   * la lectura inmediata de otro producto.
+   *
+   * Se utiliza después de pulsar "Escanear otro"
+   * y cuando ocurre un error recuperable.
+   */
+  function resetScannerForNextScan() {
     scannedRef.current = false;
 
     handlingScanRef.current = false;
@@ -252,12 +287,34 @@ export default function NewProductScannerScreen2() {
     setLocked(false);
 
     setTorchEnabled(false);
+
+    setScannerSession((previous) => {
+      return previous + 1;
+    });
   }
 
+  /**
+   * Cierra la pantalla del scanner.
+   *
+   * Si la pantalla no tiene una ruta anterior,
+   * se reinicia el scanner como medida defensiva.
+   */
   function handleCancel() {
-    unlockScanner();
+    scannedRef.current = true;
 
-    navigation.goBack();
+    handlingScanRef.current = true;
+
+    setLocked(true);
+
+    setTorchEnabled(false);
+
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+
+      return;
+    }
+
+    resetScannerForNextScan();
   }
 
   function handleChangeZoom() {
@@ -332,7 +389,7 @@ export default function NewProductScannerScreen2() {
         scannedBarcode: barcode,
       });
 
-      unlockScanner();
+      resetScannerForNextScan();
 
       safeAlert(
         "Error de navegación",
@@ -355,6 +412,7 @@ export default function NewProductScannerScreen2() {
         />
 
         <QuickEan13Scanner
+          key={`quick-ean13-session-${scannerSession}`}
           onDetected={handleQuickEan13Detected}
           onCancel={handleCancel}
           showControls={showControls}
@@ -446,6 +504,14 @@ export default function NewProductScannerScreen2() {
     return scannedItem;
   }
 
+  /**
+   * Procesa el producto detectado y sustituye la pantalla
+   * del scanner por la ficha del producto.
+   *
+   * navigation.replace cierra efectivamente el scanner:
+   * al regresar desde PRODUCT_INFO no se vuelve a mostrar
+   * la cámara anterior.
+   */
   async function processDetectedBarcode(barcode, saveToHistory) {
     try {
       const scannedItem = await getDetectedBarcodeProduct(barcode, {
@@ -462,7 +528,7 @@ export default function NewProductScannerScreen2() {
     } catch (error) {
       console.log("Error handling new product scan:", error);
 
-      unlockScanner();
+      resetScannerForNextScan();
 
       safeAlert("Error", "No se pudo procesar el producto escaneado", [
         {
@@ -500,11 +566,11 @@ export default function NewProductScannerScreen2() {
 
       [
         {
-          text: "Cancelar",
+          text: "Escanear otro",
 
           style: "cancel",
 
-          onPress: unlockScanner,
+          onPress: resetScannerForNextScan,
         },
 
         {
@@ -537,7 +603,7 @@ export default function NewProductScannerScreen2() {
   function handleCameraMountError(event) {
     console.log("Camera mount error:", event?.message);
 
-    unlockScanner();
+    resetScannerForNextScan();
 
     safeAlert(
       "No se pudo iniciar la cámara",
@@ -568,6 +634,7 @@ export default function NewProductScannerScreen2() {
         />
 
         <QuickEan13Scanner
+          key={`web-scanner-session-${scannerSession}`}
           onDetected={handleWebDetected}
           onCancel={handleCancel}
           showControls={showControls}
@@ -648,9 +715,13 @@ export default function NewProductScannerScreen2() {
          *
          * pointerEvents="none" evita que bloquee
          * los botones del overlay.
+         *
+         * La key permite reinicializar la cámara
+         * después de elegir "Escanear otro".
          */}
         <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
           <CameraView
+            key={`native-camera-session-${scannerSession}`}
             style={styles.camera}
             facing="back"
             autofocus="on"

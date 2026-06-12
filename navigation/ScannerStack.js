@@ -47,8 +47,6 @@ export default function ScannerStack() {
         options={{
           title: "Escanear nuevo producto2",
           headerShown: false,
-          presentation: "fullScreenModal",
-          animation: "fade",
           gestureEnabled: false,
         }}
       />
