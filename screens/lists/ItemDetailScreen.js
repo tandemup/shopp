@@ -34,8 +34,11 @@ import { PRODUCT_CATEGORIES } from "../../constants/categories";
 import { useLists } from "../../context/ListsContext";
 
 import BarcodeInput from "../../components/ui/BarcodeInput";
-
-import { openExternalUrl } from "../../utils/openExternalUrl";
+import {
+  closePreparedExternalWindow,
+  openExternalUrl,
+  prepareExternalWindow,
+} from "../../utils/openExternalUrl";
 
 import {
   PricingEngine,
@@ -1058,6 +1061,14 @@ export default function ItemDetailScreen() {
       return;
     }
 
+    /*
+     * En modo web esta llamada debe producirse antes del primer await.
+     * Así Safari reconoce que la pestaña procede directamente del toque.
+     *
+     * En Android e iOS nativos devuelve null y no realiza ninguna acción.
+     */
+    const preparedWindow = prepareExternalWindow();
+
     try {
       const settings = await getSearchSettings();
 
@@ -1077,12 +1088,27 @@ export default function ItemDetailScreen() {
         url,
       });
 
-      const result = await openExternalUrl(url);
+      const result = await openExternalUrl(url, {
+        preparedWindow,
+      });
 
       if (!result.ok) {
+        closePreparedExternalWindow(preparedWindow);
+
+        if (result.reason === "popup-blocked") {
+          safeAlert(
+            "Ventana bloqueada",
+            "El navegador ha bloqueado la pestaña del buscador. Permite las ventanas emergentes para esta página e inténtalo de nuevo.",
+          );
+
+          return;
+        }
+
         safeAlert("Error", "No se pudo abrir el buscador");
       }
     } catch (error) {
+      closePreparedExternalWindow(preparedWindow);
+
       console.error("Error al buscar el código de barras:", error);
 
       safeAlert("Error", "No se pudo abrir el buscador");
