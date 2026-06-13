@@ -121,35 +121,36 @@ async function readCameraPermissionState() {
   }
 }
 
-function waitForDomElement(elementId, timeoutMs = 500) {
+function waitForDomElement(elementId, timeoutMs = 3000) {
   return new Promise((resolve) => {
-    const existingElement = document.getElementById(elementId);
+    const check = () => {
+      const element = document.getElementById(elementId);
 
-    if (existingElement) {
-      resolve(existingElement);
+      if (element && element.offsetWidth > 0 && element.offsetHeight > 0) {
+        resolve(element);
+        return true;
+      }
 
+      return false;
+    };
+
+    if (check()) {
       return;
     }
 
     const startedAt = Date.now();
 
     const timer = window.setInterval(() => {
-      const element = document.getElementById(elementId);
-
-      if (element) {
+      if (check()) {
         window.clearInterval(timer);
-
-        resolve(element);
-
         return;
       }
 
       if (Date.now() - startedAt >= timeoutMs) {
         window.clearInterval(timer);
-
         resolve(null);
       }
-    }, 40);
+    }, 100);
   });
 }
 
@@ -399,7 +400,13 @@ export default function QuickEan13ScannerWeb({
 
     try {
       if (!scannerRef.current) {
-        const scannerElement = await waitForDomElement(scannerElementId);
+        await new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(resolve);
+          });
+        });
+
+        const scannerElement = await waitForDomElement(scannerElementId, 3000);
 
         if (!scannerElement) {
           throw new Error(`Scanner container not found: ${scannerElementId}`);
