@@ -1,771 +1,1225 @@
-// components/features/scanner/QuickEan13Scanner.web.js
+import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
-
-import { StyleSheet, View } from "react-native";
-
-import { useIsFocused } from "@react-navigation/native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 
-import ScannerOverlay from "./ScannerOverlay";
+/* ────────────────────────────────────────────────
+   CONFIGURATION
+──────────────────────────────────────────────── */
 
-/* -------------------------------------------------
-   Helpers
--------------------------------------------------- */
+const ZOOM_LEVELS = [1, 1.2, 1.5, 2];
 
-function normalizeEan13(value) {
-  const code = String(value || "").trim();
+const DEFAULT_ZOOM_INDEX = 1;
 
-  if (!/^\d{13}$/.test(code)) {
-    return null;
-  }
+const DUPLICATE_LOCK_MS = 1500;
 
-  return code;
+/*
+ * Esta clave no concede permisos al navegador.
+ *
+ * Únicamente permite recordar que la cámara se abrió
+ * correctamente en una visita anterior.
+ *
+ * Resulta útil en Safari y otros navegadores que admiten
+ * getUserMedia(), pero no permiten consultar previamente
+ * navigator.permissions.query({ name: "camera" }).
+ */
+const CAMERA_GRANTED_STORAGE_KEY = "shopp:web-camera-access-granted";
+
+/* ────────────────────────────────────────────────
+   BARCODE HELPERS
+──────────────────────────────────────────────── */
+
+function normalizeBarcode(value) {
+  return String(value ?? "").replace(/\D/g, "");
 }
 
 function isValidEan13(value) {
-  const code = normalizeEan13(value);
+  const barcode = normalizeBarcode(value);
 
-  if (!code) {
+  if (!/^\d{13}$/.test(barcode)) {
     return false;
   }
 
-  const digits = code.split("").map(Number);
+  const digits = barcode.split("").map(Number);
 
-  const checksum = digits.slice(0, 12).reduce((sum, digit, index) => {
-    return sum + digit * (index % 2 === 0 ? 1 : 3);
+  const expectedCheckDigit = digits[12];
+
+  const weightedSum = digits.slice(0, 12).reduce((total, digit, index) => {
+    return total + digit * (index % 2 === 0 ? 1 : 3);
   }, 0);
 
-  const expectedCheckDigit = (10 - (checksum % 10)) % 10;
+  const calculatedCheckDigit = (10 - (weightedSum % 10)) % 10;
 
-  return expectedCheckDigit === digits[12];
+  return calculatedCheckDigit === expectedCheckDigit;
 }
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
+function clamp(value, minimum, maximum) {
+  return Math.min(Math.max(value, minimum), maximum);
 }
 
-function normalizeZoom(value) {
-  const number = Number(value);
+/* ────────────────────────────────────────────────
+   LOCAL STORAGE HELPERS
+──────────────────────────────────────────────── */
 
-  if (!Number.isFinite(number)) {
-    return 0;
+function hasRememberedCameraAccess() {
+  try {
+    return window.localStorage.getItem(CAMERA_GRANTED_STORAGE_KEY) === "true";
+  } catch (error) {
+    /*
+     * El lector continúa funcionando aunque el navegador
+     * bloquee localStorage o esté ejecutándose en modo privado.
+     */
+    return false;
   }
-
-  return clamp(number, 0, 1);
 }
 
-function findPreferredCamera(cameras) {
-  if (!Array.isArray(cameras) || cameras.length === 0) {
-    return null;
+function rememberCameraAccess() {
+  try {
+    window.localStorage.setItem(CAMERA_GRANTED_STORAGE_KEY, "true");
+  } catch (error) {
+    /*
+     * No es un error crítico.
+     * El permiso real continúa gestionado por el navegador.
+     */
   }
-
-  const rearCamera = cameras.find((camera) => {
-    const label = String(camera?.label || "");
-
-    return /back|rear|environment|trasera|posterior/i.test(label);
-  });
-
-  return rearCamera || cameras[cameras.length - 1] || cameras[0];
 }
 
-function getErrorMessage(error) {
-  const text = String(error?.message || error || "");
-
-  if (text.includes("NotAllowedError")) {
-    return "No se ha permitido el acceso a la cámara. Revisa los permisos del navegador.";
+function forgetRememberedCameraAccess() {
+  try {
+    window.localStorage.removeItem(CAMERA_GRANTED_STORAGE_KEY);
+  } catch (error) {
+    /*
+     * El estado real del navegador siempre tiene prioridad.
+     */
   }
-
-  if (text.includes("NotFoundError")) {
-    return "No se ha encontrado una cámara disponible.";
-  }
-
-  if (text.includes("NotReadableError")) {
-    return "La cámara está siendo utilizada por otra aplicación o pestaña.";
-  }
-
-  if (text.includes("OverconstrainedError")) {
-    return "El navegador no ha podido seleccionar la cámara solicitada.";
-  }
-
-  return "No se pudo iniciar la cámara. Comprueba los permisos e inténtalo de nuevo.";
 }
 
-function getZoomCapability(capabilities) {
-  const zoomCapability = capabilities?.zoom;
+/* ────────────────────────────────────────────────
+   CAMERA PERMISSIONS
+──────────────────────────────────────────────── */
 
-  if (!zoomCapability) {
-    return null;
+function getReadableCameraError(error) {
+  switch (error?.name) {
+    case "NotAllowedError":
+      return (
+        "El navegador ha bloqueado el acceso a la cámara. " +
+        "Activa el permiso para este sitio desde los ajustes " +
+        "del navegador."
+      );
+
+    case "NotFoundError":
+      return "No se ha encontrado ninguna cámara compatible.";
+
+    case "NotReadableError":
+      return (
+        "La cámara está siendo utilizada por otra aplicación " +
+        "o por otra pestaña del navegador."
+      );
+
+    case "OverconstrainedError":
+      return "La cámara no admite la configuración solicitada.";
+
+    case "SecurityError":
+      return (
+        "El navegador no permite acceder a la cámara desde " +
+        "esta página. Comprueba que estás utilizando HTTPS."
+      );
+
+    default:
+      return (
+        error?.message ||
+        String(error || "") ||
+        "No ha sido posible iniciar la cámara."
+      );
   }
-
-  const min = Number(zoomCapability.min);
-
-  const max = Number(zoomCapability.max);
-
-  const step = Number(zoomCapability.step);
-
-  if (!Number.isFinite(min) || !Number.isFinite(max)) {
-    return null;
-  }
-
-  if (max <= min) {
-    return null;
-  }
-
-  return {
-    min,
-
-    max,
-
-    step: Number.isFinite(step) && step > 0 ? step : 0.1,
-  };
 }
 
-function mapNormalizedZoomToTrackZoom(normalizedZoom, zoomCapability) {
-  if (!zoomCapability) {
-    return null;
+async function readCameraPermissionState() {
+  if (!navigator?.mediaDevices?.getUserMedia) {
+    return "unsupported";
   }
 
-  const normalized = normalizeZoom(normalizedZoom);
+  /*
+   * Safari puede permitir getUserMedia() sin exponer
+   * navigator.permissions.query().
+   */
+  if (!navigator?.permissions?.query) {
+    return "prompt";
+  }
 
-  const value =
-    zoomCapability.min + normalized * (zoomCapability.max - zoomCapability.min);
+  try {
+    const permission = await navigator.permissions.query({
+      name: "camera",
+    });
 
-  const rounded = Math.round(value / zoomCapability.step) * zoomCapability.step;
-
-  return clamp(rounded, zoomCapability.min, zoomCapability.max);
+    return permission.state;
+  } catch (error) {
+    /*
+     * Algunos navegadores lanzan una excepción al consultar
+     * el permiso de cámara aunque posteriormente permitan
+     * utilizar getUserMedia().
+     */
+    return "prompt";
+  }
 }
 
-/* -------------------------------------------------
-   Component
--------------------------------------------------- */
+/* ────────────────────────────────────────────────
+   COMPONENT
+──────────────────────────────────────────────── */
 
-export default function QuickEan13Scanner({
+export default function QuickEan13ScannerWeb({
   onDetected,
+  onBarcodeScanned,
   onCancel,
+
+  initialZoomIndex = DEFAULT_ZOOM_INDEX,
+  initialTorchEnabled = false,
 
   showControls = true,
   showStatusBadges = true,
-
-  /*
-   * Igual que expo-camera:
-   * zoom usa un rango normalizado entre 0 y 1.
-   */
-  zoom = 0.15,
-  zoomLabel = "1.2x",
-  torchEnabled = false,
-
-  onChangeZoom,
-  onToggleTorch,
 }) {
-  const isFocused = useIsFocused();
+  const reactId = useId();
 
-  const readerIdRef = useRef(
-    `quick-ean13-reader-${Math.random().toString(36).slice(2)}`,
-  );
+  const scannerElementId = `quick-ean13-scanner-${reactId.replace(
+    /[^a-zA-Z0-9_-]/g,
+    "",
+  )}`;
 
   const scannerRef = useRef(null);
 
-  /*
-   * Permite invalidar arranques antiguos cuando
-   * la pantalla se cierra o el lector se reinicia.
-   */
-  const operationIdRef = useRef(0);
+  const mountedRef = useRef(false);
 
-  const lockRef = useRef(false);
+  const runningRef = useRef(false);
 
-  const onDetectedRef = useRef(onDetected);
+  const startingRef = useRef(false);
 
-  const zoomCapabilityRef = useRef(null);
+  const permissionRef = useRef(null);
 
-  const [starting, setStarting] = useState(true);
+  const currentZoomRef = useRef(
+    ZOOM_LEVELS[clamp(initialZoomIndex, 0, ZOOM_LEVELS.length - 1)] ?? 1.2,
+  );
+
+  const lastDetectedRef = useRef({
+    barcode: "",
+    timestamp: 0,
+  });
+
+  const [permissionState, setPermissionState] = useState("checking");
+
+  const [cameraStarting, setCameraStarting] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState("");
 
-  const [restartToken, setRestartToken] = useState(0);
+  const [zoomIndex, setZoomIndex] = useState(
+    clamp(initialZoomIndex, 0, ZOOM_LEVELS.length - 1),
+  );
 
-  const [cameraReady, setCameraReady] = useState(false);
+  const [zoomSupported, setZoomSupported] = useState(false);
 
-  const [zoomAvailable, setZoomAvailable] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
 
-  const [torchAvailable, setTorchAvailable] = useState(false);
+  const [torchEnabled, setTorchEnabled] = useState(
+    initialTorchEnabled === true,
+  );
 
-  useEffect(() => {
-    onDetectedRef.current = onDetected;
-  }, [onDetected]);
-
-  /* -------------------------------------------------
-     Web video layout
-  -------------------------------------------------- */
+  const currentZoom = ZOOM_LEVELS[zoomIndex] ?? 1.2;
 
   useEffect(() => {
-    /*
-     * html5-qrcode crea dinámicamente varios nodos HTML.
-     *
-     * El vídeo debe ocupar todo el contenedor. Nuestro
-     * ScannerOverlay será la única interfaz visible.
-     */
-    const readerId = readerIdRef.current;
+    currentZoomRef.current = currentZoom;
+  }, [currentZoom]);
 
-    const styleId = `${readerId}-scanner-layout`;
+  /* ────────────────────────────────────────────────
+     READ CAMERA CAPABILITIES
+  ──────────────────────────────────────────────── */
 
-    const styleElement = document.createElement("style");
+  const getScannerCapabilities = useCallback(() => {
+    try {
+      return scannerRef.current?.getRunningTrackCapabilities?.() || {};
+    } catch (error) {
+      console.info(
+        "El navegador no permite consultar las capacidades " + "de la cámara:",
+        error,
+      );
 
-    styleElement.id = styleId;
-
-    styleElement.textContent = `
-      #${readerId} {
-        position: absolute !important;
-        inset: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        overflow: hidden !important;
-        border: 0 !important;
-        background: #000000 !important;
-      }
-
-      #${readerId} video {
-        position: absolute !important;
-        inset: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        object-fit: cover !important;
-        border: 0 !important;
-      }
-
-      #${readerId} canvas {
-        position: absolute !important;
-        inset: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-      }
-
-      #${readerId}__scan_region {
-        position: absolute !important;
-        inset: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        min-height: 100% !important;
-        overflow: hidden !important;
-        border: 0 !important;
-      }
-
-      #${readerId}__dashboard,
-      #${readerId}__dashboard_section {
-        display: none !important;
-      }
-
-      #${readerId} img {
-        display: none !important;
-      }
-    `;
-
-    document.head.appendChild(styleElement);
-
-    return () => {
-      document.getElementById(styleId)?.remove();
-    };
+      return {};
+    }
   }, []);
 
-  /* -------------------------------------------------
-     Camera cleanup
-  -------------------------------------------------- */
+  /* ────────────────────────────────────────────────
+     STOP CAMERA
+  ──────────────────────────────────────────────── */
 
-  const stopScannerInstance = useCallback(async (scanner) => {
+  const stopCamera = useCallback(async () => {
+    const scanner = scannerRef.current;
+
     if (!scanner) {
       return;
     }
 
-    try {
-      await scanner.stop();
-    } catch (error) {
-      /*
-       * Puede ocurrir si el lector todavía estaba
-       * arrancando o si ya se había detenido.
-       */
+    if (runningRef.current) {
+      try {
+        await scanner.stop();
+      } catch (error) {
+        console.warn("No se pudo detener el lector web:", error);
+      }
     }
+
+    runningRef.current = false;
 
     try {
       scanner.clear();
     } catch (error) {
-      /*
-       * Limpieza defensiva.
-       */
+      console.warn("No se pudo limpiar el lector web:", error);
     }
-  }, []);
-
-  const stopCurrentScanner = useCallback(async () => {
-    operationIdRef.current += 1;
-
-    const scanner = scannerRef.current;
 
     scannerRef.current = null;
 
-    zoomCapabilityRef.current = null;
-
-    setCameraReady(false);
-
-    setZoomAvailable(false);
-
-    setTorchAvailable(false);
-
-    await stopScannerInstance(scanner);
-  }, [stopScannerInstance]);
-
-  /* -------------------------------------------------
-     Camera capabilities
-  -------------------------------------------------- */
-
-  const readCapabilities = useCallback((scanner) => {
-    let capabilities = {};
-
-    try {
-      capabilities = scanner.getRunningTrackCapabilities?.() || {};
-    } catch (error) {
-      capabilities = {};
-    }
-
-    const zoomCapability = getZoomCapability(capabilities);
-
-    const hasTorch = Boolean(capabilities?.torch);
-
-    zoomCapabilityRef.current = zoomCapability;
-
-    setZoomAvailable(Boolean(zoomCapability));
-
-    setTorchAvailable(hasTorch);
-
-    return {
-      zoomCapability,
-
-      hasTorch,
-    };
-  }, []);
-
-  /* -------------------------------------------------
-     Apply controlled values to the web stream
-  -------------------------------------------------- */
-
-  const applyZoom = useCallback(async (scanner, normalizedZoom) => {
-    const zoomCapability = zoomCapabilityRef.current;
-
-    if (!scanner || !zoomCapability) {
-      return;
-    }
-
-    const trackZoom = mapNormalizedZoomToTrackZoom(
-      normalizedZoom,
-      zoomCapability,
-    );
-
-    if (!Number.isFinite(trackZoom)) {
-      return;
-    }
-
-    try {
-      await scanner.applyVideoConstraints({
-        advanced: [
-          {
-            zoom: trackZoom,
-          },
-        ],
-      });
-    } catch (error) {
-      console.log("No se pudo aplicar el zoom web:", error);
+    if (mountedRef.current) {
+      setTorchEnabled(false);
+      setTorchSupported(false);
+      setZoomSupported(false);
     }
   }, []);
 
-  const applyTorch = useCallback(
-    async (scanner, enabled) => {
-      if (!scanner || !torchAvailable) {
+  /* ────────────────────────────────────────────────
+     NOTIFY DETECTED EAN-13
+  ──────────────────────────────────────────────── */
+
+  const notifyDetectedBarcode = useCallback(
+    async (decodedText) => {
+      const barcode = normalizeBarcode(decodedText);
+
+      if (!isValidEan13(barcode)) {
         return;
       }
 
+      const now = Date.now();
+
+      const previousDetection = lastDetectedRef.current;
+
+      if (
+        previousDetection.barcode === barcode &&
+        now - previousDetection.timestamp < DUPLICATE_LOCK_MS
+      ) {
+        return;
+      }
+
+      lastDetectedRef.current = {
+        barcode,
+        timestamp: now,
+      };
+
+      /*
+       * Detenemos inmediatamente la cámara para evitar
+       * varias lecturas consecutivas del mismo EAN-13.
+       */
+      if (runningRef.current && scannerRef.current) {
+        try {
+          await scannerRef.current.stop();
+        } catch (error) {
+          console.warn(
+            "No se pudo detener el lector después de " + "detectar el EAN-13:",
+            error,
+          );
+        }
+
+        runningRef.current = false;
+      }
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      const result = {
+        type: "ean13",
+        data: barcode,
+        rawValue: barcode,
+      };
+
+      /*
+       * El modo rápido utilizado desde ItemDetailScreen
+       * recibe directamente el texto del EAN-13.
+       */
+      if (typeof onDetected === "function") {
+        onDetected(barcode);
+
+        return;
+      }
+
+      /*
+       * Compatibilidad con otros lectores existentes.
+       */
+      onBarcodeScanned?.(result);
+    },
+    [onBarcodeScanned, onDetected],
+  );
+
+  /* ────────────────────────────────────────────────
+     CONFIGURE ZOOM AND TORCH
+  ──────────────────────────────────────────────── */
+
+  const configureCameraCapabilities = useCallback(async () => {
+    const capabilities = getScannerCapabilities();
+
+    const supportsZoom =
+      capabilities?.zoom &&
+      Number.isFinite(capabilities.zoom.min) &&
+      Number.isFinite(capabilities.zoom.max);
+
+    const supportsTorch = Boolean(capabilities?.torch);
+
+    if (!mountedRef.current) {
+      return;
+    }
+
+    setZoomSupported(Boolean(supportsZoom));
+
+    setTorchSupported(supportsTorch);
+
+    if (supportsZoom) {
+      const desiredZoom = clamp(
+        currentZoomRef.current,
+        capabilities.zoom.min,
+        capabilities.zoom.max,
+      );
+
       try {
-        await scanner.applyVideoConstraints({
+        await scannerRef.current?.applyVideoConstraints?.({
           advanced: [
             {
-              torch: Boolean(enabled),
+              zoom: desiredZoom,
             },
           ],
         });
       } catch (error) {
-        console.log("No se pudo aplicar la linterna web:", error);
+        console.warn("No se pudo aplicar el zoom inicial:", error);
+
+        if (mountedRef.current) {
+          setZoomSupported(false);
+        }
+      }
+    }
+
+    if (supportsTorch && initialTorchEnabled) {
+      try {
+        await scannerRef.current?.applyVideoConstraints?.({
+          advanced: [
+            {
+              torch: true,
+            },
+          ],
+        });
+
+        if (mountedRef.current) {
+          setTorchEnabled(true);
+        }
+      } catch (error) {
+        console.warn("No se pudo activar la linterna inicialmente:", error);
+
+        if (mountedRef.current) {
+          setTorchSupported(false);
+          setTorchEnabled(false);
+        }
+      }
+    }
+  }, [getScannerCapabilities, initialTorchEnabled]);
+
+  /* ────────────────────────────────────────────────
+     START CAMERA
+  ──────────────────────────────────────────────── */
+
+  const startCamera = useCallback(async () => {
+    if (startingRef.current || runningRef.current) {
+      return;
+    }
+
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      setPermissionState("unsupported");
+
+      setErrorMessage(
+        "Este navegador no permite utilizar la cámara. " +
+          "Abre Shopp mediante HTTPS con un navegador compatible.",
+      );
+
+      return;
+    }
+
+    startingRef.current = true;
+
+    if (mountedRef.current) {
+      setCameraStarting(true);
+      setErrorMessage("");
+    }
+
+    try {
+      if (!scannerRef.current) {
+        scannerRef.current = new Html5Qrcode(scannerElementId, {
+          formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13],
+
+          verbose: false,
+        });
+      }
+
+      await scannerRef.current.start(
+        {
+          facingMode: {
+            ideal: "environment",
+          },
+        },
+
+        {
+          fps: 10,
+
+          disableFlip: true,
+
+          qrbox: {
+            width: 300,
+            height: 150,
+          },
+        },
+
+        notifyDetectedBarcode,
+
+        () => {
+          /*
+           * La mayoría de los fotogramas no contienen
+           * ningún código de barras.
+           *
+           * Es un comportamiento normal. No mostramos
+           * esos fallos esperables en la consola.
+           */
+        },
+      );
+
+      if (!mountedRef.current) {
+        try {
+          await scannerRef.current.stop();
+
+          scannerRef.current.clear();
+        } catch (error) {
+          console.warn("No se pudo cerrar la cámara desmontada:", error);
+        }
+
+        scannerRef.current = null;
+
+        return;
+      }
+
+      runningRef.current = true;
+
+      /*
+       * La cámara se abrió correctamente.
+       *
+       * Guardamos una marca local para Safari y otros
+       * navegadores que no permiten consultar el permiso
+       * previamente mediante navigator.permissions.
+       */
+      rememberCameraAccess();
+
+      setPermissionState("granted");
+
+      await configureCameraCapabilities();
+    } catch (error) {
+      console.warn("No se pudo iniciar el lector web:", error);
+
+      runningRef.current = false;
+
+      if (error?.name === "NotAllowedError") {
+        /*
+         * El permiso ha sido revocado, bloqueado o
+         * rechazado explícitamente.
+         */
+        forgetRememberedCameraAccess();
+
+        if (mountedRef.current) {
+          setPermissionState("denied");
+        }
+      }
+
+      if (mountedRef.current) {
+        setErrorMessage(getReadableCameraError(error));
+      }
+    } finally {
+      startingRef.current = false;
+
+      if (mountedRef.current) {
+        setCameraStarting(false);
+      }
+    }
+  }, [configureCameraCapabilities, notifyDetectedBarcode, scannerElementId]);
+
+  /* ────────────────────────────────────────────────
+     CHANGE ZOOM
+  ──────────────────────────────────────────────── */
+
+  const applyZoomIndex = useCallback(
+    async (nextZoomIndex) => {
+      const normalizedIndex = clamp(nextZoomIndex, 0, ZOOM_LEVELS.length - 1);
+
+      const selectedZoom = ZOOM_LEVELS[normalizedIndex] ?? 1.2;
+
+      setZoomIndex(normalizedIndex);
+
+      currentZoomRef.current = selectedZoom;
+
+      if (!zoomSupported) {
+        return;
+      }
+
+      const capabilities = getScannerCapabilities();
+
+      const zoomMinimum = capabilities?.zoom?.min ?? 1;
+
+      const zoomMaximum = capabilities?.zoom?.max ?? selectedZoom;
+
+      const constrainedZoom = clamp(selectedZoom, zoomMinimum, zoomMaximum);
+
+      try {
+        await scannerRef.current?.applyVideoConstraints?.({
+          advanced: [
+            {
+              zoom: constrainedZoom,
+            },
+          ],
+        });
+      } catch (error) {
+        console.warn("No se pudo modificar el zoom:", error);
+
+        if (mountedRef.current) {
+          setZoomSupported(false);
+        }
       }
     },
-    [torchAvailable],
+    [getScannerCapabilities, zoomSupported],
   );
 
-  /* -------------------------------------------------
-     Start scanner
-  -------------------------------------------------- */
+  const cycleZoom = useCallback(() => {
+    const nextZoomIndex =
+      zoomIndex >= ZOOM_LEVELS.length - 1 ? 0 : zoomIndex + 1;
 
-  useEffect(() => {
-    let disposed = false;
+    applyZoomIndex(nextZoomIndex);
+  }, [applyZoomIndex, zoomIndex]);
 
-    if (!isFocused) {
-      stopCurrentScanner();
+  /* ────────────────────────────────────────────────
+     CHANGE TORCH
+  ──────────────────────────────────────────────── */
 
-      return () => {
-        disposed = true;
-      };
+  const toggleTorch = useCallback(async () => {
+    if (!torchSupported) {
+      return;
     }
 
-    lockRef.current = false;
+    const nextTorchEnabled = !torchEnabled;
 
-    const operationId = operationIdRef.current + 1;
-
-    operationIdRef.current = operationId;
-
-    let ownedScanner = null;
-
-    async function createScannerAndStart(cameraConfig) {
-      const scanner = new Html5Qrcode(readerIdRef.current, {
-        /*
-         * Solo cargamos el decodificador EAN-13.
-         */
-        formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13],
-
-        /*
-         * ZXing ofrece un comportamiento más
-         * consistente en navegadores móviles.
-         */
-        useBarCodeDetectorIfSupported: false,
-
-        verbose: false,
+    try {
+      await scannerRef.current?.applyVideoConstraints?.({
+        advanced: [
+          {
+            torch: nextTorchEnabled,
+          },
+        ],
       });
 
-      ownedScanner = scanner;
+      if (mountedRef.current) {
+        setTorchEnabled(nextTorchEnabled);
+      }
+    } catch (error) {
+      console.warn("No se pudo modificar la linterna:", error);
 
-      scannerRef.current = scanner;
+      if (mountedRef.current) {
+        setTorchSupported(false);
+        setTorchEnabled(false);
+      }
+    }
+  }, [torchEnabled, torchSupported]);
 
-      async function handleDecodedText(decodedText) {
-        if (lockRef.current) {
-          return;
-        }
+  /* ────────────────────────────────────────────────
+     INITIALIZE PERMISSIONS
+  ──────────────────────────────────────────────── */
 
-        const barcode = normalizeEan13(decodedText);
+  useEffect(() => {
+    mountedRef.current = true;
 
-        if (!barcode || !isValidEan13(barcode)) {
-          return;
-        }
+    const checkInitialPermission = async () => {
+      const nextPermissionState = await readCameraPermissionState();
 
-        lockRef.current = true;
-
-        if (scannerRef.current === scanner) {
-          scannerRef.current = null;
-        }
-
-        operationIdRef.current += 1;
-
-        setCameraReady(false);
-
-        await stopScannerInstance(scanner);
-
-        if (!disposed) {
-          onDetectedRef.current?.(barcode);
-        }
+      if (!mountedRef.current) {
+        return;
       }
 
-      function handleDecodeFailure() {
-        /*
-         * Ignoramos los fotogramas que no contienen
-         * un EAN-13 válido.
-         */
+      setPermissionState(nextPermissionState);
+
+      /*
+       * Caso 1:
+       * El navegador confirma que el permiso ya está
+       * concedido. Abrimos la cámara directamente.
+       *
+       * Caso 2:
+       * El navegador no permite consultar previamente
+       * el permiso, pero Shopp recuerda que la cámara se
+       * abrió correctamente en una visita anterior.
+       *
+       * En ambos casos intentamos iniciar la cámara sin
+       * mostrar nuevamente el botón intermedio de Shopp.
+       */
+      if (
+        nextPermissionState === "granted" ||
+        (nextPermissionState === "prompt" && hasRememberedCameraAccess())
+      ) {
+        startCamera();
+      }
+
+      if (!navigator?.permissions?.query) {
+        return;
       }
 
       try {
-        await scanner.start(
-          cameraConfig,
-          {
-            /*
-             * El overlay lo dibujamos nosotros.
-             *
-             * No añadas qrbox: html5-qrcode dibujaría
-             * un marco adicional y oscurecería el vídeo.
-             */
-            fps: 10,
+        const permission = await navigator.permissions.query({
+          name: "camera",
+        });
 
-            disableFlip: true,
-          },
-          handleDecodedText,
-          handleDecodeFailure,
-        );
+        permissionRef.current = permission;
 
-        return scanner;
+        permission.onchange = () => {
+          if (!mountedRef.current) {
+            return;
+          }
+
+          setPermissionState(permission.state);
+
+          if (permission.state === "denied") {
+            forgetRememberedCameraAccess();
+
+            return;
+          }
+
+          if (permission.state === "granted" && !runningRef.current) {
+            startCamera();
+          }
+        };
       } catch (error) {
-        if (scannerRef.current === scanner) {
-          scannerRef.current = null;
-        }
-
-        await stopScannerInstance(scanner);
-
-        throw error;
+        /*
+         * Safari puede lanzar una excepción aunque
+         * getUserMedia() esté disponible.
+         *
+         * En ese caso se usa la marca de localStorage
+         * o el botón manual.
+         */
       }
-    }
+    };
 
-    async function startScanner() {
-      setStarting(true);
-
-      setErrorMessage("");
-
-      setCameraReady(false);
-
-      setZoomAvailable(false);
-
-      setTorchAvailable(false);
-
-      zoomCapabilityRef.current = null;
-
-      let scanner = null;
-
-      try {
-        /*
-         * Primer intento: cámara trasera mediante
-         * facingMode.
-         */
-        try {
-          scanner = await createScannerAndStart({
-            facingMode: "environment",
-          });
-        } catch (firstError) {
-          /*
-           * Fallback: elegimos explícitamente una
-           * cámara trasera disponible.
-           */
-          const cameras = await Html5Qrcode.getCameras();
-
-          const preferredCamera = findPreferredCamera(cameras);
-
-          if (!preferredCamera?.id) {
-            throw firstError;
-          }
-
-          scanner = await createScannerAndStart(preferredCamera.id);
-        }
-
-        /*
-         * Si el usuario abandona la pantalla mientras
-         * arranca la cámara, cerramos el stream.
-         */
-        if (disposed || operationId !== operationIdRef.current) {
-          if (scannerRef.current === scanner) {
-            scannerRef.current = null;
-          }
-
-          await stopScannerInstance(scanner);
-
-          return;
-        }
-
-        scannerRef.current = scanner;
-
-        ownedScanner = scanner;
-
-        const capabilities = readCapabilities(scanner);
-
-        setCameraReady(true);
-
-        /*
-         * Solo podemos aplicar el zoom después de
-         * iniciar el stream y leer sus capacidades.
-         */
-        if (capabilities.zoomCapability) {
-          await applyZoom(scanner, zoom);
-        }
-
-        /*
-         * La linterna inicial también se aplica
-         * después de iniciar el stream.
-         */
-        if (capabilities.hasTorch && torchEnabled) {
-          try {
-            await scanner.applyVideoConstraints({
-              advanced: [
-                {
-                  torch: true,
-                },
-              ],
-            });
-          } catch (error) {
-            console.log("No se pudo activar la linterna inicial:", error);
-          }
-        }
-      } catch (error) {
-        console.log("Quick EAN-13 web scanner error:", error);
-
-        if (!disposed && operationId === operationIdRef.current) {
-          setErrorMessage(getErrorMessage(error));
-        }
-      } finally {
-        if (!disposed && operationId === operationIdRef.current) {
-          setStarting(false);
-        }
-      }
-    }
-
-    startScanner();
+    checkInitialPermission();
 
     return () => {
-      disposed = true;
+      mountedRef.current = false;
 
-      lockRef.current = false;
-
-      operationIdRef.current += 1;
-
-      zoomCapabilityRef.current = null;
-
-      setCameraReady(false);
-
-      setZoomAvailable(false);
-
-      setTorchAvailable(false);
-
-      if (scannerRef.current === ownedScanner) {
-        scannerRef.current = null;
+      if (permissionRef.current) {
+        permissionRef.current.onchange = null;
       }
 
-      stopScannerInstance(ownedScanner);
+      stopCamera();
     };
-  }, [
-    applyZoom,
-    isFocused,
-    readCapabilities,
-    restartToken,
-    stopCurrentScanner,
-    stopScannerInstance,
-  ]);
+  }, [startCamera, stopCamera]);
 
-  /* -------------------------------------------------
-     Synchronize stream without restarting camera
-  -------------------------------------------------- */
+  /* ────────────────────────────────────────────────
+     PERMISSION UI
+  ──────────────────────────────────────────────── */
 
-  useEffect(() => {
-    if (!cameraReady) {
-      return;
-    }
+  if (permissionState === "checking") {
+    return (
+      <View style={styles.centeredContainer}>
+        <ActivityIndicator size="large" />
 
-    const scanner = scannerRef.current;
-
-    if (!scanner) {
-      return;
-    }
-
-    applyZoom(scanner, zoom);
-  }, [applyZoom, cameraReady, zoom]);
-
-  useEffect(() => {
-    if (!cameraReady) {
-      return;
-    }
-
-    const scanner = scannerRef.current;
-
-    if (!scanner) {
-      return;
-    }
-
-    applyTorch(scanner, torchEnabled);
-  }, [applyTorch, cameraReady, torchEnabled]);
-
-  /* -------------------------------------------------
-     Controls
-  -------------------------------------------------- */
-
-  async function handleClose() {
-    lockRef.current = true;
-
-    await stopCurrentScanner();
-
-    onCancel?.();
+        <Text style={styles.centeredTitle}>
+          Comprobando acceso a la cámara…
+        </Text>
+      </View>
+    );
   }
 
-  function handleRetry() {
-    lockRef.current = false;
+  if (permissionState === "unsupported") {
+    return (
+      <View style={styles.centeredContainer}>
+        <Text style={styles.permissionIcon}>⚠️</Text>
 
-    setErrorMessage("");
+        <Text style={styles.centeredTitle}>Cámara no disponible</Text>
 
-    setRestartToken((previous) => {
-      return previous + 1;
-    });
+        <Text style={styles.centeredText}>{errorMessage}</Text>
+
+        <Pressable
+          onPress={onCancel}
+          style={({ pressed }) => [
+            styles.secondaryButton,
+
+            pressed && styles.buttonPressed,
+          ]}
+        >
+          <Text style={styles.secondaryButtonText}>Cerrar</Text>
+        </Pressable>
+      </View>
+    );
   }
 
-  function handleZoomPress() {
-    if (!zoomAvailable) {
-      return;
-    }
+  if (permissionState === "prompt" || permissionState === "denied") {
+    return (
+      <View style={styles.centeredContainer}>
+        <Text style={styles.permissionIcon}>📷</Text>
 
-    onChangeZoom?.();
+        <Text style={styles.centeredTitle}>Acceso a la cámara</Text>
+
+        <Text style={styles.centeredText}>
+          {permissionState === "denied"
+            ? "El navegador ha bloqueado el acceso. " +
+              "Revisa los permisos de cámara de este " +
+              "sitio y vuelve a intentarlo."
+            : "Pulsa el botón para permitir que Shopp " +
+              "utilice la cámara mientras lees el " +
+              "código de barras."}
+        </Text>
+
+        {errorMessage ? (
+          <Text style={styles.errorText}>{errorMessage}</Text>
+        ) : null}
+
+        <Pressable
+          disabled={cameraStarting}
+          onPress={startCamera}
+          style={({ pressed }) => [
+            styles.primaryButton,
+
+            pressed && styles.buttonPressed,
+
+            cameraStarting && styles.buttonDisabled,
+          ]}
+        >
+          {cameraStarting ? (
+            <ActivityIndicator />
+          ) : (
+            <Text style={styles.primaryButtonText}>
+              {permissionState === "denied" ? "Reintentar" : "Permitir cámara"}
+            </Text>
+          )}
+        </Pressable>
+
+        <Pressable
+          onPress={onCancel}
+          style={({ pressed }) => [
+            styles.secondaryButton,
+
+            pressed && styles.buttonPressed,
+          ]}
+        >
+          <Text style={styles.secondaryButtonText}>Cancelar</Text>
+        </Pressable>
+      </View>
+    );
   }
 
-  function handleTorchPress() {
-    if (!torchAvailable) {
-      return;
-    }
-
-    onToggleTorch?.();
-  }
-
-  /* -------------------------------------------------
-     Render
-  -------------------------------------------------- */
+  /* ────────────────────────────────────────────────
+     SCANNER UI
+  ──────────────────────────────────────────────── */
 
   return (
     <View style={styles.container}>
-      {/*
-       * html5-qrcode inserta dinámicamente el vídeo
-       * y sus nodos auxiliares en este contenedor.
-       *
-       * pointerEvents="none" evita que la vista previa
-       * bloquee los taps de los botones del overlay.
-       */}
       <View
-        nativeID={readerIdRef.current}
-        style={styles.reader}
-        pointerEvents="none"
+        nativeID={scannerElementId}
+        id={scannerElementId}
+        style={styles.scannerElement}
       />
 
-      <ScannerOverlay
-        onCancel={handleClose}
-        onChangeZoom={handleZoomPress}
-        onToggleTorch={handleTorchPress}
-        zoomLabel={zoomLabel}
-        torchEnabled={torchEnabled}
-        zoomAvailable={zoomAvailable}
-        torchAvailable={torchAvailable}
-        showControls={showControls}
-        showStatusBadges={showStatusBadges}
-        badgeLabel="Scanner"
-        starting={starting}
-        errorMessage={errorMessage}
-        onRetry={handleRetry}
-      />
+      <View pointerEvents="none" style={styles.overlay}>
+        <View style={styles.topShade} />
+
+        <View style={styles.middleRow}>
+          <View style={styles.sideShade} />
+
+          <View style={styles.scanWindow}>
+            <View style={[styles.corner, styles.cornerTopLeft]} />
+
+            <View style={[styles.corner, styles.cornerTopRight]} />
+
+            <View style={[styles.corner, styles.cornerBottomLeft]} />
+
+            <View style={[styles.corner, styles.cornerBottomRight]} />
+
+            <View style={styles.scanLine} />
+          </View>
+
+          <View style={styles.sideShade} />
+        </View>
+
+        <View style={styles.bottomShade} />
+      </View>
+
+      <View pointerEvents="none" style={styles.instructions}>
+        <Text style={styles.instructionsTitle}>Apunta al código de barras</Text>
+
+        <Text style={styles.instructionsText}>
+          Mantén el EAN-13 dentro del recuadro
+        </Text>
+      </View>
+
+      {showStatusBadges ? (
+        <View pointerEvents="none" style={styles.statusBadges}>
+          <View style={styles.statusBadge}>
+            <Text style={styles.statusBadgeText}>
+              Zoom {currentZoom.toFixed(1)}×
+            </Text>
+          </View>
+
+          <View style={styles.statusBadge}>
+            <Text style={styles.statusBadgeText}>
+              {torchEnabled ? "Luz activada" : "Luz apagada"}
+            </Text>
+          </View>
+
+          <View style={styles.statusBadge}>
+            <Text style={styles.statusBadgeText}>EAN-13</Text>
+          </View>
+        </View>
+      ) : null}
+
+      {showControls ? (
+        <View style={styles.controls}>
+          <Pressable
+            disabled={!zoomSupported}
+            onPress={cycleZoom}
+            style={({ pressed }) => [
+              styles.controlButton,
+
+              pressed && styles.buttonPressed,
+
+              !zoomSupported && styles.controlButtonDisabled,
+            ]}
+          >
+            <Text style={styles.controlButtonText}>
+              Zoom {currentZoom.toFixed(1)}×
+            </Text>
+          </Pressable>
+
+          <Pressable
+            disabled={!torchSupported}
+            onPress={toggleTorch}
+            style={({ pressed }) => [
+              styles.controlButton,
+
+              torchEnabled && styles.controlButtonActive,
+
+              pressed && styles.buttonPressed,
+
+              !torchSupported && styles.controlButtonDisabled,
+            ]}
+          >
+            <Text style={styles.controlButtonText}>
+              {torchEnabled ? "Linterna encendida" : "Linterna"}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={onCancel}
+            style={({ pressed }) => [
+              styles.cancelButton,
+
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.cancelButtonText}>Cancelar</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
 
-/* -------------------------------------------------
-   Styles
--------------------------------------------------- */
+/* ────────────────────────────────────────────────
+   STYLES
+──────────────────────────────────────────────── */
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    minHeight: 0,
-    height: "100%",
     position: "relative",
     overflow: "hidden",
     backgroundColor: "#000000",
   },
 
-  reader: {
+  scannerElement: {
     ...StyleSheet.absoluteFillObject,
-    width: "100%",
-    height: "100%",
-    overflow: "hidden",
     backgroundColor: "#000000",
+  },
+
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+
+  topShade: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.52)",
+  },
+
+  middleRow: {
+    height: 220,
+    flexDirection: "row",
+  },
+
+  sideShade: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.52)",
+  },
+
+  scanWindow: {
+    width: "86%",
+    maxWidth: 480,
+    position: "relative",
+  },
+
+  scanLine: {
+    position: "absolute",
+    top: "50%",
+    left: 16,
+    right: 16,
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: "#ffffff",
+    opacity: 0.92,
+  },
+
+  corner: {
+    width: 34,
+    height: 34,
+    position: "absolute",
+    borderColor: "#ffffff",
+  },
+
+  cornerTopLeft: {
+    top: 0,
+    left: 0,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+    borderTopLeftRadius: 12,
+  },
+
+  cornerTopRight: {
+    top: 0,
+    right: 0,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+    borderTopRightRadius: 12,
+  },
+
+  cornerBottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
+    borderBottomLeftRadius: 12,
+  },
+
+  cornerBottomRight: {
+    right: 0,
+    bottom: 0,
+    borderRightWidth: 4,
+    borderBottomWidth: 4,
+    borderBottomRightRadius: 12,
+  },
+
+  bottomShade: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.52)",
+  },
+
+  instructions: {
+    position: "absolute",
+    top: 28,
+    left: 20,
+    right: 20,
+    alignItems: "center",
+  },
+
+  instructionsTitle: {
+    color: "#ffffff",
+    fontSize: 19,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+
+  instructionsText: {
+    color: "#f0f4f8",
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+    marginTop: 6,
+  },
+
+  statusBadges: {
+    position: "absolute",
+    top: 94,
+    left: 16,
+    right: 16,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 8,
+  },
+
+  statusBadge: {
+    minHeight: 31,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: "rgba(10, 24, 39, 0.84)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.28)",
+  },
+
+  statusBadgeText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  controls: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 22,
+    alignItems: "center",
+    gap: 10,
+  },
+
+  controlButton: {
+    minWidth: 214,
+    minHeight: 46,
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    backgroundColor: "rgba(10, 24, 39, 0.88)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.36)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  controlButtonActive: {
+    backgroundColor: "rgba(182, 122, 0, 0.94)",
+  },
+
+  controlButtonDisabled: {
+    opacity: 0.42,
+  },
+
+  controlButtonText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+
+  cancelButton: {
+    minWidth: 214,
+    minHeight: 48,
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.34)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  cancelButtonText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+
+  centeredContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 26,
+    backgroundColor: "#07111f",
+  },
+
+  permissionIcon: {
+    fontSize: 46,
+    marginBottom: 6,
+  },
+
+  centeredTitle: {
+    color: "#ffffff",
+    fontSize: 20,
+    fontWeight: "800",
+    textAlign: "center",
+    marginTop: 16,
+  },
+
+  centeredText: {
+    maxWidth: 440,
+    color: "#c6d3df",
+    fontSize: 15,
+    lineHeight: 21,
+    textAlign: "center",
+    marginTop: 10,
+  },
+
+  errorText: {
+    maxWidth: 440,
+    color: "#ffd58a",
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
+    marginTop: 13,
+  },
+
+  primaryButton: {
+    minWidth: 210,
+    minHeight: 48,
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+    backgroundColor: "#1f8f57",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 18,
+  },
+
+  primaryButtonText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+
+  secondaryButton: {
+    minWidth: 210,
+    minHeight: 46,
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+  },
+
+  secondaryButtonText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+
+  buttonPressed: {
+    opacity: 0.72,
+  },
+
+  buttonDisabled: {
+    opacity: 0.56,
   },
 });
