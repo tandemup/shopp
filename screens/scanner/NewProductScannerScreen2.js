@@ -42,10 +42,6 @@ import {
 
 import { lookupProductByBarcode } from "../../services/productLookup";
 
-/* -------------------------------------------------
-   Scanner configuration
--------------------------------------------------- */
-
 const ZOOM_VALUES = [0, 0.15, 0.3, 0.45];
 
 const ZOOM_LABELS = ["1x", "1.2x", "1.5x", "2x"];
@@ -53,10 +49,6 @@ const ZOOM_LABELS = ["1x", "1.2x", "1.5x", "2x"];
 const DEFAULT_BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e"];
 
 const ALLOWED_BARCODE_TYPES = new Set(["ean13", "ean8", "upc_a", "upc_e"]);
-
-/* -------------------------------------------------
-   Helpers
--------------------------------------------------- */
 
 function normalizeBarcodeTypes(value) {
   if (Array.isArray(value)) {
@@ -69,15 +61,9 @@ function normalizeBarcodeTypes(value) {
 
   if (value && typeof value === "object") {
     const filtered = Object.entries(value)
-      .filter(([, enabled]) => {
-        return Boolean(enabled);
-      })
-      .map(([type]) => {
-        return type;
-      })
-      .filter((type) => {
-        return ALLOWED_BARCODE_TYPES.has(type);
-      });
+      .filter(([, enabled]) => Boolean(enabled))
+      .map(([type]) => type)
+      .filter((type) => ALLOWED_BARCODE_TYPES.has(type));
 
     return filtered.length > 0 ? filtered : DEFAULT_BARCODE_TYPES;
   }
@@ -91,12 +77,6 @@ function normalizeBarcode(code) {
     .trim();
 }
 
-/**
- * Busca el navegador que contiene la ruta solicitada.
- *
- * NewProductScannerScreen2 pertenece al stack Scanner.
- * ItemDetailScreen pertenece al stack Shopping.
- */
 function navigateToAvailableRoute(navigation, routeName, params) {
   let currentNavigation = navigation;
 
@@ -123,31 +103,17 @@ function navigateToAvailableRoute(navigation, routeName, params) {
   }
 }
 
-/* -------------------------------------------------
-   Component
--------------------------------------------------- */
-
 export default function NewProductScannerScreen2() {
   const navigation = useNavigation();
 
   const route = useRoute();
 
-  /*
-   * Impide que un mismo código sea procesado varias veces
-   * durante los fotogramas consecutivos de la cámara.
-   */
   const scannedRef = useRef(false);
 
-  /*
-   * Evita iniciar varias operaciones asíncronas simultáneas.
-   */
   const handlingScanRef = useRef(false);
 
   const [permission, requestPermission] = useCameraPermissions();
 
-  /*
-   * Leemos primero los parámetros de navegación.
-   */
   const {
     autoOpenEngine = false,
 
@@ -172,9 +138,6 @@ export default function NewProductScannerScreen2() {
     showStatusBadges = true,
   } = route.params || {};
 
-  /*
-   * Evita índices inexistentes.
-   */
   const safeInitialZoomIndex =
     Number.isInteger(initialZoomIndex) &&
     initialZoomIndex >= 0 &&
@@ -184,23 +147,12 @@ export default function NewProductScannerScreen2() {
 
   const safeInitialTorchEnabled = Boolean(initialTorchEnabled);
 
-  /*
-   * locked bloquea las detecciones mientras se procesa
-   * un código o se muestra el menú de opciones.
-   */
   const [locked, setLocked] = useState(false);
 
   const [zoomIndex, setZoomIndex] = useState(safeInitialZoomIndex);
 
   const [torchEnabled, setTorchEnabled] = useState(safeInitialTorchEnabled);
 
-  /*
-   * Al incrementar scannerSession se desmonta el lector
-   * actual y se crea una nueva instancia completamente limpia.
-   *
-   * Esto evita que el lector web o CameraView conserven
-   * el último código leído al iniciar otro escaneo.
-   */
   const [scannerSession, setScannerSession] = useState(0);
 
   const isQuickEan13Input = captureMode === "ean13-input";
@@ -216,14 +168,9 @@ export default function NewProductScannerScreen2() {
     });
   }, []);
 
-  /* -------------------------------------------------
-     Navigation configuration
-  -------------------------------------------------- */
-
   useLayoutEffect(() => {
     navigation.setOptions({
       ...headerConfig.navigationOptions,
-
       headerShown: false,
     });
   }, [navigation, headerConfig]);
@@ -236,21 +183,11 @@ export default function NewProductScannerScreen2() {
 
       setLocked(false);
 
-      /*
-       * Recuperamos los valores iniciales cada vez
-       * que se abre el lector.
-       */
       setZoomIndex(safeInitialZoomIndex);
 
       setTorchEnabled(safeInitialTorchEnabled);
 
-      /*
-       * Forzamos una instancia limpia del lector
-       * al regresar a esta pantalla.
-       */
-      setScannerSession((previous) => {
-        return previous + 1;
-      });
+      setScannerSession((previous) => previous + 1);
 
       return () => {
         scannedRef.current = false;
@@ -259,26 +196,11 @@ export default function NewProductScannerScreen2() {
 
         setLocked(false);
 
-        /*
-         * La linterna siempre debe apagarse
-         * al abandonar la pantalla.
-         */
         setTorchEnabled(false);
       };
     }, [safeInitialTorchEnabled, safeInitialZoomIndex]),
   );
 
-  /* -------------------------------------------------
-     Common actions
-  -------------------------------------------------- */
-
-  /**
-   * Limpia completamente el scanner para permitir
-   * la lectura inmediata de otro producto.
-   *
-   * Se utiliza después de pulsar "Escanear otro"
-   * y cuando ocurre un error recuperable.
-   */
   function resetScannerForNextScan() {
     scannedRef.current = false;
 
@@ -288,17 +210,9 @@ export default function NewProductScannerScreen2() {
 
     setTorchEnabled(false);
 
-    setScannerSession((previous) => {
-      return previous + 1;
-    });
+    setScannerSession((previous) => previous + 1);
   }
 
-  /**
-   * Cierra la pantalla del scanner.
-   *
-   * Si la pantalla no tiene una ruta anterior,
-   * se reinicia el scanner como medida defensiva.
-   */
   function handleCancel() {
     scannedRef.current = true;
 
@@ -324,14 +238,8 @@ export default function NewProductScannerScreen2() {
   }
 
   function handleToggleTorch() {
-    setTorchEnabled((previous) => {
-      return !previous;
-    });
+    setTorchEnabled((previous) => !previous);
   }
-
-  /* -------------------------------------------------
-     Fast EAN-13 input mode
-  -------------------------------------------------- */
 
   function handleQuickEan13Detected(code) {
     if (scannedRef.current || handlingScanRef.current) {
@@ -344,10 +252,6 @@ export default function NewProductScannerScreen2() {
       return;
     }
 
-    /*
-     * Bloqueamos inmediatamente el lector para evitar
-     * detecciones consecutivas del mismo código.
-     */
     scannedRef.current = true;
 
     handlingScanRef.current = true;
@@ -361,31 +265,23 @@ export default function NewProductScannerScreen2() {
 
       params: {
         listId,
-
         itemId,
-
         scannedBarcode: barcode,
       },
     };
 
     const didNavigate = navigateToAvailableRoute(
       navigation,
-
       returnToTab,
-
       navigationParams,
     );
 
     if (!didNavigate) {
       console.log("No se encontró la ruta de retorno:", {
         returnToTab,
-
         returnToScreen,
-
         listId,
-
         itemId,
-
         scannedBarcode: barcode,
       });
 
@@ -393,15 +289,11 @@ export default function NewProductScannerScreen2() {
 
       safeAlert(
         "Error de navegación",
-
         "Se detectó el código, pero no se pudo regresar al producto.",
       );
     }
   }
 
-  /*
-   * Desde ItemDetailScreen utilizamos únicamente EAN-13.
-   */
   if (isQuickEan13Input) {
     return (
       <View style={styles.screen}>
@@ -415,25 +307,17 @@ export default function NewProductScannerScreen2() {
           key={`quick-ean13-session-${scannerSession}`}
           onDetected={handleQuickEan13Detected}
           onCancel={handleCancel}
+          initialZoomIndex={zoomIndex}
+          initialTorchEnabled={torchEnabled}
           showControls={showControls}
           showStatusBadges={showStatusBadges}
-          zoom={ZOOM_VALUES[zoomIndex]}
-          zoomLabel={ZOOM_LABELS[zoomIndex]}
-          torchEnabled={torchEnabled}
-          onChangeZoom={handleChangeZoom}
-          onToggleTorch={handleToggleTorch}
         />
       </View>
     );
   }
 
-  /* -------------------------------------------------
-     Product lookup and optional history persistence
-  -------------------------------------------------- */
-
   async function getDetectedBarcodeProduct(
     code,
-
     { saveToHistory = false } = {},
   ) {
     const barcode = normalizeBarcode(code);
@@ -452,11 +336,8 @@ export default function NewProductScannerScreen2() {
     if (hasUsefulCachedData) {
       const updatedItem = {
         ...cachedItem,
-
         barcode,
-
         source: cachedItem.source || "scanner",
-
         updatedAt: now,
       };
 
@@ -473,27 +354,16 @@ export default function NewProductScannerScreen2() {
 
     const scannedItem = {
       id: barcode,
-
       barcode,
-
       name: product?.name || cachedItem?.name || "",
-
       brand: product?.brand || cachedItem?.brand || "",
-
       imageUrl: product?.imageUrl || cachedItem?.imageUrl || "",
-
       thumbnailUri: cachedItem?.thumbnailUri || null,
-
       url: product?.url || cachedItem?.url || "",
-
       notes: cachedItem?.notes || "",
-
       source: "scanner",
-
       lookupSource: product?.lookupSource || cachedItem?.lookupSource || null,
-
       scannedAt: cachedItem?.scannedAt || now,
-
       updatedAt: now,
     };
 
@@ -504,14 +374,6 @@ export default function NewProductScannerScreen2() {
     return scannedItem;
   }
 
-  /**
-   * Procesa el producto detectado y sustituye la pantalla
-   * del scanner por la ficha del producto.
-   *
-   * navigation.replace cierra efectivamente el scanner:
-   * al regresar desde PRODUCT_INFO no se vuelve a mostrar
-   * la cámara anterior.
-   */
   async function processDetectedBarcode(barcode, saveToHistory) {
     try {
       const scannedItem = await getDetectedBarcodeProduct(barcode, {
@@ -520,9 +382,7 @@ export default function NewProductScannerScreen2() {
 
       navigation.replace(ROUTES.PRODUCT_INFO, {
         barcode,
-
         product: scannedItem,
-
         autoOpenEngine,
       });
     } catch (error) {
@@ -533,7 +393,6 @@ export default function NewProductScannerScreen2() {
       safeAlert("Error", "No se pudo procesar el producto escaneado", [
         {
           text: "Cerrar",
-
           onPress: handleCancel,
         },
       ]);
@@ -561,29 +420,21 @@ export default function NewProductScannerScreen2() {
 
     safeMenu(
       "Producto detectado",
-
       `Código: ${barcode}\n\n¿Quieres añadir este producto al historial de escaneos?`,
-
       [
         {
           text: "Escanear otro",
-
           style: "cancel",
-
           onPress: resetScannerForNextScan,
         },
-
         {
           text: "No añadir",
-
           onPress: () => {
             processDetectedBarcode(barcode, false);
           },
         },
-
         {
           text: "Añadir",
-
           onPress: () => {
             processDetectedBarcode(barcode, true);
           },
@@ -607,22 +458,15 @@ export default function NewProductScannerScreen2() {
 
     safeAlert(
       "No se pudo iniciar la cámara",
-
       "Comprueba que el navegador o la aplicación tienen permiso para utilizar la cámara.",
-
       [
         {
           text: "Cerrar",
-
           onPress: handleCancel,
         },
       ],
     );
   }
-
-  /* -------------------------------------------------
-     General web scanner
-  -------------------------------------------------- */
 
   if (Platform.OS === "web") {
     return (
@@ -637,21 +481,14 @@ export default function NewProductScannerScreen2() {
           key={`web-scanner-session-${scannerSession}`}
           onDetected={handleWebDetected}
           onCancel={handleCancel}
+          initialZoomIndex={zoomIndex}
+          initialTorchEnabled={torchEnabled}
           showControls={showControls}
           showStatusBadges={showStatusBadges}
-          zoom={ZOOM_VALUES[zoomIndex]}
-          zoomLabel={ZOOM_LABELS[zoomIndex]}
-          torchEnabled={torchEnabled}
-          onChangeZoom={handleChangeZoom}
-          onToggleTorch={handleToggleTorch}
         />
       </View>
     );
   }
-
-  /* -------------------------------------------------
-     Native permissions
-  -------------------------------------------------- */
 
   if (!permission) {
     return (
@@ -701,24 +538,11 @@ export default function NewProductScannerScreen2() {
     );
   }
 
-  /* -------------------------------------------------
-     General native scanner
-  -------------------------------------------------- */
-
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <StatusBar style="light" backgroundColor="#000000" translucent={false} />
 
       <View style={styles.cameraWrap}>
-        {/*
-         * CameraView solo muestra la vista previa.
-         *
-         * pointerEvents="none" evita que bloquee
-         * los botones del overlay.
-         *
-         * La key permite reinicializar la cámara
-         * después de elegir "Escanear otro".
-         */}
         <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
           <CameraView
             key={`native-camera-session-${scannerSession}`}
@@ -741,19 +565,18 @@ export default function NewProductScannerScreen2() {
           onToggleTorch={handleToggleTorch}
           zoomLabel={ZOOM_LABELS[zoomIndex]}
           torchEnabled={torchEnabled}
+          zoomAvailable
+          torchAvailable
           showControls={showControls}
-          showStatusBadges={showStatusBadges}
-          badgeLabel="Scanner"
           processing={locked}
+          hint="Apunta al código de barras"
+          title="Leer código de barras"
+          subtitle="El número se procesará automáticamente cuando sea detectado."
         />
       </View>
     </SafeAreaView>
   );
 }
-
-/* -------------------------------------------------
-   Styles
--------------------------------------------------- */
 
 const styles = StyleSheet.create({
   screen: {
