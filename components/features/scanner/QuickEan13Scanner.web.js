@@ -566,12 +566,8 @@ export default function QuickEan13ScannerWeb({
           facingMode: "environment",
         },
         {
-          fps: 18,
+          fps: 12,
           disableFlip: true,
-          qrbox: {
-            width: 360,
-            height: 180,
-          },
           aspectRatio: 1.7777778,
           experimentalFeatures: {
             useBarCodeDetectorIfSupported: true,
