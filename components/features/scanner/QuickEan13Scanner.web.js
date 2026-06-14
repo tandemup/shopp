@@ -23,9 +23,7 @@ const DUPLICATE_LOCK_MS = 1500;
 const CAMERA_GRANTED_STORAGE_KEY = "shopp:web-camera-access-granted";
 
 const CAMERA_CONSTRAINTS = {
-  facingMode: { ideal: "environment" },
-  width: { ideal: 1280 },
-  height: { ideal: 720 },
+  facingMode: "environment",
 };
 
 function rememberCameraAccess() {
@@ -412,7 +410,6 @@ export default function QuickEan13ScannerWeb({
           verbose: false,
         });
       }
-
       await scannerRef.current.start(
         CAMERA_CONSTRAINTS,
         {
@@ -420,11 +417,6 @@ export default function QuickEan13ScannerWeb({
           disableFlip: true,
           aspectRatio: 1.7777778,
 
-          /*
-           * Mejora clave:
-           * html5-qrcode deja de analizar toda la pantalla
-           * y procesa una franja central parecida al overlay.
-           */
           qrbox: (viewfinderWidth, viewfinderHeight) => {
             const width = Math.floor(viewfinderWidth * 0.84);
             const height = Math.floor(viewfinderHeight * 0.22);
@@ -442,7 +434,6 @@ export default function QuickEan13ScannerWeb({
         notifyDetectedBarcode,
         () => {},
       );
-
       if (!mountedRef.current || !focusedRef.current) {
         try {
           await scannerRef.current.stop();
