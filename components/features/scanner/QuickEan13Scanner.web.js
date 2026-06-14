@@ -8,7 +8,11 @@ import {
   View,
 } from "react-native";
 
+import { useIsFocused } from "@react-navigation/native";
+
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+
+import ScannerOverlay from "./ScannerOverlay.js";
 
 /* ────────────────────────────────────────────────
    CONFIGURATION
@@ -21,6 +25,10 @@ const DEFAULT_ZOOM_INDEX = 1;
 const DUPLICATE_LOCK_MS = 1500;
 
 const CAMERA_GRANTED_STORAGE_KEY = "shopp:web-camera-access-granted";
+
+/* ────────────────────────────────────────────────
+   STORAGE HELPERS
+──────────────────────────────────────────────── */
 
 function hasRememberedCameraAccess() {
   if (typeof window === "undefined" || !window.localStorage) {
@@ -133,7 +141,10 @@ function getReadableCameraError(error) {
 }
 
 async function readCameraPermissionState() {
-  if (!navigator?.mediaDevices?.getUserMedia) {
+  if (
+    typeof navigator === "undefined" ||
+    !navigator?.mediaDevices?.getUserMedia
+  ) {
     return "unsupported";
   }
 
@@ -149,8 +160,8 @@ async function readCameraPermissionState() {
     return permission.state;
   } catch (error) {
     /*
-     * Safari puede permitir getUserMedia(), pero no permitir
-     * consultar previamente navigator.permissions.
+     * Safari puede permitir getUserMedia(), pero no permitir consultar
+     * previamente navigator.permissions.
      */
     return hasRememberedCameraAccess() ? "granted" : "prompt";
   }
@@ -201,8 +212,9 @@ export default function QuickEan13ScannerWeb({
   initialTorchEnabled = false,
 
   showControls = true,
-  showStatusBadges = true,
 }) {
+  const isFocused = useIsFocused();
+
   const scannerElementIdRef = useRef(
     `quick-ean13-scanner-${Math.random().toString(36).slice(2)}`,
   );
@@ -212,6 +224,8 @@ export default function QuickEan13ScannerWeb({
   const scannerRef = useRef(null);
 
   const mountedRef = useRef(false);
+
+  const focusedRef = useRef(false);
 
   const runningRef = useRef(false);
 
@@ -228,7 +242,7 @@ export default function QuickEan13ScannerWeb({
     timestamp: 0,
   });
 
-  const [permissionState, setPermissionState] = useState("prompt");
+  const [permissionState, setPermissionState] = useState("checking");
 
   const [cameraStarting, setCameraStarting] = useState(false);
 
@@ -412,7 +426,7 @@ export default function QuickEan13ScannerWeb({
         runningRef.current = false;
       }
 
-      if (!mountedRef.current) {
+      if (!mountedRef.current || !focusedRef.current) {
         return;
       }
 
@@ -442,7 +456,7 @@ export default function QuickEan13ScannerWeb({
 
     const supportsTorch = Boolean(capabilities?.torch);
 
-    if (!mountedRef.current) {
+    if (!mountedRef.current || !focusedRef.current) {
       return;
     }
 
@@ -499,11 +513,18 @@ export default function QuickEan13ScannerWeb({
   }, [getScannerCapabilities, initialTorchEnabled]);
 
   const startCamera = useCallback(async () => {
+    if (!mountedRef.current || !focusedRef.current) {
+      return;
+    }
+
     if (startingRef.current || runningRef.current) {
       return;
     }
 
-    if (!navigator?.mediaDevices?.getUserMedia) {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator?.mediaDevices?.getUserMedia
+    ) {
       setPermissionState("unsupported");
 
       setErrorMessage(
@@ -529,7 +550,7 @@ export default function QuickEan13ScannerWeb({
        */
       await waitForScannerElement(scannerElementId);
 
-      if (!mountedRef.current) {
+      if (!mountedRef.current || !focusedRef.current) {
         return;
       }
 
@@ -561,15 +582,16 @@ export default function QuickEan13ScannerWeb({
         },
       );
 
-      if (!mountedRef.current) {
+      if (!mountedRef.current || !focusedRef.current) {
         try {
           await scannerRef.current.stop();
           scannerRef.current.clear();
         } catch (error) {
-          console.warn("No se pudo cerrar la cámara desmontada:", error);
+          console.warn("No se pudo cerrar la cámara desenfocada:", error);
         }
 
         scannerRef.current = null;
+        runningRef.current = false;
 
         return;
       }
@@ -708,10 +730,16 @@ export default function QuickEan13ScannerWeb({
 
       setPermissionState(nextPermissionState);
 
-      if (nextPermissionState === "granted") {
+      if (
+        nextPermissionState === "granted" &&
+        focusedRef.current &&
+        !startingRef.current &&
+        !runningRef.current
+      ) {
         window.setTimeout(() => {
           if (
             mountedRef.current &&
+            focusedRef.current &&
             !startingRef.current &&
             !runningRef.current
           ) {
@@ -720,7 +748,7 @@ export default function QuickEan13ScannerWeb({
         }, 120);
       }
 
-      if (!navigator?.permissions?.query) {
+      if (typeof navigator === "undefined" || !navigator?.permissions?.query) {
         return;
       }
 
@@ -745,12 +773,14 @@ export default function QuickEan13ScannerWeb({
 
           if (
             permission.state === "granted" &&
+            focusedRef.current &&
             !startingRef.current &&
             !runningRef.current
           ) {
             window.setTimeout(() => {
               if (
                 mountedRef.current &&
+                focusedRef.current &&
                 !startingRef.current &&
                 !runningRef.current
               ) {
@@ -771,6 +801,7 @@ export default function QuickEan13ScannerWeb({
 
     return () => {
       mountedRef.current = false;
+      focusedRef.current = false;
 
       if (permissionRef.current) {
         permissionRef.current.onchange = null;
@@ -779,6 +810,32 @@ export default function QuickEan13ScannerWeb({
       stopCamera();
     };
   }, [startCamera, stopCamera]);
+
+  useEffect(() => {
+    focusedRef.current = isFocused;
+
+    if (!isFocused) {
+      stopCamera();
+      return;
+    }
+
+    if (
+      permissionState === "granted" &&
+      !startingRef.current &&
+      !runningRef.current
+    ) {
+      window.setTimeout(() => {
+        if (
+          mountedRef.current &&
+          focusedRef.current &&
+          !startingRef.current &&
+          !runningRef.current
+        ) {
+          startCamera();
+        }
+      }, 120);
+    }
+  }, [isFocused, permissionState, startCamera, stopCamera]);
 
   if (permissionState === "checking") {
     return (
@@ -831,7 +888,7 @@ export default function QuickEan13ScannerWeb({
         </Text>
 
         {errorMessage ? (
-          <Text style={styles.errorText}>{errorMessage}</Text>
+          <Text style={styles.permissionErrorText}>{errorMessage}</Text>
         ) : null}
 
         <Pressable
@@ -873,108 +930,22 @@ export default function QuickEan13ScannerWeb({
         style={styles.scannerElement}
       />
 
-      <View pointerEvents="none" style={styles.overlay}>
-        <View style={styles.topShade} />
-
-        <View style={styles.middleRow}>
-          <View style={styles.sideShade} />
-
-          <View style={styles.scanWindow}>
-            <View style={[styles.corner, styles.cornerTopLeft]} />
-
-            <View style={[styles.corner, styles.cornerTopRight]} />
-
-            <View style={[styles.corner, styles.cornerBottomLeft]} />
-
-            <View style={[styles.corner, styles.cornerBottomRight]} />
-
-            <View style={styles.scanLine} />
-          </View>
-
-          <View style={styles.sideShade} />
-        </View>
-
-        <View style={styles.bottomShade} />
-      </View>
-
-      <View pointerEvents="none" style={styles.instructions}>
-        <Text style={styles.instructionsTitle}>Apunta al código de barras</Text>
-
-        <Text style={styles.instructionsText}>
-          Mantén el EAN-13 dentro del recuadro
-        </Text>
-      </View>
-
-      {showStatusBadges ? (
-        <View pointerEvents="none" style={styles.statusBadges}>
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusBadgeText}>
-              Zoom {currentZoom.toFixed(1)}×
-            </Text>
-          </View>
-
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusBadgeText}>
-              {torchEnabled ? "Luz activada" : "Luz apagada"}
-            </Text>
-          </View>
-
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusBadgeText}>EAN-13</Text>
-          </View>
-        </View>
-      ) : null}
-
-      {cameraStarting ? (
-        <View pointerEvents="none" style={styles.startingOverlay}>
-          <ActivityIndicator size="large" color="#ffffff" />
-
-          <Text style={styles.startingText}>Iniciando cámara…</Text>
-        </View>
-      ) : null}
-
-      {showControls ? (
-        <View style={styles.controls}>
-          <Pressable
-            disabled={!zoomSupported}
-            onPress={cycleZoom}
-            style={({ pressed }) => [
-              styles.controlButton,
-              pressed && styles.buttonPressed,
-              !zoomSupported && styles.controlButtonDisabled,
-            ]}
-          >
-            <Text style={styles.controlButtonText}>
-              Zoom {currentZoom.toFixed(1)}×
-            </Text>
-          </Pressable>
-
-          <Pressable
-            disabled={!torchSupported}
-            onPress={toggleTorch}
-            style={({ pressed }) => [
-              styles.controlButton,
-              torchEnabled && styles.controlButtonActive,
-              pressed && styles.buttonPressed,
-              !torchSupported && styles.controlButtonDisabled,
-            ]}
-          >
-            <Text style={styles.controlButtonText}>
-              {torchEnabled ? "Linterna encendida" : "Linterna"}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={onCancel}
-            style={({ pressed }) => [
-              styles.cancelButton,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Text style={styles.cancelButtonText}>Cancelar</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      <ScannerOverlay
+        onCancel={onCancel}
+        onChangeZoom={cycleZoom}
+        onToggleTorch={toggleTorch}
+        zoomLabel={`${currentZoom.toFixed(1)}x`}
+        torchEnabled={torchEnabled}
+        zoomAvailable={zoomSupported}
+        torchAvailable={torchSupported}
+        showControls={showControls}
+        hint="Apunta al código de barras"
+        title="Leer código de barras"
+        subtitle="Mantén el EAN-13 dentro del marco. El número se copiará automáticamente cuando sea detectado."
+        starting={cameraStarting}
+        errorMessage={errorMessage}
+        onRetry={startCamera}
+      />
     </View>
   );
 }
@@ -994,208 +965,6 @@ const styles = StyleSheet.create({
   scannerElement: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "#000000",
-  },
-
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-
-  topShade: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.52)",
-  },
-
-  middleRow: {
-    height: 220,
-    flexDirection: "row",
-  },
-
-  sideShade: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.52)",
-  },
-
-  scanWindow: {
-    width: "86%",
-    maxWidth: 480,
-    position: "relative",
-  },
-
-  scanLine: {
-    position: "absolute",
-    top: "50%",
-    left: 16,
-    right: 16,
-    height: 2,
-    borderRadius: 2,
-    backgroundColor: "#ffffff",
-    opacity: 0.92,
-  },
-
-  corner: {
-    width: 34,
-    height: 34,
-    position: "absolute",
-    borderColor: "#ffffff",
-  },
-
-  cornerTopLeft: {
-    top: 0,
-    left: 0,
-    borderTopWidth: 4,
-    borderLeftWidth: 4,
-    borderTopLeftRadius: 12,
-  },
-
-  cornerTopRight: {
-    top: 0,
-    right: 0,
-    borderTopWidth: 4,
-    borderRightWidth: 4,
-    borderTopRightRadius: 12,
-  },
-
-  cornerBottomLeft: {
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: 4,
-    borderLeftWidth: 4,
-    borderBottomLeftRadius: 12,
-  },
-
-  cornerBottomRight: {
-    right: 0,
-    bottom: 0,
-    borderRightWidth: 4,
-    borderBottomWidth: 4,
-    borderBottomRightRadius: 12,
-  },
-
-  bottomShade: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.52)",
-  },
-
-  instructions: {
-    position: "absolute",
-    top: 28,
-    left: 20,
-    right: 20,
-    alignItems: "center",
-  },
-
-  instructionsTitle: {
-    color: "#ffffff",
-    fontSize: 19,
-    fontWeight: "800",
-    textAlign: "center",
-  },
-
-  instructionsText: {
-    color: "#f0f4f8",
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center",
-    marginTop: 6,
-  },
-
-  statusBadges: {
-    position: "absolute",
-    top: 94,
-    left: 16,
-    right: 16,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 8,
-  },
-
-  statusBadge: {
-    minHeight: 31,
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: "rgba(10, 24, 39, 0.84)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.28)",
-  },
-
-  statusBadgeText: {
-    color: "#ffffff",
-    fontSize: 12,
-    fontWeight: "800",
-  },
-
-  startingOverlay: {
-    position: "absolute",
-    left: 20,
-    right: 20,
-    top: "42%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  startingText: {
-    marginTop: 12,
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "800",
-    textAlign: "center",
-  },
-
-  controls: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 22,
-    alignItems: "center",
-    gap: 10,
-  },
-
-  controlButton: {
-    minWidth: 214,
-    minHeight: 46,
-    borderRadius: 24,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    backgroundColor: "rgba(10, 24, 39, 0.88)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.36)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  controlButtonActive: {
-    backgroundColor: "rgba(182, 122, 0, 0.94)",
-  },
-
-  controlButtonDisabled: {
-    opacity: 0.42,
-  },
-
-  controlButtonText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "800",
-  },
-
-  cancelButton: {
-    minWidth: 214,
-    minHeight: 48,
-    borderRadius: 24,
-    paddingHorizontal: 18,
-    paddingVertical: 13,
-    backgroundColor: "rgba(255, 255, 255, 0.16)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.34)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  cancelButtonText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "800",
   },
 
   centeredContainer: {
@@ -1228,7 +997,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 
-  errorText: {
+  permissionErrorText: {
     maxWidth: 440,
     color: "#ffd58a",
     fontSize: 13,
