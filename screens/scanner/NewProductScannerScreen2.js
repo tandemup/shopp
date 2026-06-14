@@ -309,6 +309,11 @@ export default function NewProductScannerScreen2() {
           onCancel={handleCancel}
           initialZoomIndex={zoomIndex}
           initialTorchEnabled={torchEnabled}
+          zoom={ZOOM_VALUES[zoomIndex]}
+          zoomLabel={ZOOM_LABELS[zoomIndex]}
+          torchEnabled={torchEnabled}
+          onChangeZoom={handleChangeZoom}
+          onToggleTorch={handleToggleTorch}
           showControls={showControls}
           showStatusBadges={showStatusBadges}
         />
@@ -483,12 +488,50 @@ export default function NewProductScannerScreen2() {
           onCancel={handleCancel}
           initialZoomIndex={zoomIndex}
           initialTorchEnabled={torchEnabled}
+          zoom={ZOOM_VALUES[zoomIndex]}
+          zoomLabel={ZOOM_LABELS[zoomIndex]}
+          torchEnabled={torchEnabled}
+          onChangeZoom={handleChangeZoom}
+          onToggleTorch={handleToggleTorch}
           showControls={showControls}
           showStatusBadges={showStatusBadges}
         />
       </View>
     );
   }
+  return (
+    <NativeProductScannerCamera
+      barcodeTypes={barcodeTypes}
+      scannerSession={scannerSession}
+      locked={locked}
+      zoomIndex={zoomIndex}
+      torchEnabled={torchEnabled}
+      showControls={showControls}
+      headerConfig={headerConfig}
+      handleCancel={handleCancel}
+      handleChangeZoom={handleChangeZoom}
+      handleToggleTorch={handleToggleTorch}
+      handleCameraMountError={handleCameraMountError}
+      handleNativeBarcodeScanned={handleNativeBarcodeScanned}
+    />
+  );
+}
+
+function NativeProductScannerCamera({
+  barcodeTypes,
+  scannerSession,
+  locked,
+  zoomIndex,
+  torchEnabled,
+  showControls,
+  headerConfig,
+  handleCancel,
+  handleChangeZoom,
+  handleToggleTorch,
+  handleCameraMountError,
+  handleNativeBarcodeScanned,
+}) {
+  const [permission, requestPermission] = useCameraPermissions();
 
   if (!permission) {
     return (
