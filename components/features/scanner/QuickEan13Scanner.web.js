@@ -10,6 +10,10 @@ import {
 
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 
+/* ────────────────────────────────────────────────
+   CONFIGURATION
+──────────────────────────────────────────────── */
+
 const ZOOM_LEVELS = [1, 1.2, 1.5, 2];
 
 const DEFAULT_ZOOM_INDEX = 1;
@@ -17,6 +21,10 @@ const DEFAULT_ZOOM_INDEX = 1;
 const DUPLICATE_LOCK_MS = 1500;
 
 const CAMERA_GRANTED_STORAGE_KEY = "shopp:web-camera-access-granted";
+
+/* ────────────────────────────────────────────────
+   BARCODE HELPERS
+──────────────────────────────────────────────── */
 
 function normalizeBarcode(value) {
   return String(value ?? "").replace(/\D/g, "");
@@ -46,6 +54,10 @@ function clamp(value, minimum, maximum) {
   return Math.min(Math.max(value, minimum), maximum);
 }
 
+/* ────────────────────────────────────────────────
+   LOCAL STORAGE HELPERS
+──────────────────────────────────────────────── */
+
 function hasRememberedCameraAccess() {
   try {
     return window.localStorage.getItem(CAMERA_GRANTED_STORAGE_KEY) === "true";
@@ -57,48 +69,63 @@ function hasRememberedCameraAccess() {
 function rememberCameraAccess() {
   try {
     window.localStorage.setItem(CAMERA_GRANTED_STORAGE_KEY, "true");
-  } catch (error) {}
+  } catch (error) {
+    /*
+     * No es crítico. El permiso real lo gestiona el navegador.
+     */
+  }
 }
 
 function forgetRememberedCameraAccess() {
   try {
     window.localStorage.removeItem(CAMERA_GRANTED_STORAGE_KEY);
-  } catch (error) {}
+  } catch (error) {
+    /*
+     * No es crítico. El permiso real lo gestiona el navegador.
+     */
+  }
 }
 
+/* ────────────────────────────────────────────────
+   CAMERA PERMISSIONS
+──────────────────────────────────────────────── */
+
 function getReadableCameraError(error) {
-  switch (error?.name) {
-    case "NotAllowedError":
-      return (
-        "El navegador ha bloqueado el acceso a la cámara. " +
-        "Activa el permiso para este sitio desde los ajustes del navegador."
-      );
+  const message = String(error?.message ?? error ?? "");
 
-    case "NotFoundError":
-      return "No se ha encontrado ninguna cámara compatible.";
-
-    case "NotReadableError":
-      return (
-        "La cámara está siendo utilizada por otra aplicación " +
-        "o por otra pestaña del navegador."
-      );
-
-    case "OverconstrainedError":
-      return "La cámara no admite la configuración solicitada.";
-
-    case "SecurityError":
-      return (
-        "El navegador no permite acceder a la cámara desde esta página. " +
-        "Comprueba que estás utilizando HTTPS."
-      );
-
-    default:
-      return (
-        error?.message ||
-        String(error || "") ||
-        "No ha sido posible iniciar la cámara."
-      );
+  if (error?.name === "NotFoundError" || message.includes("not found")) {
+    return "No se ha encontrado ninguna cámara compatible.";
   }
+
+  if (
+    error?.name === "NotAllowedError" ||
+    message.includes("Permission denied")
+  ) {
+    return (
+      "El navegador ha bloqueado el acceso a la cámara. " +
+      "Activa el permiso para este sitio desde los ajustes del navegador."
+    );
+  }
+
+  if (error?.name === "NotReadableError") {
+    return (
+      "La cámara está siendo utilizada por otra aplicación " +
+      "o por otra pestaña del navegador."
+    );
+  }
+
+  if (error?.name === "OverconstrainedError") {
+    return "La cámara no admite la configuración solicitada.";
+  }
+
+  if (error?.name === "SecurityError") {
+    return (
+      "El navegador no permite acceder a la cámara desde esta página. " +
+      "Comprueba que estás utilizando HTTPS."
+    );
+  }
+
+  return message || "No ha sido posible iniciar la cámara.";
 }
 
 async function readCameraPermissionState() {
@@ -117,50 +144,50 @@ async function readCameraPermissionState() {
 
     return permission.state;
   } catch (error) {
+    /*
+     * Safari puede permitir getUserMedia(), pero no permitir
+     * consultar previamente navigator.permissions.
+     */
     return "prompt";
   }
 }
 
-function waitForNextFrame() {
-  return new Promise((resolve) => {
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(resolve);
-    });
-  });
-}
+/* ────────────────────────────────────────────────
+   DOM HELPERS
+──────────────────────────────────────────────── */
 
-function waitForDomElement(elementId, timeoutMs = 3000) {
-  return new Promise((resolve) => {
+function waitForScannerElement(elementId) {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+
+    const maxAttempts = 45;
+
     const check = () => {
       const element = document.getElementById(elementId);
 
-      if (element && element.offsetWidth > 0 && element.offsetHeight > 0) {
+      if (element) {
         resolve(element);
-        return true;
-      }
-
-      return false;
-    };
-
-    if (check()) {
-      return;
-    }
-
-    const startedAt = Date.now();
-
-    const timer = window.setInterval(() => {
-      if (check()) {
-        window.clearInterval(timer);
         return;
       }
 
-      if (Date.now() - startedAt >= timeoutMs) {
-        window.clearInterval(timer);
-        resolve(null);
+      attempts += 1;
+
+      if (attempts >= maxAttempts) {
+        reject(new Error(`HTML Element with id=${elementId} not found`));
+
+        return;
       }
-    }, 100);
+
+      window.requestAnimationFrame(check);
+    };
+
+    check();
   });
 }
+
+/* ────────────────────────────────────────────────
+   COMPONENT
+──────────────────────────────────────────────── */
 
 export default function QuickEan13ScannerWeb({
   onDetected,
@@ -202,9 +229,9 @@ export default function QuickEan13ScannerWeb({
 
   const [cameraStarting, setCameraStarting] = useState(false);
 
-  const [errorMessage, setErrorMessage] = useState("");
-
   const [scannerVisible, setScannerVisible] = useState(false);
+
+  const [errorMessage, setErrorMessage] = useState("");
 
   const [zoomIndex, setZoomIndex] = useState(
     clamp(initialZoomIndex, 0, ZOOM_LEVELS.length - 1),
@@ -224,18 +251,70 @@ export default function QuickEan13ScannerWeb({
     currentZoomRef.current = currentZoom;
   }, [currentZoom]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return undefined;
+    }
+
+    const styleElement = document.createElement("style");
+
+    styleElement.textContent = `
+      #${scannerElementId},
+      #${scannerElementId} video,
+      #${scannerElementId} canvas {
+        width: 100% !important;
+        height: 100% !important;
+      }
+
+      #${scannerElementId} {
+        position: absolute !important;
+        inset: 0 !important;
+        overflow: hidden !important;
+        background: #000000 !important;
+      }
+
+      #${scannerElementId} video {
+        object-fit: cover !important;
+      }
+
+      #${scannerElementId} > div {
+        width: 100% !important;
+        height: 100% !important;
+      }
+
+      #${scannerElementId} img {
+        display: none !important;
+      }
+
+      #${scannerElementId} button {
+        display: none !important;
+      }
+    `;
+
+    document.head.appendChild(styleElement);
+
+    return () => {
+      styleElement.remove();
+    };
+  }, [scannerElementId]);
+
   const getScannerCapabilities = useCallback(() => {
     try {
       return scannerRef.current?.getRunningTrackCapabilities?.() || {};
     } catch (error) {
+      console.info(
+        "El navegador no permite consultar las capacidades de la cámara:",
+        error,
+      );
+
       return {};
     }
   }, []);
 
   const stopCamera = useCallback(async () => {
-    const scanner = scannerRef.current;
-
     startingRef.current = false;
+
+    const scanner = scannerRef.current;
 
     if (!scanner) {
       if (mountedRef.current) {
@@ -302,7 +381,10 @@ export default function QuickEan13ScannerWeb({
         try {
           await scannerRef.current.stop();
         } catch (error) {
-          console.warn("No se pudo detener el lector web:", error);
+          console.warn(
+            "No se pudo detener el lector después de detectar el EAN-13:",
+            error,
+          );
         }
 
         runningRef.current = false;
@@ -320,7 +402,6 @@ export default function QuickEan13ScannerWeb({
 
       if (typeof onDetected === "function") {
         onDetected(barcode);
-
         return;
       }
 
@@ -415,23 +496,17 @@ export default function QuickEan13ScannerWeb({
 
     if (mountedRef.current) {
       setCameraStarting(true);
-      setErrorMessage("");
       setScannerVisible(true);
+      setErrorMessage("");
     }
 
-    /*
-     * Necesario en React Native Web:
-     * primero mostramos el contenedor con id={scannerElementId}
-     * y después dejamos que React lo pinte en el DOM.
-     *
-     * Si Html5Qrcode se crea antes de que exista ese nodo,
-     * aparece:
-     *
-     * Scanner container not found: quick-ean13-scanner-...
-     */
-    await waitForNextFrame();
-
     try {
+      /*
+       * React Native Web puede tardar un frame en crear el nodo HTML.
+       * html5-qrcode necesita que el elemento exista antes de instanciarse.
+       */
+      await waitForScannerElement(scannerElementId);
+
       if (!scannerRef.current) {
         scannerRef.current = new Html5Qrcode(scannerElementId, {
           formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13],
@@ -456,22 +531,21 @@ export default function QuickEan13ScannerWeb({
         notifyDetectedBarcode,
         () => {
           /*
-           * La mayoría de los fotogramas no contienen
-           * ningún código de barras.
+           * La mayoría de fotogramas no contienen código.
+           * Es normal y no conviene ensuciar la consola.
            */
         },
       );
 
       if (!mountedRef.current) {
         try {
-          await scannerRef.current?.stop?.();
-          scannerRef.current?.clear?.();
+          await scannerRef.current.stop();
+          scannerRef.current.clear();
         } catch (error) {
           console.warn("No se pudo cerrar la cámara desmontada:", error);
         }
 
         scannerRef.current = null;
-        runningRef.current = false;
 
         return;
       }
@@ -487,6 +561,17 @@ export default function QuickEan13ScannerWeb({
       console.warn("No se pudo iniciar el lector web:", error);
 
       runningRef.current = false;
+
+      try {
+        scannerRef.current?.clear?.();
+      } catch (clearError) {
+        console.warn(
+          "No se pudo limpiar el lector tras error de arranque:",
+          clearError,
+        );
+      }
+
+      scannerRef.current = null;
 
       if (error?.name === "NotAllowedError") {
         forgetRememberedCameraAccess();
@@ -626,7 +711,6 @@ export default function QuickEan13ScannerWeb({
 
           if (permission.state === "denied") {
             forgetRememberedCameraAccess();
-
             return;
           }
 
@@ -634,7 +718,12 @@ export default function QuickEan13ScannerWeb({
             startCamera();
           }
         };
-      } catch (error) {}
+      } catch (error) {
+        /*
+         * Safari puede lanzar excepción aquí.
+         * En ese caso se usa el botón manual o la marca local.
+         */
+      }
     };
 
     checkInitialPermission();
@@ -684,7 +773,10 @@ export default function QuickEan13ScannerWeb({
     );
   }
 
-  if (permissionState === "prompt" || permissionState === "denied") {
+  if (
+    !scannerVisible &&
+    (permissionState === "prompt" || permissionState === "denied")
+  ) {
     return (
       <View style={styles.centeredContainer}>
         <Text style={styles.permissionIcon}>📷</Text>
@@ -693,8 +785,7 @@ export default function QuickEan13ScannerWeb({
 
         <Text style={styles.centeredText}>
           {permissionState === "denied"
-            ? "El navegador ha bloqueado el acceso. " +
-              "Revisa los permisos de cámara de este sitio y vuelve a intentarlo."
+            ? "El navegador ha bloqueado el acceso. Revisa los permisos de cámara de este sitio y vuelve a intentarlo."
             : "Pulsa el botón para permitir que Shopp utilice la cámara mientras lees el código de barras."}
         </Text>
 
@@ -793,6 +884,14 @@ export default function QuickEan13ScannerWeb({
         </View>
       ) : null}
 
+      {cameraStarting ? (
+        <View pointerEvents="none" style={styles.startingOverlay}>
+          <ActivityIndicator size="large" color="#ffffff" />
+
+          <Text style={styles.startingText}>Iniciando cámara…</Text>
+        </View>
+      ) : null}
+
       {showControls ? (
         <View style={styles.controls}>
           <Pressable
@@ -838,6 +937,10 @@ export default function QuickEan13ScannerWeb({
     </View>
   );
 }
+
+/* ────────────────────────────────────────────────
+   STYLES
+──────────────────────────────────────────────── */
 
 const styles = StyleSheet.create({
   container: {
@@ -980,6 +1083,23 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 12,
     fontWeight: "800",
+  },
+
+  startingOverlay: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    top: "42%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  startingText: {
+    marginTop: 12,
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "800",
+    textAlign: "center",
   },
 
   controls: {
