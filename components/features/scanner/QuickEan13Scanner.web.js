@@ -20,8 +20,6 @@ const DEFAULT_ZOOM_INDEX = 1;
 
 const DUPLICATE_LOCK_MS = 1500;
 
-const CAMERA_GRANTED_STORAGE_KEY = "shopp:web-camera-access-granted";
-
 /* ────────────────────────────────────────────────
    BARCODE HELPERS
 ──────────────────────────────────────────────── */
@@ -52,38 +50,6 @@ function isValidEan13(value) {
 
 function clamp(value, minimum, maximum) {
   return Math.min(Math.max(value, minimum), maximum);
-}
-
-/* ────────────────────────────────────────────────
-   LOCAL STORAGE HELPERS
-──────────────────────────────────────────────── */
-
-function hasRememberedCameraAccess() {
-  try {
-    return window.localStorage.getItem(CAMERA_GRANTED_STORAGE_KEY) === "true";
-  } catch (error) {
-    return false;
-  }
-}
-
-function rememberCameraAccess() {
-  try {
-    window.localStorage.setItem(CAMERA_GRANTED_STORAGE_KEY, "true");
-  } catch (error) {
-    /*
-     * No es crítico. El permiso real lo gestiona el navegador.
-     */
-  }
-}
-
-function forgetRememberedCameraAccess() {
-  try {
-    window.localStorage.removeItem(CAMERA_GRANTED_STORAGE_KEY);
-  } catch (error) {
-    /*
-     * No es crítico. El permiso real lo gestiona el navegador.
-     */
-  }
 }
 
 /* ────────────────────────────────────────────────
@@ -225,8 +191,7 @@ export default function QuickEan13ScannerWeb({
     timestamp: 0,
   });
 
-  const [permissionState, setPermissionState] = useState("checking");
-
+  const [permissionState, setPermissionState] = useState("prompt");
   const [cameraStarting, setCameraStarting] = useState(false);
 
   const [scannerVisible, setScannerVisible] = useState(false);
@@ -516,9 +481,7 @@ export default function QuickEan13ScannerWeb({
 
       await scannerRef.current.start(
         {
-          facingMode: {
-            ideal: "environment",
-          },
+          facingMode: "environment",
         },
         {
           fps: 10,
@@ -683,11 +646,7 @@ export default function QuickEan13ScannerWeb({
       }
 
       setPermissionState(nextPermissionState);
-
-      if (
-        nextPermissionState === "granted" ||
-        (nextPermissionState === "prompt" && hasRememberedCameraAccess())
-      ) {
+      if (nextPermissionState === "granted") {
         startCamera();
       }
 
