@@ -14,10 +14,6 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 
 import ScannerOverlay from "./ScannerOverlay.js";
 
-/* ────────────────────────────────────────────────
-   CONFIGURATION
-──────────────────────────────────────────────── */
-
 const ZOOM_LEVELS = [1, 1.2, 1.5, 2];
 
 const DEFAULT_ZOOM_INDEX = 1;
@@ -26,49 +22,23 @@ const DUPLICATE_LOCK_MS = 1500;
 
 const CAMERA_GRANTED_STORAGE_KEY = "shopp:web-camera-access-granted";
 
-/* ────────────────────────────────────────────────
-   STORAGE HELPERS
-──────────────────────────────────────────────── */
-
-function hasRememberedCameraAccess() {
-  if (typeof window === "undefined" || !window.localStorage) {
-    return false;
-  }
-
-  try {
-    return window.localStorage.getItem(CAMERA_GRANTED_STORAGE_KEY) === "true";
-  } catch (error) {
-    return false;
-  }
-}
+const CAMERA_CONSTRAINTS = {
+  facingMode: { ideal: "environment" },
+  width: { ideal: 1280 },
+  height: { ideal: 720 },
+};
 
 function rememberCameraAccess() {
-  if (typeof window === "undefined" || !window.localStorage) {
-    return;
-  }
-
   try {
     window.localStorage.setItem(CAMERA_GRANTED_STORAGE_KEY, "true");
-  } catch (error) {
-    /* localStorage puede estar bloqueado en navegación privada. */
-  }
+  } catch {}
 }
 
 function forgetRememberedCameraAccess() {
-  if (typeof window === "undefined" || !window.localStorage) {
-    return;
-  }
-
   try {
     window.localStorage.removeItem(CAMERA_GRANTED_STORAGE_KEY);
-  } catch (error) {
-    /* localStorage puede estar bloqueado en navegación privada. */
-  }
+  } catch {}
 }
-
-/* ────────────────────────────────────────────────
-   BARCODE HELPERS
-──────────────────────────────────────────────── */
 
 function normalizeBarcode(value) {
   return String(value ?? "").replace(/\D/g, "");
@@ -77,12 +47,9 @@ function normalizeBarcode(value) {
 function isValidEan13(value) {
   const barcode = normalizeBarcode(value);
 
-  if (!/^\d{13}$/.test(barcode)) {
-    return false;
-  }
+  if (!/^\d{13}$/.test(barcode)) return false;
 
   const digits = barcode.split("").map(Number);
-
   const expectedCheckDigit = digits[12];
 
   const weightedSum = digits.slice(0, 12).reduce((total, digit, index) => {
@@ -98,32 +65,19 @@ function clamp(value, minimum, maximum) {
   return Math.min(Math.max(value, minimum), maximum);
 }
 
-/* ────────────────────────────────────────────────
-   CAMERA PERMISSIONS
-──────────────────────────────────────────────── */
-
 function getReadableCameraError(error) {
   const message = String(error?.message ?? error ?? "");
 
-  if (error?.name === "NotFoundError" || message.includes("not found")) {
+  if (error?.name === "NotFoundError") {
     return "No se ha encontrado ninguna cámara compatible.";
   }
 
-  if (
-    error?.name === "NotAllowedError" ||
-    message.includes("Permission denied")
-  ) {
-    return (
-      "El navegador ha bloqueado el acceso a la cámara. " +
-      "Activa el permiso para este sitio desde los ajustes del navegador."
-    );
+  if (error?.name === "NotAllowedError") {
+    return "El navegador ha bloqueado la cámara. Activa el permiso desde los ajustes del sitio.";
   }
 
   if (error?.name === "NotReadableError") {
-    return (
-      "La cámara está siendo utilizada por otra aplicación " +
-      "o por otra pestaña del navegador."
-    );
+    return "La cámara está siendo utilizada por otra aplicación o pestaña.";
   }
 
   if (error?.name === "OverconstrainedError") {
@@ -131,50 +85,15 @@ function getReadableCameraError(error) {
   }
 
   if (error?.name === "SecurityError") {
-    return (
-      "El navegador no permite acceder a la cámara desde esta página. " +
-      "Comprueba que estás utilizando HTTPS."
-    );
+    return "El navegador no permite usar la cámara. Comprueba que estás usando HTTPS.";
   }
 
   return message || "No ha sido posible iniciar la cámara.";
 }
 
-async function readCameraPermissionState() {
-  if (
-    typeof navigator === "undefined" ||
-    !navigator?.mediaDevices?.getUserMedia
-  ) {
-    return "unsupported";
-  }
-
-  if (!navigator?.permissions?.query) {
-    return hasRememberedCameraAccess() ? "granted" : "prompt";
-  }
-
-  try {
-    const permission = await navigator.permissions.query({
-      name: "camera",
-    });
-
-    return permission.state;
-  } catch (error) {
-    /*
-     * Safari puede permitir getUserMedia(), pero no permitir consultar
-     * previamente navigator.permissions.
-     */
-    return hasRememberedCameraAccess() ? "granted" : "prompt";
-  }
-}
-
-/* ────────────────────────────────────────────────
-   DOM HELPERS
-──────────────────────────────────────────────── */
-
 function waitForScannerElement(elementId) {
   return new Promise((resolve, reject) => {
     let attempts = 0;
-
     const maxAttempts = 45;
 
     const check = () => {
@@ -199,10 +118,6 @@ function waitForScannerElement(elementId) {
   });
 }
 
-/* ────────────────────────────────────────────────
-   COMPONENT
-──────────────────────────────────────────────── */
-
 export default function QuickEan13ScannerWeb({
   onDetected,
   onBarcodeScanned,
@@ -222,16 +137,10 @@ export default function QuickEan13ScannerWeb({
   const scannerElementId = scannerElementIdRef.current;
 
   const scannerRef = useRef(null);
-
   const mountedRef = useRef(false);
-
   const focusedRef = useRef(false);
-
   const runningRef = useRef(false);
-
   const startingRef = useRef(false);
-
-  const permissionRef = useRef(null);
 
   const currentZoomRef = useRef(
     ZOOM_LEVELS[clamp(initialZoomIndex, 0, ZOOM_LEVELS.length - 1)] ?? 1.2,
@@ -242,12 +151,8 @@ export default function QuickEan13ScannerWeb({
     timestamp: 0,
   });
 
-  const [permissionState, setPermissionState] = useState("checking");
-
   const [cameraStarting, setCameraStarting] = useState(false);
-
-  const [scannerVisible, setScannerVisible] = useState(false);
-
+  const [scannerVisible, setScannerVisible] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
   const [zoomIndex, setZoomIndex] = useState(
@@ -255,9 +160,7 @@ export default function QuickEan13ScannerWeb({
   );
 
   const [zoomSupported, setZoomSupported] = useState(false);
-
   const [torchSupported, setTorchSupported] = useState(false);
-
   const [torchEnabled, setTorchEnabled] = useState(
     initialTorchEnabled === true,
   );
@@ -269,9 +172,7 @@ export default function QuickEan13ScannerWeb({
   }, [currentZoom]);
 
   useEffect(() => {
-    if (typeof document === "undefined") {
-      return undefined;
-    }
+    if (typeof document === "undefined") return undefined;
 
     const styleElement = document.createElement("style");
 
@@ -320,7 +221,6 @@ export default function QuickEan13ScannerWeb({
         width: 100% !important;
         height: 100% !important;
         object-fit: cover !important;
-        transform: none !important;
       }
 
       #${scannerElementId} canvas {
@@ -336,13 +236,11 @@ export default function QuickEan13ScannerWeb({
   }, [scannerElementId]);
 
   const getScannerCapabilities = useCallback(() => {
-    if (!runningRef.current || !scannerRef.current) {
-      return {};
-    }
+    if (!runningRef.current || !scannerRef.current) return {};
 
     try {
       return scannerRef.current.getRunningTrackCapabilities?.() || {};
-    } catch (error) {
+    } catch {
       return {};
     }
   }, []);
@@ -354,7 +252,6 @@ export default function QuickEan13ScannerWeb({
 
     if (!scanner) {
       if (mountedRef.current) {
-        setScannerVisible(false);
         setTorchEnabled(false);
         setTorchSupported(false);
         setZoomSupported(false);
@@ -382,7 +279,6 @@ export default function QuickEan13ScannerWeb({
     scannerRef.current = null;
 
     if (mountedRef.current) {
-      setScannerVisible(false);
       setTorchEnabled(false);
       setTorchSupported(false);
       setZoomSupported(false);
@@ -393,12 +289,9 @@ export default function QuickEan13ScannerWeb({
     async (decodedText) => {
       const barcode = normalizeBarcode(decodedText);
 
-      if (!isValidEan13(barcode)) {
-        return;
-      }
+      if (!isValidEan13(barcode)) return;
 
       const now = Date.now();
-
       const previousDetection = lastDetectedRef.current;
 
       if (
@@ -417,18 +310,13 @@ export default function QuickEan13ScannerWeb({
         try {
           await scannerRef.current.stop();
         } catch (error) {
-          console.warn(
-            "No se pudo detener el lector después de detectar el EAN-13:",
-            error,
-          );
+          console.warn("No se pudo detener el lector tras detectar:", error);
         }
 
         runningRef.current = false;
       }
 
-      if (!mountedRef.current || !focusedRef.current) {
-        return;
-      }
+      if (!mountedRef.current || !focusedRef.current) return;
 
       const result = {
         type: "ean13",
@@ -456,12 +344,9 @@ export default function QuickEan13ScannerWeb({
 
     const supportsTorch = Boolean(capabilities?.torch);
 
-    if (!mountedRef.current || !focusedRef.current) {
-      return;
-    }
+    if (!mountedRef.current || !focusedRef.current) return;
 
     setZoomSupported(Boolean(supportsZoom));
-
     setTorchSupported(supportsTorch);
 
     if (supportsZoom) {
@@ -473,86 +358,53 @@ export default function QuickEan13ScannerWeb({
 
       try {
         await scannerRef.current?.applyVideoConstraints?.({
-          advanced: [
-            {
-              zoom: desiredZoom,
-            },
-          ],
+          advanced: [{ zoom: desiredZoom }],
         });
       } catch (error) {
         console.warn("No se pudo aplicar el zoom inicial:", error);
-
-        if (mountedRef.current) {
-          setZoomSupported(false);
-        }
+        setZoomSupported(false);
       }
     }
 
     if (supportsTorch && initialTorchEnabled) {
       try {
         await scannerRef.current?.applyVideoConstraints?.({
-          advanced: [
-            {
-              torch: true,
-            },
-          ],
+          advanced: [{ torch: true }],
         });
 
-        if (mountedRef.current) {
-          setTorchEnabled(true);
-        }
+        setTorchEnabled(true);
       } catch (error) {
         console.warn("No se pudo activar la linterna inicialmente:", error);
-
-        if (mountedRef.current) {
-          setTorchSupported(false);
-          setTorchEnabled(false);
-        }
+        setTorchSupported(false);
+        setTorchEnabled(false);
       }
     }
   }, [getScannerCapabilities, initialTorchEnabled]);
 
   const startCamera = useCallback(async () => {
-    if (!mountedRef.current || !focusedRef.current) {
-      return;
-    }
-
-    if (startingRef.current || runningRef.current) {
-      return;
-    }
+    if (!mountedRef.current || !focusedRef.current) return;
+    if (startingRef.current || runningRef.current) return;
 
     if (
       typeof navigator === "undefined" ||
       !navigator?.mediaDevices?.getUserMedia
     ) {
-      setPermissionState("unsupported");
-
       setErrorMessage(
-        "Este navegador no permite utilizar la cámara. " +
-          "Abre Shopp mediante HTTPS con un navegador compatible.",
+        "Este navegador no permite utilizar la cámara. Abre Shopp mediante HTTPS con un navegador compatible.",
       );
-
       return;
     }
 
     startingRef.current = true;
 
-    if (mountedRef.current) {
-      setCameraStarting(true);
-      setScannerVisible(true);
-      setErrorMessage("");
-    }
+    setCameraStarting(true);
+    setScannerVisible(true);
+    setErrorMessage("");
 
     try {
-      /*
-       * React Native Web puede tardar un frame en crear el nodo HTML.
-       * html5-qrcode necesita que el elemento exista antes de instanciarse.
-       */
       await waitForScannerElement(scannerElementId);
 
-      if (!mountedRef.current || !focusedRef.current) {
-        return;
-      }
+      if (!mountedRef.current || !focusedRef.current) return;
 
       if (!scannerRef.current) {
         scannerRef.current = new Html5Qrcode(scannerElementId, {
@@ -562,45 +414,48 @@ export default function QuickEan13ScannerWeb({
       }
 
       await scannerRef.current.start(
+        CAMERA_CONSTRAINTS,
         {
-          facingMode: "environment",
-        },
-        {
-          fps: 12,
+          fps: 18,
           disableFlip: true,
           aspectRatio: 1.7777778,
+
+          /*
+           * Mejora clave:
+           * html5-qrcode deja de analizar toda la pantalla
+           * y procesa una franja central parecida al overlay.
+           */
+          qrbox: (viewfinderWidth, viewfinderHeight) => {
+            const width = Math.floor(viewfinderWidth * 0.84);
+            const height = Math.floor(viewfinderHeight * 0.22);
+
+            return {
+              width,
+              height,
+            };
+          },
+
           experimentalFeatures: {
             useBarCodeDetectorIfSupported: true,
           },
         },
         notifyDetectedBarcode,
-        () => {
-          /*
-           * La mayoría de fotogramas no contienen código.
-           * Es normal y no conviene ensuciar la consola.
-           */
-        },
+        () => {},
       );
 
       if (!mountedRef.current || !focusedRef.current) {
         try {
           await scannerRef.current.stop();
           scannerRef.current.clear();
-        } catch (error) {
-          console.warn("No se pudo cerrar la cámara desenfocada:", error);
-        }
+        } catch {}
 
         scannerRef.current = null;
         runningRef.current = false;
-
         return;
       }
 
       runningRef.current = true;
-
       rememberCameraAccess();
-
-      setPermissionState("granted");
 
       await configureCameraCapabilities();
     } catch (error) {
@@ -610,26 +465,16 @@ export default function QuickEan13ScannerWeb({
 
       try {
         scannerRef.current?.clear?.();
-      } catch (clearError) {
-        console.warn(
-          "No se pudo limpiar el lector tras error de arranque:",
-          clearError,
-        );
-      }
+      } catch {}
 
       scannerRef.current = null;
 
       if (error?.name === "NotAllowedError") {
         forgetRememberedCameraAccess();
-
-        if (mountedRef.current) {
-          setPermissionState("denied");
-        }
       }
 
       if (mountedRef.current) {
         setScannerVisible(false);
-
         setErrorMessage(getReadableCameraError(error));
       }
     } finally {
@@ -644,39 +489,27 @@ export default function QuickEan13ScannerWeb({
   const applyZoomIndex = useCallback(
     async (nextZoomIndex) => {
       const normalizedIndex = clamp(nextZoomIndex, 0, ZOOM_LEVELS.length - 1);
-
       const selectedZoom = ZOOM_LEVELS[normalizedIndex] ?? 1.2;
 
       setZoomIndex(normalizedIndex);
-
       currentZoomRef.current = selectedZoom;
 
-      if (!zoomSupported) {
-        return;
-      }
+      if (!zoomSupported) return;
 
       const capabilities = getScannerCapabilities();
 
       const zoomMinimum = capabilities?.zoom?.min ?? 1;
-
       const zoomMaximum = capabilities?.zoom?.max ?? selectedZoom;
 
       const constrainedZoom = clamp(selectedZoom, zoomMinimum, zoomMaximum);
 
       try {
         await scannerRef.current?.applyVideoConstraints?.({
-          advanced: [
-            {
-              zoom: constrainedZoom,
-            },
-          ],
+          advanced: [{ zoom: constrainedZoom }],
         });
       } catch (error) {
         console.warn("No se pudo modificar el zoom:", error);
-
-        if (mountedRef.current) {
-          setZoomSupported(false);
-        }
+        setZoomSupported(false);
       }
     },
     [getScannerCapabilities, zoomSupported],
@@ -690,126 +523,32 @@ export default function QuickEan13ScannerWeb({
   }, [applyZoomIndex, zoomIndex]);
 
   const toggleTorch = useCallback(async () => {
-    if (!torchSupported) {
-      return;
-    }
+    if (!torchSupported) return;
 
     const nextTorchEnabled = !torchEnabled;
 
     try {
       await scannerRef.current?.applyVideoConstraints?.({
-        advanced: [
-          {
-            torch: nextTorchEnabled,
-          },
-        ],
+        advanced: [{ torch: nextTorchEnabled }],
       });
 
-      if (mountedRef.current) {
-        setTorchEnabled(nextTorchEnabled);
-      }
+      setTorchEnabled(nextTorchEnabled);
     } catch (error) {
       console.warn("No se pudo modificar la linterna:", error);
-
-      if (mountedRef.current) {
-        setTorchSupported(false);
-        setTorchEnabled(false);
-      }
+      setTorchSupported(false);
+      setTorchEnabled(false);
     }
   }, [torchEnabled, torchSupported]);
 
   useEffect(() => {
     mountedRef.current = true;
 
-    const checkInitialPermission = async () => {
-      const nextPermissionState = await readCameraPermissionState();
-
-      if (!mountedRef.current) {
-        return;
-      }
-
-      setPermissionState(nextPermissionState);
-
-      if (
-        nextPermissionState === "granted" &&
-        focusedRef.current &&
-        !startingRef.current &&
-        !runningRef.current
-      ) {
-        window.setTimeout(() => {
-          if (
-            mountedRef.current &&
-            focusedRef.current &&
-            !startingRef.current &&
-            !runningRef.current
-          ) {
-            startCamera();
-          }
-        }, 120);
-      }
-
-      if (typeof navigator === "undefined" || !navigator?.permissions?.query) {
-        return;
-      }
-
-      try {
-        const permission = await navigator.permissions.query({
-          name: "camera",
-        });
-
-        permissionRef.current = permission;
-
-        permission.onchange = () => {
-          if (!mountedRef.current) {
-            return;
-          }
-
-          setPermissionState(permission.state);
-
-          if (permission.state === "denied") {
-            forgetRememberedCameraAccess();
-            return;
-          }
-
-          if (
-            permission.state === "granted" &&
-            focusedRef.current &&
-            !startingRef.current &&
-            !runningRef.current
-          ) {
-            window.setTimeout(() => {
-              if (
-                mountedRef.current &&
-                focusedRef.current &&
-                !startingRef.current &&
-                !runningRef.current
-              ) {
-                startCamera();
-              }
-            }, 120);
-          }
-        };
-      } catch (error) {
-        /*
-         * Safari puede lanzar excepción aquí.
-         * En ese caso se usa el botón manual o la marca local.
-         */
-      }
-    };
-
-    checkInitialPermission();
-
     return () => {
       mountedRef.current = false;
       focusedRef.current = false;
-
-      if (permissionRef.current) {
-        permissionRef.current.onchange = null;
-      }
-
       stopCamera();
     };
-  }, [startCamera, stopCamera]);
+  }, [stopCamera]);
 
   useEffect(() => {
     focusedRef.current = isFocused;
@@ -819,77 +558,26 @@ export default function QuickEan13ScannerWeb({
       return;
     }
 
-    if (
-      permissionState === "granted" &&
-      !startingRef.current &&
-      !runningRef.current
-    ) {
-      window.setTimeout(() => {
-        if (
-          mountedRef.current &&
-          focusedRef.current &&
-          !startingRef.current &&
-          !runningRef.current
-        ) {
-          startCamera();
-        }
-      }, 120);
-    }
-  }, [isFocused, permissionState, startCamera, stopCamera]);
+    window.setTimeout(() => {
+      if (
+        mountedRef.current &&
+        focusedRef.current &&
+        !startingRef.current &&
+        !runningRef.current
+      ) {
+        startCamera();
+      }
+    }, 120);
+  }, [isFocused, startCamera, stopCamera]);
 
-  if (permissionState === "checking") {
-    return (
-      <View style={styles.centeredContainer}>
-        <ActivityIndicator size="large" />
-
-        <Text style={styles.centeredTitle}>
-          Comprobando acceso a la cámara…
-        </Text>
-      </View>
-    );
-  }
-
-  if (permissionState === "unsupported") {
+  if (!scannerVisible && errorMessage) {
     return (
       <View style={styles.centeredContainer}>
         <Text style={styles.permissionIcon}>⚠️</Text>
 
-        <Text style={styles.centeredTitle}>Cámara no disponible</Text>
+        <Text style={styles.centeredTitle}>No se pudo abrir la cámara</Text>
 
         <Text style={styles.centeredText}>{errorMessage}</Text>
-
-        <Pressable
-          onPress={onCancel}
-          style={({ pressed }) => [
-            styles.secondaryButton,
-            pressed && styles.buttonPressed,
-          ]}
-        >
-          <Text style={styles.secondaryButtonText}>Cerrar</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
-  if (
-    !scannerVisible &&
-    (permissionState === "prompt" || permissionState === "denied")
-  ) {
-    return (
-      <View style={styles.centeredContainer}>
-        <Text style={styles.permissionIcon}>📷</Text>
-
-        <Text style={styles.centeredTitle}>Acceso a la cámara</Text>
-
-        <Text style={styles.centeredText}>
-          {permissionState === "denied"
-            ? "El navegador ha bloqueado el acceso. Revisa los permisos de cámara de este sitio y vuelve a intentarlo."
-            : "Pulsa el botón para permitir que Shopp utilice la cámara mientras lees el código de barras."}
-        </Text>
-
-        {errorMessage ? (
-          <Text style={styles.permissionErrorText}>{errorMessage}</Text>
-        ) : null}
 
         <Pressable
           disabled={cameraStarting}
@@ -903,9 +591,7 @@ export default function QuickEan13ScannerWeb({
           {cameraStarting ? (
             <ActivityIndicator />
           ) : (
-            <Text style={styles.primaryButtonText}>
-              {permissionState === "denied" ? "Reintentar" : "Permitir cámara"}
-            </Text>
+            <Text style={styles.primaryButtonText}>Reintentar</Text>
           )}
         </Pressable>
 
@@ -950,10 +636,6 @@ export default function QuickEan13ScannerWeb({
   );
 }
 
-/* ────────────────────────────────────────────────
-   STYLES
-──────────────────────────────────────────────── */
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -995,15 +677,6 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     textAlign: "center",
     marginTop: 10,
-  },
-
-  permissionErrorText: {
-    maxWidth: 440,
-    color: "#ffd58a",
-    fontSize: 13,
-    lineHeight: 19,
-    textAlign: "center",
-    marginTop: 13,
   },
 
   primaryButton: {
