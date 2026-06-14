@@ -413,13 +413,13 @@ export default function QuickEan13ScannerWeb({
       await scannerRef.current.start(
         CAMERA_CONSTRAINTS,
         {
-          fps: 18,
+          fps: 10,
           disableFlip: true,
           aspectRatio: 1.7777778,
 
           qrbox: (viewfinderWidth, viewfinderHeight) => {
-            const width = Math.floor(viewfinderWidth * 0.84);
-            const height = Math.floor(viewfinderHeight * 0.22);
+            const width = Math.floor(viewfinderWidth * 0.92);
+            const height = Math.floor(viewfinderHeight * 0.32);
 
             return {
               width,
