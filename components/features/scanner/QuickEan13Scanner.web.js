@@ -20,6 +20,44 @@ const DEFAULT_ZOOM_INDEX = 1;
 
 const DUPLICATE_LOCK_MS = 1500;
 
+const CAMERA_GRANTED_STORAGE_KEY = "shopp:web-camera-access-granted";
+
+function hasRememberedCameraAccess() {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem(CAMERA_GRANTED_STORAGE_KEY) === "true";
+  } catch (error) {
+    return false;
+  }
+}
+
+function rememberCameraAccess() {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(CAMERA_GRANTED_STORAGE_KEY, "true");
+  } catch (error) {
+    /* localStorage puede estar bloqueado en navegación privada. */
+  }
+}
+
+function forgetRememberedCameraAccess() {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(CAMERA_GRANTED_STORAGE_KEY);
+  } catch (error) {
+    /* localStorage puede estar bloqueado en navegación privada. */
+  }
+}
+
 /* ────────────────────────────────────────────────
    BARCODE HELPERS
 ──────────────────────────────────────────────── */
@@ -100,7 +138,7 @@ async function readCameraPermissionState() {
   }
 
   if (!navigator?.permissions?.query) {
-    return "prompt";
+    return hasRememberedCameraAccess() ? "granted" : "prompt";
   }
 
   try {
@@ -114,7 +152,7 @@ async function readCameraPermissionState() {
      * Safari puede permitir getUserMedia(), pero no permitir
      * consultar previamente navigator.permissions.
      */
-    return "prompt";
+    return hasRememberedCameraAccess() ? "granted" : "prompt";
   }
 }
 
@@ -140,7 +178,6 @@ function waitForScannerElement(elementId) {
 
       if (attempts >= maxAttempts) {
         reject(new Error(`HTML Element with id=${elementId} not found`));
-
         return;
       }
 
@@ -646,6 +683,7 @@ export default function QuickEan13ScannerWeb({
       }
 
       setPermissionState(nextPermissionState);
+
       if (nextPermissionState === "granted") {
         startCamera();
       }
