@@ -1,17 +1,15 @@
-// components/features/scanner/ScannerOverlay.js
+// components/features/scanner/ScannerOverlay.web.js
 
 import React from "react";
 
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 /* -------------------------------------------------
@@ -53,41 +51,34 @@ export default function ScannerOverlay({
     : "Sin linterna";
 
   return (
-    <SafeAreaView
-      style={styles.overlay}
-      edges={["top", "bottom", "left", "right"]}
-      pointerEvents="box-none"
-    >
+    <View style={[styles.overlay, styles.pointerEventsBoxNone]}>
       {/* Botón cerrar */}
       <Pressable
-        style={styles.closeButton}
+        style={[styles.closeButton, styles.pointerEventsAuto]}
         onPress={onCancel}
-        pointerEvents="auto"
       >
-        <Ionicons name="close" size={44} color="#FFFFFF" />
+        <Ionicons name="close" size={46} color="#FFFFFF" />
       </Pressable>
 
-      {/* Área central */}
-      <View style={styles.centerBlock} pointerEvents="box-none">
-        <View style={styles.scanFrame} pointerEvents="none">
+      {/* Zona central */}
+      <View style={[styles.scanArea, styles.pointerEventsBoxNone]}>
+        <View style={[styles.scanFrame, styles.pointerEventsNone]}>
           <View style={styles.scanLine} />
         </View>
 
-        <Text style={styles.hint} pointerEvents="none">
-          {hint}
-        </Text>
+        <Text style={[styles.hint, styles.pointerEventsNone]}>{hint}</Text>
 
         {/* Botones grandes */}
         {showControls ? (
-          <View style={styles.controlsRow} pointerEvents="box-none">
+          <View style={[styles.controlsRow, styles.pointerEventsBoxNone]}>
             <Pressable
               style={[
                 styles.controlButton,
                 !zoomAvailable && styles.controlButtonDisabled,
+                styles.pointerEventsAuto,
               ]}
               onPress={onChangeZoom}
               disabled={!zoomAvailable || !onChangeZoom}
-              pointerEvents="auto"
             >
               <Ionicons name="scan-outline" size={22} color="#111827" />
 
@@ -99,10 +90,10 @@ export default function ScannerOverlay({
                 styles.controlButton,
                 torchEnabled && styles.controlButtonActive,
                 !torchAvailable && styles.controlButtonDisabled,
+                styles.pointerEventsAuto,
               ]}
               onPress={onToggleTorch}
               disabled={!torchAvailable || !onToggleTorch}
-              pointerEvents="auto"
             >
               <Ionicons
                 name={torchEnabled ? "flashlight" : "flashlight-outline"}
@@ -116,22 +107,21 @@ export default function ScannerOverlay({
         ) : null}
       </View>
 
-      {/* Área inferior */}
-      <View style={styles.bottomPanel} pointerEvents="box-none">
+      {/* Panel inferior */}
+      <View style={[styles.bottomPanel, styles.pointerEventsBoxNone]}>
         <Text style={styles.title}>{title}</Text>
 
         <Text style={styles.subtitle}>{subtitle}</Text>
 
         <Pressable
-          style={styles.cancelButton}
+          style={[styles.cancelButton, styles.pointerEventsAuto]}
           onPress={onCancel}
-          pointerEvents="auto"
         >
           <Text style={styles.cancelButtonText}>Cancelar</Text>
         </Pressable>
 
         {processing ? (
-          <View style={styles.messageRow} pointerEvents="none">
+          <View style={[styles.messageRow, styles.pointerEventsNone]}>
             <ActivityIndicator color="#FFFFFF" />
 
             <Text style={styles.processingText}>Procesando...</Text>
@@ -148,9 +138,8 @@ export default function ScannerOverlay({
 
             {onRetry ? (
               <Pressable
-                style={styles.retryButton}
+                style={[styles.retryButton, styles.pointerEventsAuto]}
                 onPress={onRetry}
-                pointerEvents="auto"
               >
                 <Text style={styles.retryButtonText}>Reintentar</Text>
               </Pressable>
@@ -158,7 +147,7 @@ export default function ScannerOverlay({
           </>
         ) : null}
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -170,13 +159,13 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 20,
-    paddingHorizontal: 22,
+    overflow: "hidden",
     backgroundColor: "transparent",
   },
 
   closeButton: {
     position: "absolute",
-    top: Platform.OS === "web" ? 24 : 16,
+    top: 22,
     right: 18,
     zIndex: 40,
     width: 56,
@@ -185,17 +174,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  centerBlock: {
-    flex: 1,
+  scanArea: {
+    position: "absolute",
+    top: "22%",
+    left: 18,
+    right: 18,
     alignItems: "center",
-    justifyContent: "center",
-    paddingTop: 24,
-    paddingBottom: 180,
   },
 
   scanFrame: {
-    width: "92%",
-    maxWidth: 560,
+    width: "100%",
+    maxWidth: 540,
     height: 136,
     borderWidth: 4,
     borderColor: "#FFFFFF",
@@ -218,7 +207,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "900",
     textAlign: "center",
-    textShadowColor: "rgba(0,0,0,0.75)",
+    textShadowColor: "rgba(0,0,0,0.90)",
     textShadowOffset: {
       width: 0,
       height: 1,
@@ -252,7 +241,7 @@ const styles = StyleSheet.create({
   },
 
   controlButtonDisabled: {
-    opacity: 0.55,
+    opacity: 0.72,
   },
 
   controlButtonText: {
@@ -265,7 +254,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 22,
     right: 22,
-    bottom: Platform.OS === "web" ? 34 : 24,
+    bottom: 30,
     alignItems: "center",
   },
 
@@ -274,15 +263,27 @@ const styles = StyleSheet.create({
     fontSize: 27,
     fontWeight: "900",
     textAlign: "center",
+    textShadowColor: "rgba(0,0,0,0.90)",
+    textShadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    textShadowRadius: 4,
   },
 
   subtitle: {
     maxWidth: 380,
     marginTop: 10,
-    color: "rgba(255,255,255,0.86)",
+    color: "rgba(255,255,255,0.90)",
     fontSize: 15,
     lineHeight: 22,
     textAlign: "center",
+    textShadowColor: "rgba(0,0,0,0.90)",
+    textShadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    textShadowRadius: 4,
   },
 
   cancelButton: {
@@ -295,7 +296,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.18)",
+    backgroundColor: "rgba(0,0,0,0.30)",
   },
 
   cancelButtonText: {
@@ -345,5 +346,21 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "800",
+  },
+
+  /*
+   * React Native Web recomienda definir pointerEvents
+   * dentro del objeto style.
+   */
+  pointerEventsNone: {
+    pointerEvents: "none",
+  },
+
+  pointerEventsAuto: {
+    pointerEvents: "auto",
+  },
+
+  pointerEventsBoxNone: {
+    pointerEvents: "box-none",
   },
 });
