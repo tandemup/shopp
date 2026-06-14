@@ -17,6 +17,8 @@ import {
   View,
 } from "react-native";
 
+import TestReactBarcodeScannerWeb from "../../components/features/scanner/TestReactBarcodeScanner.web";
+
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons } from "@expo/vector-icons";
@@ -105,36 +107,21 @@ function navigateToAvailableRoute(navigation, routeName, params) {
 
 export default function NewProductScannerScreen2() {
   const navigation = useNavigation();
-
   const route = useRoute();
-
   const scannedRef = useRef(false);
-
   const handlingScanRef = useRef(false);
-
   const [permission, requestPermission] = useCameraPermissions();
-
   const {
     autoOpenEngine = false,
-
     barcodeTypes: routeBarcodeTypes = null,
-
     captureMode = null,
-
     listId = null,
-
     itemId = null,
-
     returnToTab = ROUTES.SHOPPING_TAB,
-
     returnToScreen = ROUTES.ITEM_DETAIL,
-
     showControls = true,
-
     initialZoomIndex = 1,
-
     initialTorchEnabled = false,
-
     showStatusBadges = true,
   } = route.params || {};
 
@@ -481,7 +468,19 @@ export default function NewProductScannerScreen2() {
           backgroundColor="#000000"
           translucent={false}
         />
-
+        <BarcodeScanner
+          options={{
+            formats: ["ean_13"],
+            delay: 300,
+          }}
+          trackConstraints={{
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          }}
+          onCapture={handleWebDetected}
+        />
+        {/* 
         <QuickEan13Scanner
           key={`web-scanner-session-${scannerSession}`}
           onDetected={handleWebDetected}
@@ -496,6 +495,7 @@ export default function NewProductScannerScreen2() {
           showControls={showControls}
           showStatusBadges={showStatusBadges}
         />
+        */}
       </View>
     );
   }

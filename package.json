@@ -37,6 +37,7 @@
     "html5-qrcode": "^2.3.8",
     "nanoid": "^5.1.6",
     "react": "19.1.0",
+    "react-barcode-scanner": "^4.0.1",
     "react-dom": "19.1.0",
     "react-leaflet": "^5.0.0",
     "react-native": "0.81.5",
