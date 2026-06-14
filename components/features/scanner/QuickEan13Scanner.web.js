@@ -229,6 +229,7 @@ export default function QuickEan13ScannerWeb({
   });
 
   const [permissionState, setPermissionState] = useState("prompt");
+
   const [cameraStarting, setCameraStarting] = useState(false);
 
   const [scannerVisible, setScannerVisible] = useState(false);
@@ -275,20 +276,40 @@ export default function QuickEan13ScannerWeb({
         background: #000000 !important;
       }
 
-      #${scannerElementId} video {
-        object-fit: cover !important;
-      }
-
       #${scannerElementId} > div {
         width: 100% !important;
         height: 100% !important;
       }
 
-      #${scannerElementId} img {
+      #${scannerElementId} img,
+      #${scannerElementId} button,
+      #${scannerElementId} select,
+      #${scannerElementId}__dashboard,
+      #${scannerElementId}__dashboard_section,
+      #${scannerElementId}__dashboard_section_csr,
+      #${scannerElementId}__header_message,
+      #${scannerElementId}__camera_selection,
+      #${scannerElementId}__scan_region {
         display: none !important;
       }
 
-      #${scannerElementId} button {
+      #${scannerElementId} .qr-shaded-region {
+        display: none !important;
+        opacity: 0 !important;
+        background: transparent !important;
+      }
+
+      #${scannerElementId} video {
+        display: block !important;
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+        transform: none !important;
+      }
+
+      #${scannerElementId} canvas {
         display: none !important;
       }
     `;
@@ -301,14 +322,13 @@ export default function QuickEan13ScannerWeb({
   }, [scannerElementId]);
 
   const getScannerCapabilities = useCallback(() => {
-    try {
-      return scannerRef.current?.getRunningTrackCapabilities?.() || {};
-    } catch (error) {
-      console.info(
-        "El navegador no permite consultar las capacidades de la cámara:",
-        error,
-      );
+    if (!runningRef.current || !scannerRef.current) {
+      return {};
+    }
 
+    try {
+      return scannerRef.current.getRunningTrackCapabilities?.() || {};
+    } catch (error) {
       return {};
     }
   }, []);
@@ -509,6 +529,10 @@ export default function QuickEan13ScannerWeb({
        */
       await waitForScannerElement(scannerElementId);
 
+      if (!mountedRef.current) {
+        return;
+      }
+
       if (!scannerRef.current) {
         scannerRef.current = new Html5Qrcode(scannerElementId, {
           formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13],
@@ -521,11 +545,11 @@ export default function QuickEan13ScannerWeb({
           facingMode: "environment",
         },
         {
-          fps: 10,
+          fps: 12,
           disableFlip: true,
-          qrbox: {
-            width: 300,
-            height: 150,
+          aspectRatio: 1.7777778,
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true,
           },
         },
         notifyDetectedBarcode,
@@ -685,7 +709,15 @@ export default function QuickEan13ScannerWeb({
       setPermissionState(nextPermissionState);
 
       if (nextPermissionState === "granted") {
-        startCamera();
+        window.setTimeout(() => {
+          if (
+            mountedRef.current &&
+            !startingRef.current &&
+            !runningRef.current
+          ) {
+            startCamera();
+          }
+        }, 120);
       }
 
       if (!navigator?.permissions?.query) {
@@ -711,8 +743,20 @@ export default function QuickEan13ScannerWeb({
             return;
           }
 
-          if (permission.state === "granted" && !runningRef.current) {
-            startCamera();
+          if (
+            permission.state === "granted" &&
+            !startingRef.current &&
+            !runningRef.current
+          ) {
+            window.setTimeout(() => {
+              if (
+                mountedRef.current &&
+                !startingRef.current &&
+                !runningRef.current
+              ) {
+                startCamera();
+              }
+            }, 120);
           }
         };
       } catch (error) {
