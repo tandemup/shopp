@@ -121,6 +121,14 @@ async function readCameraPermissionState() {
   }
 }
 
+function waitForNextFrame() {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(resolve);
+    });
+  });
+}
+
 function waitForDomElement(elementId, timeoutMs = 3000) {
   return new Promise((resolve) => {
     const check = () => {
@@ -196,6 +204,8 @@ export default function QuickEan13ScannerWeb({
 
   const [errorMessage, setErrorMessage] = useState("");
 
+  const [scannerVisible, setScannerVisible] = useState(false);
+
   const [zoomIndex, setZoomIndex] = useState(
     clamp(initialZoomIndex, 0, ZOOM_LEVELS.length - 1),
   );
@@ -225,7 +235,16 @@ export default function QuickEan13ScannerWeb({
   const stopCamera = useCallback(async () => {
     const scanner = scannerRef.current;
 
+    startingRef.current = false;
+
     if (!scanner) {
+      if (mountedRef.current) {
+        setScannerVisible(false);
+        setTorchEnabled(false);
+        setTorchSupported(false);
+        setZoomSupported(false);
+      }
+
       return;
     }
 
@@ -248,6 +267,7 @@ export default function QuickEan13ScannerWeb({
     scannerRef.current = null;
 
     if (mountedRef.current) {
+      setScannerVisible(false);
       setTorchEnabled(false);
       setTorchSupported(false);
       setZoomSupported(false);
@@ -396,25 +416,25 @@ export default function QuickEan13ScannerWeb({
     if (mountedRef.current) {
       setCameraStarting(true);
       setErrorMessage("");
+      setScannerVisible(true);
     }
+
+    /*
+     * Necesario en React Native Web:
+     * primero mostramos el contenedor con id={scannerElementId}
+     * y después dejamos que React lo pinte en el DOM.
+     *
+     * Si Html5Qrcode se crea antes de que exista ese nodo,
+     * aparece:
+     *
+     * Scanner container not found: quick-ean13-scanner-...
+     */
+    await waitForNextFrame();
 
     try {
       if (!scannerRef.current) {
-        await new Promise((resolve) => {
-          requestAnimationFrame(() => {
-            requestAnimationFrame(resolve);
-          });
-        });
-
-        const scannerElement = await waitForDomElement(scannerElementId, 3000);
-
-        if (!scannerElement) {
-          throw new Error(`Scanner container not found: ${scannerElementId}`);
-        }
-
         scannerRef.current = new Html5Qrcode(scannerElementId, {
           formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13],
-          useBarCodeDetectorIfSupported: false,
           verbose: false,
         });
       }
@@ -434,19 +454,24 @@ export default function QuickEan13ScannerWeb({
           },
         },
         notifyDetectedBarcode,
-        () => {},
+        () => {
+          /*
+           * La mayoría de los fotogramas no contienen
+           * ningún código de barras.
+           */
+        },
       );
 
       if (!mountedRef.current) {
         try {
-          await scannerRef.current.stop();
-
-          scannerRef.current.clear();
+          await scannerRef.current?.stop?.();
+          scannerRef.current?.clear?.();
         } catch (error) {
           console.warn("No se pudo cerrar la cámara desmontada:", error);
         }
 
         scannerRef.current = null;
+        runningRef.current = false;
 
         return;
       }
@@ -472,6 +497,8 @@ export default function QuickEan13ScannerWeb({
       }
 
       if (mountedRef.current) {
+        setScannerVisible(false);
+
         setErrorMessage(getReadableCameraError(error));
       }
     } finally {
