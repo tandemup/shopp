@@ -19,7 +19,7 @@ import { SEARCH_ENGINES } from "../../constants/searchEngines";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useCameraPermissions, useMicrophonePermissions } from "expo-camera";
+import { useCameraPermissions } from "expo-camera";
 import * as Location from "expo-location";
 
 import { ROUTES } from "../../navigation/ROUTES";
@@ -195,10 +195,115 @@ function SettingsCard({
   );
 }
 
+const CAMERA_GRANTED_STORAGE_KEY = "shopp:web-camera-access-granted";
+async function getWebCameraPermissionStatus() {
+  if (Platform.OS !== "web") {
+    return null;
+  }
+
+  if (
+    typeof navigator === "undefined" ||
+    !navigator.mediaDevices?.getUserMedia
+  ) {
+    return {
+      granted: false,
+      status: "denied",
+      canAskAgain: false,
+    };
+  }
+
+  if (!navigator.permissions?.query) {
+    const remembered =
+      window.localStorage.getItem(CAMERA_GRANTED_STORAGE_KEY) === "true";
+
+    return {
+      granted: remembered,
+      status: remembered ? "granted" : "undetermined",
+      canAskAgain: true,
+    };
+  }
+
+  try {
+    const permission = await navigator.permissions.query({
+      name: "camera",
+    });
+
+    return {
+      granted: permission.state === "granted",
+      status:
+        permission.state === "granted"
+          ? "granted"
+          : permission.state === "denied"
+            ? "denied"
+            : "undetermined",
+      canAskAgain: permission.state !== "denied",
+    };
+  } catch (error) {
+    const remembered =
+      window.localStorage.getItem(CAMERA_GRANTED_STORAGE_KEY) === "true";
+
+    return {
+      granted: remembered,
+      status: remembered ? "granted" : "undetermined",
+      canAskAgain: true,
+    };
+  }
+}
+
+async function requestWebCameraPermission() {
+  if (
+    typeof navigator === "undefined" ||
+    !navigator.mediaDevices?.getUserMedia
+  ) {
+    return {
+      granted: false,
+      status: "denied",
+      canAskAgain: false,
+    };
+  }
+
+  let stream = null;
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: {
+          ideal: "environment",
+        },
+      },
+      audio: false,
+    });
+
+    window.localStorage.setItem(CAMERA_GRANTED_STORAGE_KEY, "true");
+
+    return {
+      granted: true,
+      status: "granted",
+      canAskAgain: true,
+    };
+  } catch (error) {
+    window.localStorage.removeItem(CAMERA_GRANTED_STORAGE_KEY);
+
+    const blocked =
+      error?.name === "NotAllowedError" || error?.name === "SecurityError";
+
+    return {
+      granted: false,
+      status: blocked ? "denied" : "undetermined",
+      canAskAgain: !blocked,
+    };
+  } finally {
+    stream?.getTracks?.().forEach((track) => {
+      track.stop();
+    });
+  }
+}
+
 export default function MenuScreen({ navigation }) {
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [microphonePermission, requestMicrophonePermission] =
-    useMicrophonePermissions();
+  const [nativeCameraPermission, requestNativeCameraPermission] =
+    useCameraPermissions();
+
+  const [webCameraPermission, setWebCameraPermission] = useState(null);
 
   const [locationPermission, setLocationPermission] = useState(null);
   const [productSearchEngineSubtitle, setProductSearchEngineSubtitle] =
@@ -216,6 +321,31 @@ export default function MenuScreen({ navigation }) {
       }),
     [],
   );
+
+  const cameraPermission =
+    Platform.OS === "web" ? webCameraPermission : nativeCameraPermission;
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadWebCameraPermission() {
+      if (Platform.OS !== "web") {
+        return;
+      }
+
+      const result = await getWebCameraPermissionStatus();
+
+      if (mounted) {
+        setWebCameraPermission(result);
+      }
+    }
+
+    loadWebCameraPermission();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     navigation.setOptions(headerConfig.navigationOptions);
@@ -347,7 +477,17 @@ export default function MenuScreen({ navigation }) {
       });
     }
   };
+  const requestCameraPermission = async () => {
+    if (Platform.OS === "web") {
+      const result = await requestWebCameraPermission();
 
+      setWebCameraPermission(result);
+
+      return result;
+    }
+
+    return requestNativeCameraPermission();
+  };
   const goToProductSearchEngines = () => {
     navigation.navigate(ROUTES.SEARCH_ENGINE_SETTINGS, {
       type: "product",
@@ -564,19 +704,20 @@ export default function MenuScreen({ navigation }) {
                 }
               />
 
-              <PermissionRow
-                icon="mic-outline"
-                title="Micrófono"
-                description="Necesario solo si grabas vídeo con audio."
-                permission={microphonePermission}
-                onPress={() =>
-                  handlePermissionPress(
-                    microphonePermission,
-                    requestMicrophonePermission,
-                    "Micrófono",
-                  )
-                }
-              />
+              {Platform.OS !== "web" ? (
+                <PermissionRow
+                  icon="mic-outline"
+                  title="Micrófono"
+                  description="Necesario solo si grabas vídeo con audio."
+                  permission={null}
+                  onPress={() => {
+                    safeAlert(
+                      "Micrófono",
+                      "Shopp no necesita micrófono para escanear códigos de barras.",
+                    );
+                  }}
+                />
+              ) : null}
 
               <PermissionRow
                 icon="location-outline"
