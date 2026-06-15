@@ -10,7 +10,12 @@ import {
 
 import { useIsFocused } from "@react-navigation/native";
 
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import { BrowserMultiFormatReader } from "@zxing/browser";
+import {
+  BarcodeFormat,
+  DecodeHintType,
+  NotFoundException,
+} from "@zxing/library";
 
 import ScannerOverlay from "./ScannerOverlay.js";
 
@@ -21,10 +26,6 @@ const DEFAULT_ZOOM_INDEX = 1;
 const DUPLICATE_LOCK_MS = 1500;
 
 const CAMERA_GRANTED_STORAGE_KEY = "shopp:web-camera-access-granted";
-
-const CAMERA_CONSTRAINTS = {
-  facingMode: "environment",
-};
 
 function rememberCameraAccess() {
   try {
@@ -89,31 +90,34 @@ function getReadableCameraError(error) {
   return message || "No ha sido posible iniciar la cámara.";
 }
 
-function waitForScannerElement(elementId) {
-  return new Promise((resolve, reject) => {
-    let attempts = 0;
-    const maxAttempts = 45;
+function createZxingReader() {
+  const hints = new Map();
 
-    const check = () => {
-      const element = document.getElementById(elementId);
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.EAN_13]);
+  hints.set(DecodeHintType.TRY_HARDER, true);
 
-      if (element) {
-        resolve(element);
-        return;
-      }
+  return new BrowserMultiFormatReader(hints, 250);
+}
 
-      attempts += 1;
+function getVideoTrack(stream) {
+  return stream?.getVideoTracks?.()?.[0] ?? null;
+}
 
-      if (attempts >= maxAttempts) {
-        reject(new Error(`HTML Element with id=${elementId} not found`));
-        return;
-      }
-
-      window.requestAnimationFrame(check);
-    };
-
-    check();
-  });
+function buildCameraConstraints() {
+  return {
+    audio: false,
+    video: {
+      facingMode: {
+        ideal: "environment",
+      },
+      width: {
+        ideal: 1280,
+      },
+      height: {
+        ideal: 720,
+      },
+    },
+  };
 }
 
 export default function QuickEan13ScannerWeb({
@@ -128,17 +132,16 @@ export default function QuickEan13ScannerWeb({
 }) {
   const isFocused = useIsFocused();
 
-  const scannerElementIdRef = useRef(
-    `quick-ean13-scanner-${Math.random().toString(36).slice(2)}`,
-  );
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const readerRef = useRef(null);
+  const controlsRef = useRef(null);
 
-  const scannerElementId = scannerElementIdRef.current;
-
-  const scannerRef = useRef(null);
   const mountedRef = useRef(false);
   const focusedRef = useRef(false);
   const runningRef = useRef(false);
   const startingRef = useRef(false);
+  const detectionLockedRef = useRef(false);
 
   const currentZoomRef = useRef(
     ZOOM_LEVELS[clamp(initialZoomIndex, 0, ZOOM_LEVELS.length - 1)] ?? 1.2,
@@ -169,112 +172,72 @@ export default function QuickEan13ScannerWeb({
     currentZoomRef.current = currentZoom;
   }, [currentZoom]);
 
-  useEffect(() => {
-    if (typeof document === "undefined") return undefined;
+  const getTrackCapabilities = useCallback(() => {
+    const track = getVideoTrack(streamRef.current);
 
-    const styleElement = document.createElement("style");
-
-    styleElement.textContent = `
-      #${scannerElementId},
-      #${scannerElementId} video,
-      #${scannerElementId} canvas {
-        width: 100% !important;
-        height: 100% !important;
-      }
-
-      #${scannerElementId} {
-        position: absolute !important;
-        inset: 0 !important;
-        overflow: hidden !important;
-        background: #000000 !important;
-      }
-
-      #${scannerElementId} > div {
-        width: 100% !important;
-        height: 100% !important;
-      }
-
-      #${scannerElementId} img,
-      #${scannerElementId} button,
-      #${scannerElementId} select,
-      #${scannerElementId}__dashboard,
-      #${scannerElementId}__dashboard_section,
-      #${scannerElementId}__dashboard_section_csr,
-      #${scannerElementId}__header_message,
-      #${scannerElementId}__camera_selection,
-      #${scannerElementId}__scan_region {
-        display: none !important;
-      }
-
-      #${scannerElementId} .qr-shaded-region {
-        display: none !important;
-        opacity: 0 !important;
-        background: transparent !important;
-      }
-
-      #${scannerElementId} video {
-        display: block !important;
-        position: absolute !important;
-        inset: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        object-fit: cover !important;
-      }
-
-      #${scannerElementId} canvas {
-        display: none !important;
-      }
-    `;
-
-    document.head.appendChild(styleElement);
-
-    return () => {
-      styleElement.remove();
-    };
-  }, [scannerElementId]);
-
-  const getScannerCapabilities = useCallback(() => {
-    if (!runningRef.current || !scannerRef.current) return {};
+    if (!track || typeof track.getCapabilities !== "function") {
+      return {};
+    }
 
     try {
-      return scannerRef.current.getRunningTrackCapabilities?.() || {};
+      return track.getCapabilities() || {};
     } catch {
       return {};
     }
   }, []);
 
+  const applyVideoConstraints = useCallback(async (constraints) => {
+    const track = getVideoTrack(streamRef.current);
+
+    if (!track || typeof track.applyConstraints !== "function") {
+      return false;
+    }
+
+    await track.applyConstraints(constraints);
+
+    return true;
+  }, []);
+
   const stopCamera = useCallback(async () => {
     startingRef.current = false;
-
-    const scanner = scannerRef.current;
-
-    if (!scanner) {
-      if (mountedRef.current) {
-        setTorchEnabled(false);
-        setTorchSupported(false);
-        setZoomSupported(false);
-      }
-
-      return;
-    }
-
-    if (runningRef.current) {
-      try {
-        await scanner.stop();
-      } catch (error) {
-        console.warn("No se pudo detener el lector web:", error);
-      }
-    }
-
     runningRef.current = false;
+    detectionLockedRef.current = false;
+
+    const controls = controlsRef.current;
+
+    controlsRef.current = null;
 
     try {
-      scanner.clear();
+      controls?.stop?.();
     } catch (error) {
-      console.warn("No se pudo limpiar el lector web:", error);
+      console.warn("No se pudo detener el lector ZXing:", error);
     }
 
-    scannerRef.current = null;
+    const stream = streamRef.current;
+
+    streamRef.current = null;
+
+    try {
+      stream?.getTracks?.()?.forEach((track) => {
+        try {
+          track.stop();
+        } catch {}
+      });
+    } catch {}
+
+    const video = videoRef.current;
+
+    if (video) {
+      try {
+        video.pause();
+      } catch {}
+
+      try {
+        video.srcObject = null;
+      } catch {}
+    }
+
+    readerRef.current = null;
 
     if (mountedRef.current) {
       setTorchEnabled(false);
@@ -304,15 +267,9 @@ export default function QuickEan13ScannerWeb({
         timestamp: now,
       };
 
-      if (runningRef.current && scannerRef.current) {
-        try {
-          await scannerRef.current.stop();
-        } catch (error) {
-          console.warn("No se pudo detener el lector tras detectar:", error);
-        }
+      detectionLockedRef.current = true;
 
-        runningRef.current = false;
-      }
+      await stopCamera();
 
       if (!mountedRef.current || !focusedRef.current) return;
 
@@ -329,11 +286,11 @@ export default function QuickEan13ScannerWeb({
 
       onBarcodeScanned?.(result);
     },
-    [onBarcodeScanned, onDetected],
+    [onBarcodeScanned, onDetected, stopCamera],
   );
 
   const configureCameraCapabilities = useCallback(async () => {
-    const capabilities = getScannerCapabilities();
+    const capabilities = getTrackCapabilities();
 
     const supportsZoom =
       capabilities?.zoom &&
@@ -355,7 +312,7 @@ export default function QuickEan13ScannerWeb({
       );
 
       try {
-        await scannerRef.current?.applyVideoConstraints?.({
+        await applyVideoConstraints({
           advanced: [{ zoom: desiredZoom }],
         });
       } catch (error) {
@@ -366,7 +323,7 @@ export default function QuickEan13ScannerWeb({
 
     if (supportsTorch && initialTorchEnabled) {
       try {
-        await scannerRef.current?.applyVideoConstraints?.({
+        await applyVideoConstraints({
           advanced: [{ torch: true }],
         });
 
@@ -377,7 +334,7 @@ export default function QuickEan13ScannerWeb({
         setTorchEnabled(false);
       }
     }
-  }, [getScannerCapabilities, initialTorchEnabled]);
+  }, [applyVideoConstraints, getTrackCapabilities, initialTorchEnabled]);
 
   const startCamera = useCallback(async () => {
     if (!mountedRef.current || !focusedRef.current) return;
@@ -390,58 +347,85 @@ export default function QuickEan13ScannerWeb({
       setErrorMessage(
         "Este navegador no permite utilizar la cámara. Abre Shopp mediante HTTPS con un navegador compatible.",
       );
+      setScannerVisible(false);
+      return;
+    }
+
+    const video = videoRef.current;
+
+    if (!video) {
+      setErrorMessage("No se ha podido inicializar el visor de cámara.");
+      setScannerVisible(false);
       return;
     }
 
     startingRef.current = true;
+    detectionLockedRef.current = false;
 
     setCameraStarting(true);
     setScannerVisible(true);
     setErrorMessage("");
 
     try {
-      await waitForScannerElement(scannerElementId);
-
-      if (!mountedRef.current || !focusedRef.current) return;
-
-      if (!scannerRef.current) {
-        scannerRef.current = new Html5Qrcode(scannerElementId, {
-          formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13],
-          verbose: false,
-        });
-      }
-      await scannerRef.current.start(
-        CAMERA_CONSTRAINTS,
-        {
-          fps: 10,
-          disableFlip: true,
-          aspectRatio: 1.7777778,
-
-          qrbox: (viewfinderWidth, viewfinderHeight) => {
-            const width = Math.floor(viewfinderWidth * 0.92);
-            const height = Math.floor(viewfinderHeight * 0.32);
-
-            return {
-              width,
-              height,
-            };
-          },
-
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true,
-          },
-        },
-        notifyDetectedBarcode,
-        () => {},
+      const stream = await navigator.mediaDevices.getUserMedia(
+        buildCameraConstraints(),
       );
+
       if (!mountedRef.current || !focusedRef.current) {
         try {
-          await scannerRef.current.stop();
-          scannerRef.current.clear();
+          stream?.getTracks?.()?.forEach((track) => track.stop());
         } catch {}
 
-        scannerRef.current = null;
-        runningRef.current = false;
+        return;
+      }
+
+      streamRef.current = stream;
+
+      video.srcObject = stream;
+      video.setAttribute("playsinline", "true");
+      video.setAttribute("webkit-playsinline", "true");
+      video.muted = true;
+
+      try {
+        await video.play();
+      } catch (error) {
+        console.warn("El navegador ha retrasado el inicio del vídeo:", error);
+      }
+
+      const reader = createZxingReader();
+
+      readerRef.current = reader;
+
+      const controls = await reader.decodeFromStream(
+        stream,
+        video,
+        (result, error) => {
+          if (!mountedRef.current || !focusedRef.current) return;
+          if (detectionLockedRef.current) return;
+
+          if (result?.getText) {
+            notifyDetectedBarcode(result.getText());
+            return;
+          }
+
+          if (
+            error &&
+            !(error instanceof NotFoundException) &&
+            error?.name !== "NotFoundException"
+          ) {
+            const message = String(error?.message ?? "");
+
+            if (message) {
+              console.warn("Error leyendo EAN-13 con ZXing:", message);
+            }
+          }
+        },
+      );
+
+      controlsRef.current = controls;
+
+      if (!mountedRef.current || !focusedRef.current) {
+        await stopCamera();
         return;
       }
 
@@ -450,15 +434,11 @@ export default function QuickEan13ScannerWeb({
 
       await configureCameraCapabilities();
     } catch (error) {
-      console.warn("No se pudo iniciar el lector web:", error);
+      console.warn("No se pudo iniciar el lector web ZXing:", error);
 
       runningRef.current = false;
 
-      try {
-        scannerRef.current?.clear?.();
-      } catch {}
-
-      scannerRef.current = null;
+      await stopCamera();
 
       if (error?.name === "NotAllowedError") {
         forgetRememberedCameraAccess();
@@ -475,7 +455,7 @@ export default function QuickEan13ScannerWeb({
         setCameraStarting(false);
       }
     }
-  }, [configureCameraCapabilities, notifyDetectedBarcode, scannerElementId]);
+  }, [configureCameraCapabilities, notifyDetectedBarcode, stopCamera]);
 
   const applyZoomIndex = useCallback(
     async (nextZoomIndex) => {
@@ -487,7 +467,7 @@ export default function QuickEan13ScannerWeb({
 
       if (!zoomSupported) return;
 
-      const capabilities = getScannerCapabilities();
+      const capabilities = getTrackCapabilities();
 
       const zoomMinimum = capabilities?.zoom?.min ?? 1;
       const zoomMaximum = capabilities?.zoom?.max ?? selectedZoom;
@@ -495,7 +475,7 @@ export default function QuickEan13ScannerWeb({
       const constrainedZoom = clamp(selectedZoom, zoomMinimum, zoomMaximum);
 
       try {
-        await scannerRef.current?.applyVideoConstraints?.({
+        await applyVideoConstraints({
           advanced: [{ zoom: constrainedZoom }],
         });
       } catch (error) {
@@ -503,7 +483,7 @@ export default function QuickEan13ScannerWeb({
         setZoomSupported(false);
       }
     },
-    [getScannerCapabilities, zoomSupported],
+    [applyVideoConstraints, getTrackCapabilities, zoomSupported],
   );
 
   const cycleZoom = useCallback(() => {
@@ -519,7 +499,7 @@ export default function QuickEan13ScannerWeb({
     const nextTorchEnabled = !torchEnabled;
 
     try {
-      await scannerRef.current?.applyVideoConstraints?.({
+      await applyVideoConstraints({
         advanced: [{ torch: nextTorchEnabled }],
       });
 
@@ -529,7 +509,7 @@ export default function QuickEan13ScannerWeb({
       setTorchSupported(false);
       setTorchEnabled(false);
     }
-  }, [torchEnabled, torchSupported]);
+  }, [applyVideoConstraints, torchEnabled, torchSupported]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -546,10 +526,10 @@ export default function QuickEan13ScannerWeb({
 
     if (!isFocused) {
       stopCamera();
-      return;
+      return undefined;
     }
 
-    window.setTimeout(() => {
+    const timeoutId = window.setTimeout(() => {
       if (
         mountedRef.current &&
         focusedRef.current &&
@@ -559,6 +539,10 @@ export default function QuickEan13ScannerWeb({
         startCamera();
       }
     }, 120);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
   }, [isFocused, startCamera, stopCamera]);
 
   if (!scannerVisible && errorMessage) {
@@ -601,11 +585,7 @@ export default function QuickEan13ScannerWeb({
 
   return (
     <View style={styles.container}>
-      <View
-        nativeID={scannerElementId}
-        id={scannerElementId}
-        style={styles.scannerElement}
-      />
+      <video ref={videoRef} autoPlay playsInline muted style={styles.video} />
 
       <ScannerOverlay
         onCancel={onCancel}
@@ -635,8 +615,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#000000",
   },
 
-  scannerElement: {
-    ...StyleSheet.absoluteFillObject,
+  video: {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
     backgroundColor: "#000000",
   },
 
