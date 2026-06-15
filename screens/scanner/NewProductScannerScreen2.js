@@ -17,8 +17,6 @@ import {
   View,
 } from "react-native";
 
-import TestReactBarcodeScannerWeb from "../../components/features/scanner/TestReactBarcodeScanner.web";
-
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons } from "@expo/vector-icons";
@@ -468,6 +466,7 @@ export default function NewProductScannerScreen2() {
           backgroundColor="#000000"
           translucent={false}
         />
+        {/* 
         <BarcodeScanner
           options={{
             formats: ["ean_13"],
@@ -480,7 +479,7 @@ export default function NewProductScannerScreen2() {
           }}
           onCapture={handleWebDetected}
         />
-        {/* 
+        */}
         <QuickEan13Scanner
           key={`web-scanner-session-${scannerSession}`}
           onDetected={handleWebDetected}
@@ -495,7 +494,6 @@ export default function NewProductScannerScreen2() {
           showControls={showControls}
           showStatusBadges={showStatusBadges}
         />
-        */}
       </View>
     );
   }
