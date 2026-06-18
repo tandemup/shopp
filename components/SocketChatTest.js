@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, TextInput, Pressable, FlatList } from "react-native";
 
-import { socket } from "../services/socketClient";
+import { connectSocket } from "../services/socketClient";
 
 const ROOM_ID = "general";
 const USER_ID = "usuario-prueba";
@@ -12,7 +12,11 @@ export default function SocketChatTest() {
   const [messages, setMessages] = useState([]);
 
   useEffect(() => {
-    socket.connect();
+    const socket = connectSocket();
+
+    if (!socket) {
+      return undefined;
+    }
 
     function handleConnect() {
       setConnected(true);

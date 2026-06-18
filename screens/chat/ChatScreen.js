@@ -9,81 +9,143 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { socket } from "../../services/socketClient";
+
+import { connectSocket, getSocket } from "../../services/socketClient";
+
+const ROOM_ID = "general";
+
+function mergeMessages(current, incoming) {
+  const byId = new Map();
+
+  [...current, ...incoming].forEach((message) => {
+    if (message?.id != null) {
+      byId.set(String(message.id), message);
+    }
+  });
+
+  return [...byId.values()].sort((a, b) => {
+    return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+  });
+}
 
 export default function ChatScreen() {
   const scrollRef = useRef(null);
+  const userIdRef = useRef(
+    `shopp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  );
 
   const [connected, setConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState("");
   const [userName, setUserName] = useState("Josh");
   const [text, setText] = useState("");
   const [messages, setMessages] = useState([]);
 
   const statusText = useMemo(() => {
-    return connected ? "Conectado" : "Desconectado";
-  }, [connected]);
+    if (connected) return "Conectado";
+    if (connectionError) return "Error de conexión";
+    return "Desconectado";
+  }, [connected, connectionError]);
 
   useEffect(() => {
-    const handleConnect = () => {
+    const socket = connectSocket();
+
+    if (!socket) {
+      setConnectionError("Falta EXPO_PUBLIC_SOCKET_URL");
+      return undefined;
+    }
+
+    function joinRoom() {
+      socket.emit("room:join", { roomId: ROOM_ID }, (response) => {
+        if (!response?.ok) {
+          setConnectionError(response?.error || "No se pudo entrar en la sala");
+        }
+      });
+    }
+
+    function handleConnect() {
       console.log("Socket conectado:", socket.id);
       setConnected(true);
-    };
+      setConnectionError("");
+      joinRoom();
+    }
 
-    const handleDisconnect = (reason) => {
+    function handleDisconnect(reason) {
       console.log("Socket desconectado:", reason);
       setConnected(false);
-    };
+    }
 
-    const handleMessage = (message) => {
-      setMessages((prev) => [...prev, message]);
-    };
+    function handleHistory(payload = {}) {
+      if (payload.roomId !== ROOM_ID) return;
+      setMessages((current) => mergeMessages(current, payload.messages || []));
+    }
 
-    const handleConnectError = (error) => {
+    function handleNewMessage(message) {
+      if (message?.roomId !== ROOM_ID) return;
+      setMessages((current) => mergeMessages(current, [message]));
+    }
+
+    function handleConnectError(error) {
       console.log("Socket error:", error?.message);
       setConnected(false);
-    };
+      setConnectionError(error?.message || "No se pudo conectar");
+    }
 
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
-    socket.on("chat:message", handleMessage);
+    socket.on("room:history", handleHistory);
+    socket.on("message:new", handleNewMessage);
     socket.on("connect_error", handleConnectError);
 
-    if (!socket.connected) {
-      socket.connect();
+    if (socket.connected) {
+      handleConnect();
     }
 
     return () => {
       socket.off("connect", handleConnect);
       socket.off("disconnect", handleDisconnect);
-      socket.off("chat:message", handleMessage);
+      socket.off("room:history", handleHistory);
+      socket.off("message:new", handleNewMessage);
       socket.off("connect_error", handleConnectError);
 
-      socket.disconnect();
+      // Conservamos la conexión al navegar por Shopp. Socket.IO gestiona
+      // la reconexión y la siguiente entrada al chat vuelve a pedir historial.
     };
   }, []);
+
   useEffect(() => {
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       scrollRef.current?.scrollToEnd?.({ animated: true });
     }, 100);
+
+    return () => clearTimeout(timeoutId);
   }, [messages]);
 
-  const handleSend = () => {
+  function handleSend() {
     const cleanText = text.trim();
+    const socket = getSocket();
 
-    if (!cleanText) return;
-
-    const payload = {
-      user: userName.trim() || "Anónimo",
-      text: cleanText,
-    };
-    if (!socket.connected) {
-      console.log("No se puede enviar: socket desconectado");
+    if (!cleanText || !socket?.connected) {
       return;
     }
 
-    socket.emit("chat:message", payload);
-    setText("");
-  };
+    socket.emit(
+      "message:send",
+      {
+        roomId: ROOM_ID,
+        userId: userIdRef.current,
+        userName: userName.trim() || "Anónimo",
+        text: cleanText,
+      },
+      (response) => {
+        if (!response?.ok) {
+          setConnectionError(response?.error || "No se pudo enviar el mensaje");
+          return;
+        }
+
+        setText("");
+      },
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -104,6 +166,12 @@ export default function ChatScreen() {
         </View>
       </View>
 
+      {connectionError ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{connectionError}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.userBox}>
         <Text style={styles.label}>Nombre</Text>
 
@@ -112,6 +180,7 @@ export default function ChatScreen() {
           onChangeText={setUserName}
           placeholder="Tu nombre"
           style={styles.nameInput}
+          maxLength={100}
         />
       </View>
 
@@ -125,21 +194,34 @@ export default function ChatScreen() {
             <Text style={styles.emptyText}>Todavía no hay mensajes.</Text>
           </View>
         ) : (
-          messages.map((message, index) => (
-            <View key={`${message.id || index}`} style={styles.messageBubble}>
-              <Text style={styles.messageUser}>
-                {message.user || "Anónimo"}
-              </Text>
+          messages.map((message) => {
+            const isOwnMessage = message.userId === userIdRef.current;
 
-              <Text style={styles.messageText}>{message.text}</Text>
-
-              {message.createdAt ? (
-                <Text style={styles.messageDate}>
-                  {new Date(message.createdAt).toLocaleTimeString()}
+            return (
+              <View
+                key={String(message.id)}
+                style={[
+                  styles.messageBubble,
+                  isOwnMessage ? styles.ownMessage : styles.otherMessage,
+                ]}
+              >
+                <Text style={styles.messageUser}>
+                  {message.userName || "Anónimo"}
                 </Text>
-              ) : null}
-            </View>
-          ))
+
+                <Text style={styles.messageText}>{message.text}</Text>
+
+                {message.createdAt ? (
+                  <Text style={styles.messageDate}>
+                    {new Date(message.createdAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })
         )}
       </ScrollView>
 
@@ -150,12 +232,16 @@ export default function ChatScreen() {
           placeholder="Escribe un mensaje..."
           style={styles.messageInput}
           multiline
+          maxLength={1000}
+          onSubmitEditing={Platform.OS === "web" ? handleSend : undefined}
         />
 
         <Pressable
           onPress={handleSend}
+          disabled={!connected || !text.trim()}
           style={({ pressed }) => [
             styles.sendButton,
+            (!connected || !text.trim()) && styles.sendButtonDisabled,
             pressed && styles.sendButtonPressed,
           ]}
         >
@@ -171,7 +257,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f4f6f8",
   },
-
   header: {
     paddingHorizontal: 16,
     paddingTop: 18,
@@ -183,33 +268,38 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-
   title: {
     fontSize: 22,
     fontWeight: "800",
     color: "#111827",
   },
-
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
   },
-
   statusConnected: {
     backgroundColor: "#dcfce7",
   },
-
   statusDisconnected: {
     backgroundColor: "#fee2e2",
   },
-
   statusText: {
     fontSize: 12,
     fontWeight: "700",
     color: "#111827",
   },
-
+  errorBox: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "#fff1f2",
+    borderBottomWidth: 1,
+    borderBottomColor: "#fecdd3",
+  },
+  errorText: {
+    color: "#be123c",
+    fontSize: 13,
+  },
   userBox: {
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -217,14 +307,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
   },
-
   label: {
     fontSize: 12,
     fontWeight: "700",
     color: "#6b7280",
     marginBottom: 6,
   },
-
   nameInput: {
     backgroundColor: "#f9fafb",
     borderWidth: 1,
@@ -235,55 +323,55 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#111827",
   },
-
   messagesContainer: {
     flex: 1,
   },
-
   messagesContent: {
     padding: 16,
     paddingBottom: 24,
   },
-
   emptyBox: {
     marginTop: 40,
     alignItems: "center",
   },
-
   emptyText: {
     color: "#6b7280",
     fontSize: 15,
   },
-
   messageBubble: {
-    backgroundColor: "#ffffff",
+    maxWidth: "85%",
     borderRadius: 16,
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
+  },
+  ownMessage: {
+    alignSelf: "flex-end",
+    backgroundColor: "#ede9fe",
+    borderColor: "#c4b5fd",
+  },
+  otherMessage: {
+    alignSelf: "flex-start",
+    backgroundColor: "#ffffff",
     borderColor: "#e5e7eb",
   },
-
   messageUser: {
     fontSize: 13,
     fontWeight: "800",
-    color: "#2563eb",
+    color: "#7c3aed",
     marginBottom: 4,
   },
-
   messageText: {
     fontSize: 16,
     color: "#111827",
     lineHeight: 22,
   },
-
   messageDate: {
     marginTop: 6,
     fontSize: 11,
-    color: "#9ca3af",
+    color: "#6b7280",
     textAlign: "right",
   },
-
   inputBar: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -293,7 +381,6 @@ const styles = StyleSheet.create({
     borderTopColor: "#e5e7eb",
     gap: 8,
   },
-
   messageInput: {
     flex: 1,
     maxHeight: 120,
@@ -306,18 +393,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#111827",
   },
-
   sendButton: {
-    backgroundColor: "#2563eb",
+    backgroundColor: "#7c3aed",
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 14,
   },
-
+  sendButtonDisabled: {
+    opacity: 0.45,
+  },
   sendButtonPressed: {
     opacity: 0.75,
   },
-
   sendButtonText: {
     color: "#ffffff",
     fontWeight: "800",

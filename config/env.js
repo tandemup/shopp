@@ -1,24 +1,16 @@
-const rawSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL?.trim();
+import { Platform } from "react-native";
 
-if (!rawSocketUrl) {
-  throw new Error(
-    [
-      "Falta la variable EXPO_PUBLIC_SOCKET_URL.",
-      "Configúrala en:",
-      "- .env.local para desarrollo local",
-      "- Netlify para la versión web",
-      "- EAS para compilaciones Android/iOS",
-    ].join("\n"),
+const configuredSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL?.trim();
+
+const developmentFallback =
+  Platform.OS === "web" ? "http://localhost:3001" : "http://192.168.1.50:3001";
+
+export const SOCKET_SERVER_URL = (
+  configuredSocketUrl || (__DEV__ ? developmentFallback : "")
+).replace(/\/+$/, "");
+
+if (!SOCKET_SERVER_URL) {
+  console.warn(
+    "Falta EXPO_PUBLIC_SOCKET_URL. El chat permanecerá desconectado hasta configurarla.",
   );
 }
-
-if (
-  !rawSocketUrl.startsWith("https://") &&
-  !rawSocketUrl.startsWith("http://")
-) {
-  throw new Error(
-    "EXPO_PUBLIC_SOCKET_URL debe comenzar por https:// o http://",
-  );
-}
-
-export const SOCKET_SERVER_URL = rawSocketUrl.replace(/\/+$/, "");
