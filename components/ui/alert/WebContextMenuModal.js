@@ -37,6 +37,7 @@ function getActionColors(style) {
       };
   }
 }
+
 export default function WebContextMenuModal({ dialog, onSelect, onClose }) {
   if (!dialog) {
     return null;
@@ -53,18 +54,17 @@ export default function WebContextMenuModal({ dialog, onSelect, onClose }) {
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <Pressable
-        style={styles.overlay}
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel="Cerrar menú"
-      >
+      <View style={styles.overlay}>
         <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityLabel="Cerrar menú"
+        />
+
+        <View
           style={styles.sheet}
           accessibilityViewIsModal
-          onPress={(event) => {
-            event.stopPropagation?.();
-          }}
+          accessibilityRole="dialog"
         >
           {!!dialog.title && <Text style={styles.title}>{dialog.title}</Text>}
 
@@ -160,8 +160,8 @@ export default function WebContextMenuModal({ dialog, onSelect, onClose }) {
               );
             })}
           </View>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -169,9 +169,12 @@ export default function WebContextMenuModal({ dialog, onSelect, onClose }) {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
+
     backgroundColor: "rgba(15, 23, 42, 0.18)",
+
     justifyContent: "center",
     alignItems: "center",
+
     paddingHorizontal: 32,
     paddingVertical: 24,
   },
@@ -193,10 +196,12 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.8)",
 
     shadowColor: "#000000",
+
     shadowOffset: {
       width: 0,
       height: 8,
     },
+
     shadowOpacity: 0.18,
     shadowRadius: 20,
 
@@ -252,7 +257,12 @@ const styles = StyleSheet.create({
 
   actionButtonPressed: {
     opacity: 0.78,
-    transform: [{ scale: 0.985 }],
+
+    transform: [
+      {
+        scale: 0.985,
+      },
+    ],
   },
 
   actionButtonDisabled: {

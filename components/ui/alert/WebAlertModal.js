@@ -38,18 +38,19 @@ export default function WebAlertModal({ dialog, onSelect, onClose }) {
       presentationStyle="overFullScreen"
       onRequestClose={onClose}
     >
-      <Pressable
-        style={styles.overlay}
-        onPress={isQuestion ? onClose : undefined}
-      >
-        <Pressable
+      <View style={styles.overlay}>
+        {isQuestion ? (
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onClose}
+            accessibilityLabel="Cerrar diálogo"
+          />
+        ) : null}
+
+        <View
           accessibilityRole="alert"
+          accessibilityViewIsModal
           style={styles.dialog}
-          onPress={() => {
-            /*
-             * Evita que pulsar dentro del cuadro cierre el modal.
-             */
-          }}
         >
           <View style={styles.content}>
             {dialog.title ? (
@@ -68,6 +69,7 @@ export default function WebAlertModal({ dialog, onSelect, onClose }) {
           <View
             style={[
               styles.actions,
+
               buttons.length === 1 && styles.singleAction,
             ]}
           >
@@ -81,6 +83,10 @@ export default function WebAlertModal({ dialog, onSelect, onClose }) {
                   key={button.key ?? button.text ?? String(index)}
                   accessibilityRole="button"
                   accessibilityLabel={button.text}
+                  accessibilityState={{
+                    disabled: button.disabled === true,
+                  }}
+                  disabled={button.disabled === true}
                   onPress={() => onSelect(index)}
                   style={({ pressed }) => [
                     styles.actionButton,
@@ -92,6 +98,8 @@ export default function WebAlertModal({ dialog, onSelect, onClose }) {
                     isDestructive && styles.destructiveButton,
 
                     pressed && styles.pressedButton,
+
+                    button.disabled === true && styles.disabledButton,
                   ]}
                 >
                   <Text
@@ -112,8 +120,8 @@ export default function WebAlertModal({ dialog, onSelect, onClose }) {
               );
             })}
           </View>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -121,6 +129,7 @@ export default function WebAlertModal({ dialog, onSelect, onClose }) {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
+
     justifyContent: "center",
     alignItems: "center",
 
@@ -143,10 +152,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
 
     shadowColor: "#000000",
+
     shadowOffset: {
       width: 0,
       height: 10,
     },
+
     shadowOpacity: 0.18,
     shadowRadius: 24,
 
@@ -167,6 +178,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 26,
     fontWeight: "700",
+
     textAlign: "left",
   },
 
@@ -176,6 +188,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 23,
     fontWeight: "400",
+
     textAlign: "left",
   },
 
@@ -187,6 +200,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "400",
+
     textAlign: "left",
   },
 
@@ -236,16 +250,22 @@ const styles = StyleSheet.create({
 
   cancelButton: {
     borderColor: "#CBD5E1",
+
     backgroundColor: "#F1F5F9",
   },
 
   destructiveButton: {
     borderColor: "#FCA5A5",
+
     backgroundColor: "#FFFFFF",
   },
 
   pressedButton: {
     opacity: Platform.OS === "web" ? 0.75 : 0.68,
+  },
+
+  disabledButton: {
+    opacity: 0.45,
   },
 
   actionText: {
@@ -254,6 +274,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     fontWeight: "600",
+
     textAlign: "center",
   },
 
