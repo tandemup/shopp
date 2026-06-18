@@ -12,7 +12,6 @@ import {
 import { socket } from "../../services/socketClient";
 
 export default function ChatScreen() {
-  const socketRef = useRef(null);
   const scrollRef = useRef(null);
 
   const [connected, setConnected] = useState(false);

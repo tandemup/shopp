@@ -1,4 +1,4 @@
-// components/common/WebAlertModal.js
+// components/ui/alert/WebAlertModal.js
 
 import React from "react";
 
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 10,
 
-    borderWidth: 1,
+    borderWidth: 3,
     borderColor: "#D1D5DB",
     borderRadius: 12,
 
