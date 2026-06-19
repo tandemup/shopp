@@ -7,7 +7,7 @@ import {
   getScannedEntryByBarcode,
   saveScannedEntry,
 } from "../../services/scannerHistory";
-import { SafeAlert } from "../../components/ui/alert/SafeAlert";
+import { safeAlert } from "../../components/ui/alert/safeAlert";
 import { ROUTES } from "../../navigation/ROUTES";
 import { lookupProductByBarcode } from "../../services/productLookup";
 
@@ -138,7 +138,7 @@ export default function ScannerScreen() {
     } catch (error) {
       console.log("Error handling scanned barcode:", error);
 
-      SafeAlert("Error", "No se pudo procesar el código escaneado", [
+      safeAlert("Error", "No se pudo procesar el código escaneado", [
         {
           text: "Cerrar",
           onPress: () => {

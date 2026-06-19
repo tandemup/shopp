@@ -1,1 +1,1 @@
-export { SafeMenu } from "./SafeAlert";
+export { safeMenu } from "./safeAlert";

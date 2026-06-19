@@ -73,9 +73,9 @@ function runButton(button) {
   button.onPress?.();
 }
 
-function SafeMenuWebFallback(title, message, buttons) {
+function safeMenuWebFallback(title, message, buttons) {
   if (typeof window === "undefined") {
-    console.warn("SafeMenu: window no está disponible.");
+    console.warn("safeMenu: window no está disponible.");
 
     return;
   }
@@ -120,9 +120,9 @@ function SafeMenuWebFallback(title, message, buttons) {
   runButton(selectedButton);
 }
 
-function SafeAlertWebFallback(title, message, buttons) {
+function safeAlertWebFallback(title, message, buttons) {
   if (typeof window === "undefined") {
-    console.warn("SafeAlert: window no está disponible.");
+    console.warn("safeAlert: window no está disponible.");
 
     return;
   }
@@ -161,7 +161,7 @@ function SafeAlertWebFallback(title, message, buttons) {
     return;
   }
 
-  SafeMenuWebFallback(title, message, buttons);
+  safeMenuWebFallback(title, message, buttons);
 }
 
 function ShowNativeFallback(title, message, buttons) {
@@ -185,7 +185,7 @@ function ShowNativeFallback(title, message, buttons) {
 /**
  * Muestra una alerta con la misma interfaz en iOS, Android y Web.
  */
-export function SafeAlert(title, message, buttons = []) {
+export function safeAlert(title, message, buttons = []) {
   const normalizedButtons = normalizeButtons(buttons);
 
   const finalButtons =
@@ -216,7 +216,7 @@ export function SafeAlert(title, message, buttons = []) {
   }
 
   if (Platform.OS === "web") {
-    SafeAlertWebFallback(title, message, normalizedButtons);
+    safeAlertWebFallback(title, message, normalizedButtons);
 
     return;
   }
@@ -235,7 +235,7 @@ export function SafeConfirm(title, message, onConfirm, options = {}) {
     onCancel,
   } = options;
 
-  SafeAlert(title, message, [
+  safeAlert(title, message, [
     {
       key: "cancel",
       text: cancelText,
@@ -254,11 +254,11 @@ export function SafeConfirm(title, message, onConfirm, options = {}) {
 /**
  * Muestra un menú de opciones con la misma interfaz en iOS, Android y Web.
  */
-export function SafeMenu(title, message, buttons = []) {
+export function safeMenu(title, message, buttons = []) {
   const normalizedButtons = normalizeButtons(buttons);
 
   if (normalizedButtons.length === 0) {
-    SafeAlert(title, message || "No hay opciones disponibles.");
+    safeAlert(title, message || "No hay opciones disponibles.");
 
     return;
   }
@@ -280,7 +280,7 @@ export function SafeMenu(title, message, buttons = []) {
   }
 
   if (Platform.OS === "web") {
-    SafeMenuWebFallback(title, message, normalizedButtons);
+    safeMenuWebFallback(title, message, normalizedButtons);
 
     return;
   }

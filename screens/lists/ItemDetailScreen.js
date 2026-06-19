@@ -51,7 +51,7 @@ import { validatePromotionUnit } from "../../utils/pricing";
 import { formatCurrency } from "../../utils/store/prices";
 import { formatUnit } from "../../utils/pricing/unitFormat";
 
-import { SafeAlert } from "../../components/ui/alert/SafeAlert";
+import { safeAlert } from "../../components/ui/alert/safeAlert";
 
 /* ────────────────────────────────────────────────
    CATEGORY HELPERS
@@ -988,13 +988,13 @@ export default function ItemDetailScreen() {
 
   const handleSave = () => {
     if (!name.trim()) {
-      SafeAlert("Nombre vacío", "El producto debe tener un nombre");
+      safeAlert("Nombre vacío", "El producto debe tener un nombre");
 
       return;
     }
 
     if (isUnitInvalid) {
-      SafeAlert(
+      safeAlert(
         "Cantidad inválida",
         "Para unidades (u) la cantidad debe ser un número entero",
       );
@@ -1008,7 +1008,7 @@ export default function ItemDetailScreen() {
     );
 
     if (!promoValidation.valid) {
-      SafeAlert("Oferta inválida", promoValidation.message);
+      safeAlert("Oferta inválida", promoValidation.message);
 
       return;
     }
@@ -1028,7 +1028,7 @@ export default function ItemDetailScreen() {
   };
 
   const handleDelete = () => {
-    SafeAlert(
+    safeAlert(
       "Eliminar producto",
       `¿Seguro que quieres eliminar "${item?.name}"?`,
       [
@@ -1053,7 +1053,7 @@ export default function ItemDetailScreen() {
     const code = String(barcode ?? "").trim();
 
     if (!code) {
-      SafeAlert(
+      safeAlert(
         "Código vacío",
         "Introduce o escanea un código de barras primero",
       );
@@ -1096,7 +1096,7 @@ export default function ItemDetailScreen() {
         closePreparedExternalWindow(preparedWindow);
 
         if (result.reason === "popup-blocked") {
-          SafeAlert(
+          safeAlert(
             "Ventana bloqueada",
             "El navegador ha bloqueado la pestaña del buscador. Permite las ventanas emergentes para esta página e inténtalo de nuevo.",
           );
@@ -1104,14 +1104,14 @@ export default function ItemDetailScreen() {
           return;
         }
 
-        SafeAlert("Error", "No se pudo abrir el buscador");
+        safeAlert("Error", "No se pudo abrir el buscador");
       }
     } catch (error) {
       closePreparedExternalWindow(preparedWindow);
 
       console.error("Error al buscar el código de barras:", error);
 
-      SafeAlert("Error", "No se pudo abrir el buscador");
+      safeAlert("Error", "No se pudo abrir el buscador");
     }
   };
 

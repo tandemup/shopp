@@ -23,7 +23,7 @@ import CheckoutBar from "../../components/features/checkout/CheckoutBar";
 import CurrencyBadge from "../../components/ui/CurrencyBadge";
 
 import { ROUTES } from "../../navigation/ROUTES";
-import { SafeAlert } from "../../components/ui/alert/SafeAlert";
+import { safeAlert } from "../../components/ui/alert/safeAlert";
 import WebZoomResetButton from "../../components/WebZoomResetButton";
 
 export default function ShoppingListScreen() {
@@ -124,13 +124,13 @@ export default function ShoppingListScreen() {
 
   const handleCheckout = () => {
     if (!list.items.length) {
-      SafeAlert("Lista vacía", "No puedes archivar una lista sin productos.", [
+      safeAlert("Lista vacía", "No puedes archivar una lista sin productos.", [
         { text: "Aceptar" },
       ]);
       return;
     }
 
-    SafeAlert(
+    safeAlert(
       "Finalizar compra",
       "¿Quieres archivar esta lista y guardar el historial de compras?",
       [

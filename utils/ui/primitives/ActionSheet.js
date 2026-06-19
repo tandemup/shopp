@@ -1,5 +1,5 @@
-import { SafeMenu } from "../../../components/ui/alert/SafeAlert";
+import { safeMenu } from "../../../components/ui/alert/safeAlert";
 
 export function showOptions(title, options = []) {
-  return SafeMenu(title, "", options);
+  return safeMenu(title, "", options);
 }

@@ -17,8 +17,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ROUTES } from "../../navigation/ROUTES";
 import { buildHeaderConfig } from "../../utils/layout/headerStyles";
-import { SafeAlert } from "../../components/ui/alert/SafeAlert";
-import { SafeQuestion } from "../../components/ui/alert/SafeQuestion";
+import { safeAlert } from "../../components/ui/alert/safeAlert";
+import { safeQuestion } from "../../components/ui/alert/safeQuestion";
 
 import {
   getScannedHistory,
@@ -87,12 +87,12 @@ export default function ScannedHistoryScreen({ navigation, route }) {
       setFilteredItems(onlyScanned);
     } catch (error) {
       console.log("Error loading scanned history:", error);
-      SafeAlert("Error", "No se pudo cargar el historial de escaneos");
+      safeAlert("Error", "No se pudo cargar el historial de escaneos");
     }
   };
 
   const handleDelete = (item) => {
-    SafeQuestion(
+    safeQuestion(
       "Eliminar escaneo",
       `¿Deseas eliminar este escaneo?\n\n${item.name || item.barcode}`,
       {
@@ -103,7 +103,7 @@ export default function ScannedHistoryScreen({ navigation, route }) {
             await loadScannedHistory();
           } catch (error) {
             console.log("Error deleting scanned item:", error);
-            SafeAlert("Error", "No se pudo eliminar el escaneo");
+            safeAlert("Error", "No se pudo eliminar el escaneo");
           }
         },
       },
