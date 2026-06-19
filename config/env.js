@@ -2,15 +2,18 @@ import { Platform } from "react-native";
 
 const configuredSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL?.trim();
 
+// Web local en el Mac: http://localhost:3001
+// Expo Go en teléfono físico: define EXPO_PUBLIC_SOCKET_URL con la IP LAN del Mac,
+// por ejemplo http://192.168.1.50:3001. En un móvil, localhost apunta al propio móvil.
 const developmentFallback =
-  Platform.OS === "web" ? "http://localhost:3001" : "http://192.168.1.50:3001";
+  Platform.OS === "web" ? "http://localhost:3001" : "";
 
 export const SOCKET_SERVER_URL = (
-  configuredSocketUrl || (__DEV__ ? developmentFallback : "")
+  configuredSocketUrl || developmentFallback
 ).replace(/\/+$/, "");
 
 if (!SOCKET_SERVER_URL) {
   console.warn(
-    "Falta EXPO_PUBLIC_SOCKET_URL. El chat permanecerá desconectado hasta configurarla.",
+    "Falta EXPO_PUBLIC_SOCKET_URL. En Expo Go usa la IP LAN del servidor, por ejemplo http://192.168.1.50:3001.",
   );
 }

@@ -1,10 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, TextInput, Pressable, FlatList } from "react-native";
 
-import { connectSocket } from "@/services/socketClient";
-
-const ROOM_ID = "general";
-const USER_ID = "usuario-prueba";
+import chatSocket from "@/services/chatSocket";
 
 export default function SocketChatTest() {
   const [connected, setConnected] = useState(false);
@@ -12,70 +9,64 @@ export default function SocketChatTest() {
   const [messages, setMessages] = useState([]);
 
   useEffect(() => {
-    const socket = connectSocket();
-
-    if (!socket) {
-      return undefined;
-    }
-
     function handleConnect() {
       setConnected(true);
-
-      socket.emit("room:join", {
-        roomId: ROOM_ID,
-      });
     }
 
     function handleDisconnect() {
       setConnected(false);
     }
 
-    function handleHistory(payload) {
-      setMessages(payload.messages || []);
-    }
-
-    function handleNewMessage(message) {
+    function handleSystemMessage(message) {
       setMessages((current) => [...current, message]);
     }
 
-    socket.on("connect", handleConnect);
-    socket.on("disconnect", handleDisconnect);
-    socket.on("room:history", handleHistory);
-    socket.on("message:new", handleNewMessage);
+    function handleChatMessage(message) {
+      setMessages((current) => [...current, message]);
+    }
+
+    function handleChatError(error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: `error-${Date.now()}`,
+          user: "Sistema",
+          text: error?.message || "Error de chat",
+        },
+      ]);
+    }
+
+    chatSocket.on("connect", handleConnect);
+    chatSocket.on("disconnect", handleDisconnect);
+    chatSocket.on("chat:system", handleSystemMessage);
+    chatSocket.on("chat:message", handleChatMessage);
+    chatSocket.on("chat:error", handleChatError);
+
+    chatSocket.connect();
 
     return () => {
-      socket.off("connect", handleConnect);
-      socket.off("disconnect", handleDisconnect);
-      socket.off("room:history", handleHistory);
-      socket.off("message:new", handleNewMessage);
-
-      socket.disconnect();
+      chatSocket.off("connect", handleConnect);
+      chatSocket.off("disconnect", handleDisconnect);
+      chatSocket.off("chat:system", handleSystemMessage);
+      chatSocket.off("chat:message", handleChatMessage);
+      chatSocket.off("chat:error", handleChatError);
+      chatSocket.disconnect();
     };
   }, []);
 
   function handleSend() {
     const cleanText = text.trim();
 
-    if (!cleanText) {
+    if (!cleanText || !connected) {
       return;
     }
 
-    socket.emit(
-      "message:send",
-      {
-        roomId: ROOM_ID,
-        userId: USER_ID,
-        text: cleanText,
-      },
-      (response) => {
-        if (!response?.ok) {
-          console.error("No se pudo enviar:", response?.error);
-          return;
-        }
+    chatSocket.emit("chat:message", {
+      user: "usuario-prueba",
+      text: cleanText,
+    });
 
-        setText("");
-      },
-    );
+    setText("");
   }
 
   return (
@@ -84,10 +75,10 @@ export default function SocketChatTest() {
 
       <FlatList
         data={messages}
-        keyExtractor={(item) => String(item.id)}
+        keyExtractor={(item, index) => String(item.id || index)}
         renderItem={({ item }) => (
           <Text style={{ paddingVertical: 6 }}>
-            {item.userId}: {item.text}
+            {item.user || "Sistema"}: {item.text}
           </Text>
         )}
       />
@@ -96,6 +87,8 @@ export default function SocketChatTest() {
         value={text}
         onChangeText={setText}
         placeholder="Escribe un mensaje"
+        onSubmitEditing={handleSend}
+        returnKeyType="send"
         style={{
           borderWidth: 1,
           borderRadius: 8,
@@ -106,10 +99,12 @@ export default function SocketChatTest() {
 
       <Pressable
         onPress={handleSend}
+        disabled={!connected || !text.trim()}
         style={{
           borderWidth: 1,
           borderRadius: 8,
           padding: 12,
+          opacity: connected && text.trim() ? 1 : 0.5,
         }}
       >
         <Text>Enviar</Text>

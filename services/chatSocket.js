@@ -1,7 +1,7 @@
 import { io } from "socket.io-client";
 
 const SOCKET_SERVER_URL =
-  process.env.EXPO_PUBLIC_SOCKET_URL?.trim() || "http://localhost:3000";
+  process.env.EXPO_PUBLIC_SOCKET_URL?.trim() || "http://localhost:3001";
 
 export const chatSocket = io(SOCKET_SERVER_URL.replace(/\/+$/, ""), {
   transports: ["websocket", "polling"],
