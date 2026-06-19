@@ -1,4 +1,4 @@
-// components/ui/alert/safeQuestion.js
+// components/ui/alert/SafeQuestion.js
 
 import { SafeAlert } from "./SafeAlert";
 

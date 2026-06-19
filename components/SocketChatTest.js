@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, TextInput, Pressable, FlatList } from "react-native";
 
-import { connectSocket } from "../services/socketClient";
+import { connectSocket } from "@/services/socketClient";
 
 const ROOM_ID = "general";
 const USER_ID = "usuario-prueba";

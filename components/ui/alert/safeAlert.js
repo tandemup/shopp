@@ -75,7 +75,7 @@ function runButton(button) {
 
 function SafeMenuWebFallback(title, message, buttons) {
   if (typeof window === "undefined") {
-    console.warn("safeMenu: window no está disponible.");
+    console.warn("SafeMenu: window no está disponible.");
 
     return;
   }
@@ -164,7 +164,7 @@ function SafeAlertWebFallback(title, message, buttons) {
   SafeMenuWebFallback(title, message, buttons);
 }
 
-function showNativeFallback(title, message, buttons) {
+function ShowNativeFallback(title, message, buttons) {
   if (buttons.length === 0) {
     Alert.alert(title ?? "", message ?? "");
 
@@ -221,7 +221,7 @@ export function SafeAlert(title, message, buttons = []) {
     return;
   }
 
-  showNativeFallback(title, message, normalizedButtons);
+  ShowNativeFallback(title, message, normalizedButtons);
 }
 
 /**
@@ -254,7 +254,7 @@ export function SafeConfirm(title, message, onConfirm, options = {}) {
 /**
  * Muestra un menú de opciones con la misma interfaz en iOS, Android y Web.
  */
-export function safeMenu(title, message, buttons = []) {
+export function SafeMenu(title, message, buttons = []) {
   const normalizedButtons = normalizeButtons(buttons);
 
   if (normalizedButtons.length === 0) {
@@ -280,10 +280,10 @@ export function safeMenu(title, message, buttons = []) {
   }
 
   if (Platform.OS === "web") {
-    safeMenuWebFallback(title, message, normalizedButtons);
+    SafeMenuWebFallback(title, message, normalizedButtons);
 
     return;
   }
 
-  showNativeFallback(title, message, normalizedButtons);
+  ShowNativeFallback(title, message, normalizedButtons);
 }

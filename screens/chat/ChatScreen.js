@@ -1,36 +1,56 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, TextInput, Pressable, FlatList } from "react-native";
-import chatSocket from "../../services/chatSocket";
+import chatSocket from "@/services/chatSocket";
 
 export default function ChatScreen() {
-  const [connected, setConnected] = React.useState(false);
-  const [text, setText] = React.useState("");
-  const [messages, setMessages] = React.useState([]);
+  const [connected, setConnected] = useState(false);
+  const [text, setText] = useState("");
+  const [messages, setMessages] = useState([]);
 
-  React.useEffect(() => {
+  useEffect(() => {
+    const handleConnect = () => {
+      setConnected(true);
+    };
+
+    const handleDisconnect = () => {
+      setConnected(false);
+    };
+
+    const handleConnectError = (error) => {
+      setConnected(false);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `error-${Date.now()}`,
+          user: "Sistema",
+          text: `Error de conexión: ${error?.message || "desconocido"}`,
+        },
+      ]);
+    };
+
+    const handleSystemMessage = (message) => {
+      setMessages((prev) => [...prev, message]);
+    };
+
+    const handleChatMessage = (message) => {
+      setMessages((prev) => [...prev, message]);
+    };
+
+    chatSocket.on("connect", handleConnect);
+    chatSocket.on("disconnect", handleDisconnect);
+    chatSocket.on("connect_error", handleConnectError);
+    chatSocket.on("chat:system", handleSystemMessage);
+    chatSocket.on("chat:message", handleChatMessage);
+
     chatSocket.connect();
 
-    chatSocket.on("connect", () => {
-      setConnected(true);
-    });
-
-    chatSocket.on("disconnect", () => {
-      setConnected(false);
-    });
-
-    chatSocket.on("chat:system", (message) => {
-      setMessages((prev) => [...prev, message]);
-    });
-
-    chatSocket.on("chat:message", (message) => {
-      setMessages((prev) => [...prev, message]);
-    });
-
     return () => {
-      chatSocket.off("connect");
-      chatSocket.off("disconnect");
-      chatSocket.off("chat:system");
-      chatSocket.off("chat:message");
+      chatSocket.off("connect", handleConnect);
+      chatSocket.off("disconnect", handleDisconnect);
+      chatSocket.off("connect_error", handleConnectError);
+      chatSocket.off("chat:system", handleSystemMessage);
+      chatSocket.off("chat:message", handleChatMessage);
       chatSocket.disconnect();
     };
   }, []);
@@ -38,7 +58,7 @@ export default function ChatScreen() {
   const sendMessage = () => {
     const cleanText = text.trim();
 
-    if (!cleanText) return;
+    if (!cleanText || !connected) return;
 
     chatSocket.emit("chat:message", {
       text: cleanText,
@@ -47,6 +67,8 @@ export default function ChatScreen() {
 
     setText("");
   };
+
+  const canSend = connected && text.trim().length > 0;
 
   return (
     <View style={{ flex: 1, padding: 16 }}>
@@ -68,6 +90,8 @@ export default function ChatScreen() {
           value={text}
           onChangeText={setText}
           placeholder="Escribe un mensaje"
+          onSubmitEditing={sendMessage}
+          returnKeyType="send"
           style={{
             flex: 1,
             borderWidth: 1,
@@ -79,11 +103,12 @@ export default function ChatScreen() {
 
         <Pressable
           onPress={sendMessage}
+          disabled={!canSend}
           style={{
             paddingHorizontal: 16,
             justifyContent: "center",
             borderRadius: 8,
-            backgroundColor: "#6d28d9",
+            backgroundColor: canSend ? "#6d28d9" : "#aaa",
           }}
         >
           <Text style={{ color: "white", fontWeight: "700" }}>Enviar</Text>
