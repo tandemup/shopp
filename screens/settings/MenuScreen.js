@@ -23,7 +23,7 @@ import { useCameraPermissions } from "expo-camera";
 import * as Location from "expo-location";
 
 import { ROUTES } from "../../navigation/ROUTES";
-import { safeAlert } from "../../components/ui/alert/safeAlert";
+import { SafeAlert } from "../../components/ui/alert/SafeAlert";
 import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 
 import {
@@ -74,14 +74,14 @@ function getPermissionColor(permission) {
 async function handlePermissionPress(permission, requestPermission, label) {
   if (permission?.granted) {
     if (Platform.OS === "web") {
-      safeAlert(
+      SafeAlert(
         `${label} concedido`,
         "El permiso ya está concedido. Para volver a preguntar, revócalo desde los permisos del sitio: pulsa el icono junto a la URL, cambia el permiso a bloquear o preguntar, y recarga la página.",
       );
       return;
     }
 
-    safeAlert(
+    SafeAlert(
       `${label} concedido`,
       "El permiso ya está concedido. Android/iOS no permiten anularlo desde la app para volver a mostrar el diálogo del sistema. Puedes revocarlo manualmente desde Ajustes y después volver a tocar esta opción.",
       [
@@ -100,7 +100,7 @@ async function handlePermissionPress(permission, requestPermission, label) {
 
   if (permission?.canAskAgain === false) {
     if (Platform.OS === "web") {
-      safeAlert(
+      SafeAlert(
         "Permiso bloqueado",
         "El permiso está bloqueado en el navegador. Para cambiarlo, pulsa el icono de permisos junto a la URL y habilita el acceso desde los ajustes del sitio.",
       );
@@ -427,7 +427,7 @@ export default function MenuScreen({ navigation }) {
             canAskAgain: false,
           });
 
-          safeAlert(
+          SafeAlert(
             "Ubicación no disponible",
             "Este navegador no permite usar geolocalización.",
           );
@@ -546,7 +546,7 @@ export default function MenuScreen({ navigation }) {
   };
 
   const handleReloadStores = () => {
-    safeAlert(
+    SafeAlert(
       "Recargar tiendas",
       "Se eliminarán los cambios locales en tiendas y se volverán a cargar desde los datos iniciales. ¿Continuar?",
       [
@@ -564,7 +564,7 @@ export default function MenuScreen({ navigation }) {
   };
 
   const handleClearAllStorage = () => {
-    safeAlert(
+    SafeAlert(
       "Borrar almacenamiento",
       "¿Seguro? Esta acción no se puede deshacer.",
       [
@@ -711,7 +711,7 @@ export default function MenuScreen({ navigation }) {
                   description="Necesario solo si grabas vídeo con audio."
                   permission={null}
                   onPress={() => {
-                    safeAlert(
+                    SafeAlert(
                       "Micrófono",
                       "Shopp no necesita micrófono para escanear códigos de barras.",
                     );
@@ -757,7 +757,7 @@ export default function MenuScreen({ navigation }) {
               subtitle="Elimina las listas de compra que todavía no están archivadas"
               danger
               onPress={() =>
-                safeAlert("Borrar listas activas", "¿Seguro?", [
+                SafeAlert("Borrar listas activas", "¿Seguro?", [
                   { text: "Cancelar", style: "cancel" },
                   {
                     text: "Borrar",
@@ -774,7 +774,7 @@ export default function MenuScreen({ navigation }) {
               subtitle="Elimina las listas guardadas como archivadas"
               danger
               onPress={() =>
-                safeAlert("Borrar listas archivadas", "¿Seguro?", [
+                SafeAlert("Borrar listas archivadas", "¿Seguro?", [
                   { text: "Cancelar", style: "cancel" },
                   {
                     text: "Borrar",
@@ -791,7 +791,7 @@ export default function MenuScreen({ navigation }) {
               subtitle="Limpia los registros generados a partir de compras anteriores"
               danger
               onPress={() =>
-                safeAlert("Borrar historial de compras", "¿Seguro?", [
+                SafeAlert("Borrar historial de compras", "¿Seguro?", [
                   { text: "Cancelar", style: "cancel" },
                   {
                     text: "Borrar",
@@ -808,7 +808,7 @@ export default function MenuScreen({ navigation }) {
               subtitle="Elimina productos y códigos guardados desde el scanner"
               danger
               onPress={() =>
-                safeAlert("Borrar historial de escaneos", "¿Seguro?", [
+                SafeAlert("Borrar historial de escaneos", "¿Seguro?", [
                   { text: "Cancelar", style: "cancel" },
                   {
                     text: "Borrar",

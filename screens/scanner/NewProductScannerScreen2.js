@@ -38,7 +38,7 @@ import { ROUTES } from "../../navigation/ROUTES";
 
 import { buildHeaderConfig } from "../../utils/layout/headerStyles";
 
-import { safeAlert, safeMenu } from "../../components/ui/alert/safeAlert";
+import { SafeAlert, SafeMenu } from "../../components/ui/alert/SafeAlert";
 
 import {
   getScannedEntryByBarcode,
@@ -291,7 +291,7 @@ export default function NewProductScannerScreen2() {
 
       resetScannerForNextScan();
 
-      safeAlert(
+      SafeAlert(
         "Error de navegación",
         "Se detectó el código, pero no se pudo regresar al producto.",
       );
@@ -418,7 +418,7 @@ export default function NewProductScannerScreen2() {
 
       resetScannerForNextScan();
 
-      safeAlert("Error", "No se pudo procesar el producto escaneado", [
+      SafeAlert("Error", "No se pudo procesar el producto escaneado", [
         {
           key: "close",
           text: "Cerrar",
@@ -447,7 +447,7 @@ export default function NewProductScannerScreen2() {
     setLocked(true);
 
     setTorchEnabled(false);
-    safeMenu(
+    SafeMenu(
       "Producto detectado",
       `Código: ${barcode}\n\n¿Quieres añadir este producto al historial de escaneos?`,
       [
@@ -490,7 +490,7 @@ export default function NewProductScannerScreen2() {
 
     resetScannerForNextScan();
 
-    safeAlert(
+    SafeAlert(
       "No se pudo iniciar la cámara",
 
       "Comprueba que el navegador o la aplicación tienen permiso para utilizar la cámara.",

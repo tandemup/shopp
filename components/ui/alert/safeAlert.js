@@ -73,7 +73,7 @@ function runButton(button) {
   button.onPress?.();
 }
 
-function safeMenuWebFallback(title, message, buttons) {
+function SafeMenuWebFallback(title, message, buttons) {
   if (typeof window === "undefined") {
     console.warn("safeMenu: window no está disponible.");
 
@@ -120,9 +120,9 @@ function safeMenuWebFallback(title, message, buttons) {
   runButton(selectedButton);
 }
 
-function safeAlertWebFallback(title, message, buttons) {
+function SafeAlertWebFallback(title, message, buttons) {
   if (typeof window === "undefined") {
-    console.warn("safeAlert: window no está disponible.");
+    console.warn("SafeAlert: window no está disponible.");
 
     return;
   }
@@ -161,7 +161,7 @@ function safeAlertWebFallback(title, message, buttons) {
     return;
   }
 
-  safeMenuWebFallback(title, message, buttons);
+  SafeMenuWebFallback(title, message, buttons);
 }
 
 function showNativeFallback(title, message, buttons) {
@@ -185,7 +185,7 @@ function showNativeFallback(title, message, buttons) {
 /**
  * Muestra una alerta con la misma interfaz en iOS, Android y Web.
  */
-export function safeAlert(title, message, buttons = []) {
+export function SafeAlert(title, message, buttons = []) {
   const normalizedButtons = normalizeButtons(buttons);
 
   const finalButtons =
@@ -216,7 +216,7 @@ export function safeAlert(title, message, buttons = []) {
   }
 
   if (Platform.OS === "web") {
-    safeAlertWebFallback(title, message, normalizedButtons);
+    SafeAlertWebFallback(title, message, normalizedButtons);
 
     return;
   }
@@ -227,7 +227,7 @@ export function safeAlert(title, message, buttons = []) {
 /**
  * Muestra una confirmación.
  */
-export function safeConfirm(title, message, onConfirm, options = {}) {
+export function SafeConfirm(title, message, onConfirm, options = {}) {
   const {
     confirmText = "Aceptar",
     cancelText = "Cancelar",
@@ -235,7 +235,7 @@ export function safeConfirm(title, message, onConfirm, options = {}) {
     onCancel,
   } = options;
 
-  safeAlert(title, message, [
+  SafeAlert(title, message, [
     {
       key: "cancel",
       text: cancelText,
@@ -258,7 +258,7 @@ export function safeMenu(title, message, buttons = []) {
   const normalizedButtons = normalizeButtons(buttons);
 
   if (normalizedButtons.length === 0) {
-    safeAlert(title, message || "No hay opciones disponibles.");
+    SafeAlert(title, message || "No hay opciones disponibles.");
 
     return;
   }

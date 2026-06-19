@@ -16,7 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import DatePill from "../../components/controls/DatePill";
 import CurrencyBadge from "../../components/ui/CurrencyBadge";
-import { safeAlert, safeMenu } from "../../components/ui/alert/safeAlert";
+import { SafeAlert, SafeMenu } from "../../components/ui/alert/SafeAlert";
 import { DEFAULT_CURRENCY } from "../../constants/currency";
 import { useLists } from "../../context/ListsContext";
 import { ROUTES } from "../../navigation/ROUTES";
@@ -188,7 +188,7 @@ export default function ShoppingListsScreen() {
   };
 
   const handleArchive = (list) => {
-    safeAlert(
+    SafeAlert(
       "Archivar lista",
       `¿Quieres archivar la lista “${list?.name || "Sin nombre"}”?`,
       [
@@ -208,7 +208,7 @@ export default function ShoppingListsScreen() {
   };
 
   const handleDelete = (list) => {
-    safeAlert(
+    SafeAlert(
       "Eliminar lista",
       `¿Quieres eliminar definitivamente la lista “${
         list?.name || "Sin nombre"
@@ -230,7 +230,7 @@ export default function ShoppingListsScreen() {
   };
 
   const openListMenu = (list) => {
-    safeMenu("Opciones", list?.name || "", [
+    SafeMenu("Opciones", list?.name || "", [
       {
         key: "edit",
         text: "Editar nombre",

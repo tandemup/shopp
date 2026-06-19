@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import AlertModal from "./WebAlertModal";
 import ContextMenuModal from "./WebContextMenuModal";
 
-import { registerWebDialogListener } from "./safeAlert";
+import { registerWebDialogListener } from "./SafeAlert";
 
 function runAfterDialogClose(callback) {
   if (typeof callback !== "function") {

@@ -1,6 +1,6 @@
 // components/ui/alert/safeQuestion.js
 
-import { safeAlert } from "./safeAlert";
+import { SafeAlert } from "./SafeAlert";
 
 function normalizeStyle(action) {
   if (action === "destructive") {
@@ -27,7 +27,7 @@ function normalizeStyle(action) {
  * - iOS
  * - Android
  */
-export function safeQuestion({
+export function SafeQuestion({
   title = "Confirmar",
   message = "",
   detail = "",
@@ -50,7 +50,7 @@ export function safeQuestion({
     })
     .join("\n\n");
 
-  safeAlert(title, completeMessage, [
+  SafeAlert(title, completeMessage, [
     {
       key: "yes",
       text: yesText,
@@ -72,4 +72,4 @@ export function safeQuestion({
   ]);
 }
 
-export default safeQuestion;
+export default SafeQuestion;

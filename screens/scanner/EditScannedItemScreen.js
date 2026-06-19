@@ -21,8 +21,8 @@ import {
   updateScannedEntry,
   removeScannedItem,
 } from "../../services/scannerHistory";
-import { safeAlert } from "../../components/ui/alert/safeAlert";
-import { safeQuestion } from "../../components/ui/alert/safeQuestion";
+import { SafeAlert } from "../../components/ui/alert/SafeAlert";
+import { SafeQuestion } from "../../components/ui/alert/SafeQuestion";
 import { createThumbnail } from "../../utils/createThumbnail";
 import BarcodeLink from "../../components/controls/BarcodeLink";
 import { lookupProductByBarcode } from "../../services/productLookup";
@@ -69,7 +69,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
 
   const handleLookupProduct = async () => {
     if (!barcode) {
-      safeAlert("Código vacío", "Este escaneo no tiene código de barras");
+      SafeAlert("Código vacío", "Este escaneo no tiene código de barras");
       return;
     }
 
@@ -77,7 +77,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
       const result = await lookupProductByBarcode(barcode);
 
       if (!result.found) {
-        safeAlert(
+        SafeAlert(
           "Producto no encontrado",
           "No se encontró información para este código de barras",
         );
@@ -105,13 +105,13 @@ export default function EditScannedItemScreen({ route, navigation }) {
       }
     } catch (error) {
       console.log("Error looking up product:", error);
-      safeAlert("Error", "No se pudo consultar la información del producto");
+      SafeAlert("Error", "No se pudo consultar la información del producto");
     }
   };
 
   const handleSave = async () => {
     if (!barcode) {
-      safeAlert("Código vacío", "Este escaneo no tiene código de barras");
+      SafeAlert("Código vacío", "Este escaneo no tiene código de barras");
       return;
     }
 
@@ -135,13 +135,13 @@ export default function EditScannedItemScreen({ route, navigation }) {
       navigation.goBack();
     } catch (error) {
       console.log("Error saving scanned item:", error);
-      safeAlert("Error", "No se pudo guardar el escaneo");
+      SafeAlert("Error", "No se pudo guardar el escaneo");
     }
   };
 
   const handleDeleteConfirmed = async () => {
     if (!barcode) {
-      safeAlert("Código vacío", "Este escaneo no tiene código de barras");
+      SafeAlert("Código vacío", "Este escaneo no tiene código de barras");
       return;
     }
 
@@ -152,17 +152,17 @@ export default function EditScannedItemScreen({ route, navigation }) {
     } catch (error) {
       console.log("Error deleting scanned item:", error);
 
-      safeAlert("Error", "No se pudo eliminar el escaneo");
+      SafeAlert("Error", "No se pudo eliminar el escaneo");
     }
   };
 
   const handleDelete = () => {
     if (!barcode) {
-      safeAlert("Código vacío", "Este escaneo no tiene código de barras");
+      SafeAlert("Código vacío", "Este escaneo no tiene código de barras");
       return;
     }
 
-    safeQuestion({
+    SafeQuestion({
       title: "Eliminar escaneo",
       message: "¿Deseas eliminar este escaneo?",
       detail: name || barcode,
