@@ -17,5 +17,16 @@ export default chatSocket;
  */
 }
 
+//import { io } from "socket.io-client";
+//export const chatSocket = io("http://localhost:3000");
+
 import { io } from "socket.io-client";
-export const chatSocket = io("http://localhost:3000");
+
+const SOCKET_URL = "http://localhost:3000";
+
+const chatSocket = io(SOCKET_URL, {
+  autoConnect: false,
+  transports: ["websocket", "polling"],
+});
+
+export default chatSocket;
