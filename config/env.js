@@ -1,12 +1,21 @@
 import { Platform } from "react-native";
 
-//const CHAT_SERVER_URL = process.env.EXPO_PUBLIC_CHAT_SERVER_URL || "https://shopp-e071fa278cae.herokuapp.com";
-
 const configuredSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL?.trim();
 
-// Web local en el Mac: http://localhost:3001
-// Expo Go en teléfono físico: define EXPO_PUBLIC_SOCKET_URL con la IP LAN del Mac,
-// por ejemplo http://192.168.1.50:3001. En un móvil, localhost apunta al propio móvil.
+// Web local en el Mac:
+//   http://localhost:3001
+//
+// Expo Go en teléfono físico:
+//   usa la IP LAN del Mac, por ejemplo:
+//   http://192.168.1.50:3001
+//
+// Producción / Netlify / Heroku:
+//   define EXPO_PUBLIC_SOCKET_URL con la URL pública del servidor,
+//   por ejemplo:
+//   https://shopp-e071fa278cae.herokuapp.com
+//
+// Importante:
+//   En un móvil, localhost apunta al propio móvil, no al Mac.
 const developmentFallback =
   Platform.OS === "web" ? "http://localhost:3001" : "";
 

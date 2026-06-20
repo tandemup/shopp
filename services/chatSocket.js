@@ -1,24 +1,20 @@
 import { io } from "socket.io-client";
 
-import { SOCKET_SERVER_URL } from "@/config/env";
+const CHAT_SERVER_URL =
+  process.env.EXPO_PUBLIC_SOCKET_URL ||
+  "https://shopp-chat-server.herokuapp.com";
 
 let socket = null;
 
 export function getChatSocket() {
-  if (!SOCKET_SERVER_URL) {
-    console.warn("No hay SOCKET_SERVER_URL configurada para el chat.");
-    return null;
-  }
-
   if (!socket) {
-    socket = io(SOCKET_SERVER_URL, {
+    socket = io(CHAT_SERVER_URL, {
       transports: ["websocket", "polling"],
       autoConnect: false,
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      timeout: 10000,
     });
   }
 
@@ -27,10 +23,6 @@ export function getChatSocket() {
 
 export function connectChatSocket() {
   const currentSocket = getChatSocket();
-
-  if (!currentSocket) {
-    return null;
-  }
 
   if (!currentSocket.connected) {
     currentSocket.connect();
