@@ -1,119 +1,176 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, TextInput, Pressable, FlatList } from "react-native";
+import React from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  FlatList,
+  StyleSheet,
+} from "react-native";
+
 import chatSocket from "@/services/chatSocket";
 
 export default function ChatScreen() {
-  const [connected, setConnected] = useState(false);
-  const [text, setText] = useState("");
-  const [messages, setMessages] = useState([]);
+  const [connected, setConnected] = React.useState(false);
+  const [text, setText] = React.useState("");
+  const [messages, setMessages] = React.useState([]);
 
-  useEffect(() => {
+  React.useEffect(() => {
+    const socket = chatSocket.connectChatSocket();
+
     const handleConnect = () => {
       setConnected(true);
+
+      socket.emit("chat:join", {
+        room: "general",
+      });
     };
 
     const handleDisconnect = () => {
       setConnected(false);
     };
 
-    const handleConnectError = (error) => {
-      setConnected(false);
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `error-${Date.now()}`,
-          user: "Sistema",
-          text: `Error de conexión: ${error?.message || "desconocido"}`,
-        },
-      ]);
+    const handleMessage = (message) => {
+      setMessages((prev) => [message, ...prev]);
     };
 
-    const handleSystemMessage = (message) => {
-      setMessages((prev) => [...prev, message]);
-    };
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+    socket.on("chat:message", handleMessage);
 
-    const handleChatMessage = (message) => {
-      setMessages((prev) => [...prev, message]);
-    };
-
-    chatSocket.on("connect", handleConnect);
-    chatSocket.on("disconnect", handleDisconnect);
-    chatSocket.on("connect_error", handleConnectError);
-    chatSocket.on("chat:system", handleSystemMessage);
-    chatSocket.on("chat:message", handleChatMessage);
-
-    chatSocket.connect();
+    if (socket.connected) {
+      handleConnect();
+    }
 
     return () => {
-      chatSocket.off("connect", handleConnect);
-      chatSocket.off("disconnect", handleDisconnect);
-      chatSocket.off("connect_error", handleConnectError);
-      chatSocket.off("chat:system", handleSystemMessage);
-      chatSocket.off("chat:message", handleChatMessage);
-      chatSocket.disconnect();
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
+      socket.off("chat:message", handleMessage);
     };
   }, []);
 
-  const sendMessage = () => {
-    const cleanText = text.trim();
+  const sendMessage = React.useCallback(() => {
+    const value = text.trim();
 
-    if (!cleanText || !connected) return;
+    if (!value) return;
 
-    chatSocket.emit("chat:message", {
-      text: cleanText,
-      user: "Shopp user",
+    const socket = chatSocket.getChatSocket();
+
+    socket.emit("chat:message", {
+      room: "general",
+      text: value,
+      userName: "Shopp user",
     });
 
     setText("");
-  };
-
-  const canSend = connected && text.trim().length > 0;
+  }, [text]);
 
   return (
-    <View style={{ flex: 1, padding: 16 }}>
-      <Text>Estado: {connected ? "Conectado" : "Desconectado"}</Text>
+    <View style={styles.container}>
+      <Text style={styles.title}>Chat Shopp</Text>
+
+      <Text style={styles.status}>
+        Estado: {connected ? "conectado" : "desconectado"}
+      </Text>
 
       <FlatList
         data={messages}
-        keyExtractor={(item, index) => item.id || `${index}`}
+        keyExtractor={(item) => item.id}
+        inverted
+        contentContainerStyle={styles.messages}
         renderItem={({ item }) => (
-          <View style={{ paddingVertical: 8 }}>
-            <Text style={{ fontWeight: "700" }}>{item.user || "Sistema"}</Text>
-            <Text>{item.text}</Text>
+          <View style={styles.messageBubble}>
+            <Text style={styles.messageUser}>{item.userName}</Text>
+            <Text style={styles.messageText}>{item.text}</Text>
+            <Text style={styles.messageDate}>
+              {new Date(item.createdAt).toLocaleTimeString()}
+            </Text>
           </View>
         )}
       />
 
-      <View style={{ flexDirection: "row", gap: 8 }}>
+      <View style={styles.inputRow}>
         <TextInput
           value={text}
           onChangeText={setText}
-          placeholder="Escribe un mensaje"
-          onSubmitEditing={sendMessage}
+          placeholder="Escribe un mensaje..."
+          style={styles.input}
           returnKeyType="send"
-          style={{
-            flex: 1,
-            borderWidth: 1,
-            borderColor: "#ddd",
-            borderRadius: 8,
-            padding: 10,
-          }}
+          onSubmitEditing={sendMessage}
         />
 
-        <Pressable
-          onPress={sendMessage}
-          disabled={!canSend}
-          style={{
-            paddingHorizontal: 16,
-            justifyContent: "center",
-            borderRadius: 8,
-            backgroundColor: canSend ? "#6d28d9" : "#aaa",
-          }}
-        >
-          <Text style={{ color: "white", fontWeight: "700" }}>Enviar</Text>
+        <Pressable style={styles.button} onPress={sendMessage}>
+          <Text style={styles.buttonText}>Enviar</Text>
         </Pressable>
       </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 16,
+    backgroundColor: "#fff",
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  status: {
+    fontSize: 13,
+    color: "#666",
+    marginBottom: 12,
+  },
+  messages: {
+    paddingVertical: 12,
+  },
+  messageBubble: {
+    alignSelf: "flex-start",
+    maxWidth: "85%",
+    backgroundColor: "#f2f2f7",
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  messageUser: {
+    fontWeight: "700",
+    marginBottom: 2,
+  },
+  messageText: {
+    fontSize: 15,
+  },
+  messageDate: {
+    fontSize: 11,
+    color: "#777",
+    marginTop: 4,
+  },
+  inputRow: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  input: {
+    flex: 1,
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    backgroundColor: "#fff",
+  },
+  button: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: "#6D28D9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  buttonText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+});

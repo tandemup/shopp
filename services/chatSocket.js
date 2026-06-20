@@ -1,32 +1,44 @@
-{
-  /*
 import { io } from "socket.io-client";
 
-const SOCKET_SERVER_URL =
-  process.env.EXPO_PUBLIC_SOCKET_URL?.trim() || "http://localhost:3001";
+const CHAT_SERVER_URL =
+  process.env.EXPO_PUBLIC_CHAT_SERVER_URL ||
+  "https://shopp-chat-server.herokuapp.com";
 
-export const chatSocket = io(SOCKET_SERVER_URL.replace(/\/+$/, ""), {
-  transports: ["websocket", "polling"],
-  autoConnect: false,
-  reconnection: true,
-  reconnectionAttempts: Infinity,
-  reconnectionDelay: 1000,
-});
+let socket = null;
 
-export default chatSocket;
- */
+export function getChatSocket() {
+  if (!socket) {
+    socket = io(CHAT_SERVER_URL, {
+      transports: ["websocket", "polling"],
+      autoConnect: false,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+    });
+  }
+
+  return socket;
 }
 
-//import { io } from "socket.io-client";
-//export const chatSocket = io("http://localhost:3000");
+export function connectChatSocket() {
+  const currentSocket = getChatSocket();
 
-import { io } from "socket.io-client";
+  if (!currentSocket.connected) {
+    currentSocket.connect();
+  }
 
-const SOCKET_URL = "http://localhost:3000";
+  return currentSocket;
+}
 
-const chatSocket = io(SOCKET_URL, {
-  autoConnect: false,
-  transports: ["websocket", "polling"],
-});
+export function disconnectChatSocket() {
+  if (socket?.connected) {
+    socket.disconnect();
+  }
+}
 
-export default chatSocket;
+export default {
+  getChatSocket,
+  connectChatSocket,
+  disconnectChatSocket,
+};
