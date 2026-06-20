@@ -11,8 +11,8 @@ import React, {
 import { StyleSheet, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import UnifiedBarcodeScanner from "./UnifiedBarcodeScanner";
-import { DEFAULT_BARCODE_SETTINGS } from "../../../constants/barcodeFormats";
-import { getBarcodeSettings } from "../../../src/storage/barcodeSettingsStorage";
+import { DEFAULT_BARCODE_SETTINGS } from "@/constants/barcodeFormats";
+import { getBarcodeSettings } from "@/src/storage/barcodeSettingsStorage";
 
 /* -------------------------------------------------
    Helpers

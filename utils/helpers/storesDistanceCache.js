@@ -1,5 +1,5 @@
-import { storage } from "../../src/storage/storage";
-import { STORAGE_KEYS } from "../../src/storage/storageKeys";
+import { storage } from "@/src/storage/storage";
+import { STORAGE_KEYS } from "@/src/storage/storageKeys";
 
 /**
  * Guarda distancias y ubicación

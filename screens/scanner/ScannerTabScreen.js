@@ -8,10 +8,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 
-import { ROUTES } from "../../navigation/ROUTES";
-import { DEFAULT_BARCODE_SETTINGS } from "../../constants/barcodeFormats";
-import { getBarcodeSettings } from "../../src/storage/barcodeSettingsStorage";
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
+import { ROUTES } from "@/navigation/ROUTES";
+import { DEFAULT_BARCODE_SETTINGS } from "@/constants/barcodeFormats";
+import { getBarcodeSettings } from "@/src/storage/barcodeSettingsStorage";
+import { buildHeaderConfig } from "@/utils/layout/headerStyles";
 
 function getEnabledBarcodeTypes(settings) {
   const formats = settings?.formats ?? DEFAULT_BARCODE_SETTINGS.formats;

@@ -20,13 +20,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import {
   updateScannedEntry,
   removeScannedItem,
-} from "../../services/scannerHistory";
-import { safeAlert } from "../../components/ui/alert/safeAlert";
-import { safeQuestion } from "../../components/ui/alert/safeQuestion";
-import { createThumbnail } from "../../utils/createThumbnail";
-import BarcodeLink from "../../components/controls/BarcodeLink";
-import { lookupProductByBarcode } from "../../services/productLookup";
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
+} from "@/services/scannerHistory";
+import { safeAlert } from "@/components/ui/alert/safeAlert";
+import { safeQuestion } from "@/components/ui/alert/safeQuestion";
+import { createThumbnail } from "@/utils/createThumbnail";
+import BarcodeLink from "@/components/controls/BarcodeLink";
+import { lookupProductByBarcode } from "@/services/productLookup";
+import { buildHeaderConfig } from "@/utils/layout/headerStyles";
 
 export default function EditScannedItemScreen({ route, navigation }) {
   const { item } = route.params || {};

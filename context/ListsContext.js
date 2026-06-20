@@ -6,9 +6,9 @@ import React, {
   useState,
 } from "react";
 
-import { loadLists, saveLists } from "../src/storage/listsStorage";
-import { DEFAULT_CURRENCY } from "../constants/currency";
-import { buildPurchaseHistoryFromArchivedLists } from "../utils/buildPurchaseHistoryFromArchivedLists";
+import { loadLists, saveLists } from "@/src/storage/listsStorage";
+import { DEFAULT_CURRENCY } from "@/constants/currency";
+import { buildPurchaseHistoryFromArchivedLists } from "@/utils/buildPurchaseHistoryFromArchivedLists";
 
 /* -------------------------------------------------
    Context

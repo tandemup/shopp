@@ -10,21 +10,21 @@ import {
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
-import { useLists } from "../../context/ListsContext";
-import { useStores } from "../../context/StoresContext";
-import { findBestCategoryMatch } from "../../utils/categoryMatcher";
-import { PRODUCT_CATEGORIES } from "../../constants/categories";
+import { buildHeaderConfig } from "@/utils/layout/headerStyles";
+import { useLists } from "@/context/ListsContext";
+import { useStores } from "@/context/StoresContext";
+import { findBestCategoryMatch } from "@/utils/categoryMatcher";
+import { PRODUCT_CATEGORIES } from "@/constants/categories";
 
-import StoreSelector from "../../components/features/stores/StoreSelector";
-import ItemRow from "../../components/features/items/ItemRow";
-import SearchCombinedBar from "../../components/features/search/SearchCombinedBar";
-import CheckoutBar from "../../components/features/checkout/CheckoutBar";
-import CurrencyBadge from "../../components/ui/CurrencyBadge";
+import StoreSelector from "@/components/features/stores/StoreSelector";
+import ItemRow from "@/components/features/items/ItemRow";
+import SearchCombinedBar from "@/components/features/search/SearchCombinedBar";
+import CheckoutBar from "@/components/features/checkout/CheckoutBar";
+import CurrencyBadge from "@/components/ui/CurrencyBadge";
 
-import { ROUTES } from "../../navigation/ROUTES";
-import { safeAlert } from "../../components/ui/alert/safeAlert";
-import WebZoomResetButton from "../../components/WebZoomResetButton";
+import { ROUTES } from "@/navigation/ROUTES";
+import { safeAlert } from "@/components/ui/alert/safeAlert";
+import WebZoomResetButton from "@/components/WebZoomResetButton";
 
 export default function ShoppingListScreen() {
   const route = useRoute();

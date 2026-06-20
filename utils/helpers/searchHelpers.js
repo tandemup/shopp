@@ -1,4 +1,4 @@
-import { loadLists } from "../storage/listStorage";
+import { loadLists } from "@/src/storage/listsStorage";
 
 /**
  * Devuelve todos los items de todas las listas

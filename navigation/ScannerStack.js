@@ -4,14 +4,14 @@ import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { ROUTES } from "./ROUTES";
 
-import ScannerTabScreen from "../screens/scanner/ScannerTabScreen";
-import ProductBarcodeScannerScreen from "../screens/scanner/ProductBarcodeScannerScreen";
-import NewProductScannerScreen2 from "../screens/scanner/NewProductScannerScreen2";
-import ProductInfoScreen from "../screens/scanner/ProductInfoScreen";
-import EditScannedItemScreen from "../screens/scanner/EditScannedItemScreen";
-import ScannedHistoryScreen from "../screens/scanner/ScannedHistoryScreen";
-import SearchEngines from "../screens/settings/SearchEngines";
-import BarcodeSettingsScreen from "../screens/settings/BarcodeSettingsScreen";
+import ScannerTabScreen from "@/screens/scanner/ScannerTabScreen";
+import ProductBarcodeScannerScreen from "@/screens/scanner/ProductBarcodeScannerScreen";
+import NewProductScannerScreen2 from "@/screens/scanner/NewProductScannerScreen2";
+import ProductInfoScreen from "@/screens/scanner/ProductInfoScreen";
+import EditScannedItemScreen from "@/screens/scanner/EditScannedItemScreen";
+import ScannedHistoryScreen from "@/screens/scanner/ScannedHistoryScreen";
+import SearchEngines from "@/screens/settings/SearchEngines";
+import BarcodeSettingsScreen from "@/screens/settings/BarcodeSettingsScreen";
 
 const Stack = createNativeStackNavigator();
 

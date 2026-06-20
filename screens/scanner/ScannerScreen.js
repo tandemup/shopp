@@ -2,14 +2,14 @@ import React, { useRef } from "react";
 import { View, StyleSheet } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 
-import BarcodeScannerView from "../../components/features/scanner/BarcodeScannerView";
+import BarcodeScannerView from "@/components/features/scanner/BarcodeScannerView";
 import {
   getScannedEntryByBarcode,
   saveScannedEntry,
-} from "../../services/scannerHistory";
-import { safeAlert } from "../../components/ui/alert/safeAlert";
-import { ROUTES } from "../../navigation/ROUTES";
-import { lookupProductByBarcode } from "../../services/productLookup";
+} from "@/services/scannerHistory";
+import { safeAlert } from "@/components/ui/alert/safeAlert";
+import { ROUTES } from "@/navigation/ROUTES";
+import { lookupProductByBarcode } from "@/services/productLookup";
 
 export default function ScannerScreen() {
   const route = useRoute();

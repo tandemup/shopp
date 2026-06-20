@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { storage } from "../src/storage/storage";
-import { STORAGE_KEYS } from "../src/storage/storageKeys";
+import { storage } from "@/src/storage/storage";
+import { STORAGE_KEYS } from "@/src/storage/storageKeys";
 
 // 👉 Seed
-import STORES_SEED from "../data/stores.json";
-import { clearStoresData } from "../src/storage";
+import STORES_SEED from "@/data/stores.json";
+import { clearStoresData } from "@/src/storage";
 
 const StoresContext = createContext();
 

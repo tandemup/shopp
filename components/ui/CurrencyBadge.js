@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { DEFAULT_CURRENCY } from "../../constants/currency";
+import { DEFAULT_CURRENCY } from "@/constants/currency";
 
 export default function CurrencyBadge({
   currency = DEFAULT_CURRENCY,

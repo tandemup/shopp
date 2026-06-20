@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import stores from "../data/stores.json";
+import stores from "@/data/stores.json";
 import {
   getCurrentLocation,
   haversineDistance,
-} from "../utils/helpers/locationHelpers";
+} from "@/utils/helpers/locationHelpers";
 import {
   loadStoresDistance,
   saveStoresDistance,
-} from "../utils/helpers/storesDistanceCache";
+} from "@/utils/helpers/storesDistanceCache";
 
 export function useStoresWithDistance() {
   const [sortedStores, setSortedStores] = useState(stores);

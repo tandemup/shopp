@@ -3,8 +3,8 @@
 import React from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
-import { formatCurrency } from "../../../utils/store/prices";
-import { DEFAULT_CURRENCY } from "../../../constants/currency";
+import { formatCurrency } from "@/utils/store/prices";
+import { DEFAULT_CURRENCY } from "@/constants/currency";
 
 export default function CheckoutBar({ total, currency, onCheckout }) {
   if (!total || total <= 0) return null;

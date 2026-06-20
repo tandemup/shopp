@@ -2,25 +2,25 @@ import React, { useMemo, useState } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import DatePill from "../../components/controls/DatePill";
-import StorePill from "../../components/controls/StorePill";
-import SearchBar from "../../components/features/search/SearchBar";
+import DatePill from "@/components/controls/DatePill";
+import StorePill from "@/components/controls/StorePill";
+import SearchBar from "@/components/features/search/SearchBar";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 
-import { useLists } from "../../context/ListsContext";
-import { useStores } from "../../context/StoresContext";
-import { ROUTES } from "../../navigation/ROUTES";
+import { useLists } from "@/context/ListsContext";
+import { useStores } from "@/context/StoresContext";
+import { ROUTES } from "@/navigation/ROUTES";
 
-import StoreFilterBadges from "../../components/features/stores/StoreFilterBadges";
+import StoreFilterBadges from "@/components/features/stores/StoreFilterBadges";
 
 import {
   queryProducts,
   getStoresFromPurchaseHistory,
-} from "../../utils/queries/products";
+} from "@/utils/queries/products";
 
-import { formatCurrency } from "../../utils/store/formatters";
+import { formatCurrency } from "@/utils/store/formatters";
 
 /* -------------------------------------------------
    Helpers

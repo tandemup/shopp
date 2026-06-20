@@ -23,35 +23,35 @@ import {
 
 import { StatusBar } from "expo-status-bar";
 
-import { UNITS } from "../../constants/unitTypes";
-import { ROUTES } from "../../navigation/ROUTES";
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
-import { getSearchSettings } from "../../src/storage/settingsStorage";
-import { DEFAULT_CURRENCY } from "../../constants/currency";
-import { SEARCH_ENGINES } from "../../constants/searchEngines";
-import { PRODUCT_CATEGORIES } from "../../constants/categories";
+import { UNITS } from "@/constants/unitTypes";
+import { ROUTES } from "@/navigation/ROUTES";
+import { buildHeaderConfig } from "@/utils/layout/headerStyles";
+import { getSearchSettings } from "@/src/storage/settingsStorage";
+import { DEFAULT_CURRENCY } from "@/constants/currency";
+import { SEARCH_ENGINES } from "@/constants/searchEngines";
+import { PRODUCT_CATEGORIES } from "@/constants/categories";
 
-import { useLists } from "../../context/ListsContext";
+import { useLists } from "@/context/ListsContext";
 
-import BarcodeInput from "../../components/ui/BarcodeInput";
+import BarcodeInput from "@/components/ui/BarcodeInput";
 import {
   closePreparedExternalWindow,
   openExternalUrl,
   prepareExternalWindow,
-} from "../../utils/openExternalUrl";
+} from "@/utils/openExternalUrl";
 
 import {
   PricingEngine,
   PROMOTIONS,
   normalizePromotion,
   validatePromotion,
-} from "../../utils/pricing/PricingEngine";
+} from "@/utils/pricing/PricingEngine";
 
-import { validatePromotionUnit } from "../../utils/pricing";
-import { formatCurrency } from "../../utils/store/prices";
-import { formatUnit } from "../../utils/pricing/unitFormat";
+import { validatePromotionUnit } from "@/utils/pricing";
+import { formatCurrency } from "@/utils/store/prices";
+import { formatUnit } from "@/utils/pricing/unitFormat";
 
-import { safeAlert } from "../../components/ui/alert/safeAlert";
+import { safeAlert } from "@/components/ui/alert/safeAlert";
 
 /* ────────────────────────────────────────────────
    CATEGORY HELPERS

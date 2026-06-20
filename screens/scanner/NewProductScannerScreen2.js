@@ -30,22 +30,22 @@ import {
   useRoute,
 } from "@react-navigation/native";
 
-import QuickEan13Scanner from "../../components/features/scanner/QuickEan13Scanner";
+import QuickEan13Scanner from "@/components/features/scanner/QuickEan13Scanner";
 
-import ScannerOverlay from "../../components/features/scanner/ScannerOverlay";
+import ScannerOverlay from "@/components/features/scanner/ScannerOverlay";
 
-import { ROUTES } from "../../navigation/ROUTES";
+import { ROUTES } from "@/navigation/ROUTES";
 
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
+import { buildHeaderConfig } from "@/utils/layout/headerStyles";
 
-import { safeAlert, safeMenu } from "../../components/ui/alert/safeAlert";
+import { safeAlert, safeMenu } from "@/components/ui/alert/safeAlert";
 
 import {
   getScannedEntryByBarcode,
   saveScannedEntry,
-} from "../../services/scannerHistory";
+} from "@/services/scannerHistory";
 
-import { lookupProductByBarcode } from "../../services/productLookup";
+import { lookupProductByBarcode } from "@/services/productLookup";
 
 const ZOOM_VALUES = [0, 0.15, 0.3, 0.45];
 

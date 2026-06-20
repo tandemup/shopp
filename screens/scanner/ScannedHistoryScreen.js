@@ -15,15 +15,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { ROUTES } from "../../navigation/ROUTES";
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
-import { safeAlert } from "../../components/ui/alert/safeAlert";
-import { safeQuestion } from "../../components/ui/alert/safeQuestion";
+import { ROUTES } from "@/navigation/ROUTES";
+import { buildHeaderConfig } from "@/utils/layout/headerStyles";
+import { safeAlert } from "@/components/ui/alert/safeAlert";
+import { safeQuestion } from "@/components/ui/alert/safeQuestion";
 
 import {
   getScannedHistory,
   removeScannedItem,
-} from "../../services/scannerHistory";
+} from "@/services/scannerHistory";
 
 export default function ScannedHistoryScreen({ navigation, route }) {
   const [scannedItems, setScannedItems] = useState([]);

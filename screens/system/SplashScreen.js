@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   Animated,
 } from "react-native";
-import splashIcon from "../../assets/images/splash-icon.png";
+import splashIcon from "@/assets/images/splash-icon.png";
 //source={require("../assets/images/splash-icon.png")}
 
 export default function SplashScreen({ navigation }) {

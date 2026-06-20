@@ -5,16 +5,16 @@ import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { useStores } from "../../context/StoresContext";
-import { useLocation } from "../../context/LocationContext";
-import { getValidCoords } from "../../utils/maps/getValidCoords";
+import { useStores } from "@/context/StoresContext";
+import { useLocation } from "@/context/LocationContext";
+import { getValidCoords } from "@/utils/maps/getValidCoords";
 import {
   openGoogleMaps,
   openGoogleMapsSearch,
-} from "../../utils/maps/openGoogleMaps";
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
-import StoreMapPreview from "../../components/features/maps/StoreMapPreview";
-import { ROUTES } from "../../navigation/ROUTES";
+} from "@/utils/maps/openGoogleMaps";
+import { buildHeaderConfig } from "@/utils/layout/headerStyles";
+import StoreMapPreview from "@/components/features/maps/StoreMapPreview";
+import { ROUTES } from "@/navigation/ROUTES";
 
 export default function StoreDetailScreen() {
   const route = useRoute();

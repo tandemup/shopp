@@ -2,8 +2,8 @@ import React from "react";
 import { View, Text, StyleSheet, Pressable, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { formatCurrency } from "../../../utils/store/formatters";
-import { formatUnit } from "../../../utils/pricing/unitFormat";
+import { formatCurrency } from "@/utils/store/formatters";
+import { formatUnit } from "@/utils/pricing/unitFormat";
 
 export default function ItemRow({ item, onToggle, onEdit }) {
   const priceInfo = item.priceInfo || {};

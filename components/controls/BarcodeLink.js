@@ -3,15 +3,15 @@
 import React, { useCallback } from "react";
 import { Pressable, Text } from "react-native";
 
-import { openExternalUrl } from "../../utils/openExternalUrl";
+import { openExternalUrl } from "@/utils/openExternalUrl";
 
 import * as Clipboard from "expo-clipboard";
 
-import { showOptions } from "../../utils/ui/primitives/ActionSheet";
+import { showOptions } from "@/utils/ui/primitives/ActionSheet";
 
-import { SEARCH_ENGINES, DEFAULT_ENGINE } from "../../constants/searchEngines";
+import { SEARCH_ENGINES, DEFAULT_ENGINE } from "@/constants/searchEngines";
 
-import { getSearchSettings } from "../../src/storage/settingsStorage";
+import { getSearchSettings } from "@/src/storage/settingsStorage";
 
 export default function BarcodeLink({ barcode, label, iconColor = "#2563eb" }) {
   const getSelectedProductEngine = async () => {

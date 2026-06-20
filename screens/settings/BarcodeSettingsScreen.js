@@ -10,14 +10,14 @@ import { StatusBar } from "expo-status-bar";
 import {
   BARCODE_FORMATS,
   DEFAULT_BARCODE_SETTINGS,
-} from "../../constants/barcodeFormats";
+} from "@/constants/barcodeFormats";
 
 import {
   getBarcodeSettings,
   setBarcodeSettings,
-} from "../../src/storage/barcodeSettingsStorage";
+} from "@/src/storage/barcodeSettingsStorage";
 
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
+import { buildHeaderConfig } from "@/utils/layout/headerStyles";
 
 export default function BarcodeSettingsScreen() {
   const navigation = useNavigation();

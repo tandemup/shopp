@@ -20,9 +20,9 @@ import {
 
 import ScannerOverlay from "./ScannerOverlay.js";
 
-import { DEFAULT_BARCODE_SETTINGS } from "../../../constants/barcodeFormats";
+import { DEFAULT_BARCODE_SETTINGS } from "@/constants/barcodeFormats";
 
-import { getBarcodeSettings } from "../../../src/storage/barcodeSettingsStorage";
+import { getBarcodeSettings } from "@/src/storage/barcodeSettingsStorage";
 
 const ZOOM_LEVELS = [1, 1.2, 1.5, 2];
 

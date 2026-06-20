@@ -9,9 +9,9 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { useStores } from "../../../context/StoresContext";
-import { useLists } from "../../../context/ListsContext";
-import { normalizeProductName } from "../../../utils/normalize";
+import { useStores } from "@/context/StoresContext";
+import { useLists } from "@/context/ListsContext";
+import { normalizeProductName } from "@/utils/normalize";
 
 /* -------------------------------------------------
    Badge

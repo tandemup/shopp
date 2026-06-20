@@ -10,18 +10,18 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { openExternalUrl } from "../../utils/openExternalUrl";
-import { ROUTES } from "../../navigation/ROUTES";
+import { openExternalUrl } from "@/utils/openExternalUrl";
+import { ROUTES } from "@/navigation/ROUTES";
 
 import {
   getSearchSettings,
   DEFAULT_SEARCH_SETTINGS,
-} from "../../src/storage/settingsStorage";
+} from "@/src/storage/settingsStorage";
 
 import {
   buildProductSearchUrl,
   getProductSearchEngineLabel,
-} from "../../utils/productSearchUrl";
+} from "@/utils/productSearchUrl";
 
 export default function ProductInfoScreen({ route, navigation }) {
   const { barcode, product, autoOpenEngine } = route.params || {};

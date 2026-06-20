@@ -1,4 +1,4 @@
-import { CURRENCIES, DEFAULT_CURRENCY } from "../../constants/currency";
+import { CURRENCIES, DEFAULT_CURRENCY } from "@/constants/currency";
 import { normalizeCurrency } from "./currency";
 
 import { joinText } from "./text";
@@ -6,7 +6,7 @@ import { joinText } from "./text";
 export function formatCurrency(
   value,
   currency = DEFAULT_CURRENCY.code,
-  locale
+  locale,
 ) {
   const amount = Number(value) || 0;
 
@@ -36,16 +36,16 @@ export function priceText(value, unitFallback) {
       typeof unitPrice === "number"
         ? unitPrice
         : typeof total === "number" && qty > 0
-        ? total / qty
-        : typeof total === "number"
-        ? total
-        : null;
+          ? total / qty
+          : typeof total === "number"
+            ? total
+            : null;
 
     if (price == null) return "";
 
     return joinText(
       formatCurrency(price, currency),
-      (unit ?? unitFallback) && ` / ${unit ?? unitFallback}`
+      (unit ?? unitFallback) && ` / ${unit ?? unitFallback}`,
     );
   }
 

@@ -10,10 +10,10 @@ import {
   getSearchSettings,
   setSearchSettings,
   DEFAULT_SEARCH_SETTINGS,
-} from "../../src/storage/settingsStorage";
+} from "@/src/storage/settingsStorage";
 
-import { SEARCH_ENGINES, BOOK_ENGINES } from "../../constants/searchEngines";
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
+import { SEARCH_ENGINES, BOOK_ENGINES } from "@/constants/searchEngines";
+import { buildHeaderConfig } from "@/utils/layout/headerStyles";
 
 const CATEGORY_CONFIG = {
   product: {

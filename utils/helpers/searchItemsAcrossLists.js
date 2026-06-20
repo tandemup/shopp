@@ -1,4 +1,4 @@
-import { loadLists } from "../storage/listsStorage";
+import { loadLists } from "@/src/storage/listsStorage";
 
 /**
  * Busca productos en TODAS las listas archivadas / históricas

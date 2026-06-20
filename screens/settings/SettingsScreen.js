@@ -4,7 +4,7 @@ import { View, Text, Switch, StyleSheet, ScrollView } from "react-native";
 import {
   getSearchSettings,
   setSearchSettings,
-} from "../src/storage/settingsStorage";
+} from "@/src/storage/settingsStorage";
 
 const DEFAULT_SETTINGS = {
   bookEngines: {

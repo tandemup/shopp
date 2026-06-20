@@ -7,10 +7,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { useStores } from "../../context/StoresContext";
-import { useLists } from "../../context/ListsContext";
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
-import { ROUTES } from "../../navigation/ROUTES";
+import { useStores } from "@/context/StoresContext";
+import { useLists } from "@/context/ListsContext";
+import { buildHeaderConfig } from "@/utils/layout/headerStyles";
+import { ROUTES } from "@/navigation/ROUTES";
 
 /* --------------------------------------------------
  Helpers

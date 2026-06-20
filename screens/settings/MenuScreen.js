@@ -13,29 +13,29 @@ import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import {
   getSearchSettings,
   DEFAULT_SEARCH_SETTINGS,
-} from "../../src/storage/settingsStorage";
+} from "@/src/storage/settingsStorage";
 
-import { SEARCH_ENGINES } from "../../constants/searchEngines";
+import { SEARCH_ENGINES } from "@/constants/searchEngines";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useCameraPermissions } from "expo-camera";
 import * as Location from "expo-location";
 
-import { ROUTES } from "../../navigation/ROUTES";
-import { safeAlert } from "../../components/ui/alert/safeAlert";
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
+import { ROUTES } from "@/navigation/ROUTES";
+import { safeAlert } from "@/components/ui/alert/safeAlert";
+import { buildHeaderConfig } from "@/utils/layout/headerStyles";
 
 import {
   clearActiveLists,
   clearArchivedLists,
   clearPurchaseHistory,
   clearStorage,
-} from "../../src/storage";
+} from "@/src/storage";
 
-import { clearScannedHistory } from "../../services/scannerHistory";
-import { useLists } from "../../context/ListsContext";
-import { useStores } from "../../context/StoresContext";
+import { clearScannedHistory } from "@/services/scannerHistory";
+import { useLists } from "@/context/ListsContext";
+import { useStores } from "@/context/StoresContext";
 
 function buildProductSearchEngineSubtitle(settings) {
   const engineId =

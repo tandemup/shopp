@@ -1,5 +1,5 @@
 // utils/store/currency.js
-import { DEFAULT_CURRENCY } from "../../constants/currency";
+import { DEFAULT_CURRENCY } from "@/constants/currency";
 
 /**
  * Normaliza símbolos comunes a código ISO

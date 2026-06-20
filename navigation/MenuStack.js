@@ -5,9 +5,9 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import { ROUTES } from "./ROUTES";
 
-import MenuScreen from "../screens/settings/MenuScreen";
-import SearchEngines from "../screens/settings/SearchEngines";
-import BarcodeSettingsScreen from "../screens/settings/BarcodeSettingsScreen";
+import MenuScreen from "@/screens/settings/MenuScreen";
+import SearchEngines from "@/screens/settings/SearchEngines";
+import BarcodeSettingsScreen from "@/screens/settings/BarcodeSettingsScreen";
 
 const Stack = createNativeStackNavigator();
 

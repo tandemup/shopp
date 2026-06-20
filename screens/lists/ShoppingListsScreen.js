@@ -14,13 +14,13 @@ import { useNavigation } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import DatePill from "../../components/controls/DatePill";
-import CurrencyBadge from "../../components/ui/CurrencyBadge";
-import { safeAlert, safeMenu } from "../../components/ui/alert/safeAlert";
-import { DEFAULT_CURRENCY } from "../../constants/currency";
-import { useLists } from "../../context/ListsContext";
-import { ROUTES } from "../../navigation/ROUTES";
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
+import DatePill from "@/components/controls/DatePill";
+import CurrencyBadge from "@/components/ui/CurrencyBadge";
+import { safeAlert, safeMenu } from "@/components/ui/alert/safeAlert";
+import { DEFAULT_CURRENCY } from "@/constants/currency";
+import { useLists } from "@/context/ListsContext";
+import { ROUTES } from "@/navigation/ROUTES";
+import { buildHeaderConfig } from "@/utils/layout/headerStyles";
 
 const headerConfig = buildHeaderConfig({
   title: "Shopping Lists",

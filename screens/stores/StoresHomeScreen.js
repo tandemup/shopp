@@ -5,8 +5,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { ROUTES } from "../../navigation/ROUTES";
-import { buildHeaderConfig } from "../../utils/layout/headerStyles";
+import { ROUTES } from "@/navigation/ROUTES";
+import { buildHeaderConfig } from "@/utils/layout/headerStyles";
 
 /* -------------------------------------------------
    Menu Item

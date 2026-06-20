@@ -1,4 +1,4 @@
-import { safeAlert } from "../../../components/ui/alert/safeAlert";
+import { safeAlert } from "@/components/ui/alert/safeAlert";
 
 /**
  * Adaptador legado. Mantiene la API anterior, pero delega siempre en la

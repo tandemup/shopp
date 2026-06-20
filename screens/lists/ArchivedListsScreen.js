@@ -8,17 +8,17 @@ import {
   Linking,
 } from "react-native";
 
-import DatePill from "../../components/controls/DatePill";
-import StorePill from "../../components/controls/StorePill";
+import DatePill from "@/components/controls/DatePill";
+import StorePill from "@/components/controls/StorePill";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import SearchBar from "../../components/features/search/SearchBar";
+import SearchBar from "@/components/features/search/SearchBar";
 import { Ionicons } from "@expo/vector-icons";
-import { formatCurrency } from "../../utils/store/formatters";
-import { ROUTES } from "../../navigation/ROUTES";
-import { useLists } from "../../context/ListsContext";
-import { useStores } from "../../context/StoresContext";
-import { normalizePriceInfo } from "../../utils/core/defaultItem";
+import { formatCurrency } from "@/utils/store/formatters";
+import { ROUTES } from "@/navigation/ROUTES";
+import { useLists } from "@/context/ListsContext";
+import { useStores } from "@/context/StoresContext";
+import { normalizePriceInfo } from "@/utils/core/defaultItem";
 
 const HeaderRow = ({ title, expanded, onToggle }) => (
   <View style={styles.topRow}>
