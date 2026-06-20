@@ -1,3 +1,5 @@
+{
+  /*
 import { io } from "socket.io-client";
 
 const SOCKET_SERVER_URL =
@@ -12,3 +14,8 @@ export const chatSocket = io(SOCKET_SERVER_URL.replace(/\/+$/, ""), {
 });
 
 export default chatSocket;
+ */
+}
+
+import { io } from "socket.io-client";
+export const chatSocket = io("http://localhost:3000");
