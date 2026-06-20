@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -11,11 +11,11 @@ import {
 import chatSocket from "@/services/chatSocket";
 
 export default function ChatScreen() {
-  const [connected, setConnected] = React.useState(false);
-  const [text, setText] = React.useState("");
-  const [messages, setMessages] = React.useState([]);
+  const [connected, setConnected] = useState(false);
+  const [text, setText] = useState("");
+  const [messages, setMessages] = useState([]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const socket = chatSocket.connectChatSocket();
 
     const handleConnect = () => {
@@ -49,7 +49,7 @@ export default function ChatScreen() {
     };
   }, []);
 
-  const sendMessage = React.useCallback(() => {
+  const sendMessage = useCallback(() => {
     const value = text.trim();
 
     if (!value) return;

@@ -1,5 +1,7 @@
 import { Platform } from "react-native";
 
+//const CHAT_SERVER_URL = process.env.EXPO_PUBLIC_CHAT_SERVER_URL || "https://shopp-e071fa278cae.herokuapp.com";
+
 const configuredSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL?.trim();
 
 // Web local en el Mac: http://localhost:3001
