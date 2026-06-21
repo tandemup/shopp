@@ -12,7 +12,7 @@ const configuredSocketUrl = process.env.EXPO_PUBLIC_SOCKET_URL?.trim();
 // Producción / Netlify / Heroku:
 //   define EXPO_PUBLIC_SOCKET_URL con la URL pública del servidor,
 //   por ejemplo:
-//   https://shopp-e071fa278cae.herokuapp.com
+//   https://shopp-server-7aaea79b71f2.herokuapp.com
 //
 // Importante:
 //   En un móvil, localhost apunta al propio móvil, no al Mac.
