@@ -9,11 +9,49 @@ import {
 } from "react-native";
 
 import chatSocket from "@/services/chatSocket";
+import { getChatMessages } from "@/services/chatApi";
+
+const CHAT_ROOM = "general";
+const CHAT_USERNAME = "Shopp user";
+
+function normalizeMessage(message) {
+  return {
+    id: String(message.id ?? `${Date.now()}-${Math.random()}`),
+    room: message.room ?? CHAT_ROOM,
+    username: message.username ?? message.userName ?? "anonymous",
+    text: message.text ?? "",
+    created_at:
+      message.created_at ?? message.createdAt ?? new Date().toISOString(),
+  };
+}
 
 export default function ChatScreen() {
   const [connected, setConnected] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
   const [messages, setMessages] = useState([]);
+
+  const loadMessages = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      const storedMessages = await getChatMessages(CHAT_ROOM);
+
+      const normalizedMessages = storedMessages
+        .map(normalizeMessage)
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+      setMessages(normalizedMessages);
+    } catch (error) {
+      console.warn("No se pudieron cargar los mensajes:", error?.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMessages();
+  }, [loadMessages]);
 
   useEffect(() => {
     const socket = chatSocket.connectChatSocket();
@@ -22,7 +60,8 @@ export default function ChatScreen() {
       setConnected(true);
 
       socket.emit("chat:join", {
-        room: "general",
+        room: CHAT_ROOM,
+        username: CHAT_USERNAME,
       });
     };
 
@@ -31,7 +70,17 @@ export default function ChatScreen() {
     };
 
     const handleMessage = (message) => {
-      setMessages((prev) => [message, ...prev]);
+      const normalizedMessage = normalizeMessage(message);
+
+      setMessages((prev) => {
+        const exists = prev.some((item) => item.id === normalizedMessage.id);
+
+        if (exists) {
+          return prev;
+        }
+
+        return [normalizedMessage, ...prev];
+      });
     };
 
     socket.on("connect", handleConnect);
@@ -56,10 +105,14 @@ export default function ChatScreen() {
 
     const socket = chatSocket.getChatSocket();
 
+    if (!socket.connected) {
+      socket.connect();
+    }
+
     socket.emit("chat:message", {
-      room: "general",
+      room: CHAT_ROOM,
+      username: CHAT_USERNAME,
       text: value,
-      userName: "Shopp user",
     });
 
     setText("");
@@ -73,6 +126,10 @@ export default function ChatScreen() {
         Estado: {connected ? "conectado" : "desconectado"}
       </Text>
 
+      {loading ? (
+        <Text style={styles.loadingText}>Cargando mensajes...</Text>
+      ) : null}
+
       <FlatList
         data={messages}
         keyExtractor={(item) => item.id}
@@ -80,10 +137,10 @@ export default function ChatScreen() {
         contentContainerStyle={styles.messages}
         renderItem={({ item }) => (
           <View style={styles.messageBubble}>
-            <Text style={styles.messageUser}>{item.userName}</Text>
+            <Text style={styles.messageUser}>{item.username}</Text>
             <Text style={styles.messageText}>{item.text}</Text>
             <Text style={styles.messageDate}>
-              {new Date(item.createdAt).toLocaleTimeString()}
+              {new Date(item.created_at).toLocaleTimeString()}
             </Text>
           </View>
         )}
@@ -122,6 +179,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#666",
     marginBottom: 12,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: "#777",
+    marginBottom: 8,
   },
   messages: {
     paddingVertical: 12,

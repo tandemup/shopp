@@ -5,7 +5,7 @@ node_modules/
 secrets.txt
 old/
 secret.md
-md/
+hero.md
 
 # Variables locales de entorno
 .env
