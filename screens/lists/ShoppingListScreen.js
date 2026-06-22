@@ -20,11 +20,9 @@ import StoreSelector from "@/components/features/stores/StoreSelector";
 import ItemRow from "@/components/features/items/ItemRow";
 import SearchCombinedBar from "@/components/features/search/SearchCombinedBar";
 import CheckoutBar from "@/components/features/checkout/CheckoutBar";
-import CurrencyBadge from "@/components/ui/CurrencyBadge";
 
 import { ROUTES } from "@/navigation/ROUTES";
 import { safeAlert } from "@/components/ui/alert/safeAlert";
-import WebZoomResetButton from "@/components/WebZoomResetButton";
 
 export default function ShoppingListScreen() {
   const route = useRoute();
@@ -67,6 +65,12 @@ export default function ShoppingListScreen() {
   }
 
   const assignedStore = list.storeId ? getStoreById(list.storeId) : null;
+
+  const total = useMemo(() => {
+    return list.items
+      .filter((i) => i.checked)
+      .reduce((sum, i) => sum + (i.priceInfo?.total ?? 0), 0);
+  }, [list.items]);
 
   const handleCreateNew = (name) => {
     const trimmed = name?.trim();
@@ -116,17 +120,20 @@ export default function ShoppingListScreen() {
     });
   };
 
-  const total = useMemo(() => {
-    return list.items
-      .filter((i) => i.checked)
-      .reduce((sum, i) => sum + (i.priceInfo?.total ?? 0), 0);
-  }, [list.items]);
-
   const handleCheckout = () => {
     if (!list.items.length) {
       safeAlert("Lista vacía", "No puedes archivar una lista sin productos.", [
         { text: "Aceptar" },
       ]);
+      return;
+    }
+
+    if (!total || total <= 0) {
+      safeAlert(
+        "Sin importe",
+        "No hay productos marcados con precio para finalizar la compra.",
+        [{ text: "Aceptar" }],
+      );
       return;
     }
 
@@ -167,11 +174,13 @@ export default function ShoppingListScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
-        <View style={styles.listHeader}>
-          <Text style={styles.listName}>{list.name}</Text>
+        <CheckoutBar
+          listName={list.name}
+          total={total}
+          currency={list.currency}
+          onCheckout={handleCheckout}
+        />
 
-          <CurrencyBadge currency={list.currency} size="sm" />
-        </View>
         <View style={styles.storeSelectorWrapper}>
           <StoreSelector
             store={assignedStore}
@@ -188,22 +197,19 @@ export default function ShoppingListScreen() {
             }
           />
         </View>
+
         <SearchCombinedBar
           currentList={list}
           onCreateNew={handleCreateNew}
           onAddFromHistory={handleAddFromHistory}
         />
+
         <FlatList
           data={list.items}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
-        />
-        <CheckoutBar
-          total={total}
-          currency={list.currency}
-          onCheckout={handleCheckout}
         />
       </SafeAreaView>
     </KeyboardAvoidingView>
@@ -225,46 +231,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
-  listHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-    backgroundColor: "#fff",
-  },
-
-  listName: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#111",
-    flexShrink: 1,
-    marginRight: 12,
-  },
-
   storeSelectorWrapper: {
     width: "100%",
-    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 6,
+    backgroundColor: "#fff",
   },
 
   content: {
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 32,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-
-  title: {
-    fontSize: 20,
-    fontWeight: "700",
   },
 });

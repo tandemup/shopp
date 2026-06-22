@@ -1,68 +1,117 @@
-// components/CheckoutBar.js
+// components/features/checkout/CheckoutBar.js
 
 import React from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
+
 import { formatCurrency } from "@/utils/store/prices";
 import { DEFAULT_CURRENCY } from "@/constants/currency";
+import CurrencyBadge from "@/components/ui/CurrencyBadge";
 
-export default function CheckoutBar({ total, currency, onCheckout }) {
-  if (!total || total <= 0) return null;
-
+export default function CheckoutBar({ listName, total, currency, onCheckout }) {
   const currencyCode =
     typeof currency === "string"
       ? currency
       : (currency?.code ?? DEFAULT_CURRENCY.code);
 
+  const hasTotal = total && total > 0;
+
   return (
     <View style={styles.container}>
-      <View style={styles.totalRow}>
-        <Text style={styles.totalLabel}>Total:</Text>
-        <Text style={styles.totalValue}>
-          {formatCurrency(total, currencyCode)}
-        </Text>
-      </View>
+      <View style={styles.topRow}>
+        <View style={styles.titleBlock}>
+          <Text style={styles.listName} numberOfLines={1}>
+            {listName || "Lista"}
+          </Text>
 
-      <Pressable style={styles.button} onPress={onCheckout}>
-        <Feather name="shopping-cart" size={20} color="#fff" />
-        <Text style={styles.buttonText}>Finalizar compra</Text>
-      </Pressable>
+          <View style={styles.currencyRow}>
+            <CurrencyBadge currency={currency} size="sm" />
+          </View>
+        </View>
+
+        <View style={styles.actionsBlock}>
+          <Text style={styles.totalValue}>
+            {formatCurrency(total || 0, currencyCode)}
+          </Text>
+
+          <Pressable
+            style={[styles.button, !hasTotal && styles.buttonDisabled]}
+            onPress={onCheckout}
+            disabled={!hasTotal}
+          >
+            <Feather name="shopping-cart" size={17} color="#fff" />
+            <Text style={styles.buttonText}>Finalizar</Text>
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderColor: "#e5e7eb",
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
     backgroundColor: "#ffffff",
   },
-  totalRow: {
+
+  topRow: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 10,
+    gap: 12,
   },
-  totalLabel: {
-    fontSize: 24,
-    fontWeight: "bold",
+
+  titleBlock: {
+    flex: 1,
+    minWidth: 0,
   },
+
+  listName: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#111827",
+  },
+
+  currencyRow: {
+    marginTop: 4,
+    alignItems: "flex-start",
+  },
+
+  actionsBlock: {
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+
   totalValue: {
     fontSize: 24,
-    fontWeight: "bold",
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 6,
   },
+
   button: {
+    minHeight: 36,
     flexDirection: "row",
-    gap: 6,
-    backgroundColor: "#22C55E",
-    paddingVertical: 14,
-    borderRadius: 10,
-    justifyContent: "center",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#22C55E",
   },
+
+  buttonDisabled: {
+    opacity: 0.45,
+  },
+
   buttonText: {
     color: "#FFFFFF",
-    fontWeight: "600",
-    fontSize: 20,
+    fontSize: 15,
+    fontWeight: "700",
   },
 });
