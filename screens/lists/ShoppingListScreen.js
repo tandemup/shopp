@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
 
   storeSelectorWrapper: {
     width: "100%",
-    paddingHorizontal: 16,
+    paddingHorizontal: 0,
     paddingTop: 10,
     paddingBottom: 6,
     backgroundColor: "#fff",

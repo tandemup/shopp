@@ -1,8 +1,6 @@
-// components/features/checkout/CheckoutBar.js
-
 import React from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
-import Feather from "@expo/vector-icons/Feather";
+import { Ionicons } from "@expo/vector-icons";
 
 import { formatCurrency } from "@/utils/store/prices";
 import { DEFAULT_CURRENCY } from "@/constants/currency";
@@ -14,36 +12,29 @@ export default function CheckoutBar({ listName, total, currency, onCheckout }) {
       ? currency
       : (currency?.code ?? DEFAULT_CURRENCY.code);
 
+  const formattedTotal = formatCurrency(total || 0, currencyCode);
   const hasTotal = total && total > 0;
 
   return (
     <View style={styles.container}>
-      <View style={styles.topRow}>
-        <View style={styles.titleBlock}>
-          <Text style={styles.listName} numberOfLines={1}>
-            {listName || "Lista"}
-          </Text>
+      <View style={styles.titleBlock}>
+        <Text style={styles.listName} numberOfLines={1}>
+          {listName || "Lista"}
+        </Text>
 
-          <View style={styles.currencyRow}>
-            <CurrencyBadge currency={currency} size="md" />
-          </View>
-        </View>
-
-        <View style={styles.actionsBlock}>
-          <Text style={styles.totalValue}>
-            {formatCurrency(total || 0, currencyCode)}
-          </Text>
-
-          <Pressable
-            style={[styles.button, !hasTotal && styles.buttonDisabled]}
-            onPress={onCheckout}
-            disabled={!hasTotal}
-          >
-            <Feather name="shopping-cart" size={17} color="#fff" />
-            <Text style={styles.buttonText}>Finalizar</Text>
-          </Pressable>
-        </View>
+        <CurrencyBadge currency={currency} size="sm" />
       </View>
+
+      <Pressable
+        style={[styles.button, !hasTotal && styles.buttonDisabled]}
+        onPress={onCheckout}
+        disabled={!hasTotal}
+      >
+        <Ionicons name="cart-outline" size={22} color="#fff" />
+        <Text style={styles.buttonText}>Finalizar</Text>
+        <Text style={styles.buttonSeparator}>·</Text>
+        <Text style={styles.buttonTotal}>{formattedTotal}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -58,50 +49,32 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
   },
 
-  topRow: {
+  titleBlock: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-  },
-
-  titleBlock: {
-    flex: 1,
-    minWidth: 0,
+    marginBottom: 10,
   },
 
   listName: {
-    fontSize: 22,
-    fontWeight: "800",
+    flex: 1,
+    minWidth: 0,
+    fontStyle: "italic",
+    fontSize: 16,
+    fontWeight: "700",
     color: "#111827",
-  },
-
-  currencyRow: {
-    marginTop: 4,
-    alignItems: "flex-start",
-  },
-
-  actionsBlock: {
-    alignItems: "flex-end",
-    justifyContent: "center",
-  },
-
-  totalValue: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#111827",
-    marginBottom: 6,
   },
 
   button: {
-    minHeight: 36,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
     backgroundColor: "#22C55E",
   },
 
@@ -111,7 +84,19 @@ const styles = StyleSheet.create({
 
   buttonText: {
     color: "#FFFFFF",
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: "700",
+  },
+
+  buttonSeparator: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 17,
+    fontWeight: "700",
+  },
+
+  buttonTotal: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "800",
   },
 });
