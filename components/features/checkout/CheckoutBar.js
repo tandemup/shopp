@@ -25,7 +25,7 @@ export default function CheckoutBar({ listName, total, currency, onCheckout }) {
           </Text>
 
           <View style={styles.currencyRow}>
-            <CurrencyBadge currency={currency} size="sm" />
+            <CurrencyBadge currency={currency} size="md" />
           </View>
         </View>
 

@@ -231,6 +231,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   storeSelectorWrapper: {
     width: "100%",
     paddingHorizontal: 16,

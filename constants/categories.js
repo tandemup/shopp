@@ -234,6 +234,7 @@ export const PRODUCT_CATEGORIES = [
       "Turron",
       "Bombones",
       "Nachos",
+      "Miel",
       "Otros",
     ],
   },
