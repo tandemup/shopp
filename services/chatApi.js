@@ -13,7 +13,7 @@ export async function getChatMessages(room = "general") {
     throw new Error(data.error || "No se pudieron cargar los mensajes");
   }
 
-  return data.messages;
+  return Array.isArray(data) ? data : [];
 }
 
 export async function createChatMessage({
@@ -40,22 +40,5 @@ export async function createChatMessage({
     throw new Error(data.error || "No se pudo crear el mensaje");
   }
 
-  return data.message;
-}
-
-export async function deleteChatMessage(id) {
-  const response = await fetch(`${SERVER_URL}/api/messages/${id}`, {
-    method: "DELETE",
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || "No se pudo borrar el mensaje");
-  }
-
-  return data.deleted;
+  return data;
 }
