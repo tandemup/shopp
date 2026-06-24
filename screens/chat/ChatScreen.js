@@ -11,13 +11,13 @@ import {
 import chatSocket from "@/services/chatSocket";
 import { getChatMessages } from "@/services/chatApi";
 
-const CHAT_ROOM = "general";
-const CHAT_USERNAME = "Shopp user";
+const DEFAULT_CHAT_ROOM = "general";
+const DEFAULT_CHAT_USERNAME = "Shopp user";
 
-function normalizeMessage(message) {
+function normalizeMessage(message, fallbackRoom = DEFAULT_CHAT_ROOM) {
   return {
     id: String(message.id ?? `${Date.now()}-${Math.random()}`),
-    room: message.room ?? CHAT_ROOM,
+    room: message.room ?? fallbackRoom,
     username: message.username ?? message.userName ?? "anonymous",
     text: message.text ?? "",
     created_at:
@@ -31,14 +31,20 @@ export default function ChatScreen() {
   const [text, setText] = useState("");
   const [messages, setMessages] = useState([]);
 
+  const [roomInput, setRoomInput] = useState(DEFAULT_CHAT_ROOM);
+  const [usernameInput, setUsernameInput] = useState(DEFAULT_CHAT_USERNAME);
+  const [activeRoom, setActiveRoom] = useState(DEFAULT_CHAT_ROOM);
+  const [activeUsername, setActiveUsername] = useState(DEFAULT_CHAT_USERNAME);
+
   const loadMessages = useCallback(async () => {
     try {
       setLoading(true);
 
-      const storedMessages = await getChatMessages(CHAT_ROOM);
+      const storedMessages = await getChatMessages(activeRoom);
 
       const normalizedMessages = storedMessages
-        .map(normalizeMessage)
+        .map((message) => normalizeMessage(message, activeRoom))
+        .filter((message) => message.room === activeRoom)
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
       setMessages(normalizedMessages);
@@ -47,7 +53,7 @@ export default function ChatScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeRoom]);
 
   useEffect(() => {
     loadMessages();
@@ -56,13 +62,16 @@ export default function ChatScreen() {
   useEffect(() => {
     const socket = chatSocket.connectChatSocket();
 
+    const joinActiveRoom = () => {
+      socket.emit("chat:join", {
+        room: activeRoom,
+        username: activeUsername,
+      });
+    };
+
     const handleConnect = () => {
       setConnected(true);
-
-      socket.emit("chat:join", {
-        room: CHAT_ROOM,
-        username: CHAT_USERNAME,
-      });
+      joinActiveRoom();
     };
 
     const handleDisconnect = () => {
@@ -70,7 +79,11 @@ export default function ChatScreen() {
     };
 
     const handleMessage = (message) => {
-      const normalizedMessage = normalizeMessage(message);
+      const normalizedMessage = normalizeMessage(message, activeRoom);
+
+      if (normalizedMessage.room !== activeRoom) {
+        return;
+      }
 
       setMessages((prev) => {
         const exists = prev.some((item) => item.id === normalizedMessage.id);
@@ -88,7 +101,8 @@ export default function ChatScreen() {
     socket.on("chat:message", handleMessage);
 
     if (socket.connected) {
-      handleConnect();
+      setConnected(true);
+      joinActiveRoom();
     }
 
     return () => {
@@ -96,7 +110,18 @@ export default function ChatScreen() {
       socket.off("disconnect", handleDisconnect);
       socket.off("chat:message", handleMessage);
     };
-  }, []);
+  }, [activeRoom, activeUsername]);
+
+  const joinRoom = useCallback(() => {
+    const nextRoom = roomInput.trim() || DEFAULT_CHAT_ROOM;
+    const nextUsername = usernameInput.trim() || DEFAULT_CHAT_USERNAME;
+
+    setActiveRoom(nextRoom);
+    setActiveUsername(nextUsername);
+    setRoomInput(nextRoom);
+    setUsernameInput(nextUsername);
+    setMessages([]);
+  }, [roomInput, usernameInput]);
 
   const sendMessage = useCallback(() => {
     const value = text.trim();
@@ -110,21 +135,47 @@ export default function ChatScreen() {
     }
 
     socket.emit("chat:message", {
-      room: CHAT_ROOM,
-      username: CHAT_USERNAME,
+      room: activeRoom,
+      username: activeUsername,
       text: value,
     });
 
     setText("");
-  }, [text]);
+  }, [activeRoom, activeUsername, text]);
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Chat Shopp</Text>
 
       <Text style={styles.status}>
-        Estado: {connected ? "conectado" : "desconectado"}
+        Estado: {connected ? "conectado" : "desconectado"} · Sala: {activeRoom}{" "}
+        · Usuario: {activeUsername}
       </Text>
+
+      <View style={styles.settingsCard}>
+        <TextInput
+          value={roomInput}
+          onChangeText={setRoomInput}
+          placeholder="Sala, por ejemplo general"
+          style={styles.settingsInput}
+          autoCapitalize="none"
+          returnKeyType="done"
+          onSubmitEditing={joinRoom}
+        />
+
+        <TextInput
+          value={usernameInput}
+          onChangeText={setUsernameInput}
+          placeholder="Nombre de usuario"
+          style={styles.settingsInput}
+          returnKeyType="done"
+          onSubmitEditing={joinRoom}
+        />
+
+        <Pressable style={styles.secondaryButton} onPress={joinRoom}>
+          <Text style={styles.secondaryButtonText}>Entrar</Text>
+        </Pressable>
+      </View>
 
       {loading ? (
         <Text style={styles.loadingText}>Cargando mensajes...</Text>
@@ -136,7 +187,12 @@ export default function ChatScreen() {
         inverted
         contentContainerStyle={styles.messages}
         renderItem={({ item }) => (
-          <View style={styles.messageBubble}>
+          <View
+            style={[
+              styles.messageBubble,
+              item.username === activeUsername ? styles.ownMessageBubble : null,
+            ]}
+          >
             <Text style={styles.messageUser}>{item.username}</Text>
             <Text style={styles.messageText}>{item.text}</Text>
             <Text style={styles.messageDate}>
@@ -150,7 +206,7 @@ export default function ChatScreen() {
         <TextInput
           value={text}
           onChangeText={setText}
-          placeholder="Escribe un mensaje..."
+          placeholder={`Escribe en ${activeRoom}...`}
           style={styles.input}
           returnKeyType="send"
           onSubmitEditing={sendMessage}
@@ -180,6 +236,34 @@ const styles = StyleSheet.create({
     color: "#666",
     marginBottom: 12,
   },
+  settingsCard: {
+    gap: 8,
+    marginBottom: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#eee",
+    borderRadius: 14,
+    backgroundColor: "#fafafa",
+  },
+  settingsInput: {
+    minHeight: 42,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    backgroundColor: "#fff",
+  },
+  secondaryButton: {
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: "#111827",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
   loadingText: {
     fontSize: 13,
     color: "#777",
@@ -196,6 +280,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginBottom: 8,
+  },
+  ownMessageBubble: {
+    alignSelf: "flex-end",
+    backgroundColor: "#ede9fe",
   },
   messageUser: {
     fontWeight: "700",
