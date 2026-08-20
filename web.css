@@ -1,13 +1,44 @@
-/* src/styles/web.css */
+/*
+ * Global web/PWA behaviour for Shopp.
+ *
+ * Keep visual component styling in React Native. This file only removes
+ * browser-specific behaviour that makes the installed PWA feel like a web
+ * page and exposes the device safe-area values to WebKit/Chromium.
+ */
+
+:root {
+  --shopp-safe-top: env(safe-area-inset-top, 0px);
+  --shopp-safe-right: env(safe-area-inset-right, 0px);
+  --shopp-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --shopp-safe-left: env(safe-area-inset-left, 0px);
+  --shopp-app-background: #f8fafc;
+  --shopp-chrome-background: var(--shopp-chrome-background);
+}
 
 html,
 body,
 #root {
   width: 100%;
+  height: 100%;
   min-height: 100%;
   margin: 0;
   padding: 0;
   overflow-x: hidden;
+  background: var(--shopp-app-background);
+}
+
+html {
+  /* Safari/iOS 26 puede derivar el tinte del chrome superior del fondo del documento. */
+  background: var(--shopp-chrome-background);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
 }
 
 *,
@@ -16,10 +47,79 @@ body,
   box-sizing: border-box;
 }
 
+/* React Native Web exposes Pressable/Touchable controls as accessibility
+ * buttons. Remove desktop-browser selection/highlight behaviour while leaving
+ * text fields and ordinary content selectable. */
+[role="button"],
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+/* Avoid Safari zooming the viewport when an input receives focus. */
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
+/* Keep keyboard focus accessible without showing a mouse-click outline. */
+[role="button"]:focus:not(:focus-visible),
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible) {
+  outline: none;
+}
+
 @supports (min-height: 100dvh) {
   html,
   body,
   #root {
     min-height: 100dvh;
+  }
+}
+
+/* Installed PWA: let the application occupy the complete standalone viewport.
+ * Safe areas themselves are handled by react-native-safe-area-context so we do
+ * not add body padding here (which would otherwise create double spacing). */
+@media (display-mode: standalone) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+}
+
+/* iOS exposes standalone mode through navigator.standalone rather than every
+ * CSS media-query implementation. The class is installed from index.js. */
+html.shopp-standalone,
+html.shopp-standalone body {
+  background: var(--shopp-chrome-background);
+}
+
+html.shopp-standalone,
+html.shopp-standalone body,
+html.shopp-standalone #root {
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   Shopp PWA · chrome superior
+   -------------------------------------------------------------------------- */
+@media (display-mode: standalone) {
+  html,
+  body {
+    background: var(--shopp-chrome-background);
+  }
+
+  /* Safari PWA: evita destellos blancos al hacer overscroll en la parte alta. */
+  body {
+    overscroll-behavior-y: none;
   }
 }

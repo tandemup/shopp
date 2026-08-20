@@ -8,6 +8,7 @@ export * from "./listsStorage";
 export * from "./settingsStorage";
 export * from "./barcodeSettingsStorage";
 export * from "./favoritesStorage";
+export * from "./productImageStorage";
 
 export async function clearActiveLists() {
   const lists = await storage.getJSON(STORAGE_KEYS.LISTS, []);

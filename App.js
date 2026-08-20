@@ -1,68 +1,36 @@
 import React from "react";
 import { Platform } from "react-native";
-
 import { NavigationContainer } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { ConvexReactClient } from "convex/react";
+import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { StatusBar } from "expo-status-bar";
 
-/* -----------------------------
-   Context Providers
------------------------------- */
-import { StoresProvider } from "./context/StoresContext";
-import { ListsProvider } from "./context/ListsContext";
-import { PurchasesProvider } from "./context/PurchasesContext";
-import { LocationProvider } from "./context/LocationContext";
-import { ProductSuggestionsProvider } from "./context/ProductSuggestionsContext";
-import { ProductLearningProvider } from "./context/ProductLearningContext";
+import { LocationProvider } from "@/src/context/LocationContext";
+import { ListsProvider } from "@/src/context/ListsContext";
+import { StoresProvider } from "@/src/context/StoresContext";
+import DialogHost from "@/src/components/ui/alert/DialogHost";
+import AppNavigator from "@/src/navigation/AppNavigator";
+import { I18nProvider } from "@/src/i18n";
 
-/* -----------------------------
-   Screens
------------------------------- */
-import SplashScreen from "./screens/system/SplashScreen";
-/* -----------------------------
-   Navigation
------------------------------- */
-import MainTabs from "./navigation/MainTabs";
-/* -----------------------------
-   Alert host
------------------------------- */
-import DialogHost from "./components/ui/alert/DialogHost";
-
-const RootStack = createNativeStackNavigator();
+const convex = new ConvexReactClient(process.env.EXPO_PUBLIC_CONVEX_URL);
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <StoresProvider>
-        <ListsProvider>
-          <PurchasesProvider>
-            <LocationProvider>
-              <ProductLearningProvider>
-                <ProductSuggestionsProvider>
-                  <NavigationContainer>
-                    <StatusBar
-                      style="light"
-                      translucent={false}
-                      backgroundColor={
-                        Platform.OS === "android" ? "#2563EB" : undefined
-                      }
-                    />
-                    <RootStack.Navigator screenOptions={{ headerShown: false }}>
-                      <RootStack.Screen
-                        name="Splash"
-                        component={SplashScreen}
-                      />
-                      <RootStack.Screen name="Main" component={MainTabs} />
-                    </RootStack.Navigator>
-                    <DialogHost />
-                  </NavigationContainer>
-                </ProductSuggestionsProvider>
-              </ProductLearningProvider>
-            </LocationProvider>
-          </PurchasesProvider>
-        </ListsProvider>
-      </StoresProvider>
-    </SafeAreaProvider>
+    <I18nProvider>
+      <SafeAreaProvider>
+        <ConvexAuthProvider client={convex}>
+          <ListsProvider>
+            <StoresProvider>
+              <LocationProvider>
+                <NavigationContainer>
+                  <AppNavigator />
+                </NavigationContainer>
+                {Platform.OS === "web" ? <DialogHost /> : null}
+              </LocationProvider>
+            </StoresProvider>
+          </ListsProvider>
+        </ConvexAuthProvider>
+      </SafeAreaProvider>
+    </I18nProvider>
   );
 }

@@ -1,185 +1,166 @@
 // src/storage/settingsStorage.js
 
-import { storage } from "./storage";
-import { STORAGE_KEYS } from "./storageKeys";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-/* -------------------------------------------------
-   Default settings
--------------------------------------------------- */
+import {
+  DEFAULT_ENGINE,
+  PRODUCT_SEARCH_ENGINE_IDS,
+  SEARCH_ENGINES,
+} from "../constants/searchEngines";
 
-export const DEFAULT_SEARCH_SETTINGS = {
-  productEngines: {
-    google: true,
-    google_shopping: true,
-    bing: false,
-    duckduckgo: false,
-    openfoodfacts: true,
-    barcodelookup: false,
-  },
+const SEARCH_SETTINGS_STORAGE_KEY = "shopp:search-settings";
+const LEGACY_SEARCH_SETTINGS_STORAGE_KEYS = ["search_settings"];
 
-  bookEngines: {
-    google_books: true,
-    open_library: true,
-    amazon_books: false,
-  },
-};
-
-/* -------------------------------------------------
-   Helpers
--------------------------------------------------- */
-
-/*
- * Normaliza la configuración guardada.
- *
- * Esto evita perder nuevos motores si el usuario tiene almacenada
- * una versión antigua e incompleta de los ajustes.
- */
-function normalizeSearchSettings(savedSettings) {
-  const saved =
-    savedSettings && typeof savedSettings === "object" ? savedSettings : {};
-
-  return {
-    ...DEFAULT_SEARCH_SETTINGS,
-    ...saved,
-
-    productEngines: {
-      ...DEFAULT_SEARCH_SETTINGS.productEngines,
-      ...(saved.productEngines ?? {}),
-    },
-
-    bookEngines: {
-      ...DEFAULT_SEARCH_SETTINGS.bookEngines,
-      ...(saved.bookEngines ?? {}),
-    },
-  };
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
-/* -------------------------------------------------
-   Read settings
--------------------------------------------------- */
+function isValidProductEngineId(engineId) {
+  return Boolean(engineId && SEARCH_ENGINES?.[engineId]);
+}
 
-export async function getSearchSettings() {
+function buildEnabledMap(ids, defaultId, source = {}) {
+  return safeArray(ids).reduce((result, engineId) => {
+    result[engineId] =
+      typeof source?.[engineId] === "boolean"
+        ? source[engineId]
+        : engineId === defaultId;
+
+    return result;
+  }, {});
+}
+
+export const DEFAULT_SEARCH_SETTINGS = {
+  selectedProductEngine: DEFAULT_ENGINE,
+
+  // Campo legacy conservado para pantallas antiguas que todavía lo leen.
+  generalEngine: DEFAULT_ENGINE,
+
+  productEngines: buildEnabledMap(PRODUCT_SEARCH_ENGINE_IDS, DEFAULT_ENGINE),
+};
+
+function safeJsonParse(value) {
   try {
-    const savedSettings = await storage.getJSON(
-      STORAGE_KEYS.SEARCH_SETTINGS,
-      DEFAULT_SEARCH_SETTINGS,
-    );
+    if (!value) {
+      return null;
+    }
 
-    return normalizeSearchSettings(savedSettings);
+    return JSON.parse(value);
   } catch (error) {
-    console.log("Error reading search settings:", error);
-
-    return DEFAULT_SEARCH_SETTINGS;
+    console.warn("[settingsStorage] No se pudo leer la configuración.", error);
+    return null;
   }
 }
 
-/* -------------------------------------------------
-   Save settings
--------------------------------------------------- */
+export function normalizeSearchSettings(settings = {}) {
+  const selectedProductEngine = isValidProductEngineId(
+    settings?.selectedProductEngine,
+  )
+    ? settings.selectedProductEngine
+    : isValidProductEngineId(settings?.generalEngine)
+      ? settings.generalEngine
+      : DEFAULT_SEARCH_SETTINGS.selectedProductEngine;
+
+  return {
+    ...DEFAULT_SEARCH_SETTINGS,
+
+    selectedProductEngine,
+    generalEngine: selectedProductEngine,
+
+    productEngines: buildEnabledMap(
+      PRODUCT_SEARCH_ENGINE_IDS,
+      selectedProductEngine,
+      settings?.productEngines,
+    ),
+  };
+}
+
+async function readStoredSettings() {
+  const rawValue = await AsyncStorage.getItem(SEARCH_SETTINGS_STORAGE_KEY);
+  const parsedValue = safeJsonParse(rawValue);
+
+  if (parsedValue) {
+    return parsedValue;
+  }
+
+  for (const legacyKey of LEGACY_SEARCH_SETTINGS_STORAGE_KEYS) {
+    const legacyRawValue = await AsyncStorage.getItem(legacyKey);
+    const legacyParsedValue = safeJsonParse(legacyRawValue);
+
+    if (legacyParsedValue) {
+      return legacyParsedValue;
+    }
+  }
+
+  return null;
+}
+
+export async function getSearchSettings() {
+  try {
+    const storedSettings = await readStoredSettings();
+
+    return normalizeSearchSettings(storedSettings || DEFAULT_SEARCH_SETTINGS);
+  } catch (error) {
+    console.warn("[settingsStorage] Error leyendo search settings.", error);
+    return DEFAULT_SEARCH_SETTINGS;
+  }
+}
 
 export async function setSearchSettings(settings) {
   try {
     const normalizedSettings = normalizeSearchSettings(settings);
 
-    await storage.setJSON(STORAGE_KEYS.SEARCH_SETTINGS, normalizedSettings);
+    await AsyncStorage.setItem(
+      SEARCH_SETTINGS_STORAGE_KEY,
+      JSON.stringify(normalizedSettings),
+    );
 
     return normalizedSettings;
   } catch (error) {
-    console.log("Error saving search settings:", error);
-
-    return DEFAULT_SEARCH_SETTINGS;
+    console.warn("[settingsStorage] Error guardando search settings.", error);
+    return normalizeSearchSettings(settings || DEFAULT_SEARCH_SETTINGS);
   }
 }
 
-/* -------------------------------------------------
-   Enable or disable one product engine
--------------------------------------------------- */
+export async function saveSearchSettings(settings) {
+  return setSearchSettings(settings);
+}
 
-export async function setProductEngineEnabled(engineId, enabled) {
-  const cleanEngineId = String(engineId || "").trim();
-
-  if (!cleanEngineId) {
-    return getSearchSettings();
-  }
-
+export async function updateSearchSettings(updater) {
   const currentSettings = await getSearchSettings();
+  const nextSettings =
+    typeof updater === "function" ? updater(currentSettings) : updater;
 
-  const nextSettings = {
+  return setSearchSettings({
     ...currentSettings,
-
-    productEngines: {
-      ...currentSettings.productEngines,
-      [cleanEngineId]: Boolean(enabled),
-    },
-  };
-
-  return setSearchSettings(nextSettings);
+    ...nextSettings,
+  });
 }
 
-/* -------------------------------------------------
-   Enable or disable one book engine
--------------------------------------------------- */
+export async function setSelectedProductEngine(engineId) {
+  const safeEngineId = isValidProductEngineId(engineId)
+    ? engineId
+    : DEFAULT_ENGINE;
 
-export async function setBookEngineEnabled(engineId, enabled) {
-  const cleanEngineId = String(engineId || "").trim();
-
-  if (!cleanEngineId) {
-    return getSearchSettings();
-  }
-
-  const currentSettings = await getSearchSettings();
-
-  const nextSettings = {
+  return updateSearchSettings((currentSettings) => ({
     ...currentSettings,
-
-    bookEngines: {
-      ...currentSettings.bookEngines,
-      [cleanEngineId]: Boolean(enabled),
-    },
-  };
-
-  return setSearchSettings(nextSettings);
+    selectedProductEngine: safeEngineId,
+    generalEngine: safeEngineId,
+    productEngines: buildEnabledMap(
+      PRODUCT_SEARCH_ENGINE_IDS,
+      safeEngineId,
+      currentSettings?.productEngines,
+    ),
+  }));
 }
 
-/* -------------------------------------------------
-   Get enabled product engines
--------------------------------------------------- */
-
-export async function getEnabledProductEngines() {
-  const settings = await getSearchSettings();
-
-  return Object.entries(settings.productEngines ?? {})
-    .filter(([, enabled]) => Boolean(enabled))
-    .map(([engineId]) => engineId);
-}
-
-/* -------------------------------------------------
-   Get enabled book engines
--------------------------------------------------- */
-
-export async function getEnabledBookEngines() {
-  const settings = await getSearchSettings();
-
-  return Object.entries(settings.bookEngines ?? {})
-    .filter(([, enabled]) => Boolean(enabled))
-    .map(([engineId]) => engineId);
-}
-
-/* -------------------------------------------------
-   Reset settings
--------------------------------------------------- */
-
-export async function resetSearchSettings() {
+export async function clearSearchSettings() {
   try {
-    await storage.setJSON(
-      STORAGE_KEYS.SEARCH_SETTINGS,
-      DEFAULT_SEARCH_SETTINGS,
-    );
+    await AsyncStorage.removeItem(SEARCH_SETTINGS_STORAGE_KEY);
 
     return DEFAULT_SEARCH_SETTINGS;
   } catch (error) {
-    console.log("Error resetting search settings:", error);
-
+    console.warn("[settingsStorage] Error borrando search settings.", error);
     return DEFAULT_SEARCH_SETTINGS;
   }
 }

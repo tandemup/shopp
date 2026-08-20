@@ -4,7 +4,6 @@ export const STORAGE_KEYS = {
   SEARCH_SETTINGS: "@shopping/searchSettings",
   SEARCH_ENGINE: "@shopping/searchEngine",
   SEARCH_GENERAL_ENGINE: "@shopping/search-general-engine",
-  SEARCH_BOOK_ENGINE: "@shopping/search-book-engine",
 
   HISTORY: "@shopping/history",
   FAVORITES: "@shopping/favorites",
@@ -22,4 +21,16 @@ export const STORAGE_KEYS = {
   SHOPPING_LOCATION: "@shopping/shopping-location",
 
   BARCODE_SETTINGS: "@shopping/barcode-settings",
+  LANGUAGE: "@shopping/language",
 };
+
+export function getUserScopedStorageKey(userId, key) {
+  const cleanUserId = String(userId || "anonymous").trim() || "anonymous";
+  const cleanKey = String(key || "").trim();
+
+  if (!cleanKey) {
+    return `@shopping/users/${cleanUserId}`;
+  }
+
+  return `@shopping/users/${cleanUserId}/${cleanKey.replace(/^@shopping\//, "")}`;
+}
