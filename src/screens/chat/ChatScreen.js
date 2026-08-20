@@ -23,6 +23,11 @@ import * as ImageManipulator from "expo-image-manipulator";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
+import YouTubePlaylistPlayer from "@/src/components/chat/YouTubePlaylistPlayer";
+import {
+  extractUrlsFromText,
+  parseYouTubeUrl,
+} from "@/src/services/urlSafety";
 
 const ROOMS = [
   { id: "compras", label: "Compras", icon: "cart-outline" },
@@ -30,8 +35,10 @@ const ROOMS = [
   { id: "humor", label: "Humor", icon: "happy-outline" },
   { id: "informatica", label: "Informática", icon: "laptop-outline" },
   { id: "noticias", label: "Noticias", icon: "newspaper-outline" },
+  { id: "youtube", label: "YouTube", icon: "logo-youtube" },
 ];
 const MAX_MESSAGE_LENGTH = 280;
+const MAX_YOUTUBE_MESSAGE_LENGTH = 2048;
 const MAX_IMAGES = 8;
 const CHAT_CLIENT_ID_KEY = "shopp-chat-client-id";
 
@@ -104,6 +111,14 @@ function Message({ item, language, onDelete, onImagePress, deleting }) {
       ? item.images.map((image) => image?.uri).filter(Boolean)
       : [],
   };
+  const youtubeMedia = useMemo(() => {
+    const youtubeUrl = extractUrlsFromText(content.text).find(
+      (url) => parseYouTubeUrl(url).isValid,
+    );
+
+    if (!youtubeUrl) return null;
+    return { sourceUrl: youtubeUrl, ...parseYouTubeUrl(youtubeUrl) };
+  }, [content.text]);
   return (
     <View style={[styles.messageRow, mine && styles.messageRowMine]}>
       <View
@@ -186,6 +201,13 @@ function Message({ item, language, onDelete, onImagePress, deleting }) {
             {content.text}
           </Text>
         ) : null}
+        {youtubeMedia ? (
+          <YouTubePlaylistPlayer
+            playlistId={youtubeMedia.playlistId}
+            videoId={youtubeMedia.videoId}
+            sourceUrl={youtubeMedia.playableUrl || youtubeMedia.sourceUrl}
+          />
+        ) : null}
       </View>
     </View>
   );
@@ -219,9 +241,11 @@ export default function ChatScreen() {
 
   const cleanAlias = alias.trim() || "anonymous";
   const cleanInput = input.trim();
+  const messageLengthLimit =
+    room === "youtube" ? MAX_YOUTUBE_MESSAGE_LENGTH : MAX_MESSAGE_LENGTH;
   const canSend =
     Boolean(cleanInput || selectedImages.length) &&
-    cleanInput.length <= MAX_MESSAGE_LENGTH &&
+    cleanInput.length <= messageLengthLimit &&
     !sending;
 
   const handleAliasChange = useCallback((value) => {
@@ -511,18 +535,21 @@ export default function ChatScreen() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons
-                name="chatbubble-ellipses-outline"
+                name={room === "youtube" ? "logo-youtube" : "chatbubble-ellipses-outline"}
                 size={34}
-                color="#94a3b8"
+                color={room === "youtube" ? "#dc2626" : "#94a3b8"}
               />
               <Text style={styles.emptyTitle}>
                 {messages === undefined
                   ? "Conectando con Convex…"
-                  : "Todavía no hay mensajes"}
+                  : room === "youtube"
+                    ? "Comparte el primer vídeo o playlist"
+                    : "Todavía no hay mensajes"}
               </Text>
               <Text style={styles.emptyText}>
-                Abre Shopp en otro dispositivo y usa un alias diferente para
-                probar la conversación en tiempo real.
+                {room === "youtube"
+                  ? "Pega un enlace de vídeo o playlist de YouTube y pulsa enviar. Podrás reproducirlo dentro del chat; las playlists conservarán su selector de vídeos."
+                  : "Abre Shopp en otro dispositivo y usa un alias diferente para probar la conversación en tiempo real."}
               </Text>
             </View>
           }
@@ -573,13 +600,17 @@ export default function ChatScreen() {
           <TextInput
             value={input}
             onChangeText={(value) =>
-              setInput(value.slice(0, MAX_MESSAGE_LENGTH))
+              setInput(value.slice(0, messageLengthLimit))
             }
-            placeholder="Escribe un mensaje…"
+            placeholder={
+              room === "youtube"
+                ? "Pega un vídeo o playlist de YouTube…"
+                : "Escribe un mensaje…"
+            }
             placeholderTextColor="#9ca3af"
             style={styles.messageInput}
             multiline
-            maxLength={MAX_MESSAGE_LENGTH}
+            maxLength={messageLengthLimit}
           />
           <Pressable
             onPress={handleSend}
@@ -596,7 +627,7 @@ export default function ChatScreen() {
 
         <View style={styles.footer}>
           <Text style={styles.counter}>
-            {input.length}/{MAX_MESSAGE_LENGTH}
+            {input.length}/{messageLengthLimit}
           </Text>
           <Text style={styles.footerText}>
             Pruebas abiertas · sin login obligatorio

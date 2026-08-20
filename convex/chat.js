@@ -6,6 +6,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 const DEFAULT_ROOM = "compras";
 const DEFAULT_USERNAME = "anonymous";
 const MAX_MESSAGE_LENGTH = 280;
+const MAX_YOUTUBE_MESSAGE_LENGTH = 2048;
 const MAX_USERNAME_LENGTH = 40;
 const MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -130,10 +131,14 @@ export const sendMessage = mutation({
     const username = cleanUsername(args.username);
     const text = cleanText(args.text);
     const images = Array.isArray(args.images) ? args.images : [];
+    const messageLengthLimit =
+      room === "youtube" ? MAX_YOUTUBE_MESSAGE_LENGTH : MAX_MESSAGE_LENGTH;
 
     if (!text && images.length === 0) throw new Error("El mensaje no puede estar vacío.");
-    if (text.length > MAX_MESSAGE_LENGTH) {
-      throw new Error(`El mensaje no puede superar ${MAX_MESSAGE_LENGTH} caracteres.`);
+    if (text.length > messageLengthLimit) {
+      throw new Error(
+        `El mensaje no puede superar ${messageLengthLimit} caracteres.`,
+      );
     }
 
     const viewer = await getViewer(ctx, args.clientId);
