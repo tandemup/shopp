@@ -5,10 +5,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  View
+  View,
 } from "react-native";
 import { I18nText as Text, useI18n } from "@/src/i18n";
-
 
 import { useFocusEffect } from "@react-navigation/native";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -56,6 +55,28 @@ const CAMERA_GRANTED_STORAGE_KEY = "shopp:web-camera-access-granted";
 
 const ADMIN_EMAIL = "info@ramshopp.com";
 const IMPORT_ITEMS_CHUNK_SIZE = 150;
+
+function getFrontendName() {
+  const configuredName = process.env.EXPO_PUBLIC_NETLIFY_SITE_NAME?.trim();
+  if (configuredName) return configuredName;
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    const hostname = window.location.hostname;
+
+    if (hostname.endsWith(".netlify.app")) {
+      return hostname.slice(0, -".netlify.app".length);
+    }
+
+    if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1") {
+      return hostname;
+    }
+  }
+
+  return "Shopp";
+}
+
+const FRONTEND_NAME = getFrontendName();
+const APP_VERSION = process.env.EXPO_PUBLIC_APP_VERSION?.trim() || "1.0.0";
 
 function buildImportBatchId() {
   return `async-storage-items-${Date.now().toString(36)}`;
@@ -455,9 +476,7 @@ function UserAccountCard({ user }) {
   const isLoading = user === undefined;
 
   const displayName =
-    user?.name || user?.email || user?._id || "Usuario autenticado";
-
-  const displayEmail = user?.email || "Email no disponible";
+    user?.profile?.alias || user?.name || "Usuario autenticado";
 
   return (
     <View style={styles.userCard}>
@@ -471,7 +490,9 @@ function UserAccountCard({ user }) {
         </Text>
 
         <Text style={styles.userEmail} numberOfLines={1}>
-          {isLoading ? "Obteniendo datos de Convex Auth" : displayEmail}
+          {isLoading
+            ? "Obteniendo datos de Convex Auth"
+            : `Proyecto Netlify: ${FRONTEND_NAME}`}
         </Text>
 
         {!isLoading && user?._id ? (
@@ -620,17 +641,21 @@ export default function MenuScreen({ navigation }) {
     currentUser?.isAdmin === true || currentUser?.role === "admin";
 
   const handleLanguagePress = () => {
-    safeAlert("Idioma de la aplicación", "Selecciona el idioma de la interfaz", [
-      {
-        text: "Español",
-        onPress: () => setLanguage("es"),
-      },
-      {
-        text: "Inglés",
-        onPress: () => setLanguage("en"),
-      },
-      { text: "Cancelar", style: "cancel" },
-    ]);
+    safeAlert(
+      "Idioma de la aplicación",
+      "Selecciona el idioma de la interfaz",
+      [
+        {
+          text: "Español",
+          onPress: () => setLanguage("es"),
+        },
+        {
+          text: "Inglés",
+          onPress: () => setLanguage("en"),
+        },
+        { text: "Cancelar", style: "cancel" },
+      ],
+    );
   };
 
   const handleSignOut = () => {
@@ -1330,6 +1355,12 @@ export default function MenuScreen({ navigation }) {
           <Email onPress={openAdminEmail} />
           {/* <DangerZone /> */}
 
+          <View style={styles.appInfo}>
+            <Text style={styles.appInfoText}>Frontend: {FRONTEND_NAME}</Text>
+            <Text style={styles.appInfoSeparator}>·</Text>
+            <Text style={styles.appInfoText}>Versión {APP_VERSION}</Text>
+          </View>
+
           <View style={styles.footerSpace} />
         </ScrollView>
       </SafeAreaView>
@@ -1653,6 +1684,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     color: "#64748b",
+  },
+
+  appInfo: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingTop: 4,
+  },
+
+  appInfoText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#94a3b8",
+  },
+
+  appInfoSeparator: {
+    marginHorizontal: 7,
+    fontSize: 12,
+    color: "#cbd5e1",
   },
 
   footerSpace: {

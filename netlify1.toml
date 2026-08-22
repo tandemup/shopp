@@ -1,5 +1,5 @@
 [build]
-  command = "npx expo export -p web"
+  command = "EXPO_PUBLIC_NETLIFY_SITE_NAME=\"$SITE_NAME\" npx expo export -p web"
   publish = "dist"
   functions = "netlify/functions"
 
