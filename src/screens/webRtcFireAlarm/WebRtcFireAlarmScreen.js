@@ -170,19 +170,143 @@ export default function WebRtcFireAlarmScreen() {
   const cancelRemoteAlarm = useMutation(api.fireAlarm.cancelMine);
   const acknowledgeAlarm = useMutation(api.fireAlarm.acknowledge);
   const resolveAlarm = useMutation(api.fireAlarm.resolve);
+  const sendRtcSignal = useMutation(api.fireAlarm.sendRtcSignal);
 
   const videoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
   const streamRef = useRef(null);
+  const peerRef = useRef(null);
+  const processedSignalIdsRef = useRef(new Set());
 
   const [active, setActive] = useState(false);
   const [error, setError] = useState("");
   const [selectedAdvisor, setSelectedAdvisor] = useState("admin");
   const [sending, setSending] = useState(false);
   const [lastSnapshot, setLastSnapshot] = useState(null);
+  const [rtcAlarmId, setRtcAlarmId] = useState(null);
+  const [rtcRole, setRtcRole] = useState(null);
+  const [rtcStatus, setRtcStatus] = useState("idle");
+
+  const rtcSignals = useQuery(
+    api.fireAlarm.listRtcSignals,
+    currentUser && rtcAlarmId ? { alarmId: rtcAlarmId } : "skip",
+  );
 
   const selectedAdvisorData = useMemo(
     () => ADVISORS.find((item) => item.id === selectedAdvisor) ?? ADVISORS[0],
     [selectedAdvisor],
+  );
+
+  const closePeerConnection = useCallback(() => {
+    if (peerRef.current) {
+      peerRef.current.ontrack = null;
+      peerRef.current.onicecandidate = null;
+      peerRef.current.onconnectionstatechange = null;
+      peerRef.current.close();
+      peerRef.current = null;
+    }
+
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+
+    processedSignalIdsRef.current = new Set();
+    setRtcAlarmId(null);
+    setRtcRole(null);
+    setRtcStatus("idle");
+  }, []);
+
+  const createPeerConnection = useCallback(
+    (alarmId, role) => {
+      if (Platform.OS !== "web" || !globalThis?.RTCPeerConnection) {
+        throw new Error("Este navegador no ofrece RTCPeerConnection.");
+      }
+
+      if (peerRef.current) {
+        peerRef.current.close();
+      }
+
+      processedSignalIdsRef.current = new Set();
+
+      const peer = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+
+      peer.onicecandidate = (event) => {
+        if (!event.candidate) return;
+
+        sendRtcSignal({
+          alarmId,
+          type: "ice",
+          payload: JSON.stringify(event.candidate.toJSON()),
+        }).catch((signalError) => {
+          console.warn("[WebRtcFireAlarm] ICE signal error", signalError);
+        });
+      };
+
+      peer.onconnectionstatechange = () => {
+        const state = peer.connectionState;
+        setRtcStatus(state || "connecting");
+      };
+
+      peer.ontrack = (event) => {
+        const [remoteStream] = event.streams;
+        if (remoteVideoRef.current && remoteStream) {
+          remoteVideoRef.current.srcObject = remoteStream;
+          remoteVideoRef.current.play?.().catch(() => {});
+        }
+      };
+
+      if (role === "camera") {
+        const stream = streamRef.current;
+        if (!stream) {
+          throw new Error("La cámara debe estar activa para iniciar WebRTC.");
+        }
+
+        stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+      }
+
+      peerRef.current = peer;
+      setRtcAlarmId(alarmId);
+      setRtcRole(role);
+      setRtcStatus("connecting");
+
+      return peer;
+    },
+    [sendRtcSignal],
+  );
+
+  const startCameraWebRtc = useCallback(
+    async (alarmId) => {
+      const peer = createPeerConnection(alarmId, "camera");
+      const offer = await peer.createOffer({
+        offerToReceiveAudio: false,
+        offerToReceiveVideo: false,
+      });
+
+      await peer.setLocalDescription(offer);
+
+      await sendRtcSignal({
+        alarmId,
+        type: "offer",
+        payload: JSON.stringify(offer),
+      });
+    },
+    [createPeerConnection, sendRtcSignal],
+  );
+
+  const openAdminLiveVideo = useCallback(
+    async (alarmId) => {
+      setError("");
+
+      try {
+        createPeerConnection(alarmId, "admin");
+      } catch (rtcError) {
+        console.warn("[WebRtcFireAlarm] admin WebRTC error", rtcError);
+        setError(rtcError?.message || "No se pudo iniciar WebRTC.");
+      }
+    },
+    [createPeerConnection],
   );
 
   const stopCamera = useCallback(() => {
@@ -298,13 +422,17 @@ export default function WebRtcFireAlarmScreen() {
 
       const { storageId } = await uploadResponse.json();
 
-      await createRemoteAlarm({
+      const result = await createRemoteAlarm({
         advisorId: selectedAdvisorData.id,
         advisorLabel: selectedAdvisorData.label,
         snapshotStorageId: storageId,
       });
 
       setLastSnapshot(snapshot);
+
+      if (result?.alarmId) {
+        await startCameraWebRtc(result.alarmId);
+      }
     } catch (alarmError) {
       console.warn("[WebRtcFireAlarm] alarm error", alarmError);
       setError(alarmError?.message || "No se pudo enviar la alarma.");
@@ -318,9 +446,85 @@ export default function WebRtcFireAlarmScreen() {
     currentUser,
     generateUploadUrl,
     selectedAdvisorData,
+    startCameraWebRtc,
   ]);
 
-  useEffect(() => () => stopCamera(), [stopCamera]);
+  useEffect(
+    () => () => {
+      stopCamera();
+      closePeerConnection();
+    },
+    [closePeerConnection, stopCamera],
+  );
+
+  useEffect(() => {
+    if (!rtcSignals || !peerRef.current || !rtcRole) return;
+
+    let cancelled = false;
+
+    async function applySignals() {
+      const peer = peerRef.current;
+      if (!peer) return;
+
+      for (const signal of rtcSignals) {
+        if (
+          cancelled ||
+          processedSignalIdsRef.current.has(String(signal._id))
+        ) {
+          continue;
+        }
+
+        const isRemoteSignal =
+          (rtcRole === "camera" && signal.senderRole === "admin") ||
+          (rtcRole === "admin" && signal.senderRole === "camera");
+
+        if (!isRemoteSignal) {
+          processedSignalIdsRef.current.add(String(signal._id));
+          continue;
+        }
+
+        try {
+          if (signal.type === "offer" && rtcRole === "admin") {
+            const offer = JSON.parse(signal.payload);
+
+            if (!peer.remoteDescription) {
+              await peer.setRemoteDescription(offer);
+
+              const answer = await peer.createAnswer();
+              await peer.setLocalDescription(answer);
+
+              await sendRtcSignal({
+                alarmId: rtcAlarmId,
+                type: "answer",
+                payload: JSON.stringify(answer),
+              });
+            }
+          } else if (signal.type === "answer" && rtcRole === "camera") {
+            const answer = JSON.parse(signal.payload);
+            if (!peer.remoteDescription) {
+              await peer.setRemoteDescription(answer);
+            }
+          } else if (signal.type === "ice") {
+            if (!peer.remoteDescription) {
+              continue;
+            }
+
+            await peer.addIceCandidate(JSON.parse(signal.payload));
+          }
+
+          processedSignalIdsRef.current.add(String(signal._id));
+        } catch (signalError) {
+          console.warn("[WebRtcFireAlarm] apply signal error", signalError);
+        }
+      }
+    }
+
+    applySignals();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rtcAlarmId, rtcRole, rtcSignals, sendRtcSignal]);
 
   const alarmsToShow = isAdmin ? adminAlarms : myAlarms;
 
@@ -391,8 +595,9 @@ export default function WebRtcFireAlarmScreen() {
             <View style={styles.videoFooterText}>
               <Text style={styles.cameraLabel}>Cámara local</Text>
               <Text style={styles.cameraMeta}>
-                El vídeo no se transmite todavía. Al enviar una alarma se guarda
-                una captura JPEG en Convex Storage.
+                La cámara permanece local hasta enviar una alarma. Después se
+                negocia una conexión WebRTC y Convex solo transporta
+                señalización.
               </Text>
             </View>
             <Pressable
@@ -414,6 +619,54 @@ export default function WebRtcFireAlarmScreen() {
             </Pressable>
           </View>
         </View>
+
+        {isAdmin && rtcAlarmId ? (
+          <View style={styles.remoteVideoCard}>
+            <View style={styles.remoteVideoHeader}>
+              <View>
+                <Text style={styles.remoteVideoTitle}>
+                  Cámara remota en directo
+                </Text>
+                <Text style={styles.remoteVideoMeta}>
+                  WebRTC · estado: {rtcStatus}
+                </Text>
+              </View>
+              <Pressable
+                onPress={closePeerConnection}
+                style={({ pressed }) => [
+                  styles.remoteCloseButton,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Text style={styles.remoteCloseButtonText}>Cerrar</Text>
+              </Pressable>
+            </View>
+
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              style={{
+                width: "100%",
+                aspectRatio: "16 / 9",
+                objectFit: "cover",
+                background: "#111827",
+              }}
+            />
+          </View>
+        ) : null}
+
+        {!isAdmin && rtcAlarmId ? (
+          <View style={styles.rtcStatusCard}>
+            <Ionicons name="radio-outline" size={20} color={COLORS.blue} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rtcStatusTitle}>WebRTC preparado</Text>
+              <Text style={styles.rtcStatusText}>
+                Esperando al administrador · estado: {rtcStatus}
+              </Text>
+            </View>
+          </View>
+        ) : null}
 
         {error ? (
           <View style={styles.errorCard}>
@@ -519,6 +772,27 @@ export default function WebRtcFireAlarmScreen() {
                 </View>
 
                 <View style={styles.alarmActions}>
+                  {isAdmin &&
+                  (item.status === "pending" ||
+                    item.status === "acknowledged") ? (
+                    <Pressable
+                      onPress={() => openAdminLiveVideo(item._id)}
+                      style={({ pressed }) => [
+                        styles.liveAction,
+                        pressed && styles.buttonPressed,
+                      ]}
+                    >
+                      <Ionicons
+                        name="videocam-outline"
+                        size={17}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.liveActionText}>
+                        Ver cámara en directo
+                      </Text>
+                    </Pressable>
+                  ) : null}
+
                   {isAdmin && item.status === "pending" ? (
                     <Pressable
                       onPress={() => acknowledgeAlarm({ alarmId: item._id })}
@@ -575,7 +849,13 @@ export default function WebRtcFireAlarmScreen() {
             ✓ Recepción en tiempo real para administrador
           </Text>
           <Text style={styles.infoText}>
-            Siguiente: señalización WebRTC y vídeo en directo.
+            ✓ Señalización WebRTC mediante Convex
+          </Text>
+          <Text style={styles.infoText}>
+            ✓ Vídeo P2P en directo con STUN (prototipo)
+          </Text>
+          <Text style={styles.infoText}>
+            Siguiente: TURN para redes donde la conexión directa falle.
           </Text>
         </View>
 
@@ -868,6 +1148,78 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontSize: 12,
     lineHeight: 18,
+  },
+  remoteVideoCard: {
+    marginTop: 14,
+    overflow: "hidden",
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 20,
+  },
+  remoteVideoHeader: {
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  remoteVideoTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  remoteVideoMeta: {
+    marginTop: 3,
+    color: COLORS.textMuted,
+    fontSize: 11,
+  },
+  remoteCloseButton: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.surfaceMuted,
+    borderRadius: 11,
+  },
+  remoteCloseButtonText: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  rtcStatusCard: {
+    marginTop: 12,
+    padding: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: COLORS.blueSoft,
+    borderRadius: 15,
+  },
+  rtcStatusTitle: {
+    color: COLORS.blue,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  rtcStatusText: {
+    marginTop: 2,
+    color: COLORS.textMuted,
+    fontSize: 11,
+  },
+  liveAction: {
+    minHeight: 38,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: COLORS.blue,
+    borderRadius: 11,
+  },
+  liveActionText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "800",
   },
   disclaimer: {
     marginTop: 18,

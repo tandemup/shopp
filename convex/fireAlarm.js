@@ -207,3 +207,73 @@ export const cancelMine = mutation({
   },
 });
 
+async function requireAlarmAccess(ctx, alarmId) {
+  const { userId, user } = await requireAuthUser(ctx);
+  const alarm = await ctx.db.get(alarmId);
+
+  if (!alarm) {
+    throw new Error("Alarma no encontrada.");
+  }
+
+  const isOwner = String(alarm.createdBy) === String(userId);
+  const isAdmin = user.role === "admin";
+
+  if (!isOwner && !isAdmin) {
+    throw new Error("No tienes permiso para acceder a esta sesión WebRTC.");
+  }
+
+  return { userId, user, alarm, isOwner, isAdmin };
+}
+
+export const sendRtcSignal = mutation({
+  args: {
+    alarmId: v.id("fireAlarms"),
+    type: v.union(v.literal("offer"), v.literal("answer"), v.literal("ice")),
+    payload: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { userId, isOwner, isAdmin } = await requireAlarmAccess(
+      ctx,
+      args.alarmId,
+    );
+
+    if (args.type === "offer" && !isOwner) {
+      throw new Error(
+        "Solo la cámara que creó la alarma puede enviar la oferta.",
+      );
+    }
+
+    if (args.type === "answer" && !isAdmin) {
+      throw new Error("Solo un administrador puede responder a la sesión.");
+    }
+
+    const payload = String(args.payload || "");
+    if (!payload || payload.length > 20000) {
+      throw new Error("La señal WebRTC no es válida.");
+    }
+
+    const signalId = await ctx.db.insert("fireAlarmSignals", {
+      alarmId: args.alarmId,
+      senderId: userId,
+      senderRole: isAdmin ? "admin" : "camera",
+      type: args.type,
+      payload,
+      createdAt: Date.now(),
+    });
+
+    return { ok: true, signalId };
+  },
+});
+
+export const listRtcSignals = query({
+  args: { alarmId: v.id("fireAlarms") },
+  handler: async (ctx, args) => {
+    await requireAlarmAccess(ctx, args.alarmId);
+
+    return await ctx.db
+      .query("fireAlarmSignals")
+      .withIndex("by_alarmId_createdAt", (q) => q.eq("alarmId", args.alarmId))
+      .order("asc")
+      .take(200);
+  },
+});

@@ -104,6 +104,17 @@ export default defineSchema({
     .index("by_status_createdAt", ["status", "createdAt"])
     .index("by_createdBy_createdAt", ["createdBy", "createdAt"]),
 
+  fireAlarmSignals: defineTable({
+    alarmId: v.id("fireAlarms"),
+    senderId: v.id("users"),
+    senderRole: v.union(v.literal("camera"), v.literal("admin")),
+    type: v.union(v.literal("offer"), v.literal("answer"), v.literal("ice")),
+    payload: v.string(),
+    createdAt: v.float64(),
+  })
+    .index("by_alarmId_createdAt", ["alarmId", "createdAt"])
+    .index("by_createdAt", ["createdAt"]),
+
   userScanHistory: defineTable({
     userId: v.string(),
     barcode: v.string(),
