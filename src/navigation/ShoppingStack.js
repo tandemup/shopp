@@ -17,6 +17,7 @@ import ScannedHistoryScreen from "@/src/screens/scanner/ScannedHistoryScreen";
 import EditScannedItemScreen from "@/src/screens/scanner/EditScannedItemScreen";
 import StoreMapScreen from "@/src/screens/stores/StoreMapScreen";
 import MenuScreen from "@/src/screens/settings/MenuScreen";
+import WebRtcFireAlarmScreen from "@/src/screens/webRtcFireAlarm/WebRtcFireAlarmScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -55,6 +56,10 @@ export default function ShoppingStack() {
       <Stack.Screen
         name={ROUTES.EDIT_SCANNED_ITEM}
         component={EditScannedItemScreen}
+      />
+      <Stack.Screen
+        name={ROUTES.WEBRTC_FIRE_ALARM}
+        component={WebRtcFireAlarmScreen}
       />
       <Stack.Screen name={ROUTES.MENU} component={MenuScreen} />
     </Stack.Navigator>

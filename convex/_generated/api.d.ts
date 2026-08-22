@@ -14,6 +14,7 @@ import type * as auth from "../auth.js";
 import type * as barcodeScans from "../barcodeScans.js";
 import type * as chat from "../chat.js";
 import type * as crons from "../crons.js";
+import type * as englishTutor from "../englishTutor.js";
 import type * as factory from "../factory.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
@@ -47,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   barcodeScans: typeof barcodeScans;
   chat: typeof chat;
   crons: typeof crons;
+  englishTutor: typeof englishTutor;
   factory: typeof factory;
   files: typeof files;
   http: typeof http;

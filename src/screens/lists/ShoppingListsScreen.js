@@ -228,6 +228,17 @@ function QuickActions({
           navigateToNestedRoute(ROUTES.CHAT_TAB, ROUTES.PARKING_SCREEN),
       },
       {
+        key: "webrtcFireAlarm",
+        label: "Fire Alarm",
+        description: "Vigilancia de incendios por WebRTC",
+        icon: "flame-outline",
+        iconColor: COLORS.red,
+        iconBackground: COLORS.redSoft,
+        badgeLabel: "NUEVO",
+        onPress: () =>
+          navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.WEBRTC_FIRE_ALARM),
+      },
+      {
         key: "chatPrototype",
         label: "Chat prototipo",
         description: "Prueba el nuevo chat de compras",

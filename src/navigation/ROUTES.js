@@ -11,6 +11,7 @@ export const ROUTES = {
   SHOPPING_LIST: "Shopping List",
   ITEM_DETAIL: "Item Detail",
   CARREFOUR_TEST: "Carrefour Test",
+  WEBRTC_FIRE_ALARM: "WebRTC Fire Alarm",
 
   // Stores stack
   STORES_HOME: "Stores Home",
