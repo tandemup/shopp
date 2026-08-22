@@ -3,7 +3,7 @@ import { View, Pressable, FlatList } from "react-native";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 
 import { useQuery, useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { api } from "@/convex/_generated/api";
 
 export default function ItemsScreen() {
   const [name, setName] = useState("");
