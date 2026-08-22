@@ -68,6 +68,43 @@ const ADVISORS = [
   },
 ];
 
+const FIREALARM_TURN_URL =
+  typeof process !== "undefined"
+    ? process.env.EXPO_PUBLIC_FIREALARM_TURN_URL
+    : undefined;
+const FIREALARM_TURN_USERNAME =
+  typeof process !== "undefined"
+    ? process.env.EXPO_PUBLIC_FIREALARM_TURN_USERNAME
+    : undefined;
+const FIREALARM_TURN_CREDENTIAL =
+  typeof process !== "undefined"
+    ? process.env.EXPO_PUBLIC_FIREALARM_TURN_CREDENTIAL
+    : undefined;
+
+const TURN_CONFIGURED = Boolean(
+  FIREALARM_TURN_URL && FIREALARM_TURN_USERNAME && FIREALARM_TURN_CREDENTIAL,
+);
+
+function buildIceServers() {
+  const servers = [{ urls: "stun:stun.l.google.com:19302" }];
+
+  if (TURN_CONFIGURED) {
+    servers.push({
+      urls: FIREALARM_TURN_URL,
+      username: FIREALARM_TURN_USERNAME,
+      credential: FIREALARM_TURN_CREDENTIAL,
+    });
+  }
+
+  return servers;
+}
+
+function formatVideoStats(stats) {
+  if (!stats?.width || !stats?.height) return "";
+  const fps = stats.fps ? ` · ${Math.round(stats.fps)} fps` : "";
+  return `${stats.width} × ${stats.height}${fps}`;
+}
+
 function StatusPill({ active }) {
   return (
     <View
@@ -177,6 +214,7 @@ export default function WebRtcFireAlarmScreen() {
   const streamRef = useRef(null);
   const peerRef = useRef(null);
   const processedSignalIdsRef = useRef(new Set());
+  const rtcStatsTimerRef = useRef(null);
 
   const [active, setActive] = useState(false);
   const [error, setError] = useState("");
@@ -186,6 +224,9 @@ export default function WebRtcFireAlarmScreen() {
   const [rtcAlarmId, setRtcAlarmId] = useState(null);
   const [rtcRole, setRtcRole] = useState(null);
   const [rtcStatus, setRtcStatus] = useState("idle");
+  const [rtcTransport, setRtcTransport] = useState("unknown");
+  const [localVideoStats, setLocalVideoStats] = useState(null);
+  const [remoteVideoStats, setRemoteVideoStats] = useState(null);
 
   const rtcSignals = useQuery(
     api.fireAlarm.listRtcSignals,
@@ -197,7 +238,97 @@ export default function WebRtcFireAlarmScreen() {
     [selectedAdvisor],
   );
 
+  const stopRtcStatsMonitor = useCallback(() => {
+    if (rtcStatsTimerRef.current) {
+      clearInterval(rtcStatsTimerRef.current);
+      rtcStatsTimerRef.current = null;
+    }
+  }, []);
+
+  const inspectPeerStats = useCallback(async (peer, role) => {
+    if (!peer?.getStats) return;
+
+    try {
+      const reports = await peer.getStats();
+      let selectedPair = null;
+      let inboundVideo = null;
+
+      reports.forEach((report) => {
+        if (
+          report.type === "candidate-pair" &&
+          report.state === "succeeded" &&
+          (report.selected || report.nominated)
+        ) {
+          selectedPair = report;
+        }
+
+        if (
+          report.type === "inbound-rtp" &&
+          report.kind === "video" &&
+          !report.isRemote
+        ) {
+          inboundVideo = report;
+        }
+      });
+
+      if (!selectedPair) {
+        reports.forEach((report) => {
+          if (
+            report.type === "transport" &&
+            report.selectedCandidatePairId &&
+            reports.get(report.selectedCandidatePairId)
+          ) {
+            selectedPair = reports.get(report.selectedCandidatePairId);
+          }
+        });
+      }
+
+      if (selectedPair) {
+        const localCandidate = reports.get(selectedPair.localCandidateId);
+        const remoteCandidate = reports.get(selectedPair.remoteCandidateId);
+        const candidateType =
+          localCandidate?.candidateType || remoteCandidate?.candidateType;
+
+        if (candidateType === "relay") {
+          setRtcTransport("TURN relay");
+        } else if (candidateType === "srflx") {
+          setRtcTransport("P2P / STUN");
+        } else if (candidateType === "host") {
+          setRtcTransport("P2P local");
+        } else if (candidateType) {
+          setRtcTransport(`P2P / ${candidateType}`);
+        }
+      }
+
+      if (
+        role === "admin" &&
+        inboundVideo?.frameWidth &&
+        inboundVideo?.frameHeight
+      ) {
+        setRemoteVideoStats({
+          width: inboundVideo.frameWidth,
+          height: inboundVideo.frameHeight,
+          fps: inboundVideo.framesPerSecond || null,
+        });
+      }
+    } catch (statsError) {
+      console.warn("[WebRtcFireAlarm] stats error", statsError);
+    }
+  }, []);
+
+  const startRtcStatsMonitor = useCallback(
+    (peer, role) => {
+      stopRtcStatsMonitor();
+      const tick = () => inspectPeerStats(peer, role);
+      tick();
+      rtcStatsTimerRef.current = setInterval(tick, 2000);
+    },
+    [inspectPeerStats, stopRtcStatsMonitor],
+  );
+
   const closePeerConnection = useCallback(() => {
+    stopRtcStatsMonitor();
+
     if (peerRef.current) {
       peerRef.current.ontrack = null;
       peerRef.current.onicecandidate = null;
@@ -214,7 +345,9 @@ export default function WebRtcFireAlarmScreen() {
     setRtcAlarmId(null);
     setRtcRole(null);
     setRtcStatus("idle");
-  }, []);
+    setRtcTransport("unknown");
+    setRemoteVideoStats(null);
+  }, [stopRtcStatsMonitor]);
 
   const createPeerConnection = useCallback(
     (alarmId, role) => {
@@ -229,7 +362,7 @@ export default function WebRtcFireAlarmScreen() {
       processedSignalIdsRef.current = new Set();
 
       const peer = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        iceServers: buildIceServers(),
       });
 
       peer.onicecandidate = (event) => {
@@ -247,6 +380,16 @@ export default function WebRtcFireAlarmScreen() {
       peer.onconnectionstatechange = () => {
         const state = peer.connectionState;
         setRtcStatus(state || "connecting");
+
+        if (state === "connected") {
+          startRtcStatsMonitor(peer, role);
+        } else if (
+          state === "failed" ||
+          state === "closed" ||
+          state === "disconnected"
+        ) {
+          stopRtcStatsMonitor();
+        }
       };
 
       peer.ontrack = (event) => {
@@ -273,7 +416,7 @@ export default function WebRtcFireAlarmScreen() {
 
       return peer;
     },
-    [sendRtcSignal],
+    [sendRtcSignal, startRtcStatsMonitor, stopRtcStatsMonitor],
   );
 
   const startCameraWebRtc = useCallback(
@@ -319,6 +462,7 @@ export default function WebRtcFireAlarmScreen() {
       videoRef.current.srcObject = null;
     }
     setActive(false);
+    setLocalVideoStats(null);
   }, []);
 
   const startCamera = useCallback(async () => {
@@ -350,6 +494,17 @@ export default function WebRtcFireAlarmScreen() {
       });
 
       streamRef.current = stream;
+
+      const videoTrack = stream.getVideoTracks?.()[0];
+      const settings = videoTrack?.getSettings?.() || {};
+      if (settings.width && settings.height) {
+        setLocalVideoStats({
+          width: settings.width,
+          height: settings.height,
+          fps: settings.frameRate || null,
+        });
+      }
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play?.();
@@ -599,6 +754,11 @@ export default function WebRtcFireAlarmScreen() {
                 negocia una conexión WebRTC y Convex solo transporta
                 señalización.
               </Text>
+              {localVideoStats ? (
+                <Text style={styles.cameraStats}>
+                  Resolución real: {formatVideoStats(localVideoStats)}
+                </Text>
+              ) : null}
             </View>
             <Pressable
               onPress={active ? stopCamera : startCamera}
@@ -628,8 +788,13 @@ export default function WebRtcFireAlarmScreen() {
                   Cámara remota en directo
                 </Text>
                 <Text style={styles.remoteVideoMeta}>
-                  WebRTC · estado: {rtcStatus}
+                  WebRTC · estado: {rtcStatus} · {rtcTransport}
                 </Text>
+                {remoteVideoStats ? (
+                  <Text style={styles.remoteVideoMeta}>
+                    Vídeo recibido: {formatVideoStats(remoteVideoStats)}
+                  </Text>
+                ) : null}
               </View>
               <Pressable
                 onPress={closePeerConnection}
@@ -663,6 +828,9 @@ export default function WebRtcFireAlarmScreen() {
               <Text style={styles.rtcStatusTitle}>WebRTC preparado</Text>
               <Text style={styles.rtcStatusText}>
                 Esperando al administrador · estado: {rtcStatus}
+              </Text>
+              <Text style={styles.rtcStatusText}>
+                ICE: {TURN_CONFIGURED ? "STUN + TURN configurado" : "solo STUN"}
               </Text>
             </View>
           </View>
@@ -840,6 +1008,26 @@ export default function WebRtcFireAlarmScreen() {
           ))
         )}
 
+        <View style={styles.turnCard}>
+          <View style={styles.turnHeader}>
+            <Ionicons
+              name={TURN_CONFIGURED ? "cloud-done-outline" : "cloud-outline"}
+              size={21}
+              color={TURN_CONFIGURED ? COLORS.green : COLORS.amber}
+            />
+            <Text style={styles.turnTitle}>Conectividad WebRTC</Text>
+          </View>
+          <Text style={styles.turnText}>
+            STUN: activo · TURN:{" "}
+            {TURN_CONFIGURED ? "configurado" : "no configurado"}
+          </Text>
+          <Text style={styles.turnText}>
+            {TURN_CONFIGURED
+              ? "Si la conexión P2P falla, WebRTC puede utilizar el relay TURN."
+              : "La conexión depende por ahora de P2P/STUN. Algunas redes móviles, CGNAT o firewalls pueden bloquearla."}
+          </Text>
+        </View>
+
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>Estado del desarrollo</Text>
           <Text style={styles.infoText}>✓ Cámara Web/PWA</Text>
@@ -855,7 +1043,10 @@ export default function WebRtcFireAlarmScreen() {
             ✓ Vídeo P2P en directo con STUN (prototipo)
           </Text>
           <Text style={styles.infoText}>
-            Siguiente: TURN para redes donde la conexión directa falle.
+            ✓ Soporte TURN configurable mediante variables de entorno
+          </Text>
+          <Text style={styles.infoText}>
+            Siguiente: pruebas de conectividad y servicio TURN de producción.
           </Text>
         </View>
 
@@ -978,6 +1169,12 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontSize: 11,
     lineHeight: 16,
+  },
+  cameraStats: {
+    marginTop: 4,
+    color: COLORS.blue,
+    fontSize: 11,
+    fontWeight: "800",
   },
   cameraButton: {
     minHeight: 42,
@@ -1148,6 +1345,31 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontSize: 12,
     lineHeight: 18,
+  },
+  turnCard: {
+    marginTop: 18,
+    padding: 14,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 17,
+  },
+  turnHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 7,
+  },
+  turnTitle: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  turnText: {
+    marginTop: 3,
+    color: COLORS.textMuted,
+    fontSize: 11,
+    lineHeight: 17,
   },
   remoteVideoCard: {
     marginTop: 14,
