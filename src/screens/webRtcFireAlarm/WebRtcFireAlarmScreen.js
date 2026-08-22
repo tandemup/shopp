@@ -1,5 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -8,13 +15,18 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useMutation, useQuery } from "convex/react";
+
+import { api } from "@/convex/_generated/api";
 import { I18nText as Text } from "@/src/i18n";
 
 const COLORS = {
   background: "#F4F7FB",
   surface: "#FFFFFF",
+  surfaceMuted: "#F8FAFC",
   text: "#172033",
   textMuted: "#667085",
+  textSoft: "#98A2B3",
   border: "#E4E7EC",
   red: "#DC2626",
   redDark: "#B91C1C",
@@ -23,25 +35,155 @@ const COLORS = {
   greenSoft: "#ECFDF3",
   amber: "#B45309",
   amberSoft: "#FFF7ED",
+  blue: "#2563EB",
+  blueSoft: "#EAF2FF",
+  purple: "#7C3AED",
+  purpleSoft: "#F3E8FF",
 };
+
+const ADVISORS = [
+  {
+    id: "admin",
+    label: "Administrador",
+    subtitle: "Aviso principal",
+    icon: "shield-checkmark-outline",
+    color: COLORS.red,
+    backgroundColor: COLORS.redSoft,
+  },
+  {
+    id: "hero",
+    label: "Fire Hero",
+    subtitle: "Contacto de confianza",
+    icon: "flash-outline",
+    color: COLORS.blue,
+    backgroundColor: COLORS.blueSoft,
+  },
+  {
+    id: "rescue",
+    label: "Rescue",
+    subtitle: "Segundo contacto",
+    icon: "heart-circle-outline",
+    color: COLORS.purple,
+    backgroundColor: COLORS.purpleSoft,
+  },
+];
 
 function StatusPill({ active }) {
   return (
-    <View style={[styles.statusPill, active ? styles.statusActive : styles.statusIdle]}>
-      <View style={[styles.statusDot, active ? styles.dotActive : styles.dotIdle]} />
-      <Text style={[styles.statusText, active ? styles.statusTextActive : styles.statusTextIdle]}>
+    <View
+      style={[
+        styles.statusPill,
+        active ? styles.statusActive : styles.statusIdle,
+      ]}
+    >
+      <View
+        style={[styles.statusDot, active ? styles.dotActive : styles.dotIdle]}
+      />
+      <Text
+        style={[
+          styles.statusText,
+          active ? styles.statusTextActive : styles.statusTextIdle,
+        ]}
+      >
         {active ? "Cámara activa" : "Cámara detenida"}
       </Text>
     </View>
   );
 }
 
+function AdvisorButton({ advisor, selected, onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.advisorButton,
+        selected && styles.advisorButtonSelected,
+        pressed && styles.buttonPressed,
+      ]}
+    >
+      <View
+        style={[
+          styles.advisorAvatar,
+          { backgroundColor: advisor.backgroundColor },
+        ]}
+      >
+        <Ionicons name={advisor.icon} size={28} color={advisor.color} />
+      </View>
+      <View style={styles.advisorBody}>
+        <Text style={styles.advisorLabel}>{advisor.label}</Text>
+        <Text style={styles.advisorSubtitle}>{advisor.subtitle}</Text>
+      </View>
+      <Ionicons
+        name={selected ? "checkmark-circle" : "chevron-forward"}
+        size={22}
+        color={selected ? COLORS.red : COLORS.textSoft}
+      />
+    </Pressable>
+  );
+}
+
+function AlarmStatus({ status }) {
+  const config = {
+    pending: ["Pendiente", COLORS.red, COLORS.redSoft],
+    acknowledged: ["Recibida", COLORS.amber, COLORS.amberSoft],
+    resolved: ["Resuelta", COLORS.green, COLORS.greenSoft],
+    cancelled: ["Cancelada", COLORS.textMuted, COLORS.surfaceMuted],
+  }[status] ?? [status, COLORS.textMuted, COLORS.surfaceMuted];
+
+  return (
+    <View style={[styles.alarmStatus, { backgroundColor: config[2] }]}>
+      <Text style={[styles.alarmStatusText, { color: config[1] }]}>
+        {config[0]}
+      </Text>
+    </View>
+  );
+}
+
+function formatAlarmDate(value) {
+  if (!value) return "";
+  try {
+    return new Date(value).toLocaleString("es-ES", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
 export default function WebRtcFireAlarmScreen() {
+  const currentUser = useQuery(api.users.current);
+  const isAdmin = currentUser?.isAdmin === true;
+
+  const myAlarms = useQuery(api.fireAlarm.listMine, currentUser ? {} : "skip");
+  const adminAlarms = useQuery(
+    api.fireAlarm.listActiveForAdmin,
+    currentUser && isAdmin ? {} : "skip",
+  );
+
+  const generateUploadUrl = useMutation(
+    api.fireAlarm.generateSnapshotUploadUrl,
+  );
+  const createRemoteAlarm = useMutation(api.fireAlarm.create);
+  const cancelRemoteAlarm = useMutation(api.fireAlarm.cancelMine);
+  const acknowledgeAlarm = useMutation(api.fireAlarm.acknowledge);
+  const resolveAlarm = useMutation(api.fireAlarm.resolve);
+
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+
   const [active, setActive] = useState(false);
   const [error, setError] = useState("");
-  const [alarm, setAlarm] = useState(false);
+  const [selectedAdvisor, setSelectedAdvisor] = useState("admin");
+  const [sending, setSending] = useState(false);
+  const [lastSnapshot, setLastSnapshot] = useState(null);
+
+  const selectedAdvisorData = useMemo(
+    () => ADVISORS.find((item) => item.id === selectedAdvisor) ?? ADVISORS[0],
+    [selectedAdvisor],
+  );
 
   const stopCamera = useCallback(() => {
     const stream = streamRef.current;
@@ -59,12 +201,16 @@ export default function WebRtcFireAlarmScreen() {
     setError("");
 
     if (Platform.OS !== "web") {
-      setError("Este primer prototipo usa WebRTC del navegador y está disponible en la versión Web/PWA.");
+      setError(
+        "Esta fase usa la cámara Web/PWA. La cámara nativa se añadirá después.",
+      );
       return;
     }
 
-    if (!navigator?.mediaDevices?.getUserMedia) {
-      setError("El navegador no ofrece acceso compatible a la cámara mediante getUserMedia().");
+    if (!globalThis?.navigator?.mediaDevices?.getUserMedia) {
+      setError(
+        "El navegador no ofrece acceso compatible a la cámara mediante getUserMedia().",
+      );
       return;
     }
 
@@ -72,7 +218,7 @@ export default function WebRtcFireAlarmScreen() {
       stopCamera();
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: "environment",
+          facingMode: { ideal: "environment" },
           width: { ideal: 1280 },
           height: { ideal: 720 },
         },
@@ -85,13 +231,98 @@ export default function WebRtcFireAlarmScreen() {
         await videoRef.current.play?.();
       }
       setActive(true);
-    } catch (e) {
-      console.warn("[WebRtcFireAlarm] camera error", e);
-      setError("No se pudo abrir la cámara. Comprueba el permiso del navegador y que la página se sirva mediante HTTPS.");
+    } catch (cameraError) {
+      console.warn("[WebRtcFireAlarm] camera error", cameraError);
+      setError(
+        "No se pudo abrir la cámara. Comprueba permisos y usa localhost o HTTPS.",
+      );
     }
   }, [stopCamera]);
 
+  const captureSnapshot = useCallback(() => {
+    if (Platform.OS !== "web" || !videoRef.current) return null;
+
+    const video = videoRef.current;
+    const sourceWidth = video.videoWidth || 0;
+    const sourceHeight = video.videoHeight || 0;
+    if (!sourceWidth || !sourceHeight) return null;
+
+    const maxWidth = 640;
+    const scale = Math.min(1, maxWidth / sourceWidth);
+    const width = Math.max(1, Math.round(sourceWidth * scale));
+    const height = Math.max(1, Math.round(sourceHeight * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    context?.drawImage(video, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", 0.78);
+  }, []);
+
+  const sendAlarm = useCallback(async () => {
+    setError("");
+
+    if (!currentUser) {
+      setError("Debes iniciar sesión para enviar una alarma.");
+      return;
+    }
+
+    if (!active) {
+      setError("Activa primero la cámara para verificar la escena.");
+      return;
+    }
+
+    const snapshot = captureSnapshot();
+    if (!snapshot) {
+      setError(
+        "La cámara está activa, pero todavía no hay una imagen disponible.",
+      );
+      return;
+    }
+
+    setSending(true);
+
+    try {
+      const uploadUrl = await generateUploadUrl({});
+      const blob = await fetch(snapshot).then((response) => response.blob());
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": "image/jpeg" },
+        body: blob,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error("No se pudo subir la captura.");
+      }
+
+      const { storageId } = await uploadResponse.json();
+
+      await createRemoteAlarm({
+        advisorId: selectedAdvisorData.id,
+        advisorLabel: selectedAdvisorData.label,
+        snapshotStorageId: storageId,
+      });
+
+      setLastSnapshot(snapshot);
+    } catch (alarmError) {
+      console.warn("[WebRtcFireAlarm] alarm error", alarmError);
+      setError(alarmError?.message || "No se pudo enviar la alarma.");
+    } finally {
+      setSending(false);
+    }
+  }, [
+    active,
+    captureSnapshot,
+    createRemoteAlarm,
+    currentUser,
+    generateUploadUrl,
+    selectedAdvisorData,
+  ]);
+
   useEffect(() => () => stopCamera(), [stopCamera]);
+
+  const alarmsToShow = isAdmin ? adminAlarms : myAlarms;
 
   return (
     <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
@@ -103,10 +334,31 @@ export default function WebRtcFireAlarmScreen() {
           <View style={styles.heroText}>
             <Text style={styles.title}>WebRTC Fire Alarm</Text>
             <Text style={styles.subtitle}>
-              Cámara de vigilancia y verificación visual de un posible incendio.
+              Verificación visual de incendios con cámara y alarmas en tiempo
+              real mediante Convex.
             </Text>
           </View>
           <StatusPill active={active} />
+        </View>
+
+        <View style={styles.modeCard}>
+          <View style={styles.modeIcon}>
+            <Ionicons
+              name={isAdmin ? "shield-checkmark-outline" : "person-outline"}
+              size={21}
+              color={isAdmin ? COLORS.red : COLORS.blue}
+            />
+          </View>
+          <View style={styles.modeBody}>
+            <Text style={styles.modeTitle}>
+              {isAdmin ? "Modo administrador" : "Modo vigilancia"}
+            </Text>
+            <Text style={styles.modeText}>
+              {isAdmin
+                ? "Las alarmas activas de otros usuarios aparecen aquí automáticamente."
+                : "Activa la cámara y envía una alarma para que el administrador pueda verificarla."}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.videoCard}>
@@ -115,20 +367,51 @@ export default function WebRtcFireAlarmScreen() {
               ref={videoRef}
               muted
               playsInline
-              style={{ width: "100%", aspectRatio: "16 / 9", objectFit: "cover", background: "#111827" }}
+              style={{
+                width: "100%",
+                aspectRatio: "16 / 9",
+                objectFit: "cover",
+                background: "#111827",
+              }}
             />
           ) : (
             <View style={styles.nativePlaceholder}>
-              <Ionicons name="videocam-outline" size={46} color={COLORS.textMuted} />
-              <Text style={styles.nativePlaceholderText}>Vista de cámara Web/PWA</Text>
+              <Ionicons
+                name="videocam-outline"
+                size={46}
+                color={COLORS.textMuted}
+              />
+              <Text style={styles.nativePlaceholderText}>
+                Vista de cámara Web/PWA
+              </Text>
             </View>
           )}
 
           <View style={styles.videoFooter}>
-            <View>
+            <View style={styles.videoFooterText}>
               <Text style={styles.cameraLabel}>Cámara local</Text>
-              <Text style={styles.cameraMeta}>Vídeo permanece local hasta iniciar una sesión WebRTC.</Text>
+              <Text style={styles.cameraMeta}>
+                El vídeo no se transmite todavía. Al enviar una alarma se guarda
+                una captura JPEG en Convex Storage.
+              </Text>
             </View>
+            <Pressable
+              onPress={active ? stopCamera : startCamera}
+              style={({ pressed }) => [
+                styles.cameraButton,
+                active && styles.cameraButtonStop,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Ionicons
+                name={active ? "stop-circle-outline" : "videocam-outline"}
+                size={20}
+                color="#FFFFFF"
+              />
+              <Text style={styles.cameraButtonText}>
+                {active ? "Detener" : "Activar"}
+              </Text>
+            </Pressable>
           </View>
         </View>
 
@@ -139,62 +422,167 @@ export default function WebRtcFireAlarmScreen() {
           </View>
         ) : null}
 
-        <View style={styles.actionsRow}>
-          <Pressable
-            onPress={active ? stopCamera : startCamera}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              active && styles.stopButton,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Ionicons name={active ? "stop-circle-outline" : "videocam-outline"} size={21} color="#FFFFFF" />
-            <Text style={styles.primaryButtonText}>{active ? "Detener cámara" : "Activar cámara"}</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => setAlarm((value) => !value)}
-            style={({ pressed }) => [styles.alarmButton, alarm && styles.alarmButtonActive, pressed && styles.buttonPressed]}
-          >
-            <Ionicons name="warning-outline" size={21} color={alarm ? "#FFFFFF" : COLORS.red} />
-            <Text style={[styles.alarmButtonText, alarm && styles.alarmButtonTextActive]}>
-              {alarm ? "Cancelar alarma" : "Simular incendio"}
-            </Text>
-          </Pressable>
-        </View>
-
-        {alarm ? (
-          <View style={styles.fireAlert}>
-            <View style={styles.fireAlertIcon}>
-              <Ionicons name="flame" size={25} color="#FFFFFF" />
-            </View>
-            <View style={styles.fireAlertBody}>
-              <Text style={styles.fireAlertTitle}>Posible incendio</Text>
-              <Text style={styles.fireAlertText}>
-                Alarma de prueba activa. Verifica visualmente la escena antes de escalar el aviso.
+        {!isAdmin ? (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>¿A quién avisamos?</Text>
+              <Text style={styles.sectionSubtitle}>
+                De momento todos los avisos llegan al backend; después
+                vincularemos cada opción con usuarios reales.
               </Text>
             </View>
+
+            <View style={styles.advisorsGrid}>
+              {ADVISORS.map((advisor) => (
+                <AdvisorButton
+                  key={advisor.id}
+                  advisor={advisor}
+                  selected={selectedAdvisor === advisor.id}
+                  onPress={() => setSelectedAdvisor(advisor.id)}
+                />
+              ))}
+            </View>
+
+            <Pressable
+              disabled={sending}
+              onPress={sendAlarm}
+              style={({ pressed }) => [
+                styles.fireButton,
+                sending && styles.disabledButton,
+                pressed && !sending && styles.buttonPressed,
+              ]}
+            >
+              <Ionicons name="flame" size={25} color="#FFFFFF" />
+              <View style={styles.fireButtonBody}>
+                <Text style={styles.fireButtonTitle}>
+                  {sending ? "ENVIANDO ALARMA..." : "AVISAR DE INCENDIO"}
+                </Text>
+                <Text style={styles.fireButtonText}>
+                  Envía una captura y crea una alarma en Convex
+                </Text>
+              </View>
+            </Pressable>
+          </>
+        ) : null}
+
+        {lastSnapshot && !isAdmin ? (
+          <View style={styles.snapshotCard}>
+            <Text style={styles.snapshotTitle}>Última captura enviada</Text>
+            <Image
+              source={{ uri: lastSnapshot }}
+              style={styles.snapshotImage}
+              resizeMode="cover"
+            />
           </View>
         ) : null}
 
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>
+            {isAdmin ? "Alarmas activas" : "Mis alarmas"}
+          </Text>
+          <Text style={styles.sectionSubtitle}>
+            {isAdmin
+              ? "Esta lista se actualiza en tiempo real mientras la pantalla está abierta."
+              : "Historial reciente de alarmas enviadas desde tu cuenta."}
+          </Text>
+        </View>
+
+        {alarmsToShow === undefined ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>Cargando alarmas...</Text>
+          </View>
+        ) : alarmsToShow.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>No hay alarmas.</Text>
+          </View>
+        ) : (
+          alarmsToShow.map((item) => (
+            <View key={String(item._id)} style={styles.alarmCard}>
+              {item.snapshotUrl ? (
+                <Image
+                  source={{ uri: item.snapshotUrl }}
+                  style={styles.alarmImage}
+                  resizeMode="cover"
+                />
+              ) : null}
+              <View style={styles.alarmContent}>
+                <View style={styles.alarmHeaderRow}>
+                  <View style={styles.alarmTitleBlock}>
+                    <Text style={styles.alarmTitle}>
+                      {item.createdByAlias || "Usuario"}
+                    </Text>
+                    <Text style={styles.alarmMeta}>
+                      {formatAlarmDate(item.createdAt)} · {item.advisorLabel}
+                    </Text>
+                  </View>
+                  <AlarmStatus status={item.status} />
+                </View>
+
+                <View style={styles.alarmActions}>
+                  {isAdmin && item.status === "pending" ? (
+                    <Pressable
+                      onPress={() => acknowledgeAlarm({ alarmId: item._id })}
+                      style={({ pressed }) => [
+                        styles.secondaryAction,
+                        pressed && styles.buttonPressed,
+                      ]}
+                    >
+                      <Text style={styles.secondaryActionText}>
+                        Confirmar recepción
+                      </Text>
+                    </Pressable>
+                  ) : null}
+
+                  {isAdmin &&
+                  (item.status === "pending" ||
+                    item.status === "acknowledged") ? (
+                    <Pressable
+                      onPress={() => resolveAlarm({ alarmId: item._id })}
+                      style={({ pressed }) => [
+                        styles.resolveAction,
+                        pressed && styles.buttonPressed,
+                      ]}
+                    >
+                      <Text style={styles.resolveActionText}>Resolver</Text>
+                    </Pressable>
+                  ) : null}
+
+                  {!isAdmin &&
+                  (item.status === "pending" ||
+                    item.status === "acknowledged") ? (
+                    <Pressable
+                      onPress={() => cancelRemoteAlarm({ alarmId: item._id })}
+                      style={({ pressed }) => [
+                        styles.cancelAction,
+                        pressed && styles.buttonPressed,
+                      ]}
+                    >
+                      <Text style={styles.cancelActionText}>Cancelar</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
+            </View>
+          ))
+        )}
+
         <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Siguiente fase</Text>
-          <View style={styles.infoItem}>
-            <Ionicons name="swap-horizontal-outline" size={19} color={COLORS.red} />
-            <Text style={styles.infoText}>Crear RTCPeerConnection y señalización para enviar vídeo a un segundo navegador.</Text>
-          </View>
-          <View style={styles.infoItem}>
-            <Ionicons name="eye-outline" size={19} color={COLORS.red} />
-            <Text style={styles.infoText}>Añadir detección local de humo/fuego como módulo independiente.</Text>
-          </View>
-          <View style={styles.infoItem}>
-            <Ionicons name="notifications-outline" size={19} color={COLORS.red} />
-            <Text style={styles.infoText}>Enviar una alerta al responsable y permitir verificación humana del vídeo.</Text>
-          </View>
+          <Text style={styles.infoTitle}>Estado del desarrollo</Text>
+          <Text style={styles.infoText}>✓ Cámara Web/PWA</Text>
+          <Text style={styles.infoText}>✓ Captura JPEG</Text>
+          <Text style={styles.infoText}>✓ Alarmas persistentes en Convex</Text>
+          <Text style={styles.infoText}>
+            ✓ Recepción en tiempo real para administrador
+          </Text>
+          <Text style={styles.infoText}>
+            Siguiente: señalización WebRTC y vídeo en directo.
+          </Text>
         </View>
 
         <Text style={styles.disclaimer}>
-          Fire Alarm es una ayuda de vigilancia y verificación visual. No sustituye sistemas certificados de detección de incendios ni los procedimientos oficiales de emergencia.
+          Fire Alarm es una ayuda de vigilancia y verificación visual. No
+          sustituye sistemas certificados de detección de incendios ni los
+          procedimientos oficiales de emergencia.
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -203,13 +591,47 @@ export default function WebRtcFireAlarmScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.background },
-  content: { width: "100%", maxWidth: 920, alignSelf: "center", padding: 16, paddingBottom: 80 },
-  hero: { padding: 18, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 20 },
-  heroIcon: { width: 52, height: 52, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.red, borderRadius: 16 },
+  content: {
+    width: "100%",
+    maxWidth: 920,
+    alignSelf: "center",
+    padding: 16,
+    paddingBottom: 80,
+  },
+  hero: {
+    padding: 18,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 20,
+  },
+  heroIcon: {
+    width: 52,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.red,
+    borderRadius: 16,
+  },
   heroText: { flex: 1, minWidth: 220 },
   title: { color: COLORS.text, fontSize: 23, fontWeight: "900" },
-  subtitle: { marginTop: 4, color: COLORS.textMuted, fontSize: 13, lineHeight: 19 },
-  statusPill: { minHeight: 32, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", borderRadius: 16 },
+  subtitle: {
+    marginTop: 4,
+    color: COLORS.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  statusPill: {
+    minHeight: 32,
+    paddingHorizontal: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 16,
+  },
   statusActive: { backgroundColor: COLORS.greenSoft },
   statusIdle: { backgroundColor: "#F2F4F7" },
   statusDot: { width: 8, height: 8, marginRight: 7, borderRadius: 4 },
@@ -218,31 +640,240 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 11, fontWeight: "800" },
   statusTextActive: { color: COLORS.green },
   statusTextIdle: { color: COLORS.textMuted },
-  videoCard: { marginTop: 14, overflow: "hidden", backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 20 },
-  nativePlaceholder: { aspectRatio: 16 / 9, alignItems: "center", justifyContent: "center", backgroundColor: "#E5E7EB" },
-  nativePlaceholderText: { marginTop: 8, color: COLORS.textMuted, fontWeight: "700" },
-  videoFooter: { padding: 14 },
+  modeCard: {
+    marginTop: 12,
+    padding: 14,
+    flexDirection: "row",
+    gap: 11,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 17,
+  },
+  modeIcon: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.surfaceMuted,
+    borderRadius: 12,
+  },
+  modeBody: { flex: 1 },
+  modeTitle: { color: COLORS.text, fontSize: 14, fontWeight: "900" },
+  modeText: {
+    marginTop: 3,
+    color: COLORS.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  videoCard: {
+    marginTop: 14,
+    overflow: "hidden",
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 20,
+  },
+  nativePlaceholder: {
+    aspectRatio: 16 / 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#E5E7EB",
+  },
+  nativePlaceholderText: {
+    marginTop: 8,
+    color: COLORS.textMuted,
+    fontWeight: "700",
+  },
+  videoFooter: {
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  videoFooterText: { flex: 1 },
   cameraLabel: { color: COLORS.text, fontSize: 14, fontWeight: "800" },
-  cameraMeta: { marginTop: 3, color: COLORS.textMuted, fontSize: 11, lineHeight: 16 },
-  errorCard: { marginTop: 12, padding: 13, flexDirection: "row", gap: 9, backgroundColor: COLORS.amberSoft, borderRadius: 15 },
-  errorText: { flex: 1, color: COLORS.amber, fontSize: 12, lineHeight: 18, fontWeight: "600" },
-  actionsRow: { marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  primaryButton: { minHeight: 48, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.red, borderRadius: 14 },
-  stopButton: { backgroundColor: COLORS.text },
-  primaryButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
-  alarmButton: { minHeight: 48, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.red, borderRadius: 14 },
-  alarmButtonActive: { backgroundColor: COLORS.red },
-  alarmButtonText: { color: COLORS.red, fontSize: 13, fontWeight: "800" },
-  alarmButtonTextActive: { color: "#FFFFFF" },
+  cameraMeta: {
+    marginTop: 3,
+    color: COLORS.textMuted,
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  cameraButton: {
+    minHeight: 42,
+    paddingHorizontal: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    backgroundColor: COLORS.red,
+    borderRadius: 13,
+  },
+  cameraButtonStop: { backgroundColor: COLORS.text },
+  cameraButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
+  errorCard: {
+    marginTop: 12,
+    padding: 13,
+    flexDirection: "row",
+    gap: 9,
+    backgroundColor: COLORS.amberSoft,
+    borderRadius: 15,
+  },
+  errorText: {
+    flex: 1,
+    color: COLORS.amber,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "600",
+  },
+  sectionHeader: { marginTop: 22, marginBottom: 10 },
+  sectionTitle: { color: COLORS.text, fontSize: 18, fontWeight: "900" },
+  sectionSubtitle: {
+    marginTop: 4,
+    color: COLORS.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  advisorsGrid: { gap: 9 },
+  advisorButton: {
+    minHeight: 68,
+    padding: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 17,
+  },
+  advisorButtonSelected: { borderColor: COLORS.red },
+  advisorAvatar: {
+    width: 46,
+    height: 46,
+    marginRight: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+  },
+  advisorBody: { flex: 1 },
+  advisorLabel: { color: COLORS.text, fontSize: 14, fontWeight: "900" },
+  advisorSubtitle: { marginTop: 2, color: COLORS.textMuted, fontSize: 11 },
+  fireButton: {
+    marginTop: 16,
+    minHeight: 66,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 13,
+    backgroundColor: COLORS.red,
+    borderRadius: 18,
+  },
+  fireButtonBody: { flex: 1 },
+  fireButtonTitle: { color: "#FFFFFF", fontSize: 15, fontWeight: "900" },
+  fireButtonText: {
+    marginTop: 3,
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 11,
+  },
+  disabledButton: { opacity: 0.55 },
   buttonPressed: { opacity: 0.82 },
-  fireAlert: { marginTop: 14, padding: 15, flexDirection: "row", gap: 12, backgroundColor: COLORS.redSoft, borderWidth: 1, borderColor: "#FCA5A5", borderRadius: 18 },
-  fireAlertIcon: { width: 44, height: 44, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.red, borderRadius: 14 },
-  fireAlertBody: { flex: 1 },
-  fireAlertTitle: { color: COLORS.redDark, fontSize: 16, fontWeight: "900" },
-  fireAlertText: { marginTop: 4, color: COLORS.redDark, fontSize: 12, lineHeight: 18 },
-  infoCard: { marginTop: 18, padding: 17, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 20 },
-  infoTitle: { marginBottom: 10, color: COLORS.text, fontSize: 16, fontWeight: "900" },
-  infoItem: { marginTop: 8, flexDirection: "row", alignItems: "flex-start", gap: 9 },
-  infoText: { flex: 1, color: COLORS.textMuted, fontSize: 12, lineHeight: 18 },
-  disclaimer: { marginTop: 18, color: COLORS.textMuted, fontSize: 11, lineHeight: 17, textAlign: "center" },
+  snapshotCard: {
+    marginTop: 14,
+    overflow: "hidden",
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 18,
+  },
+  snapshotTitle: {
+    padding: 12,
+    color: COLORS.text,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  snapshotImage: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    backgroundColor: "#111827",
+  },
+  emptyCard: {
+    padding: 18,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 17,
+  },
+  emptyText: { color: COLORS.textMuted, fontSize: 13, textAlign: "center" },
+  alarmCard: {
+    marginBottom: 10,
+    overflow: "hidden",
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 18,
+  },
+  alarmImage: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    backgroundColor: "#111827",
+  },
+  alarmContent: { padding: 13 },
+  alarmHeaderRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  alarmTitleBlock: { flex: 1 },
+  alarmTitle: { color: COLORS.text, fontSize: 15, fontWeight: "900" },
+  alarmMeta: { marginTop: 3, color: COLORS.textMuted, fontSize: 11 },
+  alarmStatus: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 12 },
+  alarmStatusText: { fontSize: 10, fontWeight: "900" },
+  alarmActions: {
+    marginTop: 12,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  secondaryAction: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    backgroundColor: COLORS.amberSoft,
+    borderRadius: 11,
+  },
+  secondaryActionText: { color: COLORS.amber, fontSize: 11, fontWeight: "800" },
+  resolveAction: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    backgroundColor: COLORS.greenSoft,
+    borderRadius: 11,
+  },
+  resolveActionText: { color: COLORS.green, fontSize: 11, fontWeight: "800" },
+  cancelAction: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    backgroundColor: COLORS.redSoft,
+    borderRadius: 11,
+  },
+  cancelActionText: { color: COLORS.red, fontSize: 11, fontWeight: "800" },
+  infoCard: {
+    marginTop: 18,
+    padding: 17,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 20,
+  },
+  infoTitle: {
+    marginBottom: 8,
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  infoText: {
+    marginTop: 5,
+    color: COLORS.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  disclaimer: {
+    marginTop: 18,
+    color: COLORS.textMuted,
+    fontSize: 11,
+    lineHeight: 17,
+    textAlign: "center",
+  },
 });

@@ -82,6 +82,28 @@ export default defineSchema({
     .index("by_alias", ["alias"])
     .index("by_phone", ["phone"]),
 
+  fireAlarms: defineTable({
+    createdBy: v.id("users"),
+    createdByAlias: v.optional(v.string()),
+    advisorId: v.string(),
+    advisorLabel: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("acknowledged"),
+      v.literal("cancelled"),
+      v.literal("resolved"),
+    ),
+    snapshotStorageId: v.optional(v.id("_storage")),
+    acknowledgedBy: v.optional(v.id("users")),
+    acknowledgedAt: v.optional(v.float64()),
+    resolvedAt: v.optional(v.float64()),
+    createdAt: v.float64(),
+    updatedAt: v.float64(),
+  })
+    .index("by_createdAt", ["createdAt"])
+    .index("by_status_createdAt", ["status", "createdAt"])
+    .index("by_createdBy_createdAt", ["createdBy", "createdAt"]),
+
   userScanHistory: defineTable({
     userId: v.string(),
     barcode: v.string(),
