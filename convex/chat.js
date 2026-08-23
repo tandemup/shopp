@@ -1,5 +1,13 @@
 // convex/chat.js
-import { internalMutation, mutation, query } from "./_generated/server";
+import {
+  action,
+  internalAction,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
@@ -35,6 +43,37 @@ function cleanClientId(value) {
   return clientId || null;
 }
 
+function extractYouTubeVideoId(text) {
+  const match = String(text || "").match(
+    /(?:youtube\.com\/(?:watch\?(?:[^\s#]*&)?v=|shorts\/|live\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/i,
+  );
+  return match?.[1] || null;
+}
+
+function extractYouTubePublishedAt(html) {
+  const match = String(html || "").match(
+    /["'](?:publishDate|uploadDate)["']\s*:\s*["'](\d{4}-\d{2}-\d{2})(?:T[^"']*)?["']/i,
+  );
+  if (!match?.[1]) return null;
+  const timestamp = Date.parse(`${match[1]}T00:00:00Z`);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+async function fetchYouTubePublishedAt(videoId) {
+  const response = await fetch(
+    `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
+    {
+      headers: {
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent":
+          "Mozilla/5.0 (compatible; Shopp/1.0; +https://shopp-pwa.netlify.app)",
+      },
+    },
+  );
+  if (!response.ok) return null;
+  return extractYouTubePublishedAt(await response.text());
+}
+
 async function getViewer(ctx, clientId) {
   const authUserId = await getAuthUserId(ctx);
   if (authUserId) {
@@ -63,9 +102,11 @@ async function withImageUrls(ctx, message) {
     youtubeAlbum: message.youtubeAlbum
       ? {
           ...message.youtubeAlbum,
-          thumbnailUri: await ctx.storage.getUrl(
-            message.youtubeAlbum.thumbnailStorageId,
-          ),
+          thumbnailUri: message.youtubeAlbum.thumbnailStorageId
+            ? await ctx.storage.getUrl(
+                message.youtubeAlbum.thumbnailStorageId,
+              )
+            : undefined,
           lyricsUri: message.youtubeAlbum.lyricsStorageId
             ? await ctx.storage.getUrl(message.youtubeAlbum.lyricsStorageId)
             : undefined,
@@ -188,7 +229,104 @@ export const sendMessage = mutation({
       status: "visible",
       messageStatus: "clean",
     });
+
+    const youtubeVideoId = room === "noticias" ? extractYouTubeVideoId(text) : null;
+    if (youtubeVideoId) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.chat.enrichYouTubePublishedAt,
+        { messageId, videoId: youtubeVideoId },
+      );
+    }
     return { ok: true, messageId };
+  },
+});
+
+export const enrichYouTubePublishedAt = internalAction({
+  args: {
+    messageId: v.id("chatMessages"),
+    videoId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    try {
+      const publishedAt = await fetchYouTubePublishedAt(args.videoId);
+      if (!publishedAt) return;
+
+      await ctx.runMutation(internal.chat.setYouTubePublishedAt, {
+        messageId: args.messageId,
+        videoId: args.videoId,
+        publishedAt,
+      });
+    } catch (error) {
+      console.warn("[chat.enrichYouTubePublishedAt] metadata fetch failed", error);
+    }
+  },
+});
+
+export const getNewsMessagesMissingYouTubeDate = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const messages = await ctx.db
+      .query("chatMessages")
+      .withIndex("by_room_createdAt", (q) => q.eq("room", "noticias"))
+      .order("desc")
+      .take(100);
+
+    return messages
+      .filter((message) => !message.youtubePublishedAt)
+      .map((message) => ({
+        messageId: message._id,
+        videoId: extractYouTubeVideoId(message.text),
+      }))
+      .filter((message) => Boolean(message.videoId))
+      .slice(0, 20);
+  },
+});
+
+export const refreshNewsYouTubePublishedDates = action({
+  args: {},
+  handler: async (ctx) => {
+    const messages = await ctx.runQuery(
+      internal.chat.getNewsMessagesMissingYouTubeDate,
+      {},
+    );
+
+    await Promise.all(
+      messages.map(async ({ messageId, videoId }) => {
+        try {
+          const publishedAt = await fetchYouTubePublishedAt(videoId);
+          if (!publishedAt) return;
+          await ctx.runMutation(internal.chat.setYouTubePublishedAt, {
+            messageId,
+            videoId,
+            publishedAt,
+          });
+        } catch (error) {
+          console.warn(
+            "[chat.refreshNewsYouTubePublishedDates] metadata fetch failed",
+            error,
+          );
+        }
+      }),
+    );
+
+    return { ok: true, checked: messages.length };
+  },
+});
+
+export const setYouTubePublishedAt = internalMutation({
+  args: {
+    messageId: v.id("chatMessages"),
+    videoId: v.string(),
+    publishedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.messageId);
+    if (!message || message.room !== "noticias") return;
+    await ctx.db.patch(args.messageId, {
+      youtubeVideoId: args.videoId,
+      youtubePublishedAt: args.publishedAt,
+    });
   },
 });
 
@@ -246,10 +384,6 @@ export const updateYouTubeAlbum = mutation({
         throw new Error("El fichero LRC no puede superar 512 KB.");
       }
     }
-    if (!thumbnail && !previous) {
-      throw new Error("Selecciona una portada para el álbum.");
-    }
-
     const nextAlbum = thumbnail
       ? {
           ...previous,

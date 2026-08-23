@@ -228,6 +228,16 @@ function QuickActions({
           navigateToNestedRoute(ROUTES.CHAT_TAB, ROUTES.PARKING_SCREEN),
       },
       {
+        key: "englishTutor",
+        label: "Tutor de Inglés",
+        description: "Practica describiendo fotografías",
+        icon: "language-outline",
+        iconColor: COLORS.primary,
+        iconBackground: COLORS.primarySoft,
+        onPress: () =>
+          navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.ENGLISH_TUTOR),
+      },
+      {
         key: "chatPrototype",
         label: "Chat prototipo",
         description: "Prueba el nuevo chat de compras",

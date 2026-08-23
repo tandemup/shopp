@@ -146,6 +146,8 @@ const EN = {
   "Idioma": "Language",
   "Español": "Spanish",
   "Inglés": "English",
+  "Tutor de Inglés": "English Tutor",
+  "Practica describiendo fotografías": "Practise by describing photographs",
   "Idioma de la aplicación": "App language",
   "Selecciona el idioma de la interfaz": "Choose the interface language",
   "Exportación completada": "Export completed",

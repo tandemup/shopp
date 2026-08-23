@@ -9,6 +9,7 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -45,6 +46,27 @@ const DEMO_STORE = {
 const MAX_MESSAGE_LENGTH = 280;
 const MESSAGE_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const MAX_CHAT_IMAGE_SIZE_PX = 512;
+const MAX_YOUTUBE_TITLE_LENGTH = 120;
+
+function getYouTubePlaylist(text) {
+  const match = String(text || "").match(
+    /https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/[^\s]+/i,
+  );
+  if (!match) return null;
+
+  try {
+    const url = new URL(match[0]);
+    const playlistId = url.searchParams.get("list");
+    if (!playlistId) return null;
+    return {
+      id: playlistId,
+      url: match[0],
+      remainingText: String(text || "").replace(match[0], "").trim(),
+    };
+  } catch {
+    return null;
+  }
+}
 
 function distanceToStoreMeters(latitude, longitude) {
   const toRadians = (value) => (value * Math.PI) / 180;
@@ -117,8 +139,17 @@ function formatPreparedImageInfo(image) {
   return processed;
 }
 
-function MessageBubble({ item, mine, now, onImagePress, onDelete, deleting }) {
+function MessageBubble({
+  item,
+  mine,
+  now,
+  onImagePress,
+  onDelete,
+  onEditPlaylist,
+  deleting,
+}) {
   const { language } = useI18n();
+  const playlist = getYouTubePlaylist(item.text);
   return (
     <View
       style={[
@@ -192,7 +223,65 @@ function MessageBubble({ item, mine, now, onImagePress, onDelete, deleting }) {
           </View>
         ) : null}
 
-        {item.text ? <Text style={styles.messageText}>{item.text}</Text> : null}
+        {playlist ? (
+          <Pressable
+            onPress={() => Linking.openURL(playlist.url)}
+            style={({ pressed }) => [
+              styles.youtubePlaylistCard,
+              pressed && styles.youtubePlaylistCardPressed,
+            ]}
+            accessibilityRole="link"
+            accessibilityLabel={
+              language === "en"
+                ? "Open YouTube playlist"
+                : "Abrir playlist de YouTube"
+            }
+          >
+            {item.youtubeAlbum?.thumbnailUri ? (
+              <Image
+                source={{ uri: item.youtubeAlbum.thumbnailUri }}
+                style={styles.youtubePlaylistCover}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.youtubePlaylistPlaceholder}>
+                <Ionicons name="logo-youtube" size={34} color="#FFFFFF" />
+              </View>
+            )}
+            <View style={styles.youtubePlaylistInfo}>
+              <Text style={styles.youtubePlaylistTitle} numberOfLines={2}>
+                {item.youtubeAlbum?.title || "Playlist de YouTube"}
+              </Text>
+              <Text style={styles.youtubePlaylistMeta}>YouTube</Text>
+            </View>
+            {item.canEditYouTubeAlbum ? (
+              <Pressable
+                onPress={(event) => {
+                  event?.stopPropagation?.();
+                  onEditPlaylist?.(item);
+                }}
+                hitSlop={8}
+                style={styles.youtubePlaylistEdit}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  language === "en" ? "Edit playlist" : "Editar playlist"
+                }
+              >
+                <Ionicons
+                  name="pencil-outline"
+                  size={17}
+                  color="#2563EB"
+                />
+              </Pressable>
+            ) : null}
+          </Pressable>
+        ) : null}
+
+        {playlist?.remainingText ? (
+          <Text style={styles.messageText}>{playlist.remainingText}</Text>
+        ) : !playlist && item.text ? (
+          <Text style={styles.messageText}>{item.text}</Text>
+        ) : null}
 
         {item.product ? (
           <View style={styles.productCard}>
@@ -239,6 +328,10 @@ export default function ChatPrototypeScreen() {
   const [now, setNow] = useState(() => Date.now());
   const [expandedImage, setExpandedImage] = useState(null);
   const [deletingMessageId, setDeletingMessageId] = useState(null);
+  const [playlistEditor, setPlaylistEditor] = useState(null);
+  const [playlistTitle, setPlaylistTitle] = useState("");
+  const [playlistCover, setPlaylistCover] = useState(null);
+  const [savingPlaylist, setSavingPlaylist] = useState(false);
   const { lookupWithCache, loading: productLoading } =
     useProductLookupWithCache();
 
@@ -295,6 +388,132 @@ export default function ChatPrototypeScreen() {
   const sendMessage = useMutation(api.chat.sendMessage);
   const deleteMessage = useMutation(api.chat.deleteMessage);
   const generateImageUploadUrl = useMutation(api.chat.generateImageUploadUrl);
+  const updateYouTubeAlbum = useMutation(api.chat.updateYouTubeAlbum);
+
+  const handleOpenPlaylistEditor = useCallback((item) => {
+    setPlaylistEditor(item);
+    setPlaylistTitle(item?.youtubeAlbum?.title || "");
+    setPlaylistCover(null);
+  }, []);
+
+  const handleClosePlaylistEditor = useCallback(() => {
+    if (savingPlaylist) return;
+    setPlaylistEditor(null);
+    setPlaylistTitle("");
+    setPlaylistCover(null);
+  }, [savingPlaylist]);
+
+  const handlePickPlaylistCover = useCallback(async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsMultipleSelection: false,
+        quality: 1,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+
+      const asset = result.assets[0];
+      const width = Number(asset.width) || 0;
+      const height = Number(asset.height) || 0;
+      const maxSide = Math.max(width, height);
+      const actions =
+        maxSide > MAX_CHAT_IMAGE_SIZE_PX
+          ? [
+              {
+                resize:
+                  width >= height
+                    ? { width: MAX_CHAT_IMAGE_SIZE_PX }
+                    : { height: MAX_CHAT_IMAGE_SIZE_PX },
+              },
+            ]
+          : [];
+      const processed = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        actions,
+        {
+          compress: 0.82,
+          format: ImageManipulator.SaveFormat.JPEG,
+        },
+      );
+      const response = await fetch(processed.uri);
+      const blob = await response.blob();
+      setPlaylistCover({
+        uri: processed.uri,
+        width: processed.width,
+        height: processed.height,
+        fileSize: blob.size,
+      });
+    } catch (error) {
+      safeAlert(
+        tr("No se pudo preparar la portada"),
+        tr(error?.message || "Selecciona otra imagen."),
+      );
+    }
+  }, []);
+
+  const handleSavePlaylist = useCallback(async () => {
+    const title = playlistTitle.trim();
+    if (!playlistEditor?._id || savingPlaylist) return;
+    if (!title) {
+      safeAlert(tr("Falta el nombre"), tr("Escribe el nombre de la playlist."));
+      return;
+    }
+    if (!playlistCover && !playlistEditor.youtubeAlbum?.thumbnailUri) {
+      safeAlert(
+        tr("Falta la carátula"),
+        tr("Selecciona una imagen para la playlist."),
+      );
+      return;
+    }
+
+    setSavingPlaylist(true);
+    try {
+      let thumbnail;
+      if (playlistCover) {
+        const uploadUrl = await generateImageUploadUrl();
+        const response = await fetch(playlistCover.uri);
+        const blob = await response.blob();
+        const uploadResponse = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": "image/jpeg" },
+          body: blob,
+        });
+        if (!uploadResponse.ok) {
+          throw new Error("No se pudo subir la carátula.");
+        }
+        const { storageId } = await uploadResponse.json();
+        thumbnail = {
+          storageId,
+          mimeType: "image/jpeg",
+          width: Number(playlistCover.width) || 0,
+          height: Number(playlistCover.height) || 0,
+          size: Number(playlistCover.fileSize) || blob.size || 0,
+        };
+      }
+      await updateYouTubeAlbum({
+        messageId: playlistEditor._id,
+        title: title.slice(0, MAX_YOUTUBE_TITLE_LENGTH),
+        thumbnail,
+      });
+      setPlaylistEditor(null);
+      setPlaylistTitle("");
+      setPlaylistCover(null);
+    } catch (error) {
+      safeAlert(
+        tr("No se pudo guardar"),
+        tr(error?.message || "No se pudo editar la playlist."),
+      );
+    } finally {
+      setSavingPlaylist(false);
+    }
+  }, [
+    generateImageUploadUrl,
+    playlistCover,
+    playlistEditor,
+    playlistTitle,
+    savingPlaylist,
+    updateYouTubeAlbum,
+  ]);
 
   const handleProductDetected = useCallback(
     async (barcode) => {
@@ -468,6 +687,7 @@ export default function ChatPrototypeScreen() {
           now={now}
           onImagePress={handleOpenImage}
           onDelete={handleDeleteMessage}
+          onEditPlaylist={handleOpenPlaylistEditor}
           deleting={deletingMessageId === String(item._id)}
         />
       );
@@ -477,6 +697,7 @@ export default function ChatPrototypeScreen() {
       deletingMessageId,
       displayAlias,
       handleDeleteMessage,
+      handleOpenPlaylistEditor,
       handleOpenImage,
       now,
     ],
@@ -1026,6 +1247,95 @@ export default function ChatPrototypeScreen() {
           ) : null}
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={Boolean(playlistEditor)}
+        transparent
+        animationType="fade"
+        onRequestClose={handleClosePlaylistEditor}
+      >
+        <View style={styles.playlistModalBackdrop}>
+          <View style={styles.playlistModalCard}>
+            <View style={styles.playlistModalHeader}>
+              <Text style={styles.playlistModalTitle}>
+                Editar playlist de YouTube
+              </Text>
+              <Pressable
+                onPress={handleClosePlaylistEditor}
+                style={styles.playlistModalClose}
+                accessibilityRole="button"
+                accessibilityLabel="Cerrar"
+              >
+                <Ionicons name="close" size={25} color="#172033" />
+              </Pressable>
+            </View>
+
+            <Pressable
+              onPress={handlePickPlaylistCover}
+              style={styles.playlistCoverPicker}
+              accessibilityRole="button"
+              accessibilityLabel="Seleccionar carátula"
+            >
+              {playlistCover?.uri ||
+              playlistEditor?.youtubeAlbum?.thumbnailUri ? (
+                <Image
+                  source={{
+                    uri:
+                      playlistCover?.uri ||
+                      playlistEditor.youtubeAlbum.thumbnailUri,
+                  }}
+                  style={styles.playlistModalCover}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.playlistModalCoverPlaceholder}>
+                  <Ionicons
+                    name="image-outline"
+                    size={38}
+                    color="#64748B"
+                  />
+                  <Text style={styles.playlistModalCoverHint}>
+                    Seleccionar carátula
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+
+            <Text style={styles.playlistFieldLabel}>
+              Nombre de la playlist
+            </Text>
+            <TextInput
+              value={playlistTitle}
+              onChangeText={setPlaylistTitle}
+              maxLength={MAX_YOUTUBE_TITLE_LENGTH}
+              placeholder="Nombre de la playlist"
+              style={styles.playlistTitleInput}
+            />
+
+            <View style={styles.playlistModalActions}>
+              <Pressable
+                onPress={handleClosePlaylistEditor}
+                disabled={savingPlaylist}
+                style={styles.playlistCancelButton}
+              >
+                <Text style={styles.playlistCancelText}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSavePlaylist}
+                disabled={savingPlaylist}
+                style={[
+                  styles.playlistSaveButton,
+                  savingPlaylist && styles.playlistSaveButtonDisabled,
+                ]}
+              >
+                <Text style={styles.playlistSaveText}>
+                  {savingPlaylist ? "Guardando…" : "Guardar"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1200,6 +1510,57 @@ const styles = StyleSheet.create({
     color: "#172033",
     fontSize: 15,
     lineHeight: 20,
+  },
+  youtubePlaylistCard: {
+    position: "relative",
+    minWidth: 260,
+    maxWidth: 360,
+    minHeight: 76,
+    marginBottom: 5,
+    flexDirection: "row",
+    alignItems: "center",
+    overflow: "hidden",
+    backgroundColor: "#FFFFFF",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#CBD5E1",
+  },
+  youtubePlaylistCardPressed: { opacity: 0.8 },
+  youtubePlaylistCover: {
+    width: 76,
+    height: 76,
+    backgroundColor: "#E5E7EB",
+  },
+  youtubePlaylistPlaceholder: {
+    width: 76,
+    height: 76,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FF0000",
+  },
+  youtubePlaylistInfo: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  youtubePlaylistTitle: {
+    color: "#172033",
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+  },
+  youtubePlaylistMeta: {
+    marginTop: 4,
+    color: "#64748B",
+    fontSize: 11,
+  },
+  youtubePlaylistEdit: {
+    width: 34,
+    height: 34,
+    marginRight: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 17,
   },
   messageHeader: {
     flexDirection: "row",
@@ -1419,5 +1780,106 @@ const styles = StyleSheet.create({
     color: "#334155",
     fontSize: 12,
     fontWeight: "600",
+  },
+  playlistModalBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    backgroundColor: "rgba(15,23,42,0.55)",
+  },
+  playlistModalCard: {
+    width: "100%",
+    maxWidth: 480,
+    padding: 22,
+    backgroundColor: "#FFFFFF",
+  },
+  playlistModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  playlistModalTitle: {
+    flex: 1,
+    color: "#172033",
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  playlistModalClose: {
+    width: 42,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#F59E0B",
+    borderRadius: 4,
+  },
+  playlistCoverPicker: {
+    alignSelf: "center",
+    marginBottom: 18,
+  },
+  playlistModalCover: {
+    width: 194,
+    height: 194,
+    backgroundColor: "#E5E7EB",
+  },
+  playlistModalCoverPlaceholder: {
+    width: 194,
+    height: 194,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F1F5F9",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+  },
+  playlistModalCoverHint: {
+    marginTop: 8,
+    color: "#475569",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  playlistFieldLabel: {
+    marginBottom: 7,
+    color: "#334155",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  playlistTitleInput: {
+    minHeight: 52,
+    paddingHorizontal: 14,
+    color: "#172033",
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#FFFFFF",
+  },
+  playlistModalActions: {
+    marginTop: 22,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+  },
+  playlistCancelButton: {
+    minHeight: 48,
+    justifyContent: "center",
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+  },
+  playlistCancelText: {
+    color: "#475569",
+    fontWeight: "700",
+  },
+  playlistSaveButton: {
+    minHeight: 48,
+    justifyContent: "center",
+    paddingHorizontal: 20,
+    backgroundColor: "#2563EB",
+  },
+  playlistSaveButtonDisabled: { opacity: 0.55 },
+  playlistSaveText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
   },
 });

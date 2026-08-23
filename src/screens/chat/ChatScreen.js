@@ -1,5 +1,11 @@
 // src/screens/ChatScreen.js
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   FlatList,
   Image,
@@ -21,14 +27,11 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as DocumentPicker from "expo-document-picker";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 import YouTubePlaylistPlayer from "@/src/components/chat/YouTubePlaylistPlayer";
-import {
-  extractUrlsFromText,
-  parseYouTubeUrl,
-} from "@/src/services/urlSafety";
+import { extractUrlsFromText, parseYouTubeUrl } from "@/src/services/urlSafety";
 
 const ROOMS = [
   { id: "compras", label: "Compras", icon: "cart-outline" },
@@ -102,7 +105,48 @@ function formatTime(timestamp, language = "es") {
   }
 }
 
-function Message({ item, language, onDelete, onEditAlbum, onImagePress, deleting }) {
+function getDateKey(timestamp) {
+  if (!timestamp) return "unknown";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "unknown";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatDateLabel(timestamp, language = "es") {
+  if (!timestamp) return language === "en" ? "Unknown date" : "Fecha desconocida";
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return language === "en" ? "Unknown date" : "Fecha desconocida";
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const messageDate = new Date(date);
+  messageDate.setHours(0, 0, 0, 0);
+  const dayDifference = Math.round(
+    (today.getTime() - messageDate.getTime()) / 86400000,
+  );
+
+  if (dayDifference === 0) return language === "en" ? "Today" : "Hoy";
+  if (dayDifference === 1) return language === "en" ? "Yesterday" : "Ayer";
+
+  return date.toLocaleDateString(language === "en" ? "en-GB" : "es-ES", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: date.getFullYear() === today.getFullYear() ? undefined : "numeric",
+  });
+}
+
+function Message({
+  item,
+  language,
+  onDelete,
+  onEditAlbum,
+  onImagePress,
+  deleting,
+}) {
   const mine = item.isOwnMessage === true;
   const deletedForUsers = item.isDeletedByUser === true;
   const timestamp = item.createdAt || item._creationTime;
@@ -120,7 +164,9 @@ function Message({ item, language, onDelete, onEditAlbum, onImagePress, deleting
     if (!youtubeUrl) return null;
     return { sourceUrl: youtubeUrl, ...parseYouTubeUrl(youtubeUrl) };
   }, [content.text]);
-  const isYouTubeAlbum = youtubeMedia?.playlistId?.startsWith("OLAK5uy_") === true;
+  const isYouTubeAlbum =
+    youtubeMedia?.playlistId?.startsWith("OLAK5uy_") === true;
+  const isYouTubePlaylist = Boolean(youtubeMedia?.playlistId);
   return (
     <View style={[styles.messageRow, mine && styles.messageRowMine]}>
       <View
@@ -131,34 +177,36 @@ function Message({ item, language, onDelete, onEditAlbum, onImagePress, deleting
           deletedForUsers && styles.bubbleDeletedAdmin,
         ]}
       >
-        {!youtubeMedia ? <View style={styles.messageHeader}>
-          <Text style={styles.username} numberOfLines={1}>
-            {item.username || "anonymous"}
-          </Text>
+        {!youtubeMedia ? (
+          <View style={styles.messageHeader}>
+            <Text style={styles.username} numberOfLines={1}>
+              {item.username || "anonymous"}
+            </Text>
 
-          <View style={styles.messageHeaderActions}>
-            <Text style={styles.time}>{formatTime(timestamp, language)}</Text>
+            <View style={styles.messageHeaderActions}>
+              <Text style={styles.time}>{formatTime(timestamp, language)}</Text>
 
-            {item.canDelete === true ? (
-              <Pressable
-                onPress={() => onDelete?.(item)}
-                disabled={deleting}
-                hitSlop={8}
-                style={({ pressed }) => [
-                  styles.deleteMessageButton,
-                  pressed && styles.deleteMessageButtonPressed,
-                  deleting && styles.deleteMessageButtonDisabled,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  language === "en" ? "Delete post" : "Borrar publicación"
-                }
-              >
-                <Ionicons name="trash-outline" size={15} color="#dc2626" />
-              </Pressable>
-            ) : null}
+              {item.canDelete === true ? (
+                <Pressable
+                  onPress={() => onDelete?.(item)}
+                  disabled={deleting}
+                  hitSlop={8}
+                  style={({ pressed }) => [
+                    styles.deleteMessageButton,
+                    pressed && styles.deleteMessageButtonPressed,
+                    deleting && styles.deleteMessageButtonDisabled,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    language === "en" ? "Delete post" : "Borrar publicación"
+                  }
+                >
+                  <Ionicons name="trash-outline" size={15} color="#dc2626" />
+                </Pressable>
+              ) : null}
+            </View>
           </View>
-        </View> : null}
+        ) : null}
         {deletedForUsers ? (
           <View style={styles.deletedAdminNotice}>
             <Ionicons name="eye-outline" size={13} color="#92400e" />
@@ -217,10 +265,22 @@ function Message({ item, language, onDelete, onEditAlbum, onImagePress, deleting
             canDelete={item.canDelete === true}
             deleting={deleting}
             onDelete={() => onDelete?.(item)}
-            deleteLabel={language === "en" ? "Delete post" : "Borrar publicación"}
-            canEditAlbum={isYouTubeAlbum && item.canEditYouTubeAlbum === true}
+            deleteLabel={
+              language === "en" ? "Delete post" : "Borrar publicación"
+            }
+            canEditAlbum={
+              isYouTubePlaylist && item.canEditYouTubeAlbum === true
+            }
             onEditAlbum={() => onEditAlbum?.(item, youtubeMedia)}
-            editAlbumLabel={language === "en" ? "Edit album" : "Editar álbum"}
+            editAlbumLabel={
+              isYouTubeAlbum
+                ? language === "en"
+                  ? "Edit album"
+                  : "Editar álbum"
+                : language === "en"
+                  ? "Edit playlist"
+                  : "Editar playlist"
+            }
           />
         ) : null}
       </View>
@@ -230,6 +290,7 @@ function Message({ item, language, onDelete, onEditAlbum, onImagePress, deleting
 
 export default function ChatScreen() {
   const listRef = useRef(null);
+  const refreshedNewsDatesRef = useRef(false);
   const { language } = useI18n();
   const [room, setRoom] = useState("compras");
   const [chatClientId] = useState(getOrCreateChatClientId);
@@ -244,12 +305,36 @@ export default function ChatScreen() {
   const [albumCover, setAlbumCover] = useState(null);
   const [albumLyrics, setAlbumLyrics] = useState(null);
   const [savingAlbum, setSavingAlbum] = useState(false);
+  const editingIsYouTubeAlbum =
+    editingAlbum?.youtubeMedia?.playlistId?.startsWith("OLAK5uy_") === true;
 
-  const messages = useQuery(api.chat.listMessages, { room, clientId: chatClientId });
+  const messages = useQuery(api.chat.listMessages, {
+    room,
+    clientId: chatClientId,
+  });
   const sendMessage = useMutation(api.chat.sendMessage);
   const deleteMessage = useMutation(api.chat.deleteMessage);
   const updateYouTubeAlbum = useMutation(api.chat.updateYouTubeAlbum);
   const generateImageUploadUrl = useMutation(api.chat.generateImageUploadUrl);
+  const refreshNewsYouTubePublishedDates = useAction(
+    api.chat.refreshNewsYouTubePublishedDates,
+  );
+
+  useEffect(() => {
+    if (
+      room !== "noticias" ||
+      messages === undefined ||
+      refreshedNewsDatesRef.current
+    ) {
+      return;
+    }
+
+    refreshedNewsDatesRef.current = true;
+    refreshNewsYouTubePublishedDates().catch((error) => {
+      refreshedNewsDatesRef.current = false;
+      console.warn("[Chat] No se pudieron actualizar las fechas de YouTube:", error);
+    });
+  }, [messages, refreshNewsYouTubePublishedDates, room]);
 
   const visibleMessages = useMemo(() => {
     if (!Array.isArray(messages)) return [];
@@ -259,6 +344,44 @@ export default function ChatScreen() {
         (b.createdAt || b._creationTime || 0),
     );
   }, [messages]);
+
+  const listItems = useMemo(() => {
+    if (room !== "noticias") return visibleMessages;
+
+    const newsMessages = [...visibleMessages].sort((a, b) => {
+      const aPublishedAt = a.youtubePublishedAt;
+      const bPublishedAt = b.youtubePublishedAt;
+      if (aPublishedAt && bPublishedAt) return bPublishedAt - aPublishedAt;
+      if (aPublishedAt) return -1;
+      if (bPublishedAt) return 1;
+      return (
+        (b.createdAt || b._creationTime || 0) -
+        (a.createdAt || a._creationTime || 0)
+      );
+    });
+    const groupedItems = [];
+    let previousDateKey = null;
+
+    newsMessages.forEach((message) => {
+      const timestamp =
+        message.youtubePublishedAt || message.createdAt || message._creationTime;
+      const dateKey = getDateKey(timestamp);
+
+      if (dateKey !== previousDateKey) {
+        groupedItems.push({
+          _listType: "dateSeparator",
+          _listKey: `date-${dateKey}`,
+          timestamp,
+          isYouTubePublishedDate: Boolean(message.youtubePublishedAt),
+        });
+        previousDateKey = dateKey;
+      }
+
+      groupedItems.push(message);
+    });
+
+    return groupedItems;
+  }, [room, visibleMessages]);
 
   const cleanAlias = alias.trim() || "anonymous";
   const cleanInput = input.trim();
@@ -358,7 +481,9 @@ export default function ChatScreen() {
         });
 
         if (!uploadResponse.ok) {
-          throw new Error(`No se pudo subir una imagen (${uploadResponse.status}).`);
+          throw new Error(
+            `No se pudo subir una imagen (${uploadResponse.status}).`,
+          );
         }
 
         const { storageId } = await uploadResponse.json();
@@ -404,7 +529,6 @@ export default function ChatScreen() {
     generateImageUploadUrl,
   ]);
 
-
   const deletePost = useCallback(
     async (item) => {
       const messageId = item?._id;
@@ -423,10 +547,7 @@ export default function ChatScreen() {
             ? "The post could not be deleted."
             : "No se pudo borrar la publicación.");
 
-        safeAlert(
-          language === "en" ? "Error" : "Error",
-          message,
-        );
+        safeAlert(language === "en" ? "Error" : "Error", message);
       } finally {
         setDeletingMessageId(null);
       }
@@ -439,14 +560,13 @@ export default function ChatScreen() {
       if (!item?._id || deletingMessageId) return;
 
       const title = language === "en" ? "Delete post" : "Borrar publicación";
-      const message =
-        item.isDeletedByUser
-          ? language === "en"
-            ? "Permanently delete this post and its images? This action cannot be undone."
-            : "¿Quieres eliminar definitivamente esta publicación y sus imágenes? Esta acción no se puede deshacer."
-          : language === "en"
-            ? "Delete this post? Authors hide their own posts; administrators delete them permanently."
-            : "¿Quieres borrar esta publicación? Los autores ocultan sus propios posts; los administradores los eliminan definitivamente.";
+      const message = item.isDeletedByUser
+        ? language === "en"
+          ? "Permanently delete this post and its images? This action cannot be undone."
+          : "¿Quieres eliminar definitivamente esta publicación y sus imágenes? Esta acción no se puede deshacer."
+        : language === "en"
+          ? "Delete this post? Authors hide their own posts; administrators delete them permanently."
+          : "¿Quieres borrar esta publicación? Los autores ocultan sus propios posts; los administradores los eliminan definitivamente.";
 
       safeAlert(title, message, [
         {
@@ -505,11 +625,15 @@ export default function ChatScreen() {
         },
         { resize: { width: 256, height: 256 } },
       ];
-      const resized = await ImageManipulator.manipulateAsync(asset.uri, actions, {
-        compress: 0.78,
-        format: ImageManipulator.SaveFormat.JPEG,
-        base64: true,
-      });
+      const resized = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        actions,
+        {
+          compress: 0.78,
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: true,
+        },
+      );
       const approximateSize = resized.base64?.length
         ? Math.ceil((resized.base64.length * 3) / 4)
         : 0;
@@ -536,11 +660,17 @@ export default function ChatScreen() {
       if (result.canceled || !asset?.uri) return;
       const fileName = asset.name || "lyrics.lrc";
       if (!fileName.toLowerCase().endsWith(".lrc")) {
-        safeAlert("Formato no válido", "Selecciona un fichero con extensión .lrc.");
+        safeAlert(
+          "Formato no válido",
+          "Selecciona un fichero con extensión .lrc.",
+        );
         return;
       }
       if ((asset.size || 0) > 512 * 1024) {
-        safeAlert("Fichero demasiado grande", "El fichero LRC no puede superar 512 KB.");
+        safeAlert(
+          "Fichero demasiado grande",
+          "El fichero LRC no puede superar 512 KB.",
+        );
         return;
       }
       setAlbumLyrics({
@@ -558,11 +688,6 @@ export default function ChatScreen() {
     const title = albumTitle.trim();
     const messageId = editingAlbum?.item?._id;
     if (!messageId || !title || savingAlbum) return;
-    if (!albumCover && !editingAlbum.item?.youtubeAlbum?.thumbnailUri) {
-      safeAlert("Portada necesaria", "Selecciona una portada para el álbum.");
-      return;
-    }
-
     setSavingAlbum(true);
     try {
       let thumbnail;
@@ -576,7 +701,9 @@ export default function ChatScreen() {
           body: blob,
         });
         if (!uploadResponse.ok) {
-          throw new Error(`No se pudo subir la portada (${uploadResponse.status}).`);
+          throw new Error(
+            `No se pudo subir la portada (${uploadResponse.status}).`,
+          );
         }
         const { storageId } = await uploadResponse.json();
         thumbnail = {
@@ -589,18 +716,21 @@ export default function ChatScreen() {
       }
 
       let lyrics;
-      if (albumLyrics) {
+      if (albumLyrics && editingIsYouTubeAlbum) {
         const uploadUrl = await generateImageUploadUrl();
         const lyricsResponse = await fetch(albumLyrics.uri);
         const blob = await lyricsResponse.blob();
-        if (blob.size > 512 * 1024) throw new Error("El fichero LRC supera 512 KB.");
+        if (blob.size > 512 * 1024)
+          throw new Error("El fichero LRC supera 512 KB.");
         const uploadResponse = await fetch(uploadUrl, {
           method: "POST",
           headers: { "Content-Type": albumLyrics.mimeType || "text/plain" },
           body: blob,
         });
         if (!uploadResponse.ok) {
-          throw new Error(`No se pudo subir el fichero LRC (${uploadResponse.status}).`);
+          throw new Error(
+            `No se pudo subir el fichero LRC (${uploadResponse.status}).`,
+          );
         }
         const { storageId } = await uploadResponse.json();
         lyrics = {
@@ -623,12 +753,28 @@ export default function ChatScreen() {
       setAlbumCover(null);
       setAlbumLyrics(null);
     } catch (error) {
-      console.error("[Chat] No se pudo guardar el álbum:", error);
-      safeAlert("Error", error?.message || "No se pudo guardar el álbum.");
+      console.error("[Chat] No se pudo guardar YouTube:", error);
+      safeAlert(
+        "Error",
+        error?.message ||
+          (editingIsYouTubeAlbum
+            ? "No se pudo guardar el álbum."
+            : "No se pudo guardar la playlist."),
+      );
     } finally {
       setSavingAlbum(false);
     }
-  }, [albumCover, albumLyrics, albumTitle, chatClientId, editingAlbum, generateImageUploadUrl, savingAlbum, updateYouTubeAlbum]);
+  }, [
+    albumCover,
+    albumLyrics,
+    albumTitle,
+    chatClientId,
+    editingAlbum,
+    editingIsYouTubeAlbum,
+    generateImageUploadUrl,
+    savingAlbum,
+    updateYouTubeAlbum,
+  ]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -697,19 +843,31 @@ export default function ChatScreen() {
 
         <FlatList
           ref={listRef}
-          data={visibleMessages}
-          keyExtractor={(item) => String(item._id || item.id)}
-          renderItem={({ item }) => (
-            <Message
-              item={item}
-              myAlias={cleanAlias}
-              language={language}
-              onDelete={handleDeletePost}
-              onEditAlbum={openAlbumEditor}
-              onImagePress={setExpandedImageUri}
-              deleting={deletingMessageId === item._id}
-            />
-          )}
+          data={listItems}
+          keyExtractor={(item) =>
+            String(item._listKey || item._id || item.id)
+          }
+          renderItem={({ item }) =>
+            item._listType === "dateSeparator" ? (
+              <View style={styles.dateSeparatorRow}>
+                <View style={styles.dateSeparatorLine} />
+                <Text style={styles.dateSeparatorText}>
+                  {formatDateLabel(item.timestamp, language)}
+                </Text>
+                <View style={styles.dateSeparatorLine} />
+              </View>
+            ) : (
+              <Message
+                item={item}
+                myAlias={cleanAlias}
+                language={language}
+                onDelete={handleDeletePost}
+                onEditAlbum={openAlbumEditor}
+                onImagePress={setExpandedImageUri}
+                deleting={deletingMessageId === item._id}
+              />
+            )
+          }
           style={styles.list}
           contentContainerStyle={[
             styles.listContent,
@@ -722,7 +880,11 @@ export default function ChatScreen() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons
-                name={room === "youtube" ? "logo-youtube" : "chatbubble-ellipses-outline"}
+                name={
+                  room === "youtube"
+                    ? "logo-youtube"
+                    : "chatbubble-ellipses-outline"
+                }
                 size={34}
                 color={room === "youtube" ? "#dc2626" : "#94a3b8"}
               />
@@ -830,43 +992,122 @@ export default function ChatScreen() {
           <View style={styles.albumEditorBackdrop}>
             <View style={styles.albumEditorCard}>
               <View style={styles.albumEditorHeader}>
-                <Text style={styles.albumEditorTitle}>Editar álbum de YouTube</Text>
-                <Pressable onPress={closeAlbumEditor} disabled={savingAlbum} style={styles.albumEditorClose} accessibilityRole="button" accessibilityLabel="Cerrar"><Ionicons name="close" size={22} color="#374151" /></Pressable>
+                <Text style={styles.albumEditorTitle}>
+                  {editingIsYouTubeAlbum
+                    ? "Editar álbum de YouTube"
+                    : "Editar playlist de YouTube"}
+                </Text>
+                <Pressable
+                  onPress={closeAlbumEditor}
+                  disabled={savingAlbum}
+                  style={styles.albumEditorClose}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cerrar"
+                >
+                  <Ionicons name="close" size={22} color="#374151" />
+                </Pressable>
               </View>
 
-              <Pressable onPress={handlePickAlbumCover} disabled={savingAlbum} style={styles.albumCoverButton} accessibilityRole="button" accessibilityLabel="Seleccionar portada">
-                {(albumCover?.uri || editingAlbum?.item?.youtubeAlbum?.thumbnailUri) ? (
-                  <Image source={{ uri: albumCover?.uri || editingAlbum.item.youtubeAlbum.thumbnailUri }} style={styles.albumCoverPreview} resizeMode="cover" />
+              <Pressable
+                onPress={handlePickAlbumCover}
+                disabled={savingAlbum}
+                style={styles.albumCoverButton}
+                accessibilityRole="button"
+                accessibilityLabel="Seleccionar portada"
+              >
+                {albumCover?.uri ||
+                editingAlbum?.item?.youtubeAlbum?.thumbnailUri ? (
+                  <Image
+                    source={{
+                      uri:
+                        albumCover?.uri ||
+                        editingAlbum.item.youtubeAlbum.thumbnailUri,
+                    }}
+                    style={styles.albumCoverPreview}
+                    resizeMode="cover"
+                  />
                 ) : (
                   <View style={styles.albumCoverPlaceholder}>
-                    <Ionicons name="image-outline" size={34} color="#64748b" />
-                    <Text style={styles.albumCoverPlaceholderText}>Seleccionar portada</Text>
+                    <View style={styles.youtubePlaylistPlaceholderIcon}>
+                      <Ionicons name="logo-youtube" size={42} color="#ffffff" />
+                    </View>
+                    <Text style={styles.albumCoverPlaceholderText}>
+                      Carátula opcional
+                    </Text>
                   </View>
                 )}
               </Pressable>
 
-              <Text style={styles.albumFieldLabel}>Nombre del álbum</Text>
+              <Text style={styles.albumFieldLabel}>
+                {editingIsYouTubeAlbum
+                  ? "Nombre del álbum"
+                  : "Nombre de la playlist"}
+              </Text>
               <TextInput
                 value={albumTitle}
                 onChangeText={(value) => setAlbumTitle(value.slice(0, 120))}
-                placeholder="Nombre del álbum"
+                placeholder={
+                  editingIsYouTubeAlbum
+                    ? "Nombre del álbum"
+                    : "Nombre de la playlist"
+                }
                 editable={!savingAlbum}
                 maxLength={120}
                 style={styles.albumTitleInput}
               />
 
-              <Text style={styles.albumFieldLabelLyrics}>Letras sincronizadas</Text>
-              <Pressable onPress={handlePickAlbumLyrics} disabled={savingAlbum} style={styles.lyricsFileButton} accessibilityRole="button" accessibilityLabel="Seleccionar fichero LRC">
-                <Ionicons name="document-text-outline" size={20} color="#2563eb" />
-                <View style={styles.lyricsFileText}>
-                  <Text style={styles.lyricsFileName} numberOfLines={1}>{albumLyrics?.fileName || editingAlbum?.item?.youtubeAlbum?.lyricsFileName || "Seleccionar fichero .lrc"}</Text>
-                  <Text style={styles.lyricsFileHint}>LRC sincronizado · máximo 512 KB</Text>
-                </View>
-              </Pressable>
+              {editingIsYouTubeAlbum ? (
+                <>
+                  <Text style={styles.albumFieldLabelLyrics}>
+                    Letras sincronizadas
+                  </Text>
+                  <Pressable
+                    onPress={handlePickAlbumLyrics}
+                    disabled={savingAlbum}
+                    style={styles.lyricsFileButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Seleccionar fichero LRC"
+                  >
+                    <Ionicons
+                      name="document-text-outline"
+                      size={20}
+                      color="#2563eb"
+                    />
+                    <View style={styles.lyricsFileText}>
+                      <Text style={styles.lyricsFileName} numberOfLines={1}>
+                        {albumLyrics?.fileName ||
+                          editingAlbum?.item?.youtubeAlbum?.lyricsFileName ||
+                          "Seleccionar fichero .lrc"}
+                      </Text>
+                      <Text style={styles.lyricsFileHint}>
+                        LRC sincronizado · máximo 512 KB
+                      </Text>
+                    </View>
+                  </Pressable>
+                </>
+              ) : null}
 
               <View style={styles.albumEditorActions}>
-                <Pressable onPress={closeAlbumEditor} disabled={savingAlbum} style={styles.albumCancelButton}><Text style={styles.albumCancelText}>Cancelar</Text></Pressable>
-                <Pressable onPress={handleSaveAlbum} disabled={savingAlbum || !albumTitle.trim()} style={[styles.albumSaveButton, (savingAlbum || !albumTitle.trim()) && styles.albumSaveButtonDisabled]}><Text style={styles.albumSaveText}>{savingAlbum ? "Guardando…" : "Guardar"}</Text></Pressable>
+                <Pressable
+                  onPress={closeAlbumEditor}
+                  disabled={savingAlbum}
+                  style={styles.albumCancelButton}
+                >
+                  <Text style={styles.albumCancelText}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleSaveAlbum}
+                  disabled={savingAlbum || !albumTitle.trim()}
+                  style={[
+                    styles.albumSaveButton,
+                    (savingAlbum || !albumTitle.trim()) &&
+                      styles.albumSaveButtonDisabled,
+                  ]}
+                >
+                  <Text style={styles.albumSaveText}>
+                    {savingAlbum ? "Guardando…" : "Guardar"}
+                  </Text>
+                </Pressable>
               </View>
             </View>
           </View>
@@ -883,7 +1124,9 @@ export default function ChatScreen() {
               style={styles.imageModalClose}
               onPress={() => setExpandedImageUri(null)}
               accessibilityRole="button"
-              accessibilityLabel={language === "en" ? "Close image" : "Cerrar imagen"}
+              accessibilityLabel={
+                language === "en" ? "Close image" : "Cerrar imagen"
+              }
             >
               <Ionicons name="close" size={30} color="#ffffff" />
             </Pressable>
@@ -986,6 +1229,24 @@ const styles = StyleSheet.create({
   },
   messageRow: { alignItems: "flex-start", marginBottom: 8 },
   messageRowMine: { alignItems: "flex-end" },
+  dateSeparatorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  dateSeparatorLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "#cbd5e1",
+  },
+  dateSeparatorText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#64748b",
+    textTransform: "capitalize",
+  },
   bubble: {
     maxWidth: "86%",
     paddingHorizontal: 11,
@@ -1081,24 +1342,109 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#d1d5db",
   },
-  albumEditorHeader: { flexDirection: "row", alignItems: "center", marginBottom: 14 },
-  albumEditorTitle: { flex: 1, fontSize: 17, fontWeight: "800", color: "#111827" },
-  albumEditorClose: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  albumCoverButton: { width: 144, height: 144, alignSelf: "center", marginBottom: 14 },
+  albumEditorHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  albumEditorTitle: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#111827",
+  },
+  albumEditorClose: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  albumCoverButton: {
+    width: 144,
+    height: 144,
+    alignSelf: "center",
+    marginBottom: 14,
+  },
   albumCoverPreview: { width: 144, height: 144, backgroundColor: "#e5e7eb" },
-  albumCoverPlaceholder: { width: 144, height: 144, alignItems: "center", justifyContent: "center", gap: 7, borderWidth: 1, borderStyle: "dashed", borderColor: "#94a3b8", backgroundColor: "#f8fafc" },
-  albumCoverPlaceholderText: { fontSize: 11, fontWeight: "700", color: "#64748b" },
-  albumFieldLabel: { marginBottom: 5, fontSize: 12, fontWeight: "700", color: "#374151" },
-  albumTitleInput: { minHeight: 44, paddingHorizontal: 11, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff", fontSize: 14, color: "#111827" },
-  albumFieldLabelLyrics: { marginTop: 13, marginBottom: 5, fontSize: 12, fontWeight: "700", color: "#374151" },
-  lyricsFileButton: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 11, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#f8fafc" },
+  albumCoverPlaceholder: {
+    width: 144,
+    height: 144,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#94a3b8",
+    backgroundColor: "#f8fafc",
+  },
+  albumCoverPlaceholderText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+  youtubePlaylistPlaceholderIcon: {
+    width: 70,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    backgroundColor: "#ef2027",
+  },
+  albumFieldLabel: {
+    marginBottom: 5,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#374151",
+  },
+  albumTitleInput: {
+    minHeight: 44,
+    paddingHorizontal: 11,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+    fontSize: 14,
+    color: "#111827",
+  },
+  albumFieldLabelLyrics: {
+    marginTop: 13,
+    marginBottom: 5,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#374151",
+  },
+  lyricsFileButton: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 11,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#f8fafc",
+  },
   lyricsFileText: { flex: 1, minWidth: 0 },
   lyricsFileName: { fontSize: 12, fontWeight: "700", color: "#1e40af" },
   lyricsFileHint: { marginTop: 2, fontSize: 10, color: "#64748b" },
-  albumEditorActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 16 },
-  albumCancelButton: { minHeight: 40, justifyContent: "center", paddingHorizontal: 14, borderWidth: 1, borderColor: "#cbd5e1" },
+  albumEditorActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+    marginTop: 16,
+  },
+  albumCancelButton: {
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+  },
   albumCancelText: { fontSize: 13, fontWeight: "700", color: "#475569" },
-  albumSaveButton: { minHeight: 40, justifyContent: "center", paddingHorizontal: 16, backgroundColor: "#2563eb" },
+  albumSaveButton: {
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    backgroundColor: "#2563eb",
+  },
   albumSaveButtonDisabled: { opacity: 0.45 },
   albumSaveText: { fontSize: 13, fontWeight: "800", color: "#fff" },
   imageModalBackdrop: {
