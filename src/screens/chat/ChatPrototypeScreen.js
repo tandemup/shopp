@@ -44,6 +44,7 @@ const DEMO_STORE = {
 
 const MAX_MESSAGE_LENGTH = 280;
 const MESSAGE_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const MAX_CHAT_IMAGE_SIZE_PX = 512;
 
 function distanceToStoreMeters(latitude, longitude) {
   const toRadians = (value) => (value * Math.PI) / 180;
@@ -95,7 +96,28 @@ function formatRemainingTime(item, now, language = "es") {
     : `se borra en ${remaining}`;
 }
 
-function MessageBubble({ item, mine, now }) {
+function formatImageInfo(image, sizeKey = "size") {
+  const width = Math.round(Number(image?.width) || 0);
+  const height = Math.round(Number(image?.height) || 0);
+  const bytes = Number(image?.[sizeKey] ?? image?.fileSize) || 0;
+  const dimensions = width > 0 && height > 0 ? `${width} × ${height} px` : "";
+  const kilobytes = bytes > 0 ? `${(bytes / 1000).toFixed(1)} KB` : "";
+  return [dimensions, kilobytes].filter(Boolean).join(" · ");
+}
+
+function formatPreparedImageInfo(image) {
+  const original = formatImageInfo({
+    width: image?.originalWidth,
+    height: image?.originalHeight,
+    size: image?.originalFileSize,
+  });
+  const processed = formatImageInfo(image, "fileSize");
+  if (original && original !== processed)
+    return `Original: ${original}\nEnvío: ${processed}`;
+  return processed;
+}
+
+function MessageBubble({ item, mine, now, onImagePress, onDelete, deleting }) {
   const { language } = useI18n();
   return (
     <View
@@ -110,19 +132,62 @@ function MessageBubble({ item, mine, now }) {
           mine ? styles.messageBubbleMine : styles.messageBubbleOther,
         ]}
       >
-        <Text style={styles.alias} numberOfLines={1}>
-          {item.username || "Usuario"}
-        </Text>
+        <View style={styles.messageHeader}>
+          <Text style={styles.alias} numberOfLines={1}>
+            {item.username || "Usuario"}
+          </Text>
+          {item.canDelete ? (
+            <Pressable
+              onPress={() => onDelete?.(item)}
+              disabled={deleting}
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.deleteMessageButton,
+                pressed && styles.deleteMessageButtonPressed,
+                deleting && styles.deleteMessageButtonDisabled,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                language === "en" ? "Delete message" : "Borrar mensaje"
+              }
+            >
+              <Ionicons name="trash-outline" size={17} color="#EF4444" />
+            </Pressable>
+          ) : null}
+        </View>
 
         {Array.isArray(item.images) && item.images.length > 0 ? (
           <View style={styles.messageImages}>
             {item.images.map((image, index) => (
-              <Image
+              <View
                 key={`${image.uri}-${index}`}
-                source={{ uri: image.uri }}
-                style={styles.messageImage}
-                resizeMode="cover"
-              />
+                style={styles.messageImageCard}
+              >
+                <Pressable
+                  onPress={() => onImagePress?.(image)}
+                  style={({ pressed }) => [
+                    styles.messageImageButton,
+                    pressed && styles.messageImagePressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    language === "en"
+                      ? "View image full screen"
+                      : "Ver imagen a pantalla completa"
+                  }
+                >
+                  <Image
+                    source={{ uri: image.uri }}
+                    style={styles.messageImage}
+                    resizeMode="cover"
+                  />
+                </Pressable>
+                {formatImageInfo(image) ? (
+                  <Text style={styles.messageImageInfo}>
+                    {formatImageInfo(image)}
+                  </Text>
+                ) : null}
+              </View>
             ))}
           </View>
         ) : null}
@@ -172,6 +237,8 @@ export default function ChatPrototypeScreen() {
   const [productDraft, setProductDraft] = useState(null);
   const [productPrice, setProductPrice] = useState("");
   const [now, setNow] = useState(() => Date.now());
+  const [expandedImage, setExpandedImage] = useState(null);
+  const [deletingMessageId, setDeletingMessageId] = useState(null);
   const { lookupWithCache, loading: productLoading } =
     useProductLookupWithCache();
 
@@ -226,6 +293,7 @@ export default function ChatPrototypeScreen() {
       : "skip",
   );
   const sendMessage = useMutation(api.chat.sendMessage);
+  const deleteMessage = useMutation(api.chat.deleteMessage);
   const generateImageUploadUrl = useMutation(api.chat.generateImageUploadUrl);
 
   const handleProductDetected = useCallback(
@@ -257,6 +325,51 @@ export default function ChatPrototypeScreen() {
   );
 
   const currentUserId = currentUser?._id ? String(currentUser._id) : null;
+
+  const handleDeleteMessage = useCallback(
+    (item) => {
+      if (!item?._id || !item.canDelete || deletingMessageId) return;
+
+      const performDelete = async () => {
+        setDeletingMessageId(String(item._id));
+        try {
+          await deleteMessage({ messageId: item._id });
+        } catch (error) {
+          console.error("[ChatPrototypeScreen] deleteMessage failed", error);
+          safeAlert(
+            tr("No se pudo borrar"),
+            tr(error?.message || "No se pudo borrar el mensaje."),
+          );
+        } finally {
+          setDeletingMessageId(null);
+        }
+      };
+
+      const title = language === "en" ? "Delete message?" : "¿Borrar mensaje?";
+      const description =
+        language === "en"
+          ? "This action cannot be undone."
+          : "Esta acción no se puede deshacer.";
+
+      safeAlert(title, description, [
+        { text: language === "en" ? "Cancel" : "Cancelar", style: "cancel" },
+        {
+          text: language === "en" ? "Delete" : "Borrar",
+          style: "destructive",
+          onPress: performDelete,
+        },
+      ]);
+    },
+    [deleteMessage, deletingMessageId, language],
+  );
+
+  const handleOpenImage = useCallback((image) => {
+    if (!image?.uri) return;
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      document.activeElement?.blur?.();
+    }
+    setExpandedImage(image);
+  }, []);
 
   const displayAlias = useMemo(() => {
     return (
@@ -348,9 +461,25 @@ export default function ChatPrototypeScreen() {
           .toLowerCase();
       const mine = mineById || mineByAlias;
 
-      return <MessageBubble item={item} mine={mine} now={now} />;
+      return (
+        <MessageBubble
+          item={item}
+          mine={mine}
+          now={now}
+          onImagePress={handleOpenImage}
+          onDelete={handleDeleteMessage}
+          deleting={deletingMessageId === String(item._id)}
+        />
+      );
     },
-    [currentUserId, displayAlias, now],
+    [
+      currentUserId,
+      deletingMessageId,
+      displayAlias,
+      handleDeleteMessage,
+      handleOpenImage,
+      now,
+    ],
   );
 
   const handlePickImage = useCallback(async () => {
@@ -369,12 +498,25 @@ export default function ChatPrototypeScreen() {
         const width = Number(asset.width) || 0;
         const height = Number(asset.height) || 0;
         const maxSide = Math.max(width, height);
+        let originalFileSize = Number(asset.fileSize) || 0;
+
+        if (!originalFileSize) {
+          try {
+            const originalResponse = await fetch(asset.uri);
+            originalFileSize = (await originalResponse.blob()).size;
+          } catch {
+            originalFileSize = 0;
+          }
+        }
 
         const actions =
-          maxSide > 256
+          maxSide > MAX_CHAT_IMAGE_SIZE_PX
             ? [
                 {
-                  resize: width >= height ? { width: 256 } : { height: 256 },
+                  resize:
+                    width >= height
+                      ? { width: MAX_CHAT_IMAGE_SIZE_PX }
+                      : { height: MAX_CHAT_IMAGE_SIZE_PX },
                 },
               ]
             : [];
@@ -407,6 +549,9 @@ export default function ChatPrototypeScreen() {
           fileName: "imagen.jpeg",
           mimeType: "image/jpeg",
           fileSize,
+          originalWidth: width,
+          originalHeight: height,
+          originalFileSize,
         });
       }
 
@@ -697,6 +842,11 @@ export default function ChatPrototypeScreen() {
                     style={styles.selectedImagePreview}
                     resizeMode="cover"
                   />
+                  {formatPreparedImageInfo(item) ? (
+                    <Text style={styles.selectedImageInfo}>
+                      {formatPreparedImageInfo(item)}
+                    </Text>
+                  ) : null}
                   <Pressable
                     onPress={() => removeSelectedImage(index)}
                     style={styles.selectedImageRemove}
@@ -838,6 +988,43 @@ export default function ChatPrototypeScreen() {
           onDetected={handleProductDetected}
           onCancel={() => setScannerVisible(false)}
         />
+      </Modal>
+
+      <Modal
+        visible={Boolean(expandedImage)}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setExpandedImage(null)}
+      >
+        <Pressable
+          style={styles.fullscreenImageBackdrop}
+          onPress={() => setExpandedImage(null)}
+          accessibilityRole="button"
+          accessibilityLabel={
+            language === "en"
+              ? "Close full-screen image"
+              : "Cerrar imagen a pantalla completa"
+          }
+        >
+          {expandedImage ? (
+            <Image
+              source={{ uri: expandedImage.uri }}
+              style={styles.fullscreenImage}
+              resizeMode="contain"
+            />
+          ) : null}
+          <View style={styles.fullscreenImageClose} pointerEvents="none">
+            <Ionicons name="close" size={28} color="#FFFFFF" />
+          </View>
+          {formatImageInfo(expandedImage) ? (
+            <View style={styles.fullscreenImageInfo} pointerEvents="none">
+              <Text style={styles.fullscreenImageInfoText}>
+                {formatImageInfo(expandedImage)}
+              </Text>
+            </View>
+          ) : null}
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );
@@ -1002,6 +1189,8 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 5,
   },
   alias: {
+    flex: 1,
+    minWidth: 0,
     marginBottom: 3,
     color: "#168AC0",
     fontSize: 12,
@@ -1012,6 +1201,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
   },
+  messageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  deleteMessageButton: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+  },
+  deleteMessageButtonPressed: { backgroundColor: "rgba(239,68,68,0.10)" },
+  deleteMessageButtonDisabled: { opacity: 0.45 },
   messageTime: {
     marginTop: 5,
     alignSelf: "flex-end",
@@ -1024,11 +1228,60 @@ const styles = StyleSheet.create({
     gap: 4,
     marginBottom: 6,
   },
+  messageImageCard: { width: 118 },
   messageImage: {
     width: 118,
     height: 118,
     borderRadius: 10,
     backgroundColor: "#E5E7EB",
+  },
+  messageImageButton: {
+    width: 118,
+    height: 118,
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  messageImagePressed: { opacity: 0.78 },
+  messageImageInfo: {
+    marginTop: 3,
+    color: "#6E8798",
+    fontSize: 9,
+    lineHeight: 12,
+    textAlign: "center",
+  },
+  fullscreenImageBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.96)",
+  },
+  fullscreenImage: {
+    width: "100%",
+    height: "100%",
+  },
+  fullscreenImageClose: {
+    position: "absolute",
+    top: Platform.OS === "web" ? 18 : 48,
+    right: 18,
+    width: 42,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 21,
+    backgroundColor: "rgba(15,23,42,0.72)",
+  },
+  fullscreenImageInfo: {
+    position: "absolute",
+    bottom: Platform.OS === "web" ? 20 : 42,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: "rgba(15,23,42,0.78)",
+  },
+  fullscreenImageInfoText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "600",
   },
   selectedImagesList: {
     gap: 8,
@@ -1039,8 +1292,9 @@ const styles = StyleSheet.create({
   },
   selectedImageItem: {
     position: "relative",
-    width: 64,
-    height: 64,
+    width: 190,
+    minHeight: 94,
+    alignItems: "center",
   },
   selectedImagePreview: {
     width: 64,
@@ -1051,13 +1305,20 @@ const styles = StyleSheet.create({
   selectedImageRemove: {
     position: "absolute",
     top: -5,
-    right: -5,
+    right: 58,
     width: 20,
     height: 20,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 10,
     backgroundColor: "rgba(51,65,85,0.92)",
+  },
+  selectedImageInfo: {
+    marginTop: 3,
+    color: "#536779",
+    fontSize: 9,
+    lineHeight: 12,
+    textAlign: "center",
   },
   composerShell: {
     backgroundColor: "rgba(220,232,241,0.92)",

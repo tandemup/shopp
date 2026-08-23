@@ -189,6 +189,20 @@ export default defineSchema({
         currency: v.string(),
       }),
     ),
+    youtubeAlbum: v.optional(
+      v.object({
+        title: v.string(),
+        thumbnailStorageId: v.id("_storage"),
+        mimeType: v.string(),
+        width: v.float64(),
+        height: v.float64(),
+        size: v.float64(),
+        lyricsStorageId: v.optional(v.id("_storage")),
+        lyricsFileName: v.optional(v.string()),
+        lyricsMimeType: v.optional(v.string()),
+        lyricsSize: v.optional(v.float64()),
+      }),
+    ),
     createdAt: v.float64(),
 
     status: v.optional(

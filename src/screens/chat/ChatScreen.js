@@ -20,6 +20,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
+import * as DocumentPicker from "expo-document-picker";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
@@ -101,7 +102,7 @@ function formatTime(timestamp, language = "es") {
   }
 }
 
-function Message({ item, language, onDelete, onImagePress, deleting }) {
+function Message({ item, language, onDelete, onEditAlbum, onImagePress, deleting }) {
   const mine = item.isOwnMessage === true;
   const deletedForUsers = item.isDeletedByUser === true;
   const timestamp = item.createdAt || item._creationTime;
@@ -119,16 +120,18 @@ function Message({ item, language, onDelete, onImagePress, deleting }) {
     if (!youtubeUrl) return null;
     return { sourceUrl: youtubeUrl, ...parseYouTubeUrl(youtubeUrl) };
   }, [content.text]);
+  const isYouTubeAlbum = youtubeMedia?.playlistId?.startsWith("OLAK5uy_") === true;
   return (
     <View style={[styles.messageRow, mine && styles.messageRowMine]}>
       <View
         style={[
           styles.bubble,
           mine && styles.bubbleMine,
+          youtubeMedia && styles.bubbleYouTube,
           deletedForUsers && styles.bubbleDeletedAdmin,
         ]}
       >
-        <View style={styles.messageHeader}>
+        {!youtubeMedia ? <View style={styles.messageHeader}>
           <Text style={styles.username} numberOfLines={1}>
             {item.username || "anonymous"}
           </Text>
@@ -155,7 +158,7 @@ function Message({ item, language, onDelete, onImagePress, deleting }) {
               </Pressable>
             ) : null}
           </View>
-        </View>
+        </View> : null}
         {deletedForUsers ? (
           <View style={styles.deletedAdminNotice}>
             <Ionicons name="eye-outline" size={13} color="#92400e" />
@@ -191,7 +194,7 @@ function Message({ item, language, onDelete, onImagePress, deleting }) {
             ))}
           </View>
         ) : null}
-        {content.text ? (
+        {content.text && !youtubeMedia ? (
           <Text
             style={[
               styles.messageText,
@@ -206,6 +209,18 @@ function Message({ item, language, onDelete, onImagePress, deleting }) {
             playlistId={youtubeMedia.playlistId}
             videoId={youtubeMedia.videoId}
             sourceUrl={youtubeMedia.playableUrl || youtubeMedia.sourceUrl}
+            playlistTitle={item.youtubeAlbum?.title}
+            thumbnailUrl={item.youtubeAlbum?.thumbnailUri}
+            lyricsUrl={item.youtubeAlbum?.lyricsUri}
+            userName={item.username || "anonymous"}
+            dateLabel={formatTime(timestamp, language)}
+            canDelete={item.canDelete === true}
+            deleting={deleting}
+            onDelete={() => onDelete?.(item)}
+            deleteLabel={language === "en" ? "Delete post" : "Borrar publicación"}
+            canEditAlbum={isYouTubeAlbum && item.canEditYouTubeAlbum === true}
+            onEditAlbum={() => onEditAlbum?.(item, youtubeMedia)}
+            editAlbumLabel={language === "en" ? "Edit album" : "Editar álbum"}
           />
         ) : null}
       </View>
@@ -224,10 +239,16 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [deletingMessageId, setDeletingMessageId] = useState(null);
   const [expandedImageUri, setExpandedImageUri] = useState(null);
+  const [editingAlbum, setEditingAlbum] = useState(null);
+  const [albumTitle, setAlbumTitle] = useState("");
+  const [albumCover, setAlbumCover] = useState(null);
+  const [albumLyrics, setAlbumLyrics] = useState(null);
+  const [savingAlbum, setSavingAlbum] = useState(false);
 
   const messages = useQuery(api.chat.listMessages, { room, clientId: chatClientId });
   const sendMessage = useMutation(api.chat.sendMessage);
   const deleteMessage = useMutation(api.chat.deleteMessage);
+  const updateYouTubeAlbum = useMutation(api.chat.updateYouTubeAlbum);
   const generateImageUploadUrl = useMutation(api.chat.generateImageUploadUrl);
 
   const visibleMessages = useMemo(() => {
@@ -444,6 +465,171 @@ export default function ChatScreen() {
     [deletePost, deletingMessageId, language],
   );
 
+  const openAlbumEditor = useCallback((item, youtubeMedia) => {
+    setEditingAlbum({ item, youtubeMedia });
+    setAlbumTitle(item?.youtubeAlbum?.title || "");
+    setAlbumCover(null);
+    setAlbumLyrics(null);
+  }, []);
+
+  const closeAlbumEditor = useCallback(() => {
+    if (savingAlbum) return;
+    setEditingAlbum(null);
+    setAlbumTitle("");
+    setAlbumCover(null);
+    setAlbumLyrics(null);
+  }, [savingAlbum]);
+
+  const handlePickAlbumCover = useCallback(async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 1,
+      });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset?.uri) return;
+
+      const width = asset.width || 256;
+      const height = asset.height || 256;
+      const side = Math.min(width, height);
+      const actions = [
+        {
+          crop: {
+            originX: Math.max(0, Math.floor((width - side) / 2)),
+            originY: Math.max(0, Math.floor((height - side) / 2)),
+            width: side,
+            height: side,
+          },
+        },
+        { resize: { width: 256, height: 256 } },
+      ];
+      const resized = await ImageManipulator.manipulateAsync(asset.uri, actions, {
+        compress: 0.78,
+        format: ImageManipulator.SaveFormat.JPEG,
+        base64: true,
+      });
+      const approximateSize = resized.base64?.length
+        ? Math.ceil((resized.base64.length * 3) / 4)
+        : 0;
+      setAlbumCover({
+        uri: resized.uri,
+        width: resized.width || 256,
+        height: resized.height || 256,
+        mimeType: "image/jpeg",
+        size: approximateSize,
+      });
+    } catch (error) {
+      console.error("[Chat] No se pudo seleccionar la portada:", error);
+    }
+  }, []);
+
+  const handlePickAlbumLyrics = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["text/plain", "application/octet-stream"],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset?.uri) return;
+      const fileName = asset.name || "lyrics.lrc";
+      if (!fileName.toLowerCase().endsWith(".lrc")) {
+        safeAlert("Formato no válido", "Selecciona un fichero con extensión .lrc.");
+        return;
+      }
+      if ((asset.size || 0) > 512 * 1024) {
+        safeAlert("Fichero demasiado grande", "El fichero LRC no puede superar 512 KB.");
+        return;
+      }
+      setAlbumLyrics({
+        uri: asset.uri,
+        fileName,
+        mimeType: asset.mimeType || "text/plain",
+        size: asset.size || 0,
+      });
+    } catch (error) {
+      console.error("[Chat] No se pudo seleccionar el fichero LRC:", error);
+    }
+  }, []);
+
+  const handleSaveAlbum = useCallback(async () => {
+    const title = albumTitle.trim();
+    const messageId = editingAlbum?.item?._id;
+    if (!messageId || !title || savingAlbum) return;
+    if (!albumCover && !editingAlbum.item?.youtubeAlbum?.thumbnailUri) {
+      safeAlert("Portada necesaria", "Selecciona una portada para el álbum.");
+      return;
+    }
+
+    setSavingAlbum(true);
+    try {
+      let thumbnail;
+      if (albumCover) {
+        const uploadUrl = await generateImageUploadUrl();
+        const imageResponse = await fetch(albumCover.uri);
+        const blob = await imageResponse.blob();
+        const uploadResponse = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": albumCover.mimeType },
+          body: blob,
+        });
+        if (!uploadResponse.ok) {
+          throw new Error(`No se pudo subir la portada (${uploadResponse.status}).`);
+        }
+        const { storageId } = await uploadResponse.json();
+        thumbnail = {
+          storageId,
+          mimeType: albumCover.mimeType,
+          width: albumCover.width,
+          height: albumCover.height,
+          size: albumCover.size || blob.size || 0,
+        };
+      }
+
+      let lyrics;
+      if (albumLyrics) {
+        const uploadUrl = await generateImageUploadUrl();
+        const lyricsResponse = await fetch(albumLyrics.uri);
+        const blob = await lyricsResponse.blob();
+        if (blob.size > 512 * 1024) throw new Error("El fichero LRC supera 512 KB.");
+        const uploadResponse = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": albumLyrics.mimeType || "text/plain" },
+          body: blob,
+        });
+        if (!uploadResponse.ok) {
+          throw new Error(`No se pudo subir el fichero LRC (${uploadResponse.status}).`);
+        }
+        const { storageId } = await uploadResponse.json();
+        lyrics = {
+          storageId,
+          fileName: albumLyrics.fileName,
+          mimeType: albumLyrics.mimeType || "text/plain",
+          size: albumLyrics.size || blob.size || 0,
+        };
+      }
+
+      await updateYouTubeAlbum({
+        messageId,
+        clientId: chatClientId,
+        title,
+        thumbnail,
+        lyrics,
+      });
+      setEditingAlbum(null);
+      setAlbumTitle("");
+      setAlbumCover(null);
+      setAlbumLyrics(null);
+    } catch (error) {
+      console.error("[Chat] No se pudo guardar el álbum:", error);
+      safeAlert("Error", error?.message || "No se pudo guardar el álbum.");
+    } finally {
+      setSavingAlbum(false);
+    }
+  }, [albumCover, albumLyrics, albumTitle, chatClientId, editingAlbum, generateImageUploadUrl, savingAlbum, updateYouTubeAlbum]);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
@@ -519,6 +705,7 @@ export default function ChatScreen() {
               myAlias={cleanAlias}
               language={language}
               onDelete={handleDeletePost}
+              onEditAlbum={openAlbumEditor}
               onImagePress={setExpandedImageUri}
               deleting={deletingMessageId === item._id}
             />
@@ -633,6 +820,57 @@ export default function ChatScreen() {
             Pruebas abiertas · sin login obligatorio
           </Text>
         </View>
+
+        <Modal
+          visible={Boolean(editingAlbum)}
+          transparent
+          animationType="fade"
+          onRequestClose={closeAlbumEditor}
+        >
+          <View style={styles.albumEditorBackdrop}>
+            <View style={styles.albumEditorCard}>
+              <View style={styles.albumEditorHeader}>
+                <Text style={styles.albumEditorTitle}>Editar álbum de YouTube</Text>
+                <Pressable onPress={closeAlbumEditor} disabled={savingAlbum} style={styles.albumEditorClose} accessibilityRole="button" accessibilityLabel="Cerrar"><Ionicons name="close" size={22} color="#374151" /></Pressable>
+              </View>
+
+              <Pressable onPress={handlePickAlbumCover} disabled={savingAlbum} style={styles.albumCoverButton} accessibilityRole="button" accessibilityLabel="Seleccionar portada">
+                {(albumCover?.uri || editingAlbum?.item?.youtubeAlbum?.thumbnailUri) ? (
+                  <Image source={{ uri: albumCover?.uri || editingAlbum.item.youtubeAlbum.thumbnailUri }} style={styles.albumCoverPreview} resizeMode="cover" />
+                ) : (
+                  <View style={styles.albumCoverPlaceholder}>
+                    <Ionicons name="image-outline" size={34} color="#64748b" />
+                    <Text style={styles.albumCoverPlaceholderText}>Seleccionar portada</Text>
+                  </View>
+                )}
+              </Pressable>
+
+              <Text style={styles.albumFieldLabel}>Nombre del álbum</Text>
+              <TextInput
+                value={albumTitle}
+                onChangeText={(value) => setAlbumTitle(value.slice(0, 120))}
+                placeholder="Nombre del álbum"
+                editable={!savingAlbum}
+                maxLength={120}
+                style={styles.albumTitleInput}
+              />
+
+              <Text style={styles.albumFieldLabelLyrics}>Letras sincronizadas</Text>
+              <Pressable onPress={handlePickAlbumLyrics} disabled={savingAlbum} style={styles.lyricsFileButton} accessibilityRole="button" accessibilityLabel="Seleccionar fichero LRC">
+                <Ionicons name="document-text-outline" size={20} color="#2563eb" />
+                <View style={styles.lyricsFileText}>
+                  <Text style={styles.lyricsFileName} numberOfLines={1}>{albumLyrics?.fileName || editingAlbum?.item?.youtubeAlbum?.lyricsFileName || "Seleccionar fichero .lrc"}</Text>
+                  <Text style={styles.lyricsFileHint}>LRC sincronizado · máximo 512 KB</Text>
+                </View>
+              </Pressable>
+
+              <View style={styles.albumEditorActions}>
+                <Pressable onPress={closeAlbumEditor} disabled={savingAlbum} style={styles.albumCancelButton}><Text style={styles.albumCancelText}>Cancelar</Text></Pressable>
+                <Pressable onPress={handleSaveAlbum} disabled={savingAlbum || !albumTitle.trim()} style={[styles.albumSaveButton, (savingAlbum || !albumTitle.trim()) && styles.albumSaveButtonDisabled]}><Text style={styles.albumSaveText}>{savingAlbum ? "Guardando…" : "Guardar"}</Text></Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         <Modal
           visible={Boolean(expandedImageUri)}
@@ -757,6 +995,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   bubbleMine: { backgroundColor: "#dbeafe", borderColor: "#bfdbfe" },
+  bubbleYouTube: {
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+  },
   bubbleDeletedAdmin: {
     opacity: 0.72,
     borderStyle: "dashed",
@@ -822,6 +1066,41 @@ const styles = StyleSheet.create({
   },
   messageImage: { width: 108, height: 108, backgroundColor: "#e5e7eb" },
   messageImageFill: { width: "100%", height: "100%" },
+  albumEditorBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 18,
+    backgroundColor: "rgba(15, 23, 42, 0.55)",
+  },
+  albumEditorCard: {
+    width: 360,
+    maxWidth: "100%",
+    padding: 16,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+  },
+  albumEditorHeader: { flexDirection: "row", alignItems: "center", marginBottom: 14 },
+  albumEditorTitle: { flex: 1, fontSize: 17, fontWeight: "800", color: "#111827" },
+  albumEditorClose: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  albumCoverButton: { width: 144, height: 144, alignSelf: "center", marginBottom: 14 },
+  albumCoverPreview: { width: 144, height: 144, backgroundColor: "#e5e7eb" },
+  albumCoverPlaceholder: { width: 144, height: 144, alignItems: "center", justifyContent: "center", gap: 7, borderWidth: 1, borderStyle: "dashed", borderColor: "#94a3b8", backgroundColor: "#f8fafc" },
+  albumCoverPlaceholderText: { fontSize: 11, fontWeight: "700", color: "#64748b" },
+  albumFieldLabel: { marginBottom: 5, fontSize: 12, fontWeight: "700", color: "#374151" },
+  albumTitleInput: { minHeight: 44, paddingHorizontal: 11, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff", fontSize: 14, color: "#111827" },
+  albumFieldLabelLyrics: { marginTop: 13, marginBottom: 5, fontSize: 12, fontWeight: "700", color: "#374151" },
+  lyricsFileButton: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 11, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#f8fafc" },
+  lyricsFileText: { flex: 1, minWidth: 0 },
+  lyricsFileName: { fontSize: 12, fontWeight: "700", color: "#1e40af" },
+  lyricsFileHint: { marginTop: 2, fontSize: 10, color: "#64748b" },
+  albumEditorActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 16 },
+  albumCancelButton: { minHeight: 40, justifyContent: "center", paddingHorizontal: 14, borderWidth: 1, borderColor: "#cbd5e1" },
+  albumCancelText: { fontSize: 13, fontWeight: "700", color: "#475569" },
+  albumSaveButton: { minHeight: 40, justifyContent: "center", paddingHorizontal: 16, backgroundColor: "#2563eb" },
+  albumSaveButtonDisabled: { opacity: 0.45 },
+  albumSaveText: { fontSize: 13, fontWeight: "800", color: "#fff" },
   imageModalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.94)",

@@ -11,16 +11,27 @@ const MAX_USERNAME_LENGTH = 40;
 const MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
 
 function cleanRoom(value) {
-  return String(value || "").trim().toLowerCase().slice(0, 50) || DEFAULT_ROOM;
+  return (
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .slice(0, 50) || DEFAULT_ROOM
+  );
 }
 function cleanUsername(value) {
-  return String(value || "").trim().slice(0, MAX_USERNAME_LENGTH) || DEFAULT_USERNAME;
+  return (
+    String(value || "")
+      .trim()
+      .slice(0, MAX_USERNAME_LENGTH) || DEFAULT_USERNAME
+  );
 }
 function cleanText(value) {
   return String(value || "").trim();
 }
 function cleanClientId(value) {
-  const clientId = String(value || "").trim().slice(0, 120);
+  const clientId = String(value || "")
+    .trim()
+    .slice(0, 120);
   return clientId || null;
 }
 
@@ -48,6 +59,17 @@ async function withImageUrls(ctx, message) {
             uri: await ctx.storage.getUrl(image.storageId),
           })),
         )
+      : undefined,
+    youtubeAlbum: message.youtubeAlbum
+      ? {
+          ...message.youtubeAlbum,
+          thumbnailUri: await ctx.storage.getUrl(
+            message.youtubeAlbum.thumbnailStorageId,
+          ),
+          lyricsUri: message.youtubeAlbum.lyricsStorageId
+            ? await ctx.storage.getUrl(message.youtubeAlbum.lyricsStorageId)
+            : undefined,
+        }
       : undefined,
   };
 }
@@ -90,6 +112,7 @@ export const listMessages = query({
           ...decorated,
           isOwnMessage: own,
           canDelete: viewer.isAdmin || (own && !deletedByUser),
+          canEditYouTubeAlbum: viewer.isAdmin || (own && !deletedByUser),
           isAdminViewer: viewer.isAdmin,
           isDeletedByUser: deletedByUser,
         };
@@ -109,20 +132,26 @@ export const sendMessage = mutation({
     username: v.optional(v.string()),
     text: v.string(),
     clientId: v.optional(v.string()),
-    images: v.optional(v.array(v.object({
-      storageId: v.id("_storage"),
-      mimeType: v.string(),
-      width: v.number(),
-      height: v.number(),
-      size: v.number(),
-    }))),
-    product: v.optional(v.object({
-      barcode: v.string(),
-      name: v.string(),
-      brand: v.optional(v.string()),
-      price: v.number(),
-      currency: v.string(),
-    })),
+    images: v.optional(
+      v.array(
+        v.object({
+          storageId: v.id("_storage"),
+          mimeType: v.string(),
+          width: v.number(),
+          height: v.number(),
+          size: v.number(),
+        }),
+      ),
+    ),
+    product: v.optional(
+      v.object({
+        barcode: v.string(),
+        name: v.string(),
+        brand: v.optional(v.string()),
+        price: v.number(),
+        currency: v.string(),
+      }),
+    ),
     latitude: v.optional(v.number()),
     longitude: v.optional(v.number()),
   },
@@ -134,7 +163,8 @@ export const sendMessage = mutation({
     const messageLengthLimit =
       room === "youtube" ? MAX_YOUTUBE_MESSAGE_LENGTH : MAX_MESSAGE_LENGTH;
 
-    if (!text && images.length === 0) throw new Error("El mensaje no puede estar vacío.");
+    if (!text && images.length === 0)
+      throw new Error("El mensaje no puede estar vacío.");
     if (text.length > messageLengthLimit) {
       throw new Error(
         `El mensaje no puede superar ${messageLengthLimit} caracteres.`,
@@ -142,7 +172,8 @@ export const sendMessage = mutation({
     }
 
     const viewer = await getViewer(ctx, args.clientId);
-    if (!viewer.ownerId) throw new Error("No se pudo identificar este dispositivo.");
+    if (!viewer.ownerId)
+      throw new Error("No se pudo identificar este dispositivo.");
 
     const now = Date.now();
     const messageId = await ctx.db.insert("chatMessages", {
@@ -158,6 +189,115 @@ export const sendMessage = mutation({
       messageStatus: "clean",
     });
     return { ok: true, messageId };
+  },
+});
+
+export const updateYouTubeAlbum = mutation({
+  args: {
+    messageId: v.id("chatMessages"),
+    clientId: v.optional(v.string()),
+    title: v.string(),
+    thumbnail: v.optional(
+      v.object({
+        storageId: v.id("_storage"),
+        mimeType: v.string(),
+        width: v.number(),
+        height: v.number(),
+        size: v.number(),
+      }),
+    ),
+    lyrics: v.optional(
+      v.object({
+        storageId: v.id("_storage"),
+        fileName: v.string(),
+        mimeType: v.string(),
+        size: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.messageId);
+    if (!message) throw new Error("La publicación ya no existe.");
+
+    const viewer = await getViewer(ctx, args.clientId);
+    const ownMessage = isOwnedBy(message, viewer.ownerId);
+    if (!ownMessage && !viewer.isAdmin) {
+      throw new Error(
+        "Solo el autor o un administrador puede editar el álbum.",
+      );
+    }
+    if (message.status === "hidden" || message.status === "blocked") {
+      throw new Error("No se puede editar una publicación oculta.");
+    }
+
+    const title = String(args.title || "")
+      .trim()
+      .slice(0, 120);
+    if (!title) throw new Error("Escribe el nombre del álbum.");
+
+    const previous = message.youtubeAlbum;
+    const thumbnail = args.thumbnail;
+    const lyrics = args.lyrics;
+    if (lyrics) {
+      if (!lyrics.fileName.toLowerCase().endsWith(".lrc")) {
+        throw new Error("El fichero de letras debe tener extensión .lrc.");
+      }
+      if (lyrics.size > 512 * 1024) {
+        throw new Error("El fichero LRC no puede superar 512 KB.");
+      }
+    }
+    if (!thumbnail && !previous) {
+      throw new Error("Selecciona una portada para el álbum.");
+    }
+
+    const nextAlbum = thumbnail
+      ? {
+          ...previous,
+          title,
+          thumbnailStorageId: thumbnail.storageId,
+          mimeType: thumbnail.mimeType,
+          width: thumbnail.width,
+          height: thumbnail.height,
+          size: thumbnail.size,
+        }
+      : { ...previous, title };
+    if (lyrics) {
+      nextAlbum.lyricsStorageId = lyrics.storageId;
+      nextAlbum.lyricsFileName = lyrics.fileName.slice(0, 160);
+      nextAlbum.lyricsMimeType = lyrics.mimeType;
+      nextAlbum.lyricsSize = lyrics.size;
+    }
+    await ctx.db.patch(args.messageId, { youtubeAlbum: nextAlbum });
+
+    if (
+      thumbnail &&
+      previous?.thumbnailStorageId &&
+      previous.thumbnailStorageId !== thumbnail.storageId
+    ) {
+      try {
+        await ctx.storage.delete(previous.thumbnailStorageId);
+      } catch (error) {
+        console.warn(
+          "[chat.updateYouTubeAlbum] old thumbnail delete failed",
+          error,
+        );
+      }
+    }
+    if (
+      lyrics &&
+      previous?.lyricsStorageId &&
+      previous.lyricsStorageId !== lyrics.storageId
+    ) {
+      try {
+        await ctx.storage.delete(previous.lyricsStorageId);
+      } catch (error) {
+        console.warn(
+          "[chat.updateYouTubeAlbum] old lyrics delete failed",
+          error,
+        );
+      }
+    }
+    return { ok: true };
   },
 });
 
@@ -187,6 +327,23 @@ export const deleteMessage = mutation({
           }
         }
       }
+      if (message.youtubeAlbum?.thumbnailStorageId) {
+        try {
+          await ctx.storage.delete(message.youtubeAlbum.thumbnailStorageId);
+        } catch (error) {
+          console.warn(
+            "[chat.deleteMessage] album thumbnail delete failed",
+            error,
+          );
+        }
+      }
+      if (message.youtubeAlbum?.lyricsStorageId) {
+        try {
+          await ctx.storage.delete(message.youtubeAlbum.lyricsStorageId);
+        } catch (error) {
+          console.warn("[chat.deleteMessage] lyrics delete failed", error);
+        }
+      }
       await ctx.db.delete(args.messageId);
       return { ok: true, hidden: false, deleted: true };
     }
@@ -214,8 +371,31 @@ export const deleteExpiredMessages = internalMutation({
           try {
             await ctx.storage.delete(image.storageId);
           } catch (error) {
-            console.warn("[chat.deleteExpiredMessages] storage delete failed", error);
+            console.warn(
+              "[chat.deleteExpiredMessages] storage delete failed",
+              error,
+            );
           }
+        }
+      }
+      if (message.youtubeAlbum?.thumbnailStorageId) {
+        try {
+          await ctx.storage.delete(message.youtubeAlbum.thumbnailStorageId);
+        } catch (error) {
+          console.warn(
+            "[chat.deleteExpiredMessages] album thumbnail delete failed",
+            error,
+          );
+        }
+      }
+      if (message.youtubeAlbum?.lyricsStorageId) {
+        try {
+          await ctx.storage.delete(message.youtubeAlbum.lyricsStorageId);
+        } catch (error) {
+          console.warn(
+            "[chat.deleteExpiredMessages] lyrics delete failed",
+            error,
+          );
         }
       }
       await ctx.db.delete(message._id);

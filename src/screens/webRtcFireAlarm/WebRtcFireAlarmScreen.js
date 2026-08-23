@@ -190,7 +190,7 @@ function formatAlarmDate(value) {
   }
 }
 
-export default function WebRtcFireAlarmScreen() {
+function WebRtcFireAlarmAdminContent() {
   const currentUser = useQuery(api.users.current);
   const isAdmin = currentUser?.isAdmin === true;
 
@@ -1060,7 +1060,72 @@ export default function WebRtcFireAlarmScreen() {
   );
 }
 
+export default function WebRtcFireAlarmScreen() {
+  const currentUser = useQuery(api.users.current);
+
+  if (currentUser === undefined) {
+    return (
+      <SafeAreaView
+        edges={["left", "right", "bottom"]}
+        style={styles.accessSafeArea}
+      >
+        <Text style={styles.accessText}>Comprobando permisos…</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (currentUser?.isAdmin !== true) {
+    return (
+      <SafeAreaView
+        edges={["left", "right", "bottom"]}
+        style={styles.accessSafeArea}
+      >
+        <View style={styles.accessCard}>
+          <Ionicons name="lock-closed-outline" size={30} color={COLORS.red} />
+          <Text style={styles.accessTitle}>Acceso restringido</Text>
+          <Text style={styles.accessText}>
+            Fire Alarm es una utilidad DEV disponible únicamente para
+            administradores.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return <WebRtcFireAlarmAdminContent />;
+}
+
 const styles = StyleSheet.create({
+  accessSafeArea: {
+    flex: 1,
+    padding: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.background,
+  },
+  accessCard: {
+    width: "100%",
+    maxWidth: 440,
+    padding: 24,
+    alignItems: "center",
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 20,
+  },
+  accessTitle: {
+    marginTop: 12,
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  accessText: {
+    marginTop: 8,
+    color: COLORS.textMuted,
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: "center",
+  },
   safeArea: { flex: 1, backgroundColor: COLORS.background },
   content: {
     width: "100%",
