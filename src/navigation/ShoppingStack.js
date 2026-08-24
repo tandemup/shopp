@@ -19,6 +19,7 @@ import StoreMapScreen from "@/src/screens/stores/StoreMapScreen";
 import MenuScreen from "@/src/screens/settings/MenuScreen";
 import WebRtcFireAlarmScreen from "@/src/screens/webRtcFireAlarm/WebRtcFireAlarmScreen";
 import EnglishTutorScreen from "@/src/screens/chat/EnglishTutorScreen";
+import LibraryScreen from "@/src/screens/library/LibraryScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -66,6 +67,11 @@ export default function ShoppingStack() {
         name={ROUTES.ENGLISH_TUTOR}
         component={EnglishTutorScreen}
         options={{ title: tr("Tutor de Inglés") }}
+      />
+      <Stack.Screen
+        name={ROUTES.LIBRARY}
+        component={LibraryScreen}
+        options={{ title: tr("Biblioteca") }}
       />
       <Stack.Screen name={ROUTES.MENU} component={MenuScreen} />
     </Stack.Navigator>

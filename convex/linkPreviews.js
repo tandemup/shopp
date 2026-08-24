@@ -66,6 +66,60 @@ function collectMetadata(html) {
   return metadata;
 }
 
+function normalizeCharset(value) {
+  const charset = String(value || "").trim().toLowerCase();
+  if (!charset) return "";
+  if (["latin1", "latin-1", "iso-8859-1", "iso8859-1"].includes(charset)) {
+    return "windows-1252";
+  }
+  if (["utf8", "utf_8"].includes(charset)) return "utf-8";
+  return charset;
+}
+
+function getDeclaredCharset(contentType, bytes) {
+  const headerCharset = contentType.match(/charset\s*=\s*["']?([^;\s"']+)/i)?.[1];
+  if (headerCharset) return normalizeCharset(headerCharset);
+
+  const probe = new TextDecoder("windows-1252").decode(bytes.slice(0, 8192));
+  const metaCharset =
+    probe.match(/<meta\b[^>]*charset\s*=\s*["']?([^\s"'/>]+)/i)?.[1] ||
+    probe.match(
+      /<meta\b[^>]*content\s*=\s*["'][^"']*charset\s*=\s*([^;\s"']+)/i,
+    )?.[1];
+  return normalizeCharset(metaCharset);
+}
+
+function encodingErrorScore(text) {
+  return (
+    (text.match(/\uFFFD/g)?.length || 0) * 20 +
+    (text.match(/Ã.|Â.|â€|â€™|â€œ|â€/g)?.length || 0) * 5
+  );
+}
+
+function decodeDocument(bytes, contentType) {
+  const declaredCharset = getDeclaredCharset(contentType, bytes);
+  const candidates = [declaredCharset, "utf-8", "windows-1252"].filter(
+    (value, index, values) => value && values.indexOf(value) === index,
+  );
+  let bestText = "";
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (const charset of candidates) {
+    try {
+      const text = new TextDecoder(charset).decode(bytes);
+      const score = encodingErrorScore(text);
+      if (score < bestScore) {
+        bestText = text;
+        bestScore = score;
+      }
+      if (score === 0 && charset === declaredCharset) break;
+    } catch {
+      // Continúa con la siguiente codificación compatible.
+    }
+  }
+  return bestText || new TextDecoder().decode(bytes);
+}
+
 function absolutize(value, baseUrl) {
   if (!value) return "";
   try {
@@ -137,7 +191,7 @@ export const get = action({
       }
 
       const bytes = new Uint8Array(await response.arrayBuffer());
-      const html = new TextDecoder().decode(bytes.slice(0, MAX_HTML_BYTES));
+      const html = decodeDocument(bytes.slice(0, MAX_HTML_BYTES), contentType);
       const metadata = collectMetadata(html);
       const titleTag = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1];
       const parsed = new URL(finalUrl);

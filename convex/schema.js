@@ -257,6 +257,7 @@ export default defineSchema({
 
   computerLinkFolders: defineTable({
     name: v.string(),
+    parentFolderId: v.optional(v.id("computerLinkFolders")),
     icon: v.optional(v.string()),
     color: v.optional(v.string()),
     order: v.float64(),
@@ -264,6 +265,7 @@ export default defineSchema({
     createdAt: v.float64(),
   })
     .index("by_name", ["name"])
+    .index("by_parent_order", ["parentFolderId", "order"])
     .index("by_order", ["order"]),
 
   computerLinks: defineTable({
@@ -274,6 +276,15 @@ export default defineSchema({
     username: v.string(),
     createdBy: v.string(),
     folderId: v.optional(v.id("computerLinkFolders")),
+    linkType: v.optional(
+      v.union(
+        v.literal("general"),
+        v.literal("newsSource"),
+        v.literal("newsArticle"),
+      ),
+    ),
+    sourceDomain: v.optional(v.string()),
+    customTitle: v.optional(v.string()),
     favorite: v.boolean(),
     status: v.union(
       v.literal("pending"),
@@ -281,6 +292,7 @@ export default defineSchema({
       v.literal("archived"),
     ),
     notes: v.optional(v.string()),
+    hashtags: v.optional(v.array(v.string())),
     createdAt: v.float64(),
     updatedAt: v.float64(),
   })

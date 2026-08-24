@@ -238,6 +238,16 @@ function QuickActions({
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.ENGLISH_TUTOR),
       },
       {
+        key: "library",
+        label: "Biblioteca",
+        description: "Organiza enlaces por categorías",
+        icon: "library-outline",
+        iconColor: COLORS.cyan,
+        iconBackground: COLORS.cyanSoft,
+        onPress: () =>
+          navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.LIBRARY),
+      },
+      {
         key: "chatPrototype",
         label: "Chat prototipo",
         description: "Prueba el nuevo chat de compras",
