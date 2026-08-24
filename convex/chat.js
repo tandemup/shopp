@@ -173,6 +173,7 @@ export const sendMessage = mutation({
     username: v.optional(v.string()),
     text: v.string(),
     clientId: v.optional(v.string()),
+    keepIndefinitely: v.optional(v.boolean()),
     images: v.optional(
       v.array(
         v.object({
@@ -225,7 +226,7 @@ export const sendMessage = mutation({
       images: images.length > 0 ? images : undefined,
       product: args.product,
       createdAt: now,
-      expiresAt: now + MESSAGE_TTL_MS,
+      expiresAt: args.keepIndefinitely ? undefined : now + MESSAGE_TTL_MS,
       status: "visible",
       messageStatus: "clean",
     });

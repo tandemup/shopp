@@ -13,7 +13,7 @@ import {
   ScrollView,
   StyleSheet,
   useWindowDimensions,
-  View
+  View,
 } from "react-native";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 
@@ -57,8 +57,8 @@ import {
   buildSupermarketLookupPrompt,
 } from "@/src/constants/productLookupPrompts";
 
-const PRODUCT_DETAIL_MAX_SIZE = 256;
-const PRODUCT_THUMBNAIL_MAX_SIZE = 64;
+const PRODUCT_DETAIL_MAX_SIZE = 512;
+const PRODUCT_THUMBNAIL_MAX_SIZE = 128;
 
 function normalizeString(value) {
   return String(value || "").trim();
@@ -1383,7 +1383,10 @@ export default function EditScannedItemScreen({ route, navigation }) {
             saveRemoteImages: saveRemoteProductImages,
           });
         } catch (imageSyncError) {
-          console.warn("Temporary product image upload failed:", imageSyncError);
+          console.warn(
+            "Temporary product image upload failed:",
+            imageSyncError,
+          );
         }
       }
 
@@ -1442,12 +1445,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
     } finally {
       setDeleting(false);
     }
-  }, [
-    barcode,
-    navigation,
-    scanHistoryStorage,
-    removeRemoteProductImages,
-  ]);
+  }, [barcode, navigation, scanHistoryStorage, removeRemoteProductImages]);
 
   const handleDeleteFromDatabase = useCallback(async () => {
     if (!barcode) {
@@ -1798,7 +1796,8 @@ export default function EditScannedItemScreen({ route, navigation }) {
                           : "Importar imagen"}
                       </Text>
                       <Text style={styles.imageImportHint}>
-                        Crea detalle.jpeg de 256 px y thumbnail.jpeg de 64 px
+                        Crea detalle.jpeg de {PRODUCT_DETAIL_MAX_SIZE} px y
+                        thumbnail.jpeg de {PRODUCT_THUMBNAIL_MAX_SIZE} px
                       </Text>
                     </View>
                   </Pressable>

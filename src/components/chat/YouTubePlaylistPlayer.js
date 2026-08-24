@@ -5,6 +5,9 @@ import { WebView } from "react-native-webview";
 import { I18nText as Text } from "@/src/i18n";
 
 const youtubeTitleCache = new Map();
+const COMPACT_CARD_WIDTH = 440;
+const COMPACT_CARD_HEIGHT = 90;
+const COMPACT_THUMBNAIL_WIDTH = 160;
 
 async function fetchYouTubeTitle(videoId) {
   if (!videoId) return "";
@@ -148,7 +151,7 @@ export default function YouTubePlaylistPlayer({ playlistId, videoId, sourceUrl, 
     <View style={styles.card}>
       <View style={styles.compactHeader}>
         <Pressable onPress={() => setExpanded(true)} style={({ pressed }) => [styles.thumbnailButton, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Abrir reproductor">
-          {displayThumbnail ? <Image source={{ uri: displayThumbnail, cache: "force-cache" }} style={styles.compactThumbnail} resizeMode="cover" /> : <View style={styles.thumbnailFallback}><Ionicons name="logo-youtube" size={28} color="#fff" /></View>}
+          {displayThumbnail ? <Image source={{ uri: displayThumbnail, cache: "force-cache" }} style={styles.compactThumbnail} resizeMode="contain" /> : <View style={styles.thumbnailFallback}><Ionicons name="logo-youtube" size={34} color="#fff" /></View>}
         </Pressable>
         <View style={styles.compactText}>
           {(userName || dateLabel || canEditAlbum || canDelete) && <View style={styles.metaRow}>
@@ -183,19 +186,19 @@ export default function YouTubePlaylistPlayer({ playlistId, videoId, sourceUrl, 
 }
 
 const styles = StyleSheet.create({
-  card: { width: 360, maxWidth: "100%", marginTop: 0, overflow: "hidden", borderWidth: 1, borderColor: "#d1d5db", backgroundColor: "#fff" },
-  compactHeader: { height: 56, flexDirection: "row", alignItems: "stretch" },
-  thumbnailButton: { width: 56, height: 56 },
-  compactThumbnail: { width: 56, height: 56, backgroundColor: "#111827" },
-  thumbnailFallback: { width: 56, height: 56, alignItems: "center", justifyContent: "center", backgroundColor: "#dc2626" },
-  compactText: { flex: 1, minWidth: 0, justifyContent: "flex-start", paddingTop: 2, paddingLeft: 7, paddingRight: 3 },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 3, marginBottom: 0 },
-  userName: { maxWidth: 84, fontSize: 10, fontWeight: "800", color: "#2563eb" },
+  card: { width: COMPACT_CARD_WIDTH, maxWidth: "100%", marginTop: 0, overflow: "hidden", borderWidth: 1, borderColor: "#d1d5db", backgroundColor: "#fff" },
+  compactHeader: { height: COMPACT_CARD_HEIGHT, flexDirection: "row", alignItems: "stretch" },
+  thumbnailButton: { width: COMPACT_THUMBNAIL_WIDTH, height: COMPACT_CARD_HEIGHT, backgroundColor: "#111827" },
+  compactThumbnail: { width: COMPACT_THUMBNAIL_WIDTH, height: COMPACT_CARD_HEIGHT, backgroundColor: "#111827" },
+  thumbnailFallback: { width: COMPACT_THUMBNAIL_WIDTH, height: COMPACT_CARD_HEIGHT, alignItems: "center", justifyContent: "center", backgroundColor: "#dc2626" },
+  compactText: { flex: 1, minWidth: 0, justifyContent: "flex-start", paddingTop: 7, paddingLeft: 10, paddingRight: 5 },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 3 },
+  userName: { maxWidth: 110, fontSize: 11, fontWeight: "800", color: "#2563eb" },
   metaSpacer: { flex: 1 },
-  dateLabel: { fontSize: 9, color: "#6b7280" },
-  metaButton: { width: 20, height: 20, alignItems: "center", justifyContent: "center" },
+  dateLabel: { fontSize: 10, color: "#6b7280" },
+  metaButton: { width: 22, height: 22, alignItems: "center", justifyContent: "center" },
   metaButtonPressed: { backgroundColor: "#dbeafe" },
-  deleteButton: { width: 20, height: 20, alignItems: "center", justifyContent: "center" },
+  deleteButton: { width: 22, height: 22, alignItems: "center", justifyContent: "center" },
   deleteButtonPressed: { backgroundColor: "#fee2e2" },
   deleteButtonDisabled: { opacity: 0.4 },
   detailRoot: { flex: 1, backgroundColor: "#f8fafc" },
@@ -220,7 +223,7 @@ const styles = StyleSheet.create({
   itemTextActive: { color: "#b91c1c" },
   footer: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10, paddingVertical: 9 },
   footerText: { flex: 1 },
-  title: { fontSize: 13, fontWeight: "800", color: "#111827" },
+  title: { fontSize: 14, lineHeight: 18, fontWeight: "800", color: "#111827" },
   hint: { marginTop: 2, fontSize: 10, lineHeight: 14, color: "#6b7280" },
   openButton: { paddingHorizontal: 10, paddingVertical: 7, backgroundColor: "#dc2626" },
   pressed: { opacity: 0.75 },

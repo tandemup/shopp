@@ -502,6 +502,7 @@ export default function ChatScreen() {
         username: cleanAlias,
         text: cleanInput,
         clientId: chatClientId,
+        keepIndefinitely: true,
         images: uploadedImages.length ? uploadedImages : undefined,
       });
 
