@@ -58,6 +58,35 @@ export function normalizeUrl(value) {
   return url.toString();
 }
 
+/**
+ * Permite enlaces web públicos y descarta destinos locales o privados.
+ * La validación definitiva se repite en el backend antes de solicitar la web.
+ */
+export function isTrustedDomain(value) {
+  const url = toUrl(value);
+  if (!url || !/^https?:$/.test(url.protocol) || !url.hostname) return false;
+  if (url.username || url.password) return false;
+
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (
+    hostname === "localhost" ||
+    hostname === "::1" ||
+    hostname === "0.0.0.0" ||
+    hostname.endsWith(".localhost") ||
+    hostname.endsWith(".local") ||
+    hostname.endsWith(".internal") ||
+    /^127\./.test(hostname) ||
+    /^10\./.test(hostname) ||
+    /^192\.168\./.test(hostname) ||
+    /^169\.254\./.test(hostname) ||
+    /^172\.(?:1[6-9]|2\d|3[01])\./.test(hostname)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 /** Devuelve el ID del vídeo si la URL es un enlace YouTube válido. */
 export function getYouTubeVideoId(value) {
   const url = toUrl(value);
@@ -143,6 +172,7 @@ export function parseYouTubeUrl(value) {
 export default {
   extractUrlsFromText,
   normalizeUrl,
+  isTrustedDomain,
   getYouTubeVideoId,
   getYouTubePlaylistId,
   isSafeYouTubeUrl,

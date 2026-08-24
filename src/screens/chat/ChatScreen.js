@@ -31,6 +31,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 import YouTubePlaylistPlayer from "@/src/components/chat/YouTubePlaylistPlayer";
+import WebPreviewCard from "@/src/components/chat/WebPreviewCard";
 import { extractUrlsFromText, parseYouTubeUrl } from "@/src/services/urlSafety";
 
 const ROOMS = [
@@ -164,6 +165,10 @@ function Message({
     if (!youtubeUrl) return null;
     return { sourceUrl: youtubeUrl, ...parseYouTubeUrl(youtubeUrl) };
   }, [content.text]);
+  const webPreviewUrl = useMemo(() => {
+    if (youtubeMedia) return null;
+    return extractUrlsFromText(content.text)[0] || null;
+  }, [content.text, youtubeMedia]);
   const isYouTubeAlbum =
     youtubeMedia?.playlistId?.startsWith("OLAK5uy_") === true;
   const isYouTubePlaylist = Boolean(youtubeMedia?.playlistId);
@@ -252,6 +257,7 @@ function Message({
             {content.text}
           </Text>
         ) : null}
+        {webPreviewUrl ? <WebPreviewCard url={webPreviewUrl} compact /> : null}
         {youtubeMedia ? (
           <YouTubePlaylistPlayer
             playlistId={youtubeMedia.playlistId}

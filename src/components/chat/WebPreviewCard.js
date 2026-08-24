@@ -11,9 +11,13 @@ import {
   View
 } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
-
-
+import { useAction } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { isTrustedDomain } from "@/src/services/urlSafety";
+
+const PREVIEW_CARD_MAX_WIDTH = 380;
+const PREVIEW_IMAGE_HEIGHT = 260;
+const PREVIEW_COMPACT_IMAGE_HEIGHT = 220;
 
 function normalizePreviewUrl(value) {
   const text = String(value || "").trim();
@@ -115,10 +119,10 @@ function normalizePreviewPayload(data, normalizedUrl) {
 
 export default function WebPreviewCard({
   url,
-  previewEndpoint,
   compact = false,
   onPress,
 }) {
+  const getLinkPreview = useAction(api.linkPreviews.get);
   const normalizedUrl = useMemo(() => normalizePreviewUrl(url), [url]);
 
   const allowed = useMemo(() => {
@@ -138,7 +142,7 @@ export default function WebPreviewCard({
       setFailed(false);
       setImageFailed(false);
 
-      if (!normalizedUrl || !previewEndpoint) {
+      if (!normalizedUrl || !allowed) {
         setFailed(true);
         return;
       }
@@ -146,17 +150,7 @@ export default function WebPreviewCard({
       setLoading(true);
 
       try {
-        const endpoint = `${previewEndpoint}?url=${encodeURIComponent(
-          normalizedUrl,
-        )}`;
-
-        const response = await fetch(endpoint);
-
-        if (!response.ok) {
-          throw new Error(`Preview HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
+        const data = await getLinkPreview({ url: normalizedUrl });
 
         if (cancelled) return;
 
@@ -180,7 +174,7 @@ export default function WebPreviewCard({
     return () => {
       cancelled = true;
     };
-  }, [normalizedUrl, previewEndpoint]);
+  }, [allowed, getLinkPreview, normalizedUrl]);
 
   const handlePress = async () => {
     if (!allowed) return;
@@ -302,7 +296,7 @@ export default function WebPreviewCard({
 const styles = StyleSheet.create({
   card: {
     width: "100%",
-    maxWidth: 500,
+    maxWidth: PREVIEW_CARD_MAX_WIDTH,
     marginTop: 12,
     borderRadius: 16,
     overflow: "hidden",
@@ -318,7 +312,7 @@ const styles = StyleSheet.create({
   },
 
   cardCompact: {
-    maxWidth: "100%",
+    maxWidth: PREVIEW_CARD_MAX_WIDTH,
     borderRadius: 14,
   },
 
@@ -329,12 +323,12 @@ const styles = StyleSheet.create({
 
   image: {
     width: "100%",
-    height: 210,
+    height: PREVIEW_IMAGE_HEIGHT,
     backgroundColor: "#e5e7eb",
   },
 
   imageCompact: {
-    height: 150,
+    height: PREVIEW_COMPACT_IMAGE_HEIGHT,
   },
 
   body: {
