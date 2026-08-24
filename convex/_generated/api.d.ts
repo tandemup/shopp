@@ -13,6 +13,7 @@ import type * as ResendOTPPasswordReset from "../ResendOTPPasswordReset.js";
 import type * as auth from "../auth.js";
 import type * as barcodeScans from "../barcodeScans.js";
 import type * as chat from "../chat.js";
+import type * as computerLinks from "../computerLinks.js";
 import type * as crons from "../crons.js";
 import type * as englishTutor from "../englishTutor.js";
 import type * as factory from "../factory.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   barcodeScans: typeof barcodeScans;
   chat: typeof chat;
+  computerLinks: typeof computerLinks;
   crons: typeof crons;
   englishTutor: typeof englishTutor;
   factory: typeof factory;

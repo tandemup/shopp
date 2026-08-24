@@ -255,6 +255,39 @@ export default defineSchema({
     .index("by_userId_createdAt", ["userId", "createdAt"])
     .index("by_expiresAt", ["expiresAt"]),
 
+  computerLinkFolders: defineTable({
+    name: v.string(),
+    icon: v.optional(v.string()),
+    color: v.optional(v.string()),
+    order: v.float64(),
+    createdBy: v.optional(v.string()),
+    createdAt: v.float64(),
+  })
+    .index("by_name", ["name"])
+    .index("by_order", ["order"]),
+
+  computerLinks: defineTable({
+    messageId: v.optional(v.id("chatMessages")),
+    url: v.string(),
+    normalizedUrl: v.string(),
+    hostname: v.string(),
+    username: v.string(),
+    createdBy: v.string(),
+    folderId: v.optional(v.id("computerLinkFolders")),
+    favorite: v.boolean(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("reviewed"),
+      v.literal("archived"),
+    ),
+    notes: v.optional(v.string()),
+    createdAt: v.float64(),
+    updatedAt: v.float64(),
+  })
+    .index("by_normalizedUrl", ["normalizedUrl"])
+    .index("by_folder_updatedAt", ["folderId", "updatedAt"])
+    .index("by_updatedAt", ["updatedAt"]),
+
   // Adjuntos temporales para comunicaciones privadas con la administración.
   // Se eliminan del almacenamiento después de enviar el correo, incluso si
   // Resend devuelve un error.

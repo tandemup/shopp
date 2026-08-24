@@ -33,6 +33,24 @@ function cleanUsername(value) {
       .slice(0, MAX_USERNAME_LENGTH) || DEFAULT_USERNAME
   );
 }
+
+const WEB_URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
+
+function normalizeComputerLink(value) {
+  try {
+    const rawUrl = String(value || "").replace(/[.,!?;:]+$/, "");
+    const url = new URL(rawUrl);
+    if (!/^https?:$/.test(url.protocol) || !url.hostname) return null;
+    url.hash = "";
+    return {
+      rawUrl,
+      normalizedUrl: url.toString(),
+      hostname: url.hostname.replace(/^www\./, "").toLowerCase(),
+    };
+  } catch {
+    return null;
+  }
+}
 function cleanText(value) {
   return String(value || "").trim();
 }
@@ -230,6 +248,33 @@ export const sendMessage = mutation({
       status: "visible",
       messageStatus: "clean",
     });
+
+    if (room === "informatica") {
+      for (const rawUrl of text.match(WEB_URL_REGEX) || []) {
+        const link = normalizeComputerLink(rawUrl);
+        if (!link) continue;
+        const existing = await ctx.db
+          .query("computerLinks")
+          .withIndex("by_normalizedUrl", (q) =>
+            q.eq("normalizedUrl", link.normalizedUrl),
+          )
+          .first();
+        if (!existing) {
+          await ctx.db.insert("computerLinks", {
+            messageId,
+            url: link.rawUrl,
+            normalizedUrl: link.normalizedUrl,
+            hostname: link.hostname,
+            username,
+            createdBy: viewer.ownerId,
+            favorite: false,
+            status: "pending",
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+      }
+    }
 
     const youtubeVideoId = room === "noticias" ? extractYouTubeVideoId(text) : null;
     if (youtubeVideoId) {
