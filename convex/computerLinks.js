@@ -1,5 +1,5 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 const DEFAULT_FOLDERS = [
@@ -393,6 +393,7 @@ export const list = query({
     folderId: v.optional(v.id("computerLinkFolders")),
     onlyFavorites: v.optional(v.boolean()),
     onlyUnclassified: v.optional(v.boolean()),
+    excludeNewsSources: v.optional(v.boolean()),
     includeChildFolders: v.optional(v.boolean()),
     linkType: v.optional(
       v.union(v.literal("newsSource"), v.literal("newsArticle")),
@@ -426,6 +427,9 @@ export const list = query({
       ) return false;
       if (args.onlyFavorites && !link.favorite) return false;
       if (args.onlyUnclassified && link.folderId) return false;
+      if (args.excludeNewsSources && link.linkType === "newsSource") {
+        return false;
+      }
       if (args.linkType === "newsSource" && link.linkType !== "newsSource") {
         return false;
       }
@@ -567,5 +571,65 @@ export const remove = mutation({
       updatedAt: Date.now(),
     });
     return { ok: true };
+  },
+});
+
+// Operación de mantenimiento: solo puede ejecutarse desde Convex CLI/Dashboard.
+// Conserva la categoría Noticias y sus subcategorías para poder reutilizarlas.
+export const purgeNewsData = internalMutation({
+  args: {
+    confirmation: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    if (args.confirmation !== "BORRAR NOTICIAS Y PERIODICOS") {
+      throw new Error(
+        'Confirmación incorrecta. Escribe exactamente "BORRAR NOTICIAS Y PERIODICOS".',
+      );
+    }
+
+    const requestedLimit = Math.floor(args.limit || 500);
+    const limit = Math.max(1, Math.min(requestedLimit, 500));
+    const folders = await ctx.db.query("computerLinkFolders").collect();
+    const newsFolder = folders.find(
+      (folder) => !folder.parentFolderId && folder.name === "Noticias",
+    );
+    const newsFolderIds = new Set(
+      folders
+        .filter(
+          (folder) =>
+            folder._id === newsFolder?._id ||
+            folder.parentFolderId === newsFolder?._id,
+        )
+        .map((folder) => String(folder._id)),
+    );
+
+    const candidates = await ctx.db.query("computerLinks").collect();
+    const newsLinks = candidates.filter(
+      (link) =>
+        link.linkType === "newsArticle" ||
+        link.linkType === "newsSource" ||
+        newsFolderIds.has(String(link.folderId || "")),
+    );
+    const batch = newsLinks.slice(0, limit);
+    let articlesDeleted = 0;
+    let sourcesDeleted = 0;
+    let legacyDeleted = 0;
+
+    for (const link of batch) {
+      if (link.linkType === "newsArticle") articlesDeleted += 1;
+      else if (link.linkType === "newsSource") sourcesDeleted += 1;
+      else legacyDeleted += 1;
+      await ctx.db.delete(link._id);
+    }
+
+    return {
+      deleted: batch.length,
+      articlesDeleted,
+      sourcesDeleted,
+      legacyDeleted,
+      remaining: Math.max(0, newsLinks.length - batch.length),
+      foldersPreserved: newsFolderIds.size,
+    };
   },
 });

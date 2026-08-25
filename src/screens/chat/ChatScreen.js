@@ -31,6 +31,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 import YouTubePlaylistPlayer from "@/src/components/chat/YouTubePlaylistPlayer";
+import CustomYouTubePlaylistPlayer from "@/src/components/chat/CustomYouTubePlaylistPlayer";
 import WebPreviewCard from "@/src/components/chat/WebPreviewCard";
 import { extractUrlsFromText, parseYouTubeUrl } from "@/src/services/urlSafety";
 
@@ -142,6 +143,7 @@ function Message({
   language,
   onDelete,
   onEditAlbum,
+  onEditCustomPlaylist,
   onImagePress,
   deleting,
 }) {
@@ -169,17 +171,18 @@ function Message({
   const isYouTubeAlbum =
     youtubeMedia?.playlistId?.startsWith("OLAK5uy_") === true;
   const isYouTubePlaylist = Boolean(youtubeMedia?.playlistId);
+  const customPlaylist = item.customYouTubePlaylist;
   return (
     <View style={[styles.messageRow, mine && styles.messageRowMine]}>
       <View
         style={[
           styles.bubble,
           mine && styles.bubbleMine,
-          youtubeMedia && styles.bubbleYouTube,
+          (youtubeMedia || customPlaylist) && styles.bubbleYouTube,
           deletedForUsers && styles.bubbleDeletedAdmin,
         ]}
       >
-        {!youtubeMedia ? (
+        {!youtubeMedia && !customPlaylist ? (
           <View style={styles.messageHeader}>
             <Text style={styles.username} numberOfLines={1}>
               {item.username || "anonymous"}
@@ -244,7 +247,7 @@ function Message({
             ))}
           </View>
         ) : null}
-        {content.text && !youtubeMedia ? (
+        {content.text && !youtubeMedia && !customPlaylist ? (
           <Text
             style={[
               styles.messageText,
@@ -255,6 +258,18 @@ function Message({
           </Text>
         ) : null}
         {webPreviewUrl ? <WebPreviewCard url={webPreviewUrl} compact /> : null}
+        {customPlaylist ? (
+          <CustomYouTubePlaylistPlayer
+            playlist={customPlaylist}
+            userName={item.username || "anonymous"}
+            dateLabel={formatTime(timestamp, language)}
+            canDelete={item.canDelete === true}
+            canEdit={item.canEditYouTubeAlbum === true}
+            deleting={deleting}
+            onDelete={() => onDelete?.(item)}
+            onEdit={() => onEditCustomPlaylist?.(item)}
+          />
+        ) : null}
         {youtubeMedia ? (
           <YouTubePlaylistPlayer
             playlistId={youtubeMedia.playlistId}
@@ -544,6 +559,14 @@ export default function ChatScreen() {
   const [albumCover, setAlbumCover] = useState(null);
   const [albumLyrics, setAlbumLyrics] = useState(null);
   const [savingAlbum, setSavingAlbum] = useState(false);
+  const [creatingPlaylist, setCreatingPlaylist] = useState(false);
+  const [editingPlaylistMessageId, setEditingPlaylistMessageId] = useState(null);
+  const [playlistTitle, setPlaylistTitle] = useState("");
+  const [playlistTracks, setPlaylistTracks] = useState([
+    { kind: "single", title: "I. Allegro", url: "" },
+    { kind: "single", title: "II. Andante", url: "" },
+  ]);
+  const [savingPlaylist, setSavingPlaylist] = useState(false);
   const [computerMode, setComputerMode] = useState("chat");
   const editingIsYouTubeAlbum =
     editingAlbum?.youtubeMedia?.playlistId?.startsWith("OLAK5uy_") === true;
@@ -555,6 +578,12 @@ export default function ChatScreen() {
   const sendMessage = useMutation(api.chat.sendMessage);
   const deleteMessage = useMutation(api.chat.deleteMessage);
   const updateYouTubeAlbum = useMutation(api.chat.updateYouTubeAlbum);
+  const createCustomYouTubePlaylist = useMutation(
+    api.chat.createCustomYouTubePlaylist,
+  );
+  const updateCustomYouTubePlaylist = useMutation(
+    api.chat.updateCustomYouTubePlaylist,
+  );
   const generateImageUploadUrl = useMutation(api.chat.generateImageUploadUrl);
   const refreshNewsYouTubePublishedDates = useAction(
     api.chat.refreshNewsYouTubePublishedDates,
@@ -631,6 +660,19 @@ export default function ChatScreen() {
     Boolean(cleanInput || selectedImages.length) &&
     cleanInput.length <= messageLengthLimit &&
     !sending;
+  const playlistCanSave =
+    Boolean(playlistTitle.trim()) &&
+    playlistTracks.length >= 2 &&
+    playlistTracks.every((track) => {
+      const parsed = parseYouTubeUrl(track.url.trim());
+      return (
+        parsed.isValid &&
+        (track.kind === "album"
+          ? Boolean(parsed.playlistId)
+          : Boolean(parsed.videoId))
+      );
+    }) &&
+    !savingPlaylist;
 
   const handleAliasChange = useCallback((value) => {
     const next = value.slice(0, 40);
@@ -697,6 +739,201 @@ export default function ChatScreen() {
       current.filter((_, index) => index !== indexToRemove),
     );
   }, []);
+
+  const updatePlaylistTrack = useCallback((index, field, value) => {
+    setPlaylistTracks((current) =>
+      current.map((track, trackIndex) =>
+        trackIndex === index ? { ...track, [field]: value } : track,
+      ),
+    );
+  }, []);
+
+  const handlePickPlaylistLyrics = useCallback(async (index) => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["text/plain", "application/octet-stream"],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset?.uri) return;
+      const fileName = asset.name || "lyrics.lrc";
+      if (!fileName.toLowerCase().endsWith(".lrc")) {
+        safeAlert("Formato no válido", "Selecciona un fichero con extensión .lrc.");
+        return;
+      }
+      if ((asset.size || 0) > 512 * 1024) {
+        safeAlert("Fichero demasiado grande", "El fichero LRC no puede superar 512 KB.");
+        return;
+      }
+      updatePlaylistTrack(index, "lyrics", {
+        uri: asset.uri,
+        fileName,
+        mimeType: asset.mimeType || "text/plain",
+        size: asset.size || 0,
+      });
+    } catch (error) {
+      console.error("[Chat] No se pudieron seleccionar las letras:", error);
+    }
+  }, [updatePlaylistTrack]);
+
+  const addPlaylistTrack = useCallback(() => {
+    setPlaylistTracks((current) =>
+      current.length >= 20
+        ? current
+        : [
+            ...current,
+            {
+              kind: "single",
+              title: `Single ${current.length + 1}`,
+              url: "",
+            },
+          ],
+    );
+  }, []);
+
+  const removePlaylistTrack = useCallback((index) => {
+    setPlaylistTracks((current) =>
+      current.length <= 2
+        ? current
+        : current.filter((_, trackIndex) => trackIndex !== index),
+    );
+  }, []);
+
+  const closePlaylistCreator = useCallback(() => {
+    if (savingPlaylist) return;
+    setCreatingPlaylist(false);
+    setEditingPlaylistMessageId(null);
+  }, [savingPlaylist]);
+
+  const openCustomPlaylistEditor = useCallback((item) => {
+    const playlist = item?.customYouTubePlaylist;
+    if (!playlist) return;
+    setEditingPlaylistMessageId(item._id);
+    setPlaylistTitle(playlist.title || "");
+    setPlaylistTracks(
+      playlist.tracks.map((track, index) => ({
+        kind: track.kind === "album" ? "album" : "single",
+        title: track.title || `Elemento ${index + 1}`,
+        url: track.url || (track.playlistId
+          ? `https://www.youtube.com/playlist?list=${track.playlistId}`
+          : `https://www.youtube.com/watch?v=${track.videoId || ""}`),
+        lyrics: track.lyricsStorageId ? {
+          existing: true,
+          storageId: track.lyricsStorageId,
+          fileName: track.lyricsFileName || "lyrics.lrc",
+          mimeType: track.lyricsMimeType || "text/plain",
+          size: track.lyricsSize || 0,
+        } : null,
+      })),
+    );
+    setCreatingPlaylist(true);
+  }, []);
+
+  const handleCreatePlaylist = useCallback(async () => {
+    const title = playlistTitle.trim();
+    if (!title || savingPlaylist) return;
+    setSavingPlaylist(true);
+    try {
+      const tracks = [];
+      for (let index = 0; index < playlistTracks.length; index += 1) {
+        const track = playlistTracks[index];
+        const parsed = parseYouTubeUrl(track.url.trim());
+        const isAlbum = track.kind === "album";
+        if (
+          !parsed.isValid ||
+          (isAlbum ? !parsed.playlistId : !parsed.videoId)
+        ) {
+          throw new Error(
+            `Revisa el enlace del ${isAlbum ? "álbum" : "single"} ${index + 1}.`,
+          );
+        }
+        let lyrics;
+        if (track.lyrics?.existing) {
+          lyrics = {
+            storageId: track.lyrics.storageId,
+            fileName: track.lyrics.fileName,
+            mimeType: track.lyrics.mimeType || "text/plain",
+            size: track.lyrics.size || 0,
+          };
+        } else if (track.lyrics) {
+          const uploadUrl = await generateImageUploadUrl();
+          const lyricsResponse = await fetch(track.lyrics.uri);
+          const blob = await lyricsResponse.blob();
+          const uploadResponse = await fetch(uploadUrl, {
+            method: "POST",
+            headers: { "Content-Type": track.lyrics.mimeType || "text/plain" },
+            body: blob,
+          });
+          if (!uploadResponse.ok) {
+            throw new Error(`No se pudieron subir las letras del elemento ${index + 1}.`);
+          }
+          const { storageId } = await uploadResponse.json();
+          lyrics = {
+            storageId,
+            fileName: track.lyrics.fileName,
+            mimeType: track.lyrics.mimeType || "text/plain",
+            size: track.lyrics.size || blob.size || 0,
+          };
+        }
+        tracks.push({
+          kind: isAlbum ? "album" : "single",
+          videoId: parsed.videoId || undefined,
+          playlistId: parsed.playlistId || undefined,
+          url: track.url.trim(),
+          title:
+            track.title.trim() ||
+            `${isAlbum ? "Álbum" : "Single"} ${index + 1}`,
+          lyrics,
+        });
+      }
+      if (editingPlaylistMessageId) {
+        await updateCustomYouTubePlaylist({
+          messageId: editingPlaylistMessageId,
+          clientId: chatClientId,
+          title,
+          tracks: tracks.map(({ lyrics, ...track }) => ({
+            ...track,
+            lyricsStorageId: lyrics?.storageId,
+            lyricsFileName: lyrics?.fileName,
+            lyricsMimeType: lyrics?.mimeType,
+            lyricsSize: lyrics?.size,
+          })),
+        });
+      } else {
+        await createCustomYouTubePlaylist({
+          username: cleanAlias,
+          clientId: chatClientId,
+          title,
+          tracks,
+        });
+      }
+      setCreatingPlaylist(false);
+      setEditingPlaylistMessageId(null);
+      setPlaylistTitle("");
+      setPlaylistTracks([
+        { kind: "single", title: "I. Allegro", url: "" },
+        { kind: "single", title: "II. Andante", url: "" },
+      ]);
+    } catch (error) {
+      safeAlert(
+        editingPlaylistMessageId ? "No se pudo guardar la playlist" : "No se pudo crear la playlist",
+        error?.message || "Revisa los enlaces de YouTube.",
+      );
+    } finally {
+      setSavingPlaylist(false);
+    }
+  }, [
+    chatClientId,
+    cleanAlias,
+    createCustomYouTubePlaylist,
+    editingPlaylistMessageId,
+    generateImageUploadUrl,
+    playlistTitle,
+    playlistTracks,
+    savingPlaylist,
+    updateCustomYouTubePlaylist,
+  ]);
 
   const handleSend = useCallback(async () => {
     if (!canSend) return;
@@ -1082,6 +1319,29 @@ export default function ChatScreen() {
           </ScrollView>
         </View>
 
+        {room === "youtube" ? (
+          <View style={styles.youtubeToolsBar}>
+            <Pressable
+              onPress={() => {
+                setEditingPlaylistMessageId(null);
+                setPlaylistTitle("");
+                setPlaylistTracks([
+                  { kind: "single", title: "I. Allegro", url: "" },
+                  { kind: "single", title: "II. Andante", url: "" },
+                ]);
+                setCreatingPlaylist(true);
+              }}
+              style={styles.createPlaylistButton}
+            >
+              <Ionicons name="add-circle-outline" size={18} color="#fff" />
+              <Text style={styles.createPlaylistButtonText}>Nueva playlist</Text>
+            </Pressable>
+            <Text style={styles.youtubeToolsHint} numberOfLines={1}>
+              Combina canciones individuales y álbumes
+            </Text>
+          </View>
+        ) : null}
+
         {room === "informatica" ? (
           <View style={styles.computerModeBar}>
             <Pressable
@@ -1154,6 +1414,7 @@ export default function ChatScreen() {
                 language={language}
                 onDelete={handleDeletePost}
                 onEditAlbum={openAlbumEditor}
+                onEditCustomPlaylist={openCustomPlaylistEditor}
                 onImagePress={setExpandedImageUri}
                 deleting={deletingMessageId === item._id}
               />
@@ -1274,6 +1535,161 @@ export default function ChatScreen() {
             Pruebas abiertas · sin login obligatorio
           </Text>
         </View>
+
+        <Modal
+          visible={creatingPlaylist}
+          transparent
+          animationType="fade"
+          onRequestClose={closePlaylistCreator}
+        >
+          <View style={styles.playlistCreatorBackdrop}>
+            <View style={styles.playlistCreatorCard}>
+              <View style={styles.playlistCreatorHeader}>
+                <View style={styles.playlistCreatorTitleBlock}>
+                  <Text style={styles.playlistCreatorTitle}>
+                    {editingPlaylistMessageId ? "Editar playlist de Shopp" : "Nueva playlist de Shopp"}
+                  </Text>
+                  <Text style={styles.playlistCreatorSubtitle}>
+                    Añade singles o álbumes mediante sus enlaces de YouTube.
+                  </Text>
+                </View>
+                <Pressable onPress={closePlaylistCreator} style={styles.playlistCreatorClose}>
+                  <Ionicons name="close" size={23} color="#475569" />
+                </Pressable>
+              </View>
+              <Text style={styles.playlistFieldLabel}>Nombre del concierto o playlist</Text>
+              <TextInput
+                value={playlistTitle}
+                onChangeText={setPlaylistTitle}
+                placeholder="Mozart · Concierto para piano · Daniel Barenboim"
+                placeholderTextColor="#94a3b8"
+                style={styles.playlistTitleInput}
+                maxLength={120}
+              />
+              <ScrollView style={styles.playlistTracksScroll} keyboardShouldPersistTaps="handled">
+                {playlistTracks.map((track, index) => (
+                  <View key={`playlist-track-${index}`} style={styles.playlistTrackEditor}>
+                    <View style={styles.playlistTrackHeader}>
+                      <Text style={styles.playlistTrackNumber}>Elemento {index + 1}</Text>
+                      {playlistTracks.length > 2 ? (
+                        <Pressable onPress={() => removePlaylistTrack(index)} style={styles.playlistTrackRemove}>
+                          <Ionicons name="trash-outline" size={17} color="#dc2626" />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                    <View style={styles.playlistKindRow}>
+                      <Pressable
+                        onPress={() => updatePlaylistTrack(index, "kind", "single")}
+                        style={[
+                          styles.playlistKindButton,
+                          track.kind !== "album" && styles.playlistKindButtonActive,
+                        ]}
+                      >
+                        <Ionicons
+                          name="musical-note-outline"
+                          size={15}
+                          color={track.kind !== "album" ? "#fff" : "#475569"}
+                        />
+                        <Text style={[
+                          styles.playlistKindText,
+                          track.kind !== "album" && styles.playlistKindTextActive,
+                        ]}>Single</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => updatePlaylistTrack(index, "kind", "album")}
+                        style={[
+                          styles.playlistKindButton,
+                          track.kind === "album" && styles.playlistKindButtonActive,
+                        ]}
+                      >
+                        <Ionicons
+                          name="albums-outline"
+                          size={15}
+                          color={track.kind === "album" ? "#fff" : "#475569"}
+                        />
+                        <Text style={[
+                          styles.playlistKindText,
+                          track.kind === "album" && styles.playlistKindTextActive,
+                        ]}>Álbum</Text>
+                      </Pressable>
+                    </View>
+                    <TextInput
+                      value={track.title}
+                      onChangeText={(value) => updatePlaylistTrack(index, "title", value)}
+                      placeholder={
+                        track.kind === "album"
+                          ? `Nombre del álbum ${index + 1}`
+                          : `Nombre del single ${index + 1}`
+                      }
+                      placeholderTextColor="#94a3b8"
+                      style={styles.playlistTrackInput}
+                      maxLength={120}
+                    />
+                    <TextInput
+                      value={track.url}
+                      onChangeText={(value) => updatePlaylistTrack(index, "url", value)}
+                      placeholder={
+                        track.kind === "album"
+                          ? "https://youtube.com/playlist?list=..."
+                          : "https://youtu.be/..."
+                      }
+                      placeholderTextColor="#94a3b8"
+                      style={styles.playlistTrackInput}
+                      autoCorrect={false}
+                      autoCapitalize="none"
+                    />
+                    <View style={styles.playlistLyricsRow}>
+                      <Pressable
+                        onPress={() => handlePickPlaylistLyrics(index)}
+                        style={styles.playlistLyricsButton}
+                      >
+                        <Ionicons name="document-text-outline" size={17} color="#2563eb" />
+                        <View style={styles.playlistLyricsTextBlock}>
+                          <Text style={styles.playlistLyricsTitle} numberOfLines={1}>
+                            {track.lyrics?.fileName || "Añadir letras .lrc"}
+                          </Text>
+                          <Text style={styles.playlistLyricsHint}>
+                            Opcional · máximo 512 KB
+                          </Text>
+                        </View>
+                      </Pressable>
+                      {track.lyrics ? (
+                        <Pressable
+                          onPress={() => updatePlaylistTrack(index, "lyrics", null)}
+                          style={styles.playlistLyricsRemove}
+                        >
+                          <Ionicons name="close-circle" size={19} color="#dc2626" />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+                {playlistTracks.length < 20 ? (
+                  <Pressable onPress={addPlaylistTrack} style={styles.addMovementButton}>
+                    <Ionicons name="add" size={18} color="#2563eb" />
+                    <Text style={styles.addMovementText}>Añadir single o álbum</Text>
+                  </Pressable>
+                ) : null}
+              </ScrollView>
+              <View style={styles.playlistCreatorActions}>
+                <Pressable onPress={closePlaylistCreator} style={styles.albumCancelButton}>
+                  <Text style={styles.albumCancelText}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleCreatePlaylist}
+                  disabled={!playlistCanSave}
+                  style={[styles.albumSaveButton, !playlistCanSave && styles.albumSaveButtonDisabled]}
+                >
+                  <Text style={styles.albumSaveText}>
+                    {savingPlaylist
+                      ? editingPlaylistMessageId ? "Guardando…" : "Creando…"
+                      : editingPlaylistMessageId ? "Guardar cambios" : "Crear playlist"}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         <Modal
           visible={Boolean(editingAlbum)}
@@ -1768,6 +2184,124 @@ const styles = StyleSheet.create({
   },
   messageImage: { width: 108, height: 108, backgroundColor: "#e5e7eb" },
   messageImageFill: { width: "100%", height: "100%" },
+  youtubeToolsBar: {
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#d1d5db",
+    backgroundColor: "#fff",
+  },
+  createPlaylistButton: {
+    minHeight: 30,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 11,
+    backgroundColor: "#dc2626",
+  },
+  createPlaylistButtonText: { fontSize: 11, fontWeight: "800", color: "#fff" },
+  youtubeToolsHint: { flex: 1, minWidth: 0, fontSize: 10, color: "#64748b" },
+  playlistCreatorBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+    backgroundColor: "rgba(15, 23, 42, 0.58)",
+  },
+  playlistCreatorCard: {
+    width: 560,
+    maxWidth: "100%",
+    maxHeight: "88%",
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "#fff",
+  },
+  playlistCreatorHeader: { flexDirection: "row", alignItems: "flex-start", marginBottom: 12 },
+  playlistCreatorTitleBlock: { flex: 1, minWidth: 0 },
+  playlistCreatorTitle: { fontSize: 18, fontWeight: "900", color: "#111827" },
+  playlistCreatorSubtitle: { marginTop: 3, fontSize: 11, lineHeight: 15, color: "#64748b" },
+  playlistCreatorClose: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
+  playlistFieldLabel: { marginBottom: 5, fontSize: 12, fontWeight: "800", color: "#334155" },
+  playlistTitleInput: {
+    minHeight: 42,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+    fontSize: 13,
+    color: "#111827",
+  },
+  playlistTracksScroll: { flexGrow: 0, marginTop: 10 },
+  playlistTrackEditor: {
+    marginBottom: 9,
+    padding: 9,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+  },
+  playlistTrackHeader: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
+  playlistTrackNumber: { flex: 1, fontSize: 10, fontWeight: "900", color: "#dc2626", textTransform: "uppercase" },
+  playlistTrackRemove: { width: 30, height: 26, alignItems: "center", justifyContent: "center" },
+  playlistKindRow: { flexDirection: "row", gap: 6, marginBottom: 2 },
+  playlistKindButton: {
+    minHeight: 30,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+  },
+  playlistKindButtonActive: { borderColor: "#dc2626", backgroundColor: "#dc2626" },
+  playlistKindText: { fontSize: 10, fontWeight: "800", color: "#475569" },
+  playlistKindTextActive: { color: "#fff" },
+  playlistTrackInput: {
+    minHeight: 38,
+    marginTop: 5,
+    paddingHorizontal: 9,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+    fontSize: 12,
+    color: "#111827",
+  },
+  playlistLyricsRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 7 },
+  playlistLyricsButton: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 9,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#93c5fd",
+    backgroundColor: "#eff6ff",
+  },
+  playlistLyricsTextBlock: { flex: 1, minWidth: 0 },
+  playlistLyricsTitle: { fontSize: 11, fontWeight: "800", color: "#1d4ed8" },
+  playlistLyricsHint: { marginTop: 1, fontSize: 9, color: "#64748b" },
+  playlistLyricsRemove: { width: 32, height: 38, alignItems: "center", justifyContent: "center" },
+  addMovementButton: {
+    minHeight: 38,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#2563eb",
+    backgroundColor: "#eff6ff",
+  },
+  addMovementText: { fontSize: 11, fontWeight: "800", color: "#2563eb" },
+  playlistCreatorActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 13 },
   albumEditorBackdrop: {
     flex: 1,
     alignItems: "center",

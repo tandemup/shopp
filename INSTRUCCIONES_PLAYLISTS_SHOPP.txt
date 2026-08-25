@@ -1,0 +1,24 @@
+PLAYLISTS DE YOUTUBE CREADAS EN SHOPP
+
+Archivos incluidos:
+- convex/schema.js
+- convex/chat.js
+- src/screens/chat/ChatScreen.js
+- src/components/chat/CustomYouTubePlaylistPlayer.js
+- src/components/chat/CustomYouTubePlaylistPlayer.web.js
+
+Después de copiar los archivos, publica el backend:
+
+  npx convex dev --once
+
+Para probar:
+1. Abre Chat y selecciona YouTube.
+2. Pulsa "Nueva playlist".
+3. Escribe el nombre del concierto.
+4. En cada elemento selecciona Single o Álbum.
+5. Añade su título y enlace de YouTube.
+6. Pulsa "Crear playlist".
+7. Abre la card y selecciona cada single o álbum para reproducirlo.
+
+La playlist debe contener entre 2 y 20 elementos.
+Los Singles usan enlaces de vídeo individual y los Álbumes enlaces de playlist.

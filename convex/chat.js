@@ -130,6 +130,19 @@ async function withImageUrls(ctx, message) {
             : undefined,
         }
       : undefined,
+    customYouTubePlaylist: message.customYouTubePlaylist
+      ? {
+          ...message.customYouTubePlaylist,
+          tracks: await Promise.all(
+            message.customYouTubePlaylist.tracks.map(async (track) => ({
+              ...track,
+              lyricsUri: track.lyricsStorageId
+                ? await ctx.storage.getUrl(track.lyricsStorageId)
+                : undefined,
+            })),
+          ),
+        }
+      : undefined,
   };
 }
 
@@ -285,6 +298,182 @@ export const sendMessage = mutation({
       );
     }
     return { ok: true, messageId };
+  },
+});
+
+export const createCustomYouTubePlaylist = mutation({
+  args: {
+    username: v.optional(v.string()),
+    clientId: v.optional(v.string()),
+    title: v.string(),
+    tracks: v.array(
+      v.object({
+        kind: v.union(v.literal("single"), v.literal("album")),
+        videoId: v.optional(v.string()),
+        playlistId: v.optional(v.string()),
+        url: v.string(),
+        title: v.string(),
+        lyrics: v.optional(
+          v.object({
+            storageId: v.id("_storage"),
+            fileName: v.string(),
+            mimeType: v.string(),
+            size: v.number(),
+          }),
+        ),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const viewer = await getViewer(ctx, args.clientId);
+    if (!viewer.ownerId) {
+      throw new Error("No se pudo identificar este dispositivo.");
+    }
+    const title = cleanText(args.title).slice(0, 120);
+    if (!title) throw new Error("Escribe el nombre de la playlist.");
+    if (args.tracks.length < 2 || args.tracks.length > 20) {
+      throw new Error("La playlist debe contener entre 2 y 20 elementos.");
+    }
+    const seen = new Set();
+    const tracks = args.tracks.map((track, index) => {
+      const kind = track.kind === "album" ? "album" : "single";
+      const videoId = String(track.videoId || "").trim();
+      const playlistId = String(track.playlistId || "").trim();
+      const mediaId = kind === "album" ? playlistId : videoId;
+      const lyrics = track.lyrics;
+      if (
+        (kind === "single" && !/^[A-Za-z0-9_-]{11}$/.test(videoId)) ||
+        (kind === "album" && !/^[A-Za-z0-9_-]{10,}$/.test(playlistId))
+      ) {
+        throw new Error(
+          `El ${kind === "album" ? "álbum" : "vídeo"} ${index + 1} no es válido.`,
+        );
+      }
+      if (seen.has(`${kind}:${mediaId}`)) {
+        throw new Error(`El elemento ${index + 1} está repetido.`);
+      }
+      seen.add(`${kind}:${mediaId}`);
+      if (lyrics) {
+        if (!lyrics.fileName.toLowerCase().endsWith(".lrc")) {
+          throw new Error(`Las letras del elemento ${index + 1} deben ser .lrc.`);
+        }
+        if (lyrics.size > 512 * 1024) {
+          throw new Error(`El archivo LRC del elemento ${index + 1} supera 512 KB.`);
+        }
+      }
+      return {
+        kind,
+        videoId: videoId || undefined,
+        playlistId: playlistId || undefined,
+        url:
+          kind === "album"
+            ? `https://www.youtube.com/playlist?list=${playlistId}`
+            : `https://www.youtube.com/watch?v=${videoId}`,
+        title:
+          cleanText(track.title).slice(0, 120) ||
+          `${kind === "album" ? "Álbum" : "Single"} ${index + 1}`,
+        lyricsStorageId: lyrics?.storageId,
+        lyricsFileName: lyrics?.fileName.slice(0, 160),
+        lyricsMimeType: lyrics?.mimeType,
+        lyricsSize: lyrics?.size,
+      };
+    });
+    const now = Date.now();
+    const messageId = await ctx.db.insert("chatMessages", {
+      userId: viewer.ownerId,
+      room: "youtube",
+      username: cleanUsername(args.username),
+      text: title,
+      customYouTubePlaylist: { title, tracks },
+      createdAt: now,
+      status: "visible",
+      messageStatus: "clean",
+    });
+    return { ok: true, messageId };
+  },
+});
+
+export const updateCustomYouTubePlaylist = mutation({
+  args: {
+    messageId: v.id("chatMessages"),
+    clientId: v.optional(v.string()),
+    title: v.string(),
+    tracks: v.array(
+      v.object({
+        kind: v.union(v.literal("single"), v.literal("album")),
+        videoId: v.optional(v.string()),
+        playlistId: v.optional(v.string()),
+        url: v.string(),
+        title: v.string(),
+        lyricsStorageId: v.optional(v.id("_storage")),
+        lyricsFileName: v.optional(v.string()),
+        lyricsMimeType: v.optional(v.string()),
+        lyricsSize: v.optional(v.number()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const viewer = await getViewer(ctx, args.clientId);
+    const message = await ctx.db.get(args.messageId);
+    if (!message?.customYouTubePlaylist) throw new Error("La playlist no existe.");
+    const own = Boolean(viewer.ownerId && message.userId === viewer.ownerId);
+    if (!viewer.isAdmin && !own) {
+      throw new Error("Solo el autor o un administrador puede editar la playlist.");
+    }
+    if (message.status === "hidden") throw new Error("No se puede editar una publicación oculta.");
+    const title = cleanText(args.title).slice(0, 120);
+    if (!title) throw new Error("Escribe el nombre de la playlist.");
+    if (args.tracks.length < 2 || args.tracks.length > 20) {
+      throw new Error("La playlist debe contener entre 2 y 20 elementos.");
+    }
+    const previousIds = new Set(
+      message.customYouTubePlaylist.tracks.map((track) => track.lyricsStorageId).filter(Boolean),
+    );
+    const seen = new Set();
+    const tracks = args.tracks.map((track, index) => {
+      const kind = track.kind === "album" ? "album" : "single";
+      const videoId = String(track.videoId || "").trim();
+      const playlistId = String(track.playlistId || "").trim();
+      const mediaId = kind === "album" ? playlistId : videoId;
+      if ((kind === "single" && !/^[A-Za-z0-9_-]{11}$/.test(videoId)) ||
+          (kind === "album" && !/^[A-Za-z0-9_-]{10,}$/.test(playlistId))) {
+        throw new Error(`El ${kind === "album" ? "álbum" : "vídeo"} ${index + 1} no es válido.`);
+      }
+      if (seen.has(`${kind}:${mediaId}`)) throw new Error(`El elemento ${index + 1} está repetido.`);
+      seen.add(`${kind}:${mediaId}`);
+      if (track.lyricsFileName && !track.lyricsFileName.toLowerCase().endsWith(".lrc")) {
+        throw new Error(`Las letras del elemento ${index + 1} deben ser .lrc.`);
+      }
+      if ((track.lyricsSize || 0) > 512 * 1024) {
+        throw new Error(`El archivo LRC del elemento ${index + 1} supera 512 KB.`);
+      }
+      return {
+        kind,
+        videoId: videoId || undefined,
+        playlistId: playlistId || undefined,
+        url: kind === "album"
+          ? `https://www.youtube.com/playlist?list=${playlistId}`
+          : `https://www.youtube.com/watch?v=${videoId}`,
+        title: cleanText(track.title).slice(0, 120) || `${kind === "album" ? "Álbum" : "Single"} ${index + 1}`,
+        lyricsStorageId: track.lyricsStorageId,
+        lyricsFileName: track.lyricsFileName?.slice(0, 160),
+        lyricsMimeType: track.lyricsMimeType,
+        lyricsSize: track.lyricsSize,
+      };
+    });
+    await ctx.db.patch(args.messageId, {
+      text: title,
+      customYouTubePlaylist: { title, tracks },
+    });
+    const retainedIds = new Set(tracks.map((track) => track.lyricsStorageId).filter(Boolean));
+    for (const storageId of previousIds) {
+      if (!retainedIds.has(storageId)) {
+        try { await ctx.storage.delete(storageId); } catch (error) {
+          console.warn("[chat.updateCustomYouTubePlaylist] old lyrics delete failed", error);
+        }
+      }
+    }
+    return { ok: true };
   },
 });
 
@@ -524,6 +713,16 @@ export const deleteMessage = mutation({
           console.warn("[chat.deleteMessage] lyrics delete failed", error);
         }
       }
+      if (message.customYouTubePlaylist?.tracks) {
+        for (const track of message.customYouTubePlaylist.tracks) {
+          if (!track.lyricsStorageId) continue;
+          try {
+            await ctx.storage.delete(track.lyricsStorageId);
+          } catch (error) {
+            console.warn("[chat.deleteMessage] track lyrics delete failed", error);
+          }
+        }
+      }
       await ctx.db.delete(args.messageId);
       return { ok: true, hidden: false, deleted: true };
     }
@@ -576,6 +775,19 @@ export const deleteExpiredMessages = internalMutation({
             "[chat.deleteExpiredMessages] lyrics delete failed",
             error,
           );
+        }
+      }
+      if (message.customYouTubePlaylist?.tracks) {
+        for (const track of message.customYouTubePlaylist.tracks) {
+          if (!track.lyricsStorageId) continue;
+          try {
+            await ctx.storage.delete(track.lyricsStorageId);
+          } catch (error) {
+            console.warn(
+              "[chat.deleteExpiredMessages] track lyrics delete failed",
+              error,
+            );
+          }
         }
       }
       await ctx.db.delete(message._id);

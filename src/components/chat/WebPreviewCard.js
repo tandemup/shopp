@@ -18,6 +18,8 @@ import { isTrustedDomain } from "@/src/services/urlSafety";
 const PREVIEW_CARD_MAX_WIDTH = 380;
 const PREVIEW_IMAGE_HEIGHT = 260;
 const PREVIEW_COMPACT_IMAGE_HEIGHT = 220;
+const PREVIEW_DENSE_CARD_WIDTH = 250;
+const PREVIEW_DENSE_IMAGE_HEIGHT = 112;
 
 function normalizePreviewUrl(value) {
   const text = String(value || "").trim();
@@ -120,6 +122,7 @@ function normalizePreviewPayload(data, normalizedUrl) {
 export default function WebPreviewCard({
   url,
   compact = false,
+  dense = false,
   onPress,
 }) {
   const getLinkPreview = useAction(api.linkPreviews.get);
@@ -199,7 +202,7 @@ export default function WebPreviewCard({
 
   if (loading && !preview) {
     return (
-      <View style={[styles.card, compact && styles.cardCompact]}>
+      <View style={[styles.card, compact && styles.cardCompact, dense && styles.cardDense]}>
         <View style={styles.loadingRow}>
           <ActivityIndicator size="small" />
           <Text style={styles.loadingText}>Cargando vista previa...</Text>
@@ -218,6 +221,7 @@ export default function WebPreviewCard({
           styles.fallbackCard,
           !allowed && styles.cardBlocked,
           compact && styles.cardCompact,
+          dense && styles.cardDense,
         ]}
       >
         <View style={styles.fallbackIconBox}>
@@ -253,18 +257,19 @@ export default function WebPreviewCard({
         styles.card,
         !allowed && styles.cardBlocked,
         compact && styles.cardCompact,
+        dense && styles.cardDense,
       ]}
     >
       {shouldShowImage ? (
         <Image
           source={{ uri: preview.image }}
-          style={[styles.image, compact && styles.imageCompact]}
+          style={[styles.image, compact && styles.imageCompact, dense && styles.imageDense]}
           resizeMode="cover"
           onError={() => setImageFailed(true)}
         />
       ) : null}
 
-      <View style={styles.body}>
+      <View style={[styles.body, dense && styles.bodyDense]}>
         <View style={styles.leftAccent} />
 
         <View style={styles.textBlock}>
@@ -272,17 +277,19 @@ export default function WebPreviewCard({
             {preview.siteName || preview.hostname || getHostname(normalizedUrl)}
           </Text>
 
-          <Text style={styles.title} numberOfLines={3}>
+          <Text style={[styles.title, dense && styles.titleDense]} numberOfLines={dense ? 2 : 3}>
             {preview.title || getFallbackTitle(normalizedUrl)}
           </Text>
 
           {preview.description ? (
-            <Text style={styles.description} numberOfLines={2}>
+            <Text style={[styles.description, dense && styles.descriptionDense]} numberOfLines={dense ? 1 : 2}>
               {preview.description}
             </Text>
           ) : null}
 
-          <Text style={styles.fullUrlText}>{preview.url || normalizedUrl}</Text>
+          <Text style={[styles.fullUrlText, dense && styles.urlDense]} numberOfLines={dense ? 1 : undefined}>
+            {preview.url || normalizedUrl}
+          </Text>
         </View>
       </View>
 
@@ -315,6 +322,7 @@ const styles = StyleSheet.create({
     maxWidth: PREVIEW_CARD_MAX_WIDTH,
     borderRadius: 14,
   },
+  cardDense: { width: PREVIEW_DENSE_CARD_WIDTH, maxWidth: "100%", marginTop: 5, borderRadius: 9 },
 
   blurOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -330,12 +338,14 @@ const styles = StyleSheet.create({
   imageCompact: {
     height: PREVIEW_COMPACT_IMAGE_HEIGHT,
   },
+  imageDense: { height: PREVIEW_DENSE_IMAGE_HEIGHT },
 
   body: {
     flexDirection: "row",
     padding: 12,
     gap: 10,
   },
+  bodyDense: { padding: 8, gap: 7 },
 
   leftAccent: {
     width: 3,
@@ -363,6 +373,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: "#111827",
   },
+  titleDense: { marginTop: 2, fontSize: 13, lineHeight: 17 },
 
   description: {
     marginTop: 6,
@@ -371,6 +382,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: "#4b5563",
   },
+  descriptionDense: { marginTop: 3, fontSize: 11, lineHeight: 14 },
 
   fullUrlText: {
     marginTop: 8,
@@ -379,6 +391,7 @@ const styles = StyleSheet.create({
     color: "#6b7280",
     fontWeight: "700",
   },
+  urlDense: { marginTop: 4, fontSize: 10, lineHeight: 13 },
 
   loadingRow: {
     minHeight: 72,

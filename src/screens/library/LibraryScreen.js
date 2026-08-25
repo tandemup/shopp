@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -32,7 +33,8 @@ function getClientId() {
   return `library-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export default function LibraryScreen() {
+export default function LibraryScreen({ navigation }) {
+  const { width: screenWidth } = useWindowDimensions();
   const [clientId] = useState(getClientId);
   const [urlInput, setUrlInput] = useState("");
   const [search, setSearch] = useState("");
@@ -51,6 +53,7 @@ export default function LibraryScreen() {
   const [sourceNameInput, setSourceNameInput] = useState("");
   const [sourceUrlInput, setSourceUrlInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [toolsExpanded, setToolsExpanded] = useState(false);
 
   const folders = useQuery(api.computerLinks.listFolders) || [];
   const selectedFolderId =
@@ -75,6 +78,10 @@ export default function LibraryScreen() {
       : undefined;
   const isNewsFolder = selectedFolder?.name === "Noticias";
   const isSourceCatalog = isNewsFolder && newsView === "sources";
+  const cardColumns = Math.max(
+    1,
+    Math.min(6, Math.floor((screenWidth - 20) / 270)),
+  );
   const activeSubfolderId =
     isNewsFolder && newsView === "sources" ? undefined : selectedSubfolderId;
   const links = useQuery(api.computerLinks.list, {
@@ -90,6 +97,7 @@ export default function LibraryScreen() {
       undefined,
     onlyFavorites: folderFilter === "favorites" || undefined,
     onlyUnclassified: folderFilter === "unclassified" || undefined,
+    excludeNewsSources: folderFilter === "all" || undefined,
     linkType: isNewsFolder
       ? newsView === "sources"
         ? "newsSource"
@@ -360,19 +368,32 @@ export default function LibraryScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.screen}>
-        <View style={styles.intro}>
-          <View style={styles.iconBox}>
-            <Ionicons name="library-outline" size={25} color="#2563eb" />
+        <View style={styles.compactTopBar}>
+          <Pressable
+            onPress={() => navigation?.goBack()}
+            style={styles.compactTopButton}
+            accessibilityLabel="Volver"
+          >
+            <Ionicons name="arrow-back" size={20} color="#334155" />
+          </Pressable>
+          <View style={styles.compactTopTitle}>
+            <Ionicons name="library-outline" size={18} color="#2563eb" />
+            <Text style={styles.compactTopText}>Biblioteca</Text>
           </View>
-          <View style={styles.introText}>
-            <Text style={styles.title}>Biblioteca</Text>
-            <Text style={styles.subtitle}>
-              Organiza tus páginas web por categorías
-            </Text>
-          </View>
+          <Pressable
+            onPress={() => setToolsExpanded((value) => !value)}
+            style={styles.compactTopButton}
+            accessibilityLabel={toolsExpanded ? "Ocultar URL y búsqueda" : "Mostrar URL y búsqueda"}
+          >
+            <Ionicons
+              name={toolsExpanded ? "chevron-up" : "chevron-down"}
+              size={21}
+              color="#2563eb"
+            />
+          </Pressable>
         </View>
 
-        <View style={styles.addRow}>
+        {toolsExpanded ? <View style={styles.toolsPanel}><View style={styles.addRow}>
           <TextInput
             value={urlInput}
             onChangeText={setUrlInput}
@@ -416,7 +437,7 @@ export default function LibraryScreen() {
               <Ionicons name="close-circle" size={20} color="#94a3b8" />
             </Pressable>
           ) : null}
-        </View>
+        </View></View> : null}
 
         <ScrollView
           horizontal
@@ -666,9 +687,17 @@ export default function LibraryScreen() {
         ) : null}
 
         <FlatList
-          key={isSourceCatalog ? "source-catalog" : "library-links"}
+          key={
+            isSourceCatalog
+              ? "source-catalog"
+              : `library-links-${cardColumns}`
+          }
           data={links || []}
           horizontal={isSourceCatalog}
+          numColumns={isSourceCatalog ? 1 : cardColumns}
+          columnWrapperStyle={
+            !isSourceCatalog && cardColumns > 1 ? styles.linkRow : undefined
+          }
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => String(item._id)}
           style={[styles.list, isSourceCatalog && styles.sourceList]}
@@ -725,7 +754,7 @@ export default function LibraryScreen() {
               : null;
             return (
               <View style={styles.linkCard}>
-                <WebPreviewCard url={item.normalizedUrl} compact />
+                <WebPreviewCard url={item.normalizedUrl} compact dense />
                 {item.linkType === "newsSource" && item.customTitle ? (
                   <Text style={styles.sourceCustomTitle}>{item.customTitle}</Text>
                 ) : null}
@@ -758,43 +787,40 @@ export default function LibraryScreen() {
                           : folder?.name || "Sin clasificar"}
                     </Text>
                   </View>
-                  {item.linkType === "newsSource" ? (
+                  <View style={styles.cardActionButtons}>
                     <Pressable
-                      onPress={() => openSourceEditor(item)}
+                      onPress={() =>
+                        item.linkType === "newsSource"
+                          ? openSourceEditor(item)
+                          : openMetadataEditor(item)
+                      }
                       style={styles.iconButton}
                     >
-                      <Ionicons name="create-outline" size={20} color="#475569" />
+                      <Ionicons name="create-outline" size={18} color="#475569" />
                     </Pressable>
-                  ) : (
                     <Pressable
-                      onPress={() => openMetadataEditor(item)}
+                      onPress={() => toggleFavorite({ linkId: item._id })}
                       style={styles.iconButton}
                     >
-                      <Ionicons name="create-outline" size={20} color="#475569" />
+                      <Ionicons
+                        name={item.favorite ? "star" : "star-outline"}
+                        size={18}
+                        color={item.favorite ? "#eab308" : "#64748b"}
+                      />
                     </Pressable>
-                  )}
-                  <Pressable
-                    onPress={() => toggleFavorite({ linkId: item._id })}
-                    style={styles.iconButton}
-                  >
-                    <Ionicons
-                      name={item.favorite ? "star" : "star-outline"}
-                      size={20}
-                      color={item.favorite ? "#eab308" : "#64748b"}
-                    />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setMovingLink(item)}
-                    style={styles.iconButton}
-                  >
-                    <Ionicons name="folder-open-outline" size={20} color="#2563eb" />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => removeLink({ linkId: item._id })}
-                    style={styles.iconButton}
-                  >
-                    <Ionicons name="trash-outline" size={20} color="#dc2626" />
-                  </Pressable>
+                    <Pressable
+                      onPress={() => setMovingLink(item)}
+                      style={styles.iconButton}
+                    >
+                      <Ionicons name="folder-open-outline" size={18} color="#2563eb" />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => removeLink({ linkId: item._id })}
+                      style={styles.iconButton}
+                    >
+                      <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                    </Pressable>
+                  </View>
                 </View>
               </View>
             );
@@ -960,12 +986,34 @@ export default function LibraryScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#fff" },
   screen: { flex: 1, backgroundColor: "#f1f5f9" },
-  intro: {
+  compactTopBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 13,
+    minHeight: 38,
+    paddingHorizontal: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#cbd5e1",
     backgroundColor: "#fff",
+  },
+  compactTopButton: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  compactTopTitle: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  compactTopText: { fontSize: 14, fontWeight: "900", color: "#1e293b" },
+  toolsPanel: {
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#cbd5e1",
+    backgroundColor: "#f8fafc",
   },
   iconBox: {
     width: 46,
@@ -1177,7 +1225,8 @@ const styles = StyleSheet.create({
   newsTabText: { fontSize: 11, fontWeight: "800", color: "#475569" },
   newsTabTextActive: { color: "#fff" },
   list: { flex: 1 },
-  listContent: { paddingHorizontal: 12, paddingBottom: 16 },
+  listContent: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 16 },
+  linkRow: { gap: 8 },
   listEmpty: { flexGrow: 1, justifyContent: "center" },
   sourceList: { flex: 1, backgroundColor: "#f1f5f9" },
   sourceListContent: {
@@ -1229,10 +1278,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   linkCard: {
+    flex: 1,
     alignSelf: "flex-start",
-    maxWidth: "100%",
-    marginBottom: 12,
-    padding: 8,
+    minWidth: 0,
+    maxWidth: 262,
+    marginBottom: 8,
+    padding: 5,
     borderWidth: 1,
     borderColor: "#dbe3ef",
     backgroundColor: "#fff",
@@ -1267,19 +1318,30 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#2563eb",
   },
-  actionsRow: { flexDirection: "row", alignItems: "center", gap: 4, paddingTop: 7 },
+  actionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 4,
+    paddingTop: 4,
+  },
   categoryBadge: {
     flex: 1,
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
     backgroundColor: "#f1f5f9",
   },
-  categoryText: { fontSize: 11, fontWeight: "800", color: "#475569" },
-  iconButton: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
+  categoryText: { flexShrink: 1, fontSize: 10, fontWeight: "800", color: "#475569" },
+  cardActionButtons: {
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  iconButton: { width: 25, height: 28, alignItems: "center", justifyContent: "center" },
   empty: { alignItems: "center", paddingHorizontal: 30 },
   emptyTitle: { marginTop: 10, fontSize: 17, fontWeight: "900", color: "#334155" },
   emptyText: { marginTop: 5, fontSize: 13, color: "#64748b", textAlign: "center" },

@@ -71,7 +71,7 @@ export default function ShoppingStack() {
       <Stack.Screen
         name={ROUTES.LIBRARY}
         component={LibraryScreen}
-        options={{ title: tr("Biblioteca") }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen name={ROUTES.MENU} component={MenuScreen} />
     </Stack.Navigator>

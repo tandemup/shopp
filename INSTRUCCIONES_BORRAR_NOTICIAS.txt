@@ -1,0 +1,22 @@
+BORRAR NOTICIAS Y PERIODICOS DE CONVEX
+
+1. Copia convex/computerLinks.js en el proyecto.
+
+2. Publica la nueva función interna:
+   npx convex dev --once
+
+3. Ejecuta la limpieza:
+   npx convex run computerLinks:purgeNewsData '{"confirmation":"BORRAR NOTICIAS Y PERIODICOS"}'
+
+La respuesta indica cuántos registros se borraron y cuántos quedan.
+Si "remaining" es mayor que 0, repite el paso 3 hasta que sea 0.
+
+Se eliminan físicamente:
+- newsArticle (noticias guardadas)
+- newsSource (periódicos)
+- noticias antiguas sin tipo guardadas dentro de Noticias
+
+Se conservan:
+- la categoría Noticias
+- sus subcategorías
+- el resto de categorías y enlaces

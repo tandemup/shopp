@@ -203,6 +203,24 @@ export default defineSchema({
         lyricsSize: v.optional(v.float64()),
       }),
     ),
+    customYouTubePlaylist: v.optional(
+      v.object({
+        title: v.string(),
+        tracks: v.array(
+          v.object({
+            kind: v.optional(v.union(v.literal("single"), v.literal("album"))),
+            videoId: v.optional(v.string()),
+            playlistId: v.optional(v.string()),
+            url: v.string(),
+            title: v.string(),
+            lyricsStorageId: v.optional(v.id("_storage")),
+            lyricsFileName: v.optional(v.string()),
+            lyricsMimeType: v.optional(v.string()),
+            lyricsSize: v.optional(v.float64()),
+          }),
+        ),
+      }),
+    ),
     youtubeVideoId: v.optional(v.string()),
     youtubePublishedAt: v.optional(v.float64()),
     createdAt: v.float64(),
