@@ -15,6 +15,7 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  Share,
   StyleSheet,
   View,
 } from "react-native";
@@ -87,6 +88,63 @@ function saveAlias(alias) {
   try {
     window.localStorage?.setItem("shopp-chat-alias", alias);
   } catch {}
+}
+
+function playlistJsonFileName(value) {
+  return `${String(value || "playlist").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "playlist"}.json`;
+}
+
+async function exportPlaylistJsonFile(title, tracks) {
+  const data = {
+    version: 1,
+    type: "shopp-youtube-playlist",
+    title: title.trim(),
+    exportedAt: new Date().toISOString(),
+    tracks: tracks.map((track, index) => ({
+      kind: track.kind === "album" ? "album" : "single",
+      title: track.title.trim() || `Elemento ${index + 1}`,
+      url: parseYouTubeUrl(track.url.trim()).playableUrl,
+      ...(track.lyrics?.fileName ? { lyricsFileName: track.lyrics.fileName } : {}),
+    })),
+  };
+  const fileName = playlistJsonFileName(title);
+  const json = JSON.stringify(data, null, 2);
+  if (Platform.OS === "web" && typeof document !== "undefined") {
+    const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    return;
+  }
+  const FileSystem = await import("expo-file-system/legacy");
+  const uri = `${FileSystem.cacheDirectory}${fileName}`;
+  await FileSystem.writeAsStringAsync(uri, json, { encoding: FileSystem.EncodingType.UTF8 });
+  await Share.share({ title: fileName, url: uri, message: Platform.OS === "android" ? json : undefined });
+}
+
+function parsePlaylistJsonForEditor(value) {
+  if (value?.type !== "shopp-youtube-playlist" || !String(value.title || "").trim()) {
+    throw new Error("El fichero no es una playlist de Shopp compatible.");
+  }
+  if (!Array.isArray(value.tracks) || value.tracks.length < 2 || value.tracks.length > 20) {
+    throw new Error("La playlist debe contener entre 2 y 20 elementos.");
+  }
+  return {
+    title: String(value.title).trim(),
+    tracks: value.tracks.map((track, index) => {
+      const kind = track.kind === "album" ? "album" : "single";
+      const url = String(track.url || "").trim();
+      const parsed = parseYouTubeUrl(url);
+      if (!parsed.isValid || (kind === "album" ? !parsed.playlistId : !parsed.videoId)) {
+        throw new Error(`El elemento ${index + 1} no contiene un enlace de YouTube válido.`);
+      }
+      return { kind, title: String(track.title || "").trim() || `Elemento ${index + 1}`, url, lyrics: null };
+    }),
+  };
 }
 
 function formatTime(timestamp, language = "es") {
@@ -776,6 +834,39 @@ export default function ChatScreen() {
       console.error("[Chat] No se pudieron seleccionar las letras:", error);
     }
   }, [updatePlaylistTrack]);
+
+  const handleImportPlaylistJson = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/json", "text/json", "text/plain"],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset?.uri) return;
+      const response = await fetch(asset.uri);
+      const imported = parsePlaylistJsonForEditor(JSON.parse(await response.text()));
+      setEditingPlaylistMessageId(null);
+      setPlaylistTitle(imported.title);
+      setPlaylistTracks(imported.tracks);
+    } catch (error) {
+      safeAlert(
+        "No se pudo importar",
+        error instanceof SyntaxError
+          ? "El fichero no contiene un JSON válido."
+          : error?.message || "Revisa el fichero seleccionado.",
+      );
+    }
+  }, []);
+
+  const handleExportPlaylistJson = useCallback(async () => {
+    if (!playlistCanSave) return;
+    try {
+      await exportPlaylistJsonFile(playlistTitle, playlistTracks);
+    } catch (error) {
+      safeAlert("No se pudo exportar", error?.message || "Inténtalo de nuevo.");
+    }
+  }, [playlistCanSave, playlistTitle, playlistTracks]);
 
   const addPlaylistTrack = useCallback(() => {
     setPlaylistTracks((current) =>
@@ -1566,6 +1657,23 @@ export default function ChatScreen() {
                 style={styles.playlistTitleInput}
                 maxLength={120}
               />
+              <View style={styles.playlistTransferRow}>
+                <Pressable onPress={handleImportPlaylistJson} style={styles.playlistTransferButton}>
+                  <Ionicons name="download-outline" size={16} color="#2563eb" />
+                  <Text style={styles.playlistTransferText}>Importar JSON</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleExportPlaylistJson}
+                  disabled={!playlistCanSave}
+                  style={[
+                    styles.playlistTransferButton,
+                    !playlistCanSave && styles.playlistTransferButtonDisabled,
+                  ]}
+                >
+                  <Ionicons name="share-outline" size={16} color="#2563eb" />
+                  <Text style={styles.playlistTransferText}>Exportar JSON</Text>
+                </Pressable>
+              </View>
               <ScrollView style={styles.playlistTracksScroll} keyboardShouldPersistTaps="handled">
                 {playlistTracks.map((track, index) => (
                   <View key={`playlist-track-${index}`} style={styles.playlistTrackEditor}>
@@ -2236,6 +2344,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#111827",
   },
+  playlistTransferRow: {
+    flexDirection: "row",
+    gap: 7,
+    marginTop: 8,
+  },
+  playlistTransferButton: {
+    minHeight: 34,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+  playlistTransferButtonDisabled: { opacity: 0.4 },
+  playlistTransferText: { fontSize: 10, fontWeight: "800", color: "#2563eb" },
   playlistTracksScroll: { flexGrow: 0, marginTop: 10 },
   playlistTrackEditor: {
     marginBottom: 9,

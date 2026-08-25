@@ -4,6 +4,7 @@ import {
   Linking,
   Modal,
   Pressable,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -11,6 +12,8 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import {
@@ -54,8 +57,10 @@ export default function LibraryScreen({ navigation }) {
   const [sourceUrlInput, setSourceUrlInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [toolsExpanded, setToolsExpanded] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
 
   const folders = useQuery(api.computerLinks.listFolders) || [];
+  const libraryBackup = useQuery(api.computerLinks.exportBackup);
   const selectedFolderId =
     !["all", "favorites", "unclassified"].includes(folderFilter)
       ? folderFilter
@@ -118,6 +123,7 @@ export default function LibraryScreen({ navigation }) {
   const updateNewsSource = useMutation(api.computerLinks.updateNewsSource);
   const moveToFolder = useMutation(api.computerLinks.moveToFolder);
   const removeLink = useMutation(api.computerLinks.remove);
+  const importBackup = useMutation(api.computerLinks.importBackup);
 
   useEffect(() => {
     ensureDefaultFolders({ clientId })
@@ -357,6 +363,94 @@ export default function LibraryScreen({ navigation }) {
     }
   }, [editingLink, hashtagsInput, notesInput, saving, updateMetadata]);
 
+  const handleExportBackup = useCallback(async () => {
+    if (!libraryBackup || backupBusy) return;
+    setBackupBusy(true);
+    try {
+      const payload = {
+        format: "shopp-library-backup",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        app: "Shopp",
+        data: libraryBackup,
+      };
+      const json = JSON.stringify(payload, null, 2);
+      const day = new Date().toISOString().slice(0, 10);
+      const filename = `shopp-biblioteca-${day}.json`;
+
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(objectUrl);
+      } else {
+        const fileUri = `${FileSystem.documentDirectory}${filename}`;
+        await FileSystem.writeAsStringAsync(fileUri, json, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+        safeAlert("Copia creada", `Se ha guardado ${filename} en el almacenamiento de Shopp.\n\n${fileUri}`);
+      }
+    } catch (error) {
+      safeAlert("No se pudo exportar", error?.message || "Inténtalo de nuevo.");
+    } finally {
+      setBackupBusy(false);
+    }
+  }, [backupBusy, libraryBackup]);
+
+  const handleImportBackup = useCallback(async () => {
+    if (backupBusy) return;
+    setBackupBusy(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/json", "text/json", "text/plain"],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled) return;
+      const asset = result.assets?.[0];
+      if (!asset?.uri) throw new Error("No se pudo leer el fichero seleccionado.");
+
+      let jsonText = "";
+      if (Platform.OS === "web" && asset.file) {
+        jsonText = await asset.file.text();
+      } else {
+        jsonText = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+      }
+
+      const parsed = JSON.parse(jsonText);
+      if (parsed?.format !== "shopp-library-backup" || parsed?.version !== 1) {
+        throw new Error("El fichero no es una copia de Biblioteca compatible.");
+      }
+      if (!parsed?.data || !Array.isArray(parsed.data.folders) || !Array.isArray(parsed.data.links)) {
+        throw new Error("La copia está incompleta: faltan carpetas o enlaces.");
+      }
+
+      const summary = await importBackup({
+        clientId,
+        backup: parsed,
+      });
+      safeAlert(
+        "Biblioteca restaurada",
+        `Modo combinar completado.\n\nCarpetas creadas: ${summary.foldersCreated}\nEnlaces creados: ${summary.linksCreated}\nEnlaces actualizados: ${summary.linksUpdated}`,
+      );
+    } catch (error) {
+      if (String(error?.name || "") === "SyntaxError") {
+        safeAlert("JSON no válido", "El fichero seleccionado no contiene JSON válido.");
+      } else {
+        safeAlert("No se pudo importar", error?.message || "Revisa la copia de seguridad.");
+      }
+    } finally {
+      setBackupBusy(false);
+    }
+  }, [backupBusy, clientId, importBackup]);
+
   const topFolders = folders.filter((folder) => !folder.parentFolderId);
   const filters = [
     { _id: "all", name: "Todos", icon: "apps-outline" },
@@ -437,7 +531,28 @@ export default function LibraryScreen({ navigation }) {
               <Ionicons name="close-circle" size={20} color="#94a3b8" />
             </Pressable>
           ) : null}
-        </View></View> : null}
+        </View>
+
+        <View style={styles.backupRow}>
+          <Pressable
+            onPress={handleExportBackup}
+            disabled={backupBusy || !libraryBackup}
+            style={[styles.backupButton, (backupBusy || !libraryBackup) && styles.buttonDisabled]}
+          >
+            <Ionicons name="download-outline" size={17} color="#2563eb" />
+            <Text style={styles.backupButtonText}>Exportar JSON</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleImportBackup}
+            disabled={backupBusy}
+            style={[styles.backupButton, backupBusy && styles.buttonDisabled]}
+          >
+            <Ionicons name="cloud-upload-outline" size={17} color="#2563eb" />
+            <Text style={styles.backupButtonText}>Importar JSON</Text>
+          </Pressable>
+          <Text style={styles.backupHint}>Restauración: combinar sin duplicar URL</Text>
+        </View>
+        </View> : null}
 
         <ScrollView
           horizontal
@@ -1064,6 +1179,34 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   searchInput: { flex: 1, minHeight: 42, fontSize: 14, color: "#111827" },
+  backupRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+  },
+  backupButton: {
+    minHeight: 36,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 11,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+  backupButtonText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#1d4ed8",
+  },
+  backupHint: {
+    flexShrink: 1,
+    fontSize: 10,
+    color: "#64748b",
+  },
   folderScroll: {
     flexGrow: 0,
     flexShrink: 0,

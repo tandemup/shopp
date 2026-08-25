@@ -454,6 +454,225 @@ export const list = query({
   },
 });
 
+export const exportBackup = query({
+  args: {},
+  handler: async (ctx) => {
+    const folders = await ctx.db.query("computerLinkFolders").collect();
+    const links = await ctx.db.query("computerLinks").collect();
+    const folderById = new Map(
+      folders.map((folder) => [String(folder._id), folder]),
+    );
+    const keyCache = new Map();
+
+    const folderKey = (folder) => {
+      if (!folder) return null;
+      const id = String(folder._id);
+      if (keyCache.has(id)) return keyCache.get(id);
+      const parent = folder.parentFolderId
+        ? folderById.get(String(folder.parentFolderId))
+        : null;
+      const parentKey = parent ? folderKey(parent) : null;
+      const segment = encodeURIComponent(folder.name);
+      const key = parentKey ? `${parentKey}/${segment}` : segment;
+      keyCache.set(id, key);
+      return key;
+    };
+
+    return {
+      folders: folders
+        .map((folder) => ({
+          key: folderKey(folder),
+          name: folder.name,
+          parentKey: folder.parentFolderId
+            ? folderKey(folderById.get(String(folder.parentFolderId)))
+            : null,
+          icon: folder.icon || null,
+          color: folder.color || null,
+          order: Number(folder.order || 0),
+        }))
+        .sort((a, b) => a.key.localeCompare(b.key)),
+      links: links
+        .filter((link) => link.status !== "archived")
+        .map((link) => ({
+          url: link.url,
+          normalizedUrl: link.normalizedUrl,
+          hostname: link.hostname,
+          username: link.username,
+          folderKey: link.folderId
+            ? folderKey(folderById.get(String(link.folderId)))
+            : null,
+          linkType: link.linkType || "general",
+          sourceDomain: link.sourceDomain || null,
+          customTitle: link.customTitle || null,
+          favorite: Boolean(link.favorite),
+          notes: link.notes || null,
+          hashtags: Array.isArray(link.hashtags) ? link.hashtags : [],
+          createdAt: Number(link.createdAt || 0),
+        }))
+        .sort((a, b) => a.normalizedUrl.localeCompare(b.normalizedUrl)),
+    };
+  },
+});
+
+export const importBackup = mutation({
+  args: {
+    clientId: v.optional(v.string()),
+    backup: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const backup = args.backup;
+    if (
+      !backup ||
+      backup.format !== "shopp-library-backup" ||
+      Number(backup.version) !== 1 ||
+      !backup.data ||
+      !Array.isArray(backup.data.folders) ||
+      !Array.isArray(backup.data.links)
+    ) {
+      throw new Error("La copia de Biblioteca no es compatible.");
+    }
+
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    if (!ownerId) throw new Error("No se pudo identificar este dispositivo.");
+    const now = Date.now();
+    const folderIdByKey = new Map();
+    let foldersCreated = 0;
+    let linksCreated = 0;
+    let linksUpdated = 0;
+
+    const backupFolders = backup.data.folders
+      .filter(
+        (folder) =>
+          folder &&
+          typeof folder.key === "string" &&
+          typeof folder.name === "string" &&
+          folder.key.trim() &&
+          folder.name.trim(),
+      )
+      .sort(
+        (a, b) =>
+          a.key.split("/").length - b.key.split("/").length ||
+          String(a.key).localeCompare(String(b.key)),
+      );
+
+    for (const item of backupFolders) {
+      const key = String(item.key).trim().slice(0, 300);
+      const name = String(item.name).trim().slice(0, 50);
+      const parentKey = item.parentKey
+        ? String(item.parentKey).trim().slice(0, 300)
+        : null;
+      const parentFolderId = parentKey
+        ? folderIdByKey.get(parentKey)
+        : undefined;
+      if (parentKey && !parentFolderId) continue;
+
+      const candidates = await ctx.db
+        .query("computerLinkFolders")
+        .withIndex("by_name", (q) => q.eq("name", name))
+        .collect();
+      let existing = candidates.find(
+        (folder) =>
+          String(folder.parentFolderId || "") ===
+          String(parentFolderId || ""),
+      );
+
+      if (!existing) {
+        const folderId = await ctx.db.insert("computerLinkFolders", {
+          name,
+          parentFolderId,
+          icon:
+            typeof item.icon === "string" && item.icon.trim()
+              ? item.icon.trim().slice(0, 80)
+              : "folder-outline",
+          color:
+            typeof item.color === "string" && item.color.trim()
+              ? item.color.trim().slice(0, 30)
+              : "#2563eb",
+          order: Number.isFinite(Number(item.order)) ? Number(item.order) : 0,
+          createdBy: ownerId,
+          createdAt: now,
+        });
+        existing = await ctx.db.get(folderId);
+        foldersCreated += 1;
+      }
+      if (existing) folderIdByKey.set(key, existing._id);
+    }
+
+    for (const item of backup.data.links) {
+      if (!item || typeof item.url !== "string") continue;
+      const normalized = normalizeLink(item.normalizedUrl || item.url);
+      if (!normalized) continue;
+      const folderId = item.folderKey
+        ? folderIdByKey.get(String(item.folderKey))
+        : undefined;
+      const linkType = ["general", "newsSource", "newsArticle"].includes(
+        item.linkType,
+      )
+        ? item.linkType
+        : "general";
+      const hashtags = Array.from(
+        new Set(
+          (Array.isArray(item.hashtags) ? item.hashtags : [])
+            .map((tag) =>
+              String(tag || "")
+                .trim()
+                .replace(/^#+/, "")
+                .toLowerCase()
+                .replace(/\s+/g, "-"),
+            )
+            .filter(Boolean)
+            .map((tag) => tag.slice(0, 40)),
+        ),
+      ).slice(0, 20);
+      const notes = String(item.notes || "").trim().slice(0, 1000);
+      const customTitle = String(item.customTitle || "").trim().slice(0, 80);
+      const sourceDomain = String(item.sourceDomain || normalized.hostname)
+        .trim()
+        .slice(0, 160);
+      const username = String(item.username || "Biblioteca").trim().slice(0, 40);
+      const createdAt = Number(item.createdAt);
+
+      const existing = await ctx.db
+        .query("computerLinks")
+        .withIndex("by_normalizedUrl", (q) =>
+          q.eq("normalizedUrl", normalized.url),
+        )
+        .first();
+
+      const patch = {
+        url: normalized.url,
+        normalizedUrl: normalized.url,
+        hostname: normalized.hostname,
+        username,
+        folderId,
+        linkType,
+        sourceDomain: linkType.startsWith("news") ? sourceDomain : undefined,
+        customTitle: customTitle || undefined,
+        favorite: Boolean(item.favorite),
+        status: folderId ? "reviewed" : "pending",
+        notes: linkType === "newsSource" ? undefined : notes || undefined,
+        hashtags:
+          linkType === "newsSource" || !hashtags.length ? undefined : hashtags,
+        updatedAt: now,
+      };
+
+      if (existing) {
+        await ctx.db.patch(existing._id, patch);
+        linksUpdated += 1;
+      } else {
+        await ctx.db.insert("computerLinks", {
+          ...patch,
+          createdBy: ownerId,
+          createdAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : now,
+        });
+        linksCreated += 1;
+      }
+    }
+
+    return { foldersCreated, linksCreated, linksUpdated };
+  },
+});
+
 export const toggleFavorite = mutation({
   args: { linkId: v.id("computerLinks") },
   handler: async (ctx, args) => {

@@ -248,6 +248,16 @@ function QuickActions({
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.LIBRARY),
       },
       {
+        key: "playList",
+        label: "Play List",
+        description: "Crea y reproduce música de YouTube",
+        icon: "musical-notes-outline",
+        iconColor: COLORS.red,
+        iconBackground: COLORS.redSoft,
+        onPress: () =>
+          navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.PLAY_LIST),
+      },
+      {
         key: "chatPrototype",
         label: "Chat prototipo",
         description: "Prueba el nuevo chat de compras",

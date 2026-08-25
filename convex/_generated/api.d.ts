@@ -25,6 +25,7 @@ import type * as lib_auth from "../lib/auth.js";
 import type * as linkPreviews from "../linkPreviews.js";
 import type * as migrations from "../migrations.js";
 import type * as parking from "../parking.js";
+import type * as playlists from "../playlists.js";
 import type * as productCache from "../productCache.js";
 import type * as productReviewSubmissions from "../productReviewSubmissions.js";
 import type * as products from "../products.js";
@@ -62,6 +63,7 @@ declare const fullApi: ApiFromModules<{
   linkPreviews: typeof linkPreviews;
   migrations: typeof migrations;
   parking: typeof parking;
+  playlists: typeof playlists;
   productCache: typeof productCache;
   productReviewSubmissions: typeof productReviewSubmissions;
   products: typeof products;

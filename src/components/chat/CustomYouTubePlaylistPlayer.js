@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
+import { Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { Ionicons } from "@expo/vector-icons";
 import { I18nText as Text } from "@/src/i18n";
@@ -42,6 +42,8 @@ function buildPlayerHtml(track) {
 }
 
 export default function CustomYouTubePlaylistPlayer({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit }) {
+  const { width } = useWindowDimensions();
+  const desktop = width >= 900;
   const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
   const [activeIndex, setActiveIndex] = useState(0);
   const [expanded, setExpanded] = useState(false);
@@ -99,13 +101,15 @@ export default function CustomYouTubePlaylistPlayer({ playlist, userName, dateLa
               <Ionicons name="close" size={25} color="#111827" />
             </Pressable>
           </View>
-          <ScrollView contentContainerStyle={styles.content}>
-            <View style={styles.playerFrame}>
-              <WebView key={embedUrl} source={{ html: playerHtml, baseUrl: "https://www.youtube.com" }} allowsFullscreenVideo mediaPlaybackRequiresUserAction={false} onMessage={(event) => { try { setCurrentTime(JSON.parse(event.nativeEvent.data)?.time || 0); } catch {} }} />
+          <View style={[styles.detailBody, desktop && styles.detailBodyDesktop]}>
+            <View style={[styles.mediaColumn, desktop && styles.mediaColumnDesktop]}>
+              <View style={styles.playerFrame}>
+                <WebView key={embedUrl} source={{ html: playerHtml, baseUrl: "https://www.youtube.com" }} allowsFullscreenVideo mediaPlaybackRequiresUserAction={false} onMessage={(event) => { try { setCurrentTime(JSON.parse(event.nativeEvent.data)?.time || 0); } catch {} }} />
+              </View>
+              <LyricsPanel lines={lyricsLines} currentTime={currentTime} />
+              <Text style={styles.nowPlaying} numberOfLines={2}>Reproduciendo: {activeTrack.title}</Text>
             </View>
-            <LyricsPanel lines={lyricsLines} currentTime={currentTime} />
-            <Text style={styles.nowPlaying}>Reproduciendo: {activeTrack.title}</Text>
-            <View style={styles.trackList}>
+            <ScrollView style={[styles.trackPane, desktop && styles.trackPaneDesktop]} contentContainerStyle={styles.trackList}>
               {tracks.map((track, index) => {
                 const active = index === activeIndex;
                 return (
@@ -124,8 +128,8 @@ export default function CustomYouTubePlaylistPlayer({ playlist, userName, dateLa
                   </Pressable>
                 );
               })}
-            </View>
-          </ScrollView>
+            </ScrollView>
+          </View>
         </SafeAreaView>
       </Modal>
     </View>
@@ -148,14 +152,19 @@ const styles = StyleSheet.create({
   header: { height: 54, flexDirection: "row", alignItems: "center", paddingLeft: 16, borderBottomWidth: 1, borderBottomColor: "#e5e7eb", backgroundColor: "#fff" },
   headerTitle: { flex: 1, fontSize: 16, fontWeight: "900", color: "#111827" },
   closeButton: { width: 50, height: 50, alignItems: "center", justifyContent: "center" },
-  content: { width: "100%", maxWidth: 760, alignSelf: "center", padding: 12 },
+  detailBody: { flex: 1, width: "100%", maxWidth: 1400, alignSelf: "center", padding: 10 },
+  detailBodyDesktop: { flexDirection: "row", alignItems: "stretch", gap: 14, padding: 14 },
+  mediaColumn: { width: "100%" },
+  mediaColumnDesktop: { flex: 1.65, minWidth: 0, justifyContent: "flex-start" },
   playerFrame: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#000" },
-  nowPlaying: { paddingVertical: 10, fontSize: 13, fontWeight: "800", color: "#111827" },
+  nowPlaying: { paddingVertical: 9, fontSize: 13, fontWeight: "800", color: "#111827" },
   lyricsPanel: { minHeight: 104, alignItems: "center", justifyContent: "center", padding: 12, backgroundColor: "#111827" },
   lyricsPrevious: { minHeight: 17, fontSize: 11, color: "#64748b", textAlign: "center" },
   lyricsActive: { minHeight: 39, marginVertical: 4, fontSize: 17, lineHeight: 21, fontWeight: "800", color: "#fff", textAlign: "center" },
   lyricsNext: { minHeight: 17, fontSize: 11, color: "#94a3b8", textAlign: "center" },
-  trackList: { gap: 7 },
+  trackPane: { flex: 1, minHeight: 0 },
+  trackPaneDesktop: { flex: 1, minWidth: 300, borderLeftWidth: 1, borderLeftColor: "#e2e8f0", paddingLeft: 12 },
+  trackList: { gap: 7, paddingBottom: 18 },
   track: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 10, padding: 7, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff" },
   trackActive: { borderColor: "#dc2626", backgroundColor: "#fef2f2" },
   trackImage: { width: 92, height: 52, backgroundColor: "#111827" },

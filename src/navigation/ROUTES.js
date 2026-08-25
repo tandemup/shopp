@@ -14,6 +14,7 @@ export const ROUTES = {
   WEBRTC_FIRE_ALARM: "WebRTC Fire Alarm",
   ENGLISH_TUTOR: "English Tutor",
   LIBRARY: "Library",
+  PLAY_LIST: "Play List",
 
   // Stores stack
   STORES_HOME: "Stores Home",

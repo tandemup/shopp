@@ -163,6 +163,26 @@ export default defineSchema({
     .index("by_user_barcode", ["userId", "barcode"])
     .index("by_expiresAt", ["expiresAt"]),
 
+  youtubePlaylists: defineTable({
+    ownerId: v.string(),
+    title: v.string(),
+    tracks: v.array(
+      v.object({
+        kind: v.optional(v.union(v.literal("single"), v.literal("album"))),
+        videoId: v.optional(v.string()),
+        playlistId: v.optional(v.string()),
+        url: v.string(),
+        title: v.string(),
+        lyricsStorageId: v.optional(v.id("_storage")),
+        lyricsFileName: v.optional(v.string()),
+        lyricsMimeType: v.optional(v.string()),
+        lyricsSize: v.optional(v.float64()),
+      }),
+    ),
+    createdAt: v.float64(),
+    updatedAt: v.float64(),
+  }).index("by_owner_updatedAt", ["ownerId", "updatedAt"]),
+
   chatMessages: defineTable({
     userId: v.optional(v.string()),
 
