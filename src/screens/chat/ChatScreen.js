@@ -37,9 +37,6 @@ import { extractUrlsFromText, parseYouTubeUrl } from "@/src/services/urlSafety";
 const ROOMS = [
   { id: "compras", label: "Compras", icon: "cart-outline" },
   { id: "musica", label: "Música", icon: "musical-notes-outline" },
-  { id: "humor", label: "Humor", icon: "happy-outline" },
-  { id: "informatica", label: "Informática", icon: "laptop-outline" },
-  { id: "noticias", label: "Noticias", icon: "newspaper-outline" },
   { id: "youtube", label: "YouTube", icon: "logo-youtube" },
 ];
 const MAX_MESSAGE_LENGTH = 280;

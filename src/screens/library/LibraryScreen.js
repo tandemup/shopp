@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FlatList,
+  Linking,
   Modal,
   Pressable,
   SafeAreaView,
@@ -73,6 +74,7 @@ export default function LibraryScreen() {
       ? subfolderFilter
       : undefined;
   const isNewsFolder = selectedFolder?.name === "Noticias";
+  const isSourceCatalog = isNewsFolder && newsView === "sources";
   const activeSubfolderId =
     isNewsFolder && newsView === "sources" ? undefined : selectedSubfolderId;
   const links = useQuery(api.computerLinks.list, {
@@ -291,6 +293,38 @@ export default function LibraryScreen() {
       setSaving(false);
     }
   }, [editingSource, saving, sourceNameInput, sourceUrlInput, updateNewsSource]);
+
+  const openSourceUrl = useCallback(async (url) => {
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      safeAlert("No se pudo abrir", error?.message || "Revisa la dirección.");
+    }
+  }, []);
+
+  const confirmRemoveSource = useCallback(
+    (source) => {
+      safeAlert(
+        "Eliminar periódico",
+        `Se eliminará ${source.customTitle || source.hostname} del catálogo. Las noticias guardadas no se borrarán.`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Eliminar",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await removeLink({ linkId: source._id });
+              } catch (error) {
+                safeAlert("No se pudo eliminar", error?.message || "Inténtalo de nuevo.");
+              }
+            },
+          },
+        ],
+      );
+    },
+    [removeLink],
+  );
 
   const handleSaveMetadata = useCallback(async () => {
     if (!editingLink?._id || saving) return;
@@ -632,14 +666,60 @@ export default function LibraryScreen() {
         ) : null}
 
         <FlatList
+          key={isSourceCatalog ? "source-catalog" : "library-links"}
           data={links || []}
+          horizontal={isSourceCatalog}
+          showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => String(item._id)}
-          style={styles.list}
+          style={[styles.list, isSourceCatalog && styles.sourceList]}
           contentContainerStyle={[
-            styles.listContent,
+            isSourceCatalog ? styles.sourceListContent : styles.listContent,
             links?.length === 0 && styles.listEmpty,
           ]}
           renderItem={({ item }) => {
+            if (isSourceCatalog) {
+              return (
+                <View style={styles.sourceTile}>
+                  <Pressable
+                    onPress={() => openSourceUrl(item.normalizedUrl)}
+                    style={styles.sourceTileMain}
+                  >
+                    <View style={styles.sourceTileIcon}>
+                      <Ionicons name="newspaper-outline" size={24} color="#dc2626" />
+                    </View>
+                    <Text style={styles.sourceTileTitle} numberOfLines={1}>
+                      {item.customTitle || item.hostname}
+                    </Text>
+                    <Text style={styles.sourceTileDomain} numberOfLines={1}>
+                      {item.sourceDomain || item.hostname}
+                    </Text>
+                    <Text style={styles.sourceTileUrl} numberOfLines={2}>
+                      {item.normalizedUrl}
+                    </Text>
+                  </Pressable>
+                  <View style={styles.sourceTileActions}>
+                    <Pressable
+                      onPress={() => openSourceUrl(item.normalizedUrl)}
+                      style={styles.sourceTileButton}
+                    >
+                      <Ionicons name="open-outline" size={18} color="#2563eb" />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => openSourceEditor(item)}
+                      style={styles.sourceTileButton}
+                    >
+                      <Ionicons name="pencil" size={17} color="#475569" />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => confirmRemoveSource(item)}
+                      style={styles.sourceTileButton}
+                    >
+                      <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            }
             const folder = item.folderId
               ? folderById.get(String(item.folderId))
               : null;
@@ -1099,6 +1179,55 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   listContent: { paddingHorizontal: 12, paddingBottom: 16 },
   listEmpty: { flexGrow: 1, justifyContent: "center" },
+  sourceList: { flex: 1, backgroundColor: "#f1f5f9" },
+  sourceListContent: {
+    alignItems: "flex-start",
+    gap: 9,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 16,
+  },
+  sourceTile: {
+    width: 190,
+    minHeight: 156,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#dbe3ef",
+    borderRadius: 12,
+    backgroundColor: "#fff",
+  },
+  sourceTileMain: { flex: 1, padding: 12 },
+  sourceTileIcon: {
+    width: 42,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 9,
+    borderRadius: 12,
+    backgroundColor: "#fef2f2",
+  },
+  sourceTileTitle: { fontSize: 14, fontWeight: "900", color: "#1e293b" },
+  sourceTileDomain: {
+    marginTop: 3,
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#dc2626",
+  },
+  sourceTileUrl: { marginTop: 6, fontSize: 10, lineHeight: 14, color: "#64748b" },
+  sourceTileActions: {
+    height: 38,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+  },
+  sourceTileButton: {
+    width: 38,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   linkCard: {
     alignSelf: "flex-start",
     maxWidth: "100%",
