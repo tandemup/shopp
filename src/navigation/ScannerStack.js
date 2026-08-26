@@ -9,7 +9,6 @@ import { DEFAULT_HEADER_OPTIONS } from "@/src/utils/layout/headerStyles";
 import ScannerTabScreen from "@/src/screens/scanner/ScannerTabScreen";
 import ProductBarcodeScannerScreen from "@/src/screens/scanner/ProductBarcodeScannerScreen";
 import NewProductScannerScreen2 from "@/src/screens/scanner/NewProductScannerScreen2";
-import ProductInfoScreen from "@/src/screens/scanner/ProductInfoScreen";
 import EditScannedItemScreen from "@/src/screens/scanner/EditScannedItemScreen";
 import ScannedHistoryScreen from "@/src/screens/scanner/ScannedHistoryScreen";
 import SearchEngines from "@/src/screens/settings/SearchEngines";
@@ -48,14 +47,6 @@ export default function ScannerStack() {
           title: tr("Escanear nuevo producto2"),
           headerShown: false,
           gestureEnabled: false,
-        }}
-      />
-
-      <Stack.Screen
-        name={ROUTES.PRODUCT_INFO}
-        component={ProductInfoScreen}
-        options={{
-          title: tr("Información del producto"),
         }}
       />
 

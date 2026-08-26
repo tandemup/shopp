@@ -1131,6 +1131,8 @@ export default function ItemDetailScreen() {
 
         itemId,
 
+        productType: "Supermercado",
+
         /*
          * Ruta utilizada para regresar al editor
          * después de leer correctamente el EAN-13.

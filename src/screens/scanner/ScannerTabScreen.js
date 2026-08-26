@@ -65,6 +65,7 @@ export default function ScannerTabScreen({ navigation }) {
     DEFAULT_BARCODE_SETTINGS,
   );
   const [manualBarcode, setManualBarcode] = useState("");
+  const [manualUserHint, setManualUserHint] = useState("");
   const [manualBarcodeError, setManualBarcodeError] = useState("");
   const [productSearchEngineSubtitle, setProductSearchEngineSubtitle] =
     useState("Motor activo: Google");
@@ -173,6 +174,7 @@ export default function ScannerTabScreen({ navigation }) {
     navigation.navigate(ROUTES.NEW_PRODUCT_SCANNER2, {
       captureMode: "manual-barcode",
       manualBarcode: barcode,
+      userHint: manualUserHint.trim(),
       saveToHistory: true,
       barcodeTypes: enabledBarcodeTypes,
     });
@@ -267,6 +269,15 @@ export default function ScannerTabScreen({ navigation }) {
                     </Text>
                     <Text style={styles.developmentBadge}>DESARROLLO</Text>
                   </View>
+                  <TextInput
+                    value={manualUserHint}
+                    onChangeText={setManualUserHint}
+                    placeholder="Información adicional: libro, CD/DVD, alimento…"
+                    placeholderTextColor={TEXT_MUTED}
+                    multiline
+                    style={styles.manualHintInput}
+                    accessibilityLabel="Información adicional del producto"
+                  />
                   <Text style={styles.cardSubtitle}>
                     Prueba el alta de un producto sin utilizar la cámara.
                   </Text>
@@ -534,6 +545,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     color: TEXT_PRIMARY,
     fontSize: 15,
+  },
+
+  manualHintInput: {
+    minHeight: 42,
+    marginTop: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: "#DDD6FE",
+    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+    color: TEXT_PRIMARY,
+    fontSize: 14,
   },
 
   manualBarcodeButton: {

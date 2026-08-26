@@ -145,45 +145,38 @@ Devuelve exclusivamente un único bloque de código JSON, sin texto antes ni des
 coverImageUrl solo puede contener una URL HTTPS directa y pública de la carátula frontal correspondiente a esta edición. No uses páginas HTML, resultados de búsqueda, imágenes incrustadas como data: ni URL temporales. Si no encuentras una imagen directa verificable, devuelve null. Las URL deben ser texto plano, sin Markdown, espacios ni saltos de línea. No inventes datos. verificationStatus solo puede ser verified, partially_verified o unverified. Debe existir exactamente un objeto JSON y un único botón Copiar.`;
 }
 
-export function buildBookLookupPrompt(barcode) {
+export function buildBookLookupPrompt(barcode, userHint = "") {
   const normalizedBarcode = normalizePromptBarcode(barcode);
+  const additionalInformation = String(userHint || "").trim();
 
-  return `Busca información bibliográfica fiable sobre el libro con ISBN-13 ${normalizedBarcode}.
+  return `Busca en Internet información bibliográfica del libro identificado por este ISBN-13:
 
-Comprueba el dígito de control e identifica exactamente la edición asociada al ISBN. No mezcles editoriales, idiomas, encuadernaciones, reimpresiones ni ediciones. Contrasta los datos en al menos dos fuentes fiables, priorizando editorial, Agencia ISBN o biblioteca nacional, WorldCat, Google Books y Open Library.
+ISBN-13: ${normalizedBarcode}
 
-Busca también la imagen de la cubierta frontal exacta de ese ISBN. Prioriza la editorial, Google Books y Open Library. No uses la cubierta de otra edición aunque tenga el mismo título y autor.
+Additional information provided by the user: ${additionalInformation || "None"}
 
-Devuelve exclusivamente un único bloque de código JSON, sin texto antes ni después, con esta estructura:
+El ISBN-13 corresponde a una edición concreta. Usa el ISBN como identificador principal y no confundas el libro con otras ediciones, traducciones, formatos o reimpresiones con ISBN diferente.
+
+Consulta y contrasta fuentes fiables como editoriales, catálogos bibliográficos, Google Books, Open Library, librerías reconocidas u otras bases de datos bibliográficas.
+
+Necesito obtener ISBN-13, título, autor o autores, año de publicación de esta edición, editorial, idioma, imagen de portada y resumen o sinopsis.
+
+Para la portada, devuelve una URL pública de la imagen correspondiente exactamente a este ISBN. Si no puedes identificar una portada fiable, devuelve null.
+
+Para el resumen, redacta un resumen breve, objetivo y original, con un máximo de 500 caracteres. No copies literalmente la descripción de una editorial o librería.
+
+Devuelve EXCLUSIVAMENTE JSON válido. No utilices Markdown. No incluyas explicaciones antes ni después del JSON. No inventes información. Cuando un dato no pueda verificarse, utiliza null.
+
+Usa exactamente esta estructura:
 {
-  "barcode": "${normalizedBarcode}",
+  "type": "book",
   "isbn13": "${normalizedBarcode}",
-  "productType": "Libros",
   "title": null,
   "authors": [],
-  "publisher": null,
   "publicationYear": null,
+  "publisher": null,
   "language": null,
-  "pageCount": null,
-  "category": null,
-  "physicalFormat": null,
-  "synopsis": null,
   "coverImageUrl": null,
-  "productPageUrl": null,
-  "verificationStatus": "unverified",
-  "verificationNotes": null
-}
-
-Reglas:
-- authors es un array de strings.
-- publicationYear y pageCount son números o null.
-- synopsis debe tener un máximo de 500 caracteres.
-- coverImageUrl solo puede contener una URL HTTPS directa y pública de la cubierta frontal correspondiente exactamente a este ISBN.
-- Una ficha de librería o página HTML no es una imagen. Si no encuentras una imagen directa verificable, devuelve null.
-- No uses resultados de búsqueda, imágenes incrustadas como data: ni URL temporales.
-- productPageUrl puede contener la página concreta de esta edición.
-- Las URL deben ser texto plano, sin Markdown, espacios ni saltos de línea.
-- No inventes datos; usa null cuando no puedas verificarlos.
-- verificationStatus solo puede ser verified, partially_verified o unverified.
-- Debe existir exactamente un objeto JSON y un único botón Copiar.`;
+  "summary": null
+}`;
 }

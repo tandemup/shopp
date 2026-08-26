@@ -272,6 +272,7 @@ export default function NewProductScannerScreen2() {
     captureMode = null,
 
     manualBarcode = "",
+    userHint = "",
 
     productType = "Automático",
 
@@ -683,14 +684,16 @@ export default function NewProductScannerScreen2() {
         saveToHistory,
       });
 
-      navigation.replace(ROUTES.PRODUCT_INFO, {
+      navigation.replace(ROUTES.EDIT_SCANNED_ITEM, {
         barcode,
 
         product: scannedItem,
+        item: scannedItem,
 
         productType: selectedProductType,
 
         autoOpenEngine,
+        userHint,
       });
     } catch (error) {
       console.log("Error handling new product scan:", error);

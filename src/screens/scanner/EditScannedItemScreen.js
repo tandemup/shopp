@@ -52,10 +52,11 @@ import BarcodeLink from "@/src/components/controls/BarcodeLink";
 import { ROUTES } from "@/src/navigation/ROUTES";
 import { safeConfirm } from "@/src/components/ui/alert/safeAlert";
 import {
-  buildBookLookupPrompt,
   buildMusicCdLookupPrompt,
   buildSupermarketLookupPrompt,
 } from "@/src/constants/productLookupPrompts";
+import { buildBookLookupPrompt } from "@/src/utils/productLookupPrompts";
+import { buildUnifiedProductLookupPrompt } from "@/src/utils/productLookupPrompts";
 
 const PRODUCT_DETAIL_MAX_SIZE = 512;
 const PRODUCT_THUMBNAIL_MAX_SIZE = 128;
@@ -878,6 +879,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
   const [brand, setBrand] = useState("");
   const [category, setCategory] = useState("");
   const [productType, setProductType] = useState("");
+  const [userHint, setUserHint] = useState(params.userHint || "");
   const [details, setDetails] = useState({});
   const [notes, setNotes] = useState("");
   const [productUrl, setProductUrl] = useState("");
@@ -1492,16 +1494,24 @@ export default function EditScannedItemScreen({ route, navigation }) {
 
     try {
       setLocalError(null);
+      const normalizedType = normalizeString(productType).toLowerCase();
       const query = isMusicProductType(productType)
         ? buildMusicCdLookupPrompt(barcode)
         : isBookProductType(productType)
-          ? buildBookLookupPrompt(barcode)
+          ? buildBookLookupPrompt(barcode, userHint)
+          : normalizedType === "automático" || normalizedType === "automatico" || normalizedType === "auto"
+            ? buildUnifiedProductLookupPrompt(barcode, "Automático")
           : buildSupermarketLookupPrompt(barcode);
       await openGoogleAIMode(query);
     } catch (error) {
       setLocalError(error?.message || "No se pudo abrir Google Modo IA.");
     }
-  }, [barcode, productType]);
+  }, [barcode, productType, userHint]);
+
+  useEffect(() => {
+    if (!params.autoOpenEngine || !barcode || !productType) return;
+    handleGoogleAIModeSearch();
+  }, [params.autoOpenEngine, barcode, productType, handleGoogleAIModeSearch]);
 
   const handleApplySupermarketJson = useCallback(() => {
     try {
@@ -1910,6 +1920,20 @@ export default function EditScannedItemScreen({ route, navigation }) {
               <ProductTypeSelector
                 value={productType}
                 onChange={setProductType}
+              />
+
+              <FormField
+                label="Información adicional para la búsqueda"
+                value={userHint}
+                onChangeText={setUserHint}
+                placeholder={
+                  productType === "Libros"
+                    ? "Ej. libro en inglés, matemáticas, edición académica…"
+                    : productType === "Música"
+                      ? "Ej. música clásica, Mozart, edición remasterizada…"
+                      : "Ej. marca, modelo, color, talla o características…"
+                }
+                multiline
               />
 
               {isSupermarketProductType(productType) ? (
