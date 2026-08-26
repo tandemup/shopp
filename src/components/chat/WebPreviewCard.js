@@ -56,7 +56,18 @@ function absolutizeUrl(value, baseUrl) {
 }
 
 function getFallbackTitle(url) {
-  return getHostname(url) || "Vista previa";
+  try {
+    const parsed = new URL(normalizePreviewUrl(url));
+    const slug = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() || "")
+      .replace(/\.(html?|php)$/i, "")
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\d{4}\b|\b\d{1,2}\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : getHostname(url) || "Vista previa";
+  } catch {
+    return getHostname(url) || "Vista previa";
+  }
 }
 
 function firstString(...values) {

@@ -66,6 +66,23 @@ function collectMetadata(html) {
   return metadata;
 }
 
+function collectJsonLdArticle(html) {
+  for (const match of String(html || "").matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      const parsed = JSON.parse(match[1].trim());
+      const entries = Array.isArray(parsed) ? parsed : [parsed, ...(parsed?.itemListElement || [])];
+      const article = entries.find((entry) => {
+        const type = Array.isArray(entry?.["@type"]) ? entry["@type"] : [entry?.["@type"]];
+        return type.some((value) => /article|newsarticle|reportage/i.test(String(value)));
+      });
+      if (article) return article;
+    } catch {
+      // Algunas páginas sirven JSON-LD incompleto o con caracteres no válidos.
+    }
+  }
+  return null;
+}
+
 function normalizeCharset(value) {
   const charset = String(value || "").trim().toLowerCase();
   if (!charset) return "";
@@ -139,7 +156,7 @@ function fallbackPreview(url, reason = "unavailable") {
     siteName: hostname,
     title: hostname,
     description: "",
-    image: absolutize("/favicon.ico", parsed.origin),
+    image: "",
     fallback: true,
     reason,
   };
@@ -193,11 +210,17 @@ export const get = action({
       const bytes = new Uint8Array(await response.arrayBuffer());
       const html = decodeDocument(bytes.slice(0, MAX_HTML_BYTES), contentType);
       const metadata = collectMetadata(html);
+      const article = collectJsonLdArticle(html);
       const titleTag = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1];
       const parsed = new URL(finalUrl);
       const hostname = parsed.hostname.replace(/^www\./, "");
+      const articleImage = Array.isArray(article?.image)
+        ? article.image[0]
+        : typeof article?.image === "object"
+          ? article.image?.url
+          : article?.image;
       const image = absolutize(
-        metadata.get("og:image") || metadata.get("twitter:image"),
+        metadata.get("og:image") || metadata.get("twitter:image") || articleImage,
         finalUrl,
       );
 
@@ -208,6 +231,7 @@ export const get = action({
         title:
           metadata.get("og:title") ||
           metadata.get("twitter:title") ||
+          article?.headline ||
           decodeHtml(titleTag) ||
           hostname,
         description:
