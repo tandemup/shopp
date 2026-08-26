@@ -42,7 +42,6 @@ export default function LibraryScreen({ navigation }) {
   const [urlInput, setUrlInput] = useState("");
   const [search, setSearch] = useState("");
   const [folderFilter, setFolderFilter] = useState("all");
-  const [subfolderFilter, setSubfolderFilter] = useState("all");
   const [newsView, setNewsView] = useState("articles");
   const [movingLink, setMovingLink] = useState(null);
   const [editingLink, setEditingLink] = useState(null);
@@ -68,38 +67,15 @@ export default function LibraryScreen({ navigation }) {
   const selectedFolder = folders.find(
     (folder) => String(folder._id) === String(selectedFolderId),
   );
-  const childFolders = selectedFolderId
-    ? folders.filter(
-        (folder) =>
-          String(folder.parentFolderId || "") === String(selectedFolderId),
-      )
-    : [];
-  const selectedSubfolderId =
-    subfolderFilter !== "all" &&
-    childFolders.some(
-      (folder) => String(folder._id) === String(subfolderFilter),
-    )
-      ? subfolderFilter
-      : undefined;
   const isNewsFolder = selectedFolder?.name === "Noticias";
   const isSourceCatalog = isNewsFolder && newsView === "sources";
   const cardColumns = Math.max(
     1,
     Math.min(6, Math.floor((screenWidth - 20) / 270)),
   );
-  const activeSubfolderId =
-    isNewsFolder && newsView === "sources" ? undefined : selectedSubfolderId;
   const links = useQuery(api.computerLinks.list, {
     search: search.trim() || undefined,
-    folderId: activeSubfolderId || selectedFolderId,
-    includeChildFolders:
-      Boolean(
-        selectedFolderId &&
-          !activeSubfolderId &&
-          childFolders.length &&
-          (!isNewsFolder || newsView === "articles"),
-      ) ||
-      undefined,
+    folderId: selectedFolderId,
     onlyFavorites: folderFilter === "favorites" || undefined,
     onlyUnclassified: folderFilter === "unclassified" || undefined,
     excludeNewsSources: folderFilter === "all" || undefined,
@@ -116,8 +92,6 @@ export default function LibraryScreen({ navigation }) {
   const syncFromChat = useMutation(api.computerLinks.syncFromChat);
   const addUrl = useMutation(api.computerLinks.addUrl);
   const createFolder = useMutation(api.computerLinks.createFolder);
-  const updateFolder = useMutation(api.computerLinks.updateFolder);
-  const removeFolder = useMutation(api.computerLinks.removeFolder);
   const toggleFavorite = useMutation(api.computerLinks.toggleFavorite);
   const updateMetadata = useMutation(api.computerLinks.updateMetadata);
   const updateNewsSource = useMutation(api.computerLinks.updateNewsSource);
@@ -145,10 +119,7 @@ export default function LibraryScreen({ navigation }) {
         url,
         clientId,
         username: "Biblioteca",
-        folderId:
-          isNewsFolder && newsView === "sources"
-            ? selectedFolderId
-            : selectedSubfolderId || selectedFolderId,
+        folderId: selectedFolderId,
         linkType: isNewsFolder
           ? newsView === "sources"
             ? "newsSource"
@@ -171,7 +142,6 @@ export default function LibraryScreen({ navigation }) {
     newsView,
     saving,
     selectedFolderId,
-    selectedSubfolderId,
     urlInput,
   ]);
 
@@ -179,36 +149,16 @@ export default function LibraryScreen({ navigation }) {
     if (!folderName.trim() || saving) return;
     setSaving(true);
     try {
-      const result = await createFolder({
-        name: folderName.trim(),
-        clientId,
-        parentFolderId:
-          selectedFolderId && (!isNewsFolder || newsView === "articles")
-            ? selectedFolderId
-            : undefined,
-      });
+      const result = await createFolder({ name: folderName.trim(), clientId });
       setFolderName("");
       setCreatingFolder(false);
-      if (selectedFolderId && (!isNewsFolder || newsView === "articles")) {
-        setSubfolderFilter(String(result.folderId));
-      } else {
-        setFolderFilter(String(result.folderId));
-        setSubfolderFilter("all");
-      }
+      setFolderFilter(String(result.folderId));
     } catch (error) {
       safeAlert("No se pudo crear", error?.message || "Revisa el nombre.");
     } finally {
       setSaving(false);
     }
-  }, [
-    clientId,
-    createFolder,
-    folderName,
-    isNewsFolder,
-    newsView,
-    saving,
-    selectedFolderId,
-  ]);
+  }, [clientId, createFolder, folderName, saving]);
 
   const handleMove = useCallback(
     async (folder) => {
@@ -225,57 +175,6 @@ export default function LibraryScreen({ navigation }) {
     },
     [moveToFolder, movingLink],
   );
-
-  const openFolderEditor = useCallback((folder) => {
-    setCreatingFolder(false);
-    setEditingFolder(folder);
-    setEditingFolderName(folder?.name || "");
-  }, []);
-
-  const handleUpdateFolder = useCallback(async () => {
-    if (!editingFolder?._id || !editingFolderName.trim() || saving) return;
-    setSaving(true);
-    try {
-      await updateFolder({
-        folderId: editingFolder._id,
-        name: editingFolderName.trim(),
-      });
-      setEditingFolder(null);
-      setEditingFolderName("");
-    } catch (error) {
-      safeAlert("No se pudo editar", error?.message || "Revisa el nombre.");
-    } finally {
-      setSaving(false);
-    }
-  }, [editingFolder, editingFolderName, saving, updateFolder]);
-
-  const confirmRemoveFolder = useCallback(() => {
-    if (!editingFolder?._id || saving) return;
-    safeAlert(
-      "Eliminar subcategoría",
-      `Los enlaces de “${editingFolder.name}” se moverán a ${selectedFolder?.name || "la categoría principal"}.`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            setSaving(true);
-            try {
-              await removeFolder({ folderId: editingFolder._id });
-              setSubfolderFilter("all");
-              setEditingFolder(null);
-              setEditingFolderName("");
-            } catch (error) {
-              safeAlert("No se pudo eliminar", error?.message || "Inténtalo de nuevo.");
-            } finally {
-              setSaving(false);
-            }
-          },
-        },
-      ],
-    );
-  }, [editingFolder, removeFolder, saving, selectedFolder?.name]);
 
   const openMetadataEditor = useCallback((link) => {
     setEditingLink(link);
@@ -568,7 +467,6 @@ export default function LibraryScreen({ navigation }) {
                 key={id}
                 onPress={() => {
                   setFolderFilter(id);
-                  setSubfolderFilter("all");
                 }}
                 style={[styles.folderChip, active && styles.folderChipActive]}
               >
@@ -593,7 +491,7 @@ export default function LibraryScreen({ navigation }) {
             >
               <Ionicons name="folder-open-outline" size={15} color="#2563eb" />
               <Text style={styles.newFolderText}>
-                {selectedFolderId ? "Nueva subcategoría" : "Nueva categoría"}
+                Nueva categoría
               </Text>
             </Pressable>
           ) : null}
@@ -608,16 +506,14 @@ export default function LibraryScreen({ navigation }) {
                 color={selectedFolder?.color || "#2563eb"}
               />
               <Text style={styles.folderEditorTitle}>
-                {selectedFolderId && (!isNewsFolder || newsView === "articles")
-                  ? `Nueva subcategoría de ${selectedFolder?.name || "categoría"}`
-                  : "Nueva categoría"}
+                Nueva categoría
               </Text>
             </View>
             <View style={styles.folderEditorRow}>
               <TextInput
                 value={folderName}
                 onChangeText={setFolderName}
-                placeholder="Nombre de la subcategoría"
+                placeholder="Nombre de la categoría"
                 placeholderTextColor="#94a3b8"
                 style={styles.folderEditorInput}
                 maxLength={50}
@@ -648,7 +544,8 @@ export default function LibraryScreen({ navigation }) {
           </View>
         ) : null}
 
-        {editingFolder ? (
+        {/* Las subcategorías se conservan en datos antiguos, pero ya no se muestran. */}
+        {false && editingFolder ? (
           <View style={styles.folderEditor}>
             <View style={styles.folderEditorHeader}>
               <Ionicons name="create-outline" size={17} color="#2563eb" />
@@ -693,7 +590,7 @@ export default function LibraryScreen({ navigation }) {
           </View>
         ) : null}
 
-        {childFolders.length && (!isNewsFolder || newsView === "articles") ? (
+        {false && childFolders.length && (!isNewsFolder || newsView === "articles") ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -897,7 +794,7 @@ export default function LibraryScreen({ navigation }) {
                         ? `Periódico · ${item.sourceDomain || item.hostname}`
                         : item.linkType === "newsArticle"
                           ? `Noticia · ${item.sourceDomain || item.hostname}${
-                              folder?.parentFolderId ? ` · ${folder.name}` : ""
+                              ""
                             }`
                           : folder?.name || "Sin clasificar"}
                     </Text>
@@ -1072,7 +969,7 @@ export default function LibraryScreen({ navigation }) {
                   <Ionicons name="file-tray-outline" size={20} color="#64748b" />
                   <Text style={styles.moveText}>Sin clasificar</Text>
                 </Pressable>
-                {folders.map((folder) => (
+                {topFolders.map((folder) => (
                   <Pressable
                     key={String(folder._id)}
                     onPress={() => handleMove(folder)}

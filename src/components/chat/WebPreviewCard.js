@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useState } from "react";
 
 import {
   ActivityIndicator,
-  Image,
   Linking,
   Pressable,
   StyleSheet,
@@ -14,6 +13,7 @@ import { I18nText as Text } from "@/src/i18n";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { isTrustedDomain } from "@/src/services/urlSafety";
+import CachedLinkImage from "@/src/components/chat/CachedLinkImage";
 
 const PREVIEW_CARD_MAX_WIDTH = 380;
 const PREVIEW_IMAGE_HEIGHT = 260;
@@ -261,8 +261,8 @@ export default function WebPreviewCard({
       ]}
     >
       {shouldShowImage ? (
-        <Image
-          source={{ uri: preview.image }}
+        <CachedLinkImage
+          uri={preview.image}
           style={[styles.image, compact && styles.imageCompact, dense && styles.imageDense]}
           resizeMode="cover"
           onError={() => setImageFailed(true)}

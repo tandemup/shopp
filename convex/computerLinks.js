@@ -406,7 +406,7 @@ export const list = query({
       .withIndex("by_updatedAt")
       .order("desc")
       .take(300);
-    const childFolderIds = args.folderId && args.includeChildFolders
+    const childFolderIds = args.folderId
       ? new Set(
           (
             await ctx.db
@@ -420,11 +420,7 @@ export const list = query({
       : null;
     return links.filter((link) => {
       if (link.status === "archived") return false;
-      if (
-        args.folderId &&
-        link.folderId !== args.folderId &&
-        !childFolderIds?.has(String(link.folderId || ""))
-      ) return false;
+      if (args.folderId && link.folderId !== args.folderId && !childFolderIds.has(String(link.folderId || ""))) return false;
       if (args.onlyFavorites && !link.favorite) return false;
       if (args.onlyUnclassified && link.folderId) return false;
       if (args.excludeNewsSources && link.linkType === "newsSource") {
