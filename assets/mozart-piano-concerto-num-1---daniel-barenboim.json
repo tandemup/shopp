@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "type": "shopp-youtube-playlist",
+  "title": "Mozart Piano Concerto Num 1 - Daniel Barenboim",
+  "exportedAt": "2026-08-25T16:05:44.522Z",
+  "tracks": [
+    {
+      "kind": "single",
+      "title": "I. Allegro",
+      "url": "https://www.youtube.com/watch?v=sb7aebvv-eA"
+    },
+    {
+      "kind": "single",
+      "title": "II. Andante",
+      "url": "https://www.youtube.com/watch?v=bFMOGkWUw_4"
+    },
+    {
+      "kind": "single",
+      "title": "III. Allegro",
+      "url": "https://www.youtube.com/watch?v=2iifMoiSGm4"
+    }
+  ]
+}

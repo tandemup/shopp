@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "type": "shopp-youtube-playlist",
+  "title": "Mozart Piano Concerto Num 2 - Daniel Barenboim",
+  "exportedAt": "2026-08-25T16:11:43.106Z",
+  "tracks": [
+    {
+      "kind": "single",
+      "title": "I. Allegro spiritoso",
+      "url": "https://www.youtube.com/watch?v=3r6mRrV4jWY"
+    },
+    {
+      "kind": "single",
+      "title": "II. Andante",
+      "url": "https://www.youtube.com/watch?v=0tFhtdu07Gs"
+    },
+    {
+      "kind": "single",
+      "title": "III. Molto Allegro",
+      "url": "https://www.youtube.com/watch?v=GCO7ujff5Dw"
+    }
+  ]
+}

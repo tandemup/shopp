@@ -84,7 +84,7 @@ function normalizeBarcodeTypes(value) {
 }
 
 function getProductTypeMeta(productType) {
-  const normalized = String(productType || "Supermercado")
+  const normalized = String(productType || "Automático")
     .trim()
     .toLowerCase();
 
@@ -106,6 +106,14 @@ function getProductTypeMeta(productType) {
     };
   }
 
+  if (normalized === "cd/dvd" || normalized === "dvd" || normalized === "cd") {
+    return { label: "CD/DVD", icon: "musical-notes-outline" };
+  }
+
+  if (normalized === "automatico" || normalized === "auto") {
+    return { label: "Automático", icon: "sparkles-outline" };
+  }
+
   return {
     label: "Supermercado",
     icon: "cart-outline",
@@ -113,6 +121,7 @@ function getProductTypeMeta(productType) {
 }
 
 const PRODUCT_TYPE_OPTIONS = [
+  { value: "Automático", label: "Automático", icon: "sparkles-outline" },
   {
     value: "Supermercado",
     label: "Supermercado",
@@ -124,15 +133,15 @@ const PRODUCT_TYPE_OPTIONS = [
     icon: "book-outline",
   },
   {
-    value: "Música",
-    label: "Música",
+    value: "CD/DVD",
+    label: "CD/DVD",
     icon: "musical-notes-outline",
   },
 ];
 
 const SCANNER_PRODUCT_TYPE_STORAGE_KEY = "@shopping/scanner-product-type";
 
-function normalizeProductType(value, fallback = "Supermercado") {
+function normalizeProductType(value, fallback = "Automático") {
   const normalized = String(value || "")
     .trim()
     .toLowerCase();
@@ -146,8 +155,11 @@ function normalizeProductType(value, fallback = "Supermercado") {
     normalized === "musica" ||
     normalized === "music"
   ) {
-    return "Música";
+    return "CD/DVD";
   }
+
+  if (normalized === "cd/dvd" || normalized === "dvd" || normalized === "cd") return "CD/DVD";
+  if (normalized === "automático" || normalized === "automatico" || normalized === "auto") return "Automático";
 
   if (normalized === "supermercado") {
     return "Supermercado";
@@ -261,7 +273,7 @@ export default function NewProductScannerScreen2() {
 
     manualBarcode = "",
 
-    productType = "Supermercado",
+    productType = "Automático",
 
     saveToHistory: routeSaveToHistory = null,
 

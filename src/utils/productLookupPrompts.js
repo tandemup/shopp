@@ -2,6 +2,49 @@ function normalizePromptBarcode(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
+export function buildUnifiedProductLookupPrompt(barcode, productType = "Automático", userHint = "", market = "España") {
+  const normalizedBarcode = normalizePromptBarcode(barcode);
+  const hint = String(userHint || "").trim() || "sin información adicional";
+  const requestedType = String(productType || "Automático").trim();
+
+  return `Investiga en Internet el artículo identificado exactamente por el código ${normalizedBarcode}.
+Tipo indicado por el usuario: ${requestedType}.
+Información adicional del usuario: ${hint}.
+Mercado preferente: ${market}.
+
+Clasifica primero el artículo como Supermercado, Libros, CD/DVD o Desconocido. Si el tipo indicado es incorrecto, corrígelo. Un código que empiece por 978 o 979 suele ser ISBN: compruébalo como libro antes de consultar fuentes de alimentación. No uses Open Food Facts para un ISBN.
+
+Busca el código exacto entre comillas y contrasta, cuando sea posible, al menos dos fuentes fiables. Prioriza fabricante/GS1/Open Food Facts para supermercado; editorial, ISBN, bibliotecas, Google Books u Open Library para libros; sello, MusicBrainz, Discogs, catálogos oficiales y bases audiovisuales para CD/DVD. No mezcles ediciones, idiomas, países, tamaños, sabores, envases ni reediciones. No inventes datos. Devuelve null o [] si no están confirmados y solo incluye URL realmente consultadas.
+
+Devuelve exclusivamente un objeto JSON con esta estructura:
+{
+  "barcode": "${normalizedBarcode}",
+  "status": "found | partial | not_found | invalid_barcode",
+  "productType": "Supermercado | Libros | CD/DVD | Desconocido",
+  "mediaType": null,
+  "name": null,
+  "brand": null,
+  "title": null,
+  "description": null,
+  "authors": [],
+  "artist": null,
+  "composer": null,
+  "publisher": null,
+  "manufacturer": null,
+  "category": null,
+  "subcategory": null,
+  "details": {},
+  "imageUrl": null,
+  "productUrl": null,
+  "sources": [],
+  "confidence": "high | medium | low",
+  "verificationStatus": "verified | partially_verified | unverified",
+  "verificationNotes": null
+}
+
+La imagen debe ser una URL HTTPS directa, pública y estable, correspondiente exactamente a esta edición o variante; si no puede verificarse, usa null.`;
+}
+
 export function buildSupermarketLookupPrompt(barcode) {
   const normalizedBarcode = normalizePromptBarcode(barcode);
 

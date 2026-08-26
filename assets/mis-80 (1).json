@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "type": "shopp-youtube-playlist",
+  "title": "Mis '80",
+  "exportedAt": "2026-08-25T19:01:48.879Z",
+  "tracks": [
+    {
+      "kind": "single",
+      "title": "Voyager",
+      "url": "https://www.youtube.com/watch?v=Akclgs4C-Eo"
+    },
+    {
+      "kind": "single",
+      "title": "Hunting Hi and Low",
+      "url": "https://www.youtube.com/watch?v=s6VaeFCxta8"
+    },
+    {
+      "kind": "single",
+      "title": "Time",
+      "url": "https://www.youtube.com/watch?v=zhRzORqNa0E"
+    },
+    {
+      "kind": "single",
+      "title": "Bette Davis Eyes",
+      "url": "https://www.youtube.com/watch?v=EPOIS5taqA8"
+    }
+  ]
+}

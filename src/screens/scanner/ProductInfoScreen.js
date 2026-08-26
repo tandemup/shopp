@@ -25,6 +25,7 @@ import { useProductLookupWithCache } from "@/src/hooks/useProductLookupWithCache
 import { normalizeBarcode } from "@/src/utils/barcodeNormalization";
 import {
   buildBookLookupPrompt,
+  buildUnifiedProductLookupPrompt,
   buildMusicCdLookupPrompt,
   buildSupermarketLookupPrompt,
 } from "@/src/utils/productLookupPrompts";
@@ -40,7 +41,7 @@ const PASTED_IMAGE_MAX_SIZE = 256;
 const PASTED_IMAGE_QUALITY = 0.86;
 
 function normalizeProductType(value) {
-  return String(value || "Supermercado")
+  return String(value || "Automático")
     .trim()
     .toLocaleLowerCase("es")
     .normalize("NFD")
@@ -57,12 +58,18 @@ function buildLookupPrompt(productType, barcode) {
   if (
     normalizedProductType === "musica" ||
     normalizedProductType === "music" ||
-    normalizedProductType === "cd"
+    normalizedProductType === "cd" ||
+    normalizedProductType === "cd/dvd" ||
+    normalizedProductType === "dvd"
   ) {
     return buildMusicCdLookupPrompt(barcode);
   }
 
-  return buildSupermarketLookupPrompt(barcode);
+  if (["automatico", "auto"].includes(normalizedProductType)) {
+    return buildUnifiedProductLookupPrompt(barcode, "Automático");
+  }
+
+  return buildUnifiedProductLookupPrompt(barcode, productType);
 }
 
 function loadImageFromBlob(blob) {
@@ -176,7 +183,7 @@ export default function ProductInfoScreen({ route, navigation }) {
     params.productType ||
     initialProduct?.productType ||
     product?.productType ||
-    "Supermercado";
+    "Automático";
 
   const googleModeAiPrompt = useMemo(
     () => buildLookupPrompt(productType, barcode),

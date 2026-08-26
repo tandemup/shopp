@@ -2,6 +2,107 @@ function normalizePromptBarcode(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
+function normalizePromptText(value, fallback = "No especificada") {
+  const normalized = String(value || "").trim();
+  return normalized || fallback;
+}
+
+/**
+ * Crea un prompt único para investigar códigos EAN, UPC, GTIN o ISBN.
+ * La aplicación debe proporcionar al modelo una herramienta de búsqueda web.
+ */
+export function buildUnifiedProductLookupPrompt({
+  barcode,
+  productType = "Desconocido",
+  userHint = "",
+  market = "España",
+} = {}) {
+  const normalizedBarcode = normalizePromptBarcode(barcode);
+  const normalizedType = normalizePromptText(productType, "Desconocido");
+  const normalizedHint = normalizePromptText(userHint);
+  const normalizedMarket = normalizePromptText(market, "España");
+
+  return `Eres un investigador especializado en identificar productos mediante códigos de barras EAN, UPC, GTIN o ISBN.
+
+Debes buscar en Internet información verificable sobre el producto indicado.
+
+DATOS PROPORCIONADOS POR EL USUARIO
+- Código de barras: ${normalizedBarcode}
+- Tipo de producto indicado: ${normalizedType}
+- Información adicional: ${normalizedHint}
+- Mercado preferente: ${normalizedMarket}
+
+TIPOS DE PRODUCTO ADMITIDOS
+- "Supermercado"
+- "Libros"
+- "CD / DVD"
+- "Desconocido"
+
+INSTRUCCIONES
+1. Comprueba que el código normalizado tenga entre 8 y 14 dígitos.
+2. Usa el tipo y la información adicional del usuario para orientar la búsqueda, pero no asumas que sean correctos.
+3. Busca primero el código exacto entre comillas y contrasta al menos dos fuentes cuando sea posible.
+4. Da prioridad a fuentes primarias y especializadas:
+   - Supermercado: fabricante, GS1, Open Food Facts y supermercados.
+   - Libros: editorial, ISBN, bibliotecas nacionales, Google Books, Open Library y WorldCat.
+   - CD/DVD: sello, estudio, distribuidor, MusicBrainz, Discogs, Blu-ray.com, TMDB o catálogo oficial.
+5. Identifica la edición exacta. No mezcles formatos, países, reediciones, idiomas, tamaños o variantes.
+6. No deduzcas el país de fabricación únicamente a partir del prefijo GS1.
+7. No inventes información. Usa null o [] para datos no confirmados.
+8. Incluye únicamente URL consultadas realmente. Si las fuentes se contradicen, indícalo.
+9. No devuelvas precios salvo que el usuario los solicite expresamente.
+10. No uses resultados pertenecientes a códigos parecidos.
+
+DATOS ESPECÍFICOS
+- Supermercado: nombre, marca, fabricante, variedad, cantidad, formato, categorías, ingredientes, alérgenos, nutrición, Nutri-Score, NOVA, origen y conservación.
+- Libros: ISBN-10/13, título, autores, editorial, publicación, idioma, páginas, encuadernación, edición, categoría y sinopsis.
+- CD/DVD: determina si es CD musical, DVD musical, DVD de vídeo, Blu-ray u otro soporte; busca título, artista/compositor/director/reparto, sello/estudio, edición, país, discos, género, catálogo, pistas o contenidos, región, idiomas, subtítulos y duración.
+
+DEVUELVE EXCLUSIVAMENTE UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA
+{
+  "barcode": "${normalizedBarcode}",
+  "status": "found | partial | not_found | invalid_barcode",
+  "productType": "Supermercado | Libros | CD / DVD | Desconocido",
+  "mediaType": null,
+  "name": null,
+  "brand": null,
+  "category": null,
+  "subcategory": null,
+  "description": null,
+  "manufacturer": null,
+  "productUrl": null,
+  "details": {
+    "quantity": null,
+    "format": null,
+    "ingredients": null,
+    "allergens": [],
+    "nutritionPer100": null,
+    "isbn10": null,
+    "isbn13": null,
+    "authors": [],
+    "publisher": null,
+    "publicationDate": null,
+    "language": null,
+    "pageCount": null,
+    "artist": null,
+    "composer": null,
+    "director": null,
+    "labelOrStudio": null,
+    "releaseDate": null,
+    "country": null,
+    "catalogNumber": null,
+    "numberOfDiscs": null,
+    "tracksOrContents": [],
+    "region": null,
+    "duration": null
+  },
+  "sources": [],
+  "confidence": "high | medium | low",
+  "verificationStatus": "verified | partially_verified | unverified",
+  "verificationNotes": null
+}`;
+}
+
 export function buildSupermarketLookupPrompt(barcode) {
   const normalizedBarcode = normalizePromptBarcode(barcode);
 

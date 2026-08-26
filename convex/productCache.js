@@ -50,6 +50,10 @@ function normalizeProductType(value) {
     return "Música";
   }
 
+  if (normalized.includes("cd") || normalized.includes("dvd") || normalized.includes("blu-ray") || normalized.includes("bluray")) {
+    return "Música";
+  }
+
   if (
     normalized.includes("supermerc") ||
     normalized.includes("aliment") ||
