@@ -16,10 +16,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import {
-  I18nText as Text,
-  I18nTextInput as TextInput,
-} from "@/src/i18n";
+import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 import WebPreviewCard from "@/src/components/chat/WebPreviewCard";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
@@ -60,10 +57,11 @@ export default function LibraryScreen({ navigation }) {
 
   const folders = useQuery(api.computerLinks.listFolders) || [];
   const libraryBackup = useQuery(api.computerLinks.exportBackup);
-  const selectedFolderId =
-    !["all", "favorites", "unclassified"].includes(folderFilter)
-      ? folderFilter
-      : undefined;
+  const selectedFolderId = !["all", "favorites", "unclassified"].includes(
+    folderFilter,
+  )
+    ? folderFilter
+    : undefined;
   const selectedFolder = folders.find(
     (folder) => String(folder._id) === String(selectedFolderId),
   );
@@ -97,6 +95,7 @@ export default function LibraryScreen({ navigation }) {
   const updateNewsSource = useMutation(api.computerLinks.updateNewsSource);
   const moveToFolder = useMutation(api.computerLinks.moveToFolder);
   const removeLink = useMutation(api.computerLinks.remove);
+  const removeNewsSource = useMutation(api.computerLinks.removeNewsSource);
   const importBackup = useMutation(api.computerLinks.importBackup);
 
   useEffect(() => {
@@ -128,10 +127,16 @@ export default function LibraryScreen({ navigation }) {
       });
       setUrlInput("");
       if (result.existing) {
-        safeAlert("Enlace recuperado", "El enlace ya existía en la biblioteca.");
+        safeAlert(
+          "Enlace recuperado",
+          "El enlace ya existía en la biblioteca.",
+        );
       }
     } catch (error) {
-      safeAlert("URL no válida", error?.message || "No se pudo guardar el enlace.");
+      safeAlert(
+        "URL no válida",
+        error?.message || "No se pudo guardar el enlace.",
+      );
     } finally {
       setSaving(false);
     }
@@ -205,7 +210,13 @@ export default function LibraryScreen({ navigation }) {
     } finally {
       setSaving(false);
     }
-  }, [editingSource, saving, sourceNameInput, sourceUrlInput, updateNewsSource]);
+  }, [
+    editingSource,
+    saving,
+    sourceNameInput,
+    sourceUrlInput,
+    updateNewsSource,
+  ]);
 
   const openSourceUrl = useCallback(async (url) => {
     try {
@@ -219,7 +230,7 @@ export default function LibraryScreen({ navigation }) {
     (source) => {
       safeAlert(
         "Eliminar periódico",
-        `Se eliminará ${source.customTitle || source.hostname} del catálogo. Las noticias guardadas no se borrarán.`,
+        `Se eliminará ${source.customTitle || source.hostname} y sus noticias guardadas.`,
         [
           { text: "Cancelar", style: "cancel" },
           {
@@ -227,16 +238,19 @@ export default function LibraryScreen({ navigation }) {
             style: "destructive",
             onPress: async () => {
               try {
-                await removeLink({ linkId: source._id });
+                await removeNewsSource({ linkId: source._id });
               } catch (error) {
-                safeAlert("No se pudo eliminar", error?.message || "Inténtalo de nuevo.");
+                safeAlert(
+                  "No se pudo eliminar",
+                  error?.message || "Inténtalo de nuevo.",
+                );
               }
             },
           },
         ],
       );
     },
-    [removeLink],
+    [removeNewsSource],
   );
 
   const handleSaveMetadata = useCallback(async () => {
@@ -278,7 +292,9 @@ export default function LibraryScreen({ navigation }) {
       const filename = `shopp-biblioteca-${day}.json`;
 
       if (Platform.OS === "web" && typeof document !== "undefined") {
-        const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+        const blob = new Blob([json], {
+          type: "application/json;charset=utf-8",
+        });
         const objectUrl = URL.createObjectURL(blob);
         const anchor = document.createElement("a");
         anchor.href = objectUrl;
@@ -292,7 +308,10 @@ export default function LibraryScreen({ navigation }) {
         await FileSystem.writeAsStringAsync(fileUri, json, {
           encoding: FileSystem.EncodingType.UTF8,
         });
-        safeAlert("Copia creada", `Se ha guardado ${filename} en el almacenamiento de Shopp.\n\n${fileUri}`);
+        safeAlert(
+          "Copia creada",
+          `Se ha guardado ${filename} en el almacenamiento de Shopp.\n\n${fileUri}`,
+        );
       }
     } catch (error) {
       safeAlert("No se pudo exportar", error?.message || "Inténtalo de nuevo.");
@@ -312,7 +331,8 @@ export default function LibraryScreen({ navigation }) {
       });
       if (result.canceled) return;
       const asset = result.assets?.[0];
-      if (!asset?.uri) throw new Error("No se pudo leer el fichero seleccionado.");
+      if (!asset?.uri)
+        throw new Error("No se pudo leer el fichero seleccionado.");
 
       let jsonText = "";
       if (Platform.OS === "web" && asset.file) {
@@ -327,7 +347,11 @@ export default function LibraryScreen({ navigation }) {
       if (parsed?.format !== "shopp-library-backup" || parsed?.version !== 1) {
         throw new Error("El fichero no es una copia de Biblioteca compatible.");
       }
-      if (!parsed?.data || !Array.isArray(parsed.data.folders) || !Array.isArray(parsed.data.links)) {
+      if (
+        !parsed?.data ||
+        !Array.isArray(parsed.data.folders) ||
+        !Array.isArray(parsed.data.links)
+      ) {
         throw new Error("La copia está incompleta: faltan carpetas o enlaces.");
       }
 
@@ -341,9 +365,15 @@ export default function LibraryScreen({ navigation }) {
       );
     } catch (error) {
       if (String(error?.name || "") === "SyntaxError") {
-        safeAlert("JSON no válido", "El fichero seleccionado no contiene JSON válido.");
+        safeAlert(
+          "JSON no válido",
+          "El fichero seleccionado no contiene JSON válido.",
+        );
       } else {
-        safeAlert("No se pudo importar", error?.message || "Revisa la copia de seguridad.");
+        safeAlert(
+          "No se pudo importar",
+          error?.message || "Revisa la copia de seguridad.",
+        );
       }
     } finally {
       setBackupBusy(false);
@@ -376,7 +406,11 @@ export default function LibraryScreen({ navigation }) {
           <Pressable
             onPress={() => setToolsExpanded((value) => !value)}
             style={styles.compactTopButton}
-            accessibilityLabel={toolsExpanded ? "Ocultar URL y búsqueda" : "Mostrar URL y búsqueda"}
+            accessibilityLabel={
+              toolsExpanded
+                ? "Ocultar URL y búsqueda"
+                : "Mostrar URL y búsqueda"
+            }
           >
             <Ionicons
               name={toolsExpanded ? "chevron-up" : "chevron-down"}
@@ -386,72 +420,90 @@ export default function LibraryScreen({ navigation }) {
           </Pressable>
         </View>
 
-        {toolsExpanded ? <View style={styles.toolsPanel}><View style={styles.addRow}>
-          <TextInput
-            value={urlInput}
-            onChangeText={setUrlInput}
-            placeholder={
-              isNewsFolder && newsView === "sources"
-                ? "https://www.elmundo.es"
-                : isNewsFolder
-                  ? "Pega la URL de una noticia"
-                  : "https://ejemplo.com"
-            }
-            placeholderTextColor="#94a3b8"
-            style={styles.urlInput}
-            autoCorrect={false}
-            autoCapitalize="none"
-            onSubmitEditing={handleAddUrl}
-          />
-          <Pressable
-            onPress={handleAddUrl}
-            disabled={!urlInput.trim() || saving}
-            style={[
-              styles.addButton,
-              (!urlInput.trim() || saving) && styles.buttonDisabled,
-            ]}
-          >
-            <Ionicons name="add" size={22} color="#fff" />
-          </Pressable>
-        </View>
+        {toolsExpanded ? (
+          <View style={styles.toolsPanel}>
+            <View style={styles.addRow}>
+              <TextInput
+                value={urlInput}
+                onChangeText={setUrlInput}
+                placeholder={
+                  isNewsFolder && newsView === "sources"
+                    ? "https://www.elmundo.es"
+                    : isNewsFolder
+                      ? "Pega la URL de una noticia"
+                      : "https://ejemplo.com"
+                }
+                placeholderTextColor="#94a3b8"
+                style={styles.urlInput}
+                autoCorrect={false}
+                autoCapitalize="none"
+                onSubmitEditing={handleAddUrl}
+              />
+              <Pressable
+                onPress={handleAddUrl}
+                disabled={!urlInput.trim() || saving}
+                style={[
+                  styles.addButton,
+                  (!urlInput.trim() || saving) && styles.buttonDisabled,
+                ]}
+              >
+                <Ionicons name="add" size={22} color="#fff" />
+              </Pressable>
+            </View>
 
-        <View style={styles.searchRow}>
-          <Ionicons name="search-outline" size={19} color="#64748b" />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Buscar por URL, dominio o autor…"
-            placeholderTextColor="#94a3b8"
-            style={styles.searchInput}
-            autoCorrect={false}
-          />
-          {search ? (
-            <Pressable onPress={() => setSearch("")} style={styles.iconButton}>
-              <Ionicons name="close-circle" size={20} color="#94a3b8" />
-            </Pressable>
-          ) : null}
-        </View>
+            <View style={styles.searchRow}>
+              <Ionicons name="search-outline" size={19} color="#64748b" />
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Buscar por URL, dominio o autor…"
+                placeholderTextColor="#94a3b8"
+                style={styles.searchInput}
+                autoCorrect={false}
+              />
+              {search ? (
+                <Pressable
+                  onPress={() => setSearch("")}
+                  style={styles.iconButton}
+                >
+                  <Ionicons name="close-circle" size={20} color="#94a3b8" />
+                </Pressable>
+              ) : null}
+            </View>
 
-        <View style={styles.backupRow}>
-          <Pressable
-            onPress={handleExportBackup}
-            disabled={backupBusy || !libraryBackup}
-            style={[styles.backupButton, (backupBusy || !libraryBackup) && styles.buttonDisabled]}
-          >
-            <Ionicons name="download-outline" size={17} color="#2563eb" />
-            <Text style={styles.backupButtonText}>Exportar JSON</Text>
-          </Pressable>
-          <Pressable
-            onPress={handleImportBackup}
-            disabled={backupBusy}
-            style={[styles.backupButton, backupBusy && styles.buttonDisabled]}
-          >
-            <Ionicons name="cloud-upload-outline" size={17} color="#2563eb" />
-            <Text style={styles.backupButtonText}>Importar JSON</Text>
-          </Pressable>
-          <Text style={styles.backupHint}>Restauración: combinar sin duplicar URL</Text>
-        </View>
-        </View> : null}
+            <View style={styles.backupRow}>
+              <Pressable
+                onPress={handleExportBackup}
+                disabled={backupBusy || !libraryBackup}
+                style={[
+                  styles.backupButton,
+                  (backupBusy || !libraryBackup) && styles.buttonDisabled,
+                ]}
+              >
+                <Ionicons name="download-outline" size={17} color="#2563eb" />
+                <Text style={styles.backupButtonText}>Exportar JSON</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleImportBackup}
+                disabled={backupBusy}
+                style={[
+                  styles.backupButton,
+                  backupBusy && styles.buttonDisabled,
+                ]}
+              >
+                <Ionicons
+                  name="cloud-upload-outline"
+                  size={17}
+                  color="#2563eb"
+                />
+                <Text style={styles.backupButtonText}>Importar JSON</Text>
+              </Pressable>
+              <Text style={styles.backupHint}>
+                Restauración: combinar sin duplicar URL
+              </Text>
+            </View>
+          </View>
+        ) : null}
 
         <ScrollView
           horizontal
@@ -475,7 +527,9 @@ export default function LibraryScreen({ navigation }) {
                   size={15}
                   color={active ? "#fff" : folder.color || "#475569"}
                 />
-                <Text style={[styles.folderText, active && styles.folderTextActive]}>
+                <Text
+                  style={[styles.folderText, active && styles.folderTextActive]}
+                >
                   {folder.name}
                 </Text>
               </Pressable>
@@ -490,9 +544,7 @@ export default function LibraryScreen({ navigation }) {
               style={styles.newFolderChip}
             >
               <Ionicons name="folder-open-outline" size={15} color="#2563eb" />
-              <Text style={styles.newFolderText}>
-                Nueva categoría
-              </Text>
+              <Text style={styles.newFolderText}>Nueva categoría</Text>
             </Pressable>
           ) : null}
         </ScrollView>
@@ -505,9 +557,7 @@ export default function LibraryScreen({ navigation }) {
                 size={17}
                 color={selectedFolder?.color || "#2563eb"}
               />
-              <Text style={styles.folderEditorTitle}>
-                Nueva categoría
-              </Text>
+              <Text style={styles.folderEditorTitle}>Nueva categoría</Text>
             </View>
             <View style={styles.folderEditorRow}>
               <TextInput
@@ -580,7 +630,8 @@ export default function LibraryScreen({ navigation }) {
                 disabled={!editingFolderName.trim() || saving}
                 style={[
                   styles.folderEditorSave,
-                  (!editingFolderName.trim() || saving) && styles.buttonDisabled,
+                  (!editingFolderName.trim() || saving) &&
+                    styles.buttonDisabled,
                 ]}
               >
                 <Ionicons name="checkmark" size={20} color="#fff" />
@@ -590,7 +641,9 @@ export default function LibraryScreen({ navigation }) {
           </View>
         ) : null}
 
-        {false && childFolders.length && (!isNewsFolder || newsView === "articles") ? (
+        {false &&
+        childFolders.length &&
+        (!isNewsFolder || newsView === "articles") ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -700,9 +753,7 @@ export default function LibraryScreen({ navigation }) {
 
         <FlatList
           key={
-            isSourceCatalog
-              ? "source-catalog"
-              : `library-links-${cardColumns}`
+            isSourceCatalog ? "source-catalog" : `library-links-${cardColumns}`
           }
           data={links || []}
           horizontal={isSourceCatalog}
@@ -726,7 +777,11 @@ export default function LibraryScreen({ navigation }) {
                     style={styles.sourceTileMain}
                   >
                     <View style={styles.sourceTileIcon}>
-                      <Ionicons name="newspaper-outline" size={24} color="#dc2626" />
+                      <Ionicons
+                        name="newspaper-outline"
+                        size={24}
+                        color="#dc2626"
+                      />
                     </View>
                     <Text style={styles.sourceTileTitle} numberOfLines={1}>
                       {item.customTitle || item.hostname}
@@ -755,7 +810,11 @@ export default function LibraryScreen({ navigation }) {
                       onPress={() => confirmRemoveSource(item)}
                       style={styles.sourceTileButton}
                     >
-                      <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                      <Ionicons
+                        name="trash-outline"
+                        size={18}
+                        color="#dc2626"
+                      />
                     </Pressable>
                   </View>
                 </View>
@@ -768,7 +827,9 @@ export default function LibraryScreen({ navigation }) {
               <View style={styles.linkCard}>
                 <WebPreviewCard url={item.normalizedUrl} compact dense />
                 {item.linkType === "newsSource" && item.customTitle ? (
-                  <Text style={styles.sourceCustomTitle}>{item.customTitle}</Text>
+                  <Text style={styles.sourceCustomTitle}>
+                    {item.customTitle}
+                  </Text>
                 ) : null}
                 {item.linkType !== "newsSource" && item.notes ? (
                   <Text style={styles.linkNotes}>{item.notes}</Text>
@@ -793,9 +854,7 @@ export default function LibraryScreen({ navigation }) {
                       {item.linkType === "newsSource"
                         ? `Periódico · ${item.sourceDomain || item.hostname}`
                         : item.linkType === "newsArticle"
-                          ? `Noticia · ${item.sourceDomain || item.hostname}${
-                              ""
-                            }`
+                          ? `Noticia · ${item.sourceDomain || item.hostname}${""}`
                           : folder?.name || "Sin clasificar"}
                     </Text>
                   </View>
@@ -808,7 +867,11 @@ export default function LibraryScreen({ navigation }) {
                       }
                       style={styles.iconButton}
                     >
-                      <Ionicons name="create-outline" size={18} color="#475569" />
+                      <Ionicons
+                        name="create-outline"
+                        size={18}
+                        color="#475569"
+                      />
                     </Pressable>
                     <Pressable
                       onPress={() => toggleFavorite({ linkId: item._id })}
@@ -824,13 +887,21 @@ export default function LibraryScreen({ navigation }) {
                       onPress={() => setMovingLink(item)}
                       style={styles.iconButton}
                     >
-                      <Ionicons name="folder-open-outline" size={18} color="#2563eb" />
+                      <Ionicons
+                        name="folder-open-outline"
+                        size={18}
+                        color="#2563eb"
+                      />
                     </Pressable>
                     <Pressable
                       onPress={() => removeLink({ linkId: item._id })}
                       style={styles.iconButton}
                     >
-                      <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                      <Ionicons
+                        name="trash-outline"
+                        size={18}
+                        color="#dc2626"
+                      />
                     </Pressable>
                   </View>
                 </View>
@@ -880,7 +951,8 @@ export default function LibraryScreen({ navigation }) {
                 onSubmitEditing={handleSaveSource}
               />
               <Text style={styles.fieldHelp}>
-                Los comentarios y hashtags se añaden a las noticias, no al periódico.
+                Los comentarios y hashtags se añaden a las noticias, no al
+                periódico.
               </Text>
               <View style={styles.modalActions}>
                 <Pressable
@@ -965,8 +1037,15 @@ export default function LibraryScreen({ navigation }) {
             <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>Mover a categoría</Text>
               <ScrollView style={styles.moveList}>
-                <Pressable onPress={() => handleMove(null)} style={styles.moveItem}>
-                  <Ionicons name="file-tray-outline" size={20} color="#64748b" />
+                <Pressable
+                  onPress={() => handleMove(null)}
+                  style={styles.moveItem}
+                >
+                  <Ionicons
+                    name="file-tray-outline"
+                    size={20}
+                    color="#64748b"
+                  />
                   <Text style={styles.moveText}>Sin clasificar</Text>
                 </Pressable>
                 {topFolders.map((folder) => (
@@ -984,7 +1063,10 @@ export default function LibraryScreen({ navigation }) {
                   </Pressable>
                 ))}
               </ScrollView>
-              <Pressable onPress={() => setMovingLink(null)} style={styles.cancelButton}>
+              <Pressable
+                onPress={() => setMovingLink(null)}
+                style={styles.cancelButton}
+              >
                 <Text style={styles.cancelText}>Cancelar</Text>
               </Pressable>
             </View>
@@ -1082,6 +1164,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
     paddingHorizontal: 10,
+    paddingTop: 10,
     paddingBottom: 10,
   },
   backupButton: {
@@ -1302,7 +1385,12 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#dc2626",
   },
-  sourceTileUrl: { marginTop: 6, fontSize: 10, lineHeight: 14, color: "#64748b" },
+  sourceTileUrl: {
+    marginTop: 6,
+    fontSize: 10,
+    lineHeight: 14,
+    color: "#64748b",
+  },
   sourceTileActions: {
     height: 38,
     flexDirection: "row",
@@ -1375,16 +1463,36 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     backgroundColor: "#f1f5f9",
   },
-  categoryText: { flexShrink: 1, fontSize: 10, fontWeight: "800", color: "#475569" },
+  categoryText: {
+    flexShrink: 1,
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#475569",
+  },
   cardActionButtons: {
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
   },
-  iconButton: { width: 25, height: 28, alignItems: "center", justifyContent: "center" },
+  iconButton: {
+    width: 25,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   empty: { alignItems: "center", paddingHorizontal: 30 },
-  emptyTitle: { marginTop: 10, fontSize: 17, fontWeight: "900", color: "#334155" },
-  emptyText: { marginTop: 5, fontSize: 13, color: "#64748b", textAlign: "center" },
+  emptyTitle: {
+    marginTop: 10,
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#334155",
+  },
+  emptyText: {
+    marginTop: 5,
+    fontSize: 13,
+    color: "#64748b",
+    textAlign: "center",
+  },
   modalBackdrop: {
     flex: 1,
     alignItems: "center",
@@ -1392,8 +1500,19 @@ const styles = StyleSheet.create({
     padding: 20,
     backgroundColor: "rgba(15, 23, 42, 0.55)",
   },
-  modalCard: { width: 380, maxWidth: "100%", maxHeight: "78%", padding: 16, backgroundColor: "#fff" },
-  modalTitle: { marginBottom: 12, fontSize: 18, fontWeight: "900", color: "#111827" },
+  modalCard: {
+    width: 380,
+    maxWidth: "100%",
+    maxHeight: "78%",
+    padding: 16,
+    backgroundColor: "#fff",
+  },
+  modalTitle: {
+    marginBottom: 12,
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#111827",
+  },
   modalInput: {
     minHeight: 44,
     paddingHorizontal: 11,
@@ -1412,12 +1531,38 @@ const styles = StyleSheet.create({
     color: "#334155",
   },
   fieldHelp: { marginTop: 5, fontSize: 10, color: "#64748b" },
-  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 14 },
-  cancelButton: { minHeight: 40, alignItems: "center", justifyContent: "center", paddingHorizontal: 14, borderWidth: 1, borderColor: "#cbd5e1" },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+    marginTop: 14,
+  },
+  cancelButton: {
+    minHeight: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+  },
   cancelText: { fontSize: 13, fontWeight: "800", color: "#475569" },
-  saveButton: { minHeight: 40, alignItems: "center", justifyContent: "center", paddingHorizontal: 18, backgroundColor: "#2563eb" },
+  saveButton: {
+    minHeight: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+    backgroundColor: "#2563eb",
+  },
   saveText: { fontSize: 13, fontWeight: "900", color: "#fff" },
   moveList: { flexGrow: 0, marginBottom: 12 },
-  moveItem: { minHeight: 47, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#e2e8f0" },
+  moveItem: {
+    minHeight: 47,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e2e8f0",
+  },
   moveText: { fontSize: 14, fontWeight: "700", color: "#334155" },
 });

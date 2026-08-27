@@ -789,6 +789,31 @@ export const remove = mutation({
   },
 });
 
+// Archiva el periódico y todas sus noticias asociadas.
+export const removeNewsSource = mutation({
+  args: { linkId: v.id("computerLinks") },
+  handler: async (ctx, args) => {
+    const source = await ctx.db.get(args.linkId);
+    if (!source || source.linkType !== "newsSource") {
+      throw new Error("El periódico ya no existe.");
+    }
+    const domain = String(source.sourceDomain || source.hostname || "")
+      .trim().toLowerCase().replace(/^www\./, "");
+    const links = await ctx.db.query("computerLinks").collect();
+    let archivedArticles = 0;
+    const now = Date.now();
+    for (const link of links) {
+      const linkDomain = String(link.sourceDomain || link.hostname || "")
+        .trim().toLowerCase().replace(/^www\./, "");
+      if (link._id === source._id || (link.linkType === "newsArticle" && linkDomain === domain)) {
+        await ctx.db.patch(link._id, { status: "archived", updatedAt: now });
+        if (link._id !== source._id) archivedArticles += 1;
+      }
+    }
+    return { archivedArticles };
+  },
+});
+
 // Operación de mantenimiento: solo puede ejecutarse desde Convex CLI/Dashboard.
 // Conserva la categoría Noticias y sus subcategorías para poder reutilizarlas.
 export const purgeNewsData = internalMutation({
