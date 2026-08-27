@@ -113,6 +113,7 @@ export default function PlayListScreen() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [draggingIndex, setDraggingIndex] = useState(null);
 
   useEffect(() => {
     if (Platform.OS === "web" || clientId) return;
@@ -165,6 +166,25 @@ export default function PlayListScreen() {
 
   const addTrack = useCallback(() => setTracks((current) => current.length >= 20 ? current : [...current, { kind: "single", title: `Single ${current.length + 1}`, url: "", lyrics: null }]), []);
   const removeTrack = useCallback((index) => setTracks((current) => current.length <= 2 ? current : current.filter((_, i) => i !== index)), []);
+  const moveTrack = useCallback((index, direction) => {
+    setTracks((current) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.length) return current;
+      const next = [...current];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  }, []);
+  const dropTrack = useCallback((targetIndex) => {
+    if (draggingIndex === null || draggingIndex === targetIndex) return;
+    setTracks((current) => {
+      const next = [...current];
+      const [moved] = next.splice(draggingIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+    setDraggingIndex(null);
+  }, [draggingIndex]);
 
   const uploadLyrics = useCallback(async (lyrics, index) => {
     if (!lyrics) return {};
@@ -224,6 +244,10 @@ export default function PlayListScreen() {
       });
     } catch (error) { safeAlert("No se pudo exportar", error?.message || "Inténtalo de nuevo."); }
   }, [playlists]);
+  const reorderPlaylist = useCallback(async (item, nextTracks) => {
+    try { await updatePlaylist({ playlistId: item._id, clientId, title: item.title, tracks: nextTracks.map((track) => ({ kind: track.kind === "album" ? "album" : "single", videoId: track.videoId || undefined, playlistId: track.playlistId || undefined, title: track.title, ...(track.lyricsStorageId ? { lyricsStorageId: track.lyricsStorageId, lyricsFileName: track.lyricsFileName, lyricsMimeType: track.lyricsMimeType, lyricsSize: track.lyricsSize } : {}) })) }); }
+    catch (error) { safeAlert("No se pudo reordenar", error?.message || "Inténtalo de nuevo."); }
+  }, [clientId, updatePlaylist]);
 
   const importJson = useCallback(async () => {
     setImporting(true);
@@ -296,12 +320,12 @@ export default function PlayListScreen() {
       </View>
       {playlists === undefined ? <View style={styles.center}><ActivityIndicator color="#dc2626" /></View> : (
         <FlatList data={playlists} keyExtractor={(item) => item._id} contentContainerStyle={[styles.list, !playlists.length && styles.emptyList]} ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-          renderItem={({ item }) => <View style={styles.playerCard}><CustomYouTubePlaylistPlayer playlist={item} userName="Mi playlist" dateLabel={formatDate(item.updatedAt)} canEdit canDelete deleting={deletingId === item._id} onEdit={() => openEdit(item)} onDelete={() => confirmRemove(item)} /><Pressable onPress={() => exportPlaylist(item)} style={styles.exportButton}><Ionicons name="share-outline" size={17} color="#2563eb" /><Text style={styles.exportButtonText}>Exportar JSON</Text></Pressable></View>}
+          renderItem={({ item }) => <View style={styles.playerCard}><CustomYouTubePlaylistPlayer playlist={item} userName="Mi playlist" dateLabel={formatDate(item.updatedAt)} canEdit canDelete deleting={deletingId === item._id} onEdit={() => openEdit(item)} onDelete={() => confirmRemove(item)} onReorder={(nextTracks) => reorderPlaylist(item, nextTracks)} /><Pressable onPress={() => exportPlaylist(item)} style={styles.exportButton}><Ionicons name="share-outline" size={17} color="#2563eb" /><Text style={styles.exportButtonText}>Exportar JSON</Text></Pressable></View>}
           ListEmptyComponent={<View style={styles.empty}><Ionicons name="logo-youtube" size={46} color="#dc2626" /><Text style={styles.emptyTitle}>Todavía no hay playlists</Text><Text style={styles.emptyText}>Crea una combinando singles o álbumes mediante sus enlaces de YouTube.</Text><Pressable onPress={openNew} style={styles.emptyButton}><Text style={styles.emptyButtonText}>Nueva playlist</Text></Pressable></View>} />
       )}
       <Modal visible={editorVisible} transparent animationType="fade" onRequestClose={() => !saving && setEditorVisible(false)}>
         <View style={styles.backdrop}><View style={styles.editorCard}>
-          <View style={styles.editorHeader}><View style={{ flex: 1 }}><Text style={styles.editorTitle}>{editingId ? "Editar playlist de Shopp" : "Nueva playlist de Shopp"}</Text><Text style={styles.editorSubtitle}>Añade singles o álbumes mediante sus enlaces de YouTube.</Text></View><Pressable onPress={() => !saving && setEditorVisible(false)} style={styles.closeButton}><Ionicons name="close" size={24} color="#475569" /></Pressable></View>
+          <View style={styles.editorHeader}><View style={{ flex: 1 }}><Text style={styles.editorTitle}>{editingId ? "Editar playlist de Shopp" : "Nueva playlist de Shopp"}</Text><Text style={styles.editorSubtitle}>Añade singles o álbumes mediante sus enlaces de YouTube.</Text><Text style={styles.dragHint}>☰  Arrastra una canción para cambiar su orden</Text></View><Pressable onPress={() => !saving && setEditorVisible(false)} style={styles.closeButton}><Ionicons name="close" size={24} color="#475569" /></Pressable></View>
           <Text style={styles.label}>Nombre del concierto o playlist</Text>
           <TextInput value={title} onChangeText={setTitle} maxLength={120} placeholder="Mozart · Concierto para piano · Daniel Barenboim" style={styles.titleInput} />
           <View style={styles.editorTransferRow}>
@@ -309,8 +333,13 @@ export default function PlayListScreen() {
             <Pressable onPress={exportEditor} disabled={!canSave} style={[styles.editorTransferButton, !canSave && styles.disabled]}><Ionicons name="share-outline" size={17} color="#2563eb" /><Text style={styles.editorTransferText}>Exportar JSON</Text></Pressable>
           </View>
           <ScrollView style={styles.tracksScroll} keyboardShouldPersistTaps="handled">
-            {tracks.map((track, index) => <View key={`track-${index}`} style={styles.trackEditor}>
-              <View style={styles.trackHeader}><Text style={styles.trackNumber}>ELEMENTO {index + 1}</Text>{tracks.length > 2 ? <Pressable onPress={() => removeTrack(index)} style={styles.removeButton}><Ionicons name="trash-outline" size={18} color="#dc2626" /></Pressable> : null}</View>
+            {tracks.map((track, index) => <View key={`track-${index}`} draggable={Platform.OS === "web"} onDragStart={() => setDraggingIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => dropTrack(index)} style={[styles.trackEditor, draggingIndex === index && styles.trackEditorDragging]}>
+              <View style={styles.trackHeader}><Text style={styles.trackNumber}>ELEMENTO {index + 1}</Text><View style={styles.trackOrderActions}>
+                {Platform.OS === "web" ? <Ionicons name="reorder-three-outline" size={22} color="#64748b" /> : null}
+                <Pressable onPress={() => moveTrack(index, -1)} disabled={index === 0} style={styles.orderButton} accessibilityLabel="Subir elemento"><Ionicons name="chevron-up" size={18} color={index === 0 ? "#cbd5e1" : "#2563eb"} /></Pressable>
+                <Pressable onPress={() => moveTrack(index, 1)} disabled={index === tracks.length - 1} style={styles.orderButton} accessibilityLabel="Bajar elemento"><Ionicons name="chevron-down" size={18} color={index === tracks.length - 1 ? "#cbd5e1" : "#2563eb"} /></Pressable>
+                {tracks.length > 2 ? <Pressable onPress={() => removeTrack(index)} style={styles.removeButton} accessibilityLabel="Eliminar elemento"><Ionicons name="trash-outline" size={18} color="#dc2626" /></Pressable> : null}
+              </View></View>
               <View style={styles.kindRow}>
                 <Pressable onPress={() => updateTrack(index, "kind", "single")} style={[styles.kindButton, track.kind !== "album" && styles.kindActive]}><Ionicons name="musical-note-outline" size={16} color={track.kind !== "album" ? "#fff" : "#475569"} /><Text style={[styles.kindText, track.kind !== "album" && styles.kindTextActive]}>Single</Text></Pressable>
                 <Pressable onPress={() => updateTrack(index, "kind", "album")} style={[styles.kindButton, track.kind === "album" && styles.kindActive]}><Ionicons name="albums-outline" size={16} color={track.kind === "album" ? "#fff" : "#475569"} /><Text style={[styles.kindText, track.kind === "album" && styles.kindTextActive]}>Álbum</Text></Pressable>
@@ -329,6 +358,7 @@ export default function PlayListScreen() {
 }
 
 const styles = StyleSheet.create({
+  dragHint: { marginTop: 7, fontSize: 12, fontWeight: "800", color: "#2563eb" }, trackOrderActions: { flexDirection: "row", alignItems: "center", gap: 2 }, trackEditorDragging: { opacity: 0.55, borderColor: "#2563eb", borderStyle: "dashed" }, orderButton: { width: 30, height: 30, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff" },
   screen: { flex: 1, backgroundColor: "#f4f7fb" }, header: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: "#e5e7eb", backgroundColor: "#fff", flexWrap: "wrap" }, headerText: { flex: 1, minWidth: 220 }, heading: { fontSize: 22, fontWeight: "900", color: "#111827" }, subtitle: { marginTop: 3, fontSize: 12, color: "#64748b" }, headerActions: { flexDirection: "row", alignItems: "center", gap: 7, flexWrap: "wrap" }, secondaryButton: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 11, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff" }, secondaryButtonText: { fontSize: 12, fontWeight: "800", color: "#475569" }, newButton: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, backgroundColor: "#dc2626" }, newButtonText: { fontWeight: "800", color: "#fff" }, center: { flex: 1, alignItems: "center", justifyContent: "center" }, list: { width: "100%", maxWidth: 760, alignSelf: "center", padding: 14 }, playerCard: { alignItems: "center" }, exportButton: { width: 440, maxWidth: "100%", minHeight: 38, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderWidth: 1, borderTopWidth: 0, borderColor: "#d1d5db", backgroundColor: "#fff" }, exportButtonText: { fontSize: 12, fontWeight: "800", color: "#2563eb" }, emptyList: { flexGrow: 1, justifyContent: "center" }, empty: { alignItems: "center", padding: 24 }, emptyTitle: { marginTop: 12, fontSize: 18, fontWeight: "900", color: "#111827" }, emptyText: { maxWidth: 410, marginTop: 7, textAlign: "center", color: "#64748b" }, emptyButton: { marginTop: 18, paddingHorizontal: 18, paddingVertical: 11, backgroundColor: "#dc2626" }, emptyButtonText: { fontWeight: "800", color: "#fff" },
   backdrop: { flex: 1, alignItems: "center", justifyContent: "center", padding: 16, backgroundColor: "rgba(15,23,42,0.55)" }, editorCard: { width: "100%", maxWidth: 750, maxHeight: "92%", padding: 18, backgroundColor: "#fff" }, editorHeader: { flexDirection: "row", alignItems: "flex-start", marginBottom: 14 }, editorTitle: { fontSize: 20, fontWeight: "900", color: "#111827" }, editorSubtitle: { marginTop: 3, fontSize: 12, color: "#64748b" }, closeButton: { width: 42, height: 42, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#cbd5e1" }, label: { marginBottom: 7, fontSize: 12, fontWeight: "900", color: "#334155" }, titleInput: { minHeight: 48, paddingHorizontal: 12, borderWidth: 1, borderColor: "#cbd5e1", color: "#111827" }, editorTransferRow: { flexDirection: "row", gap: 8, marginTop: 9 }, editorTransferButton: { minHeight: 38, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff" }, editorTransferText: { fontSize: 11, fontWeight: "800", color: "#2563eb" }, tracksScroll: { marginTop: 12 }, trackEditor: { marginBottom: 10, padding: 12, borderWidth: 1, borderColor: "#dbe2ea", backgroundColor: "#f8fafc" }, trackHeader: { flexDirection: "row", alignItems: "center" }, trackNumber: { flex: 1, fontSize: 11, fontWeight: "900", color: "#dc2626" }, removeButton: { width: 30, height: 30, alignItems: "center", justifyContent: "center" }, kindRow: { flexDirection: "row", marginTop: 6 }, kindButton: { minHeight: 38, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff" }, kindActive: { borderColor: "#dc2626", backgroundColor: "#dc2626" }, kindText: { fontSize: 12, fontWeight: "800", color: "#475569" }, kindTextActive: { color: "#fff" }, trackInput: { minHeight: 44, marginTop: 8, paddingHorizontal: 11, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff", color: "#111827" }, lyricsRow: { flexDirection: "row", alignItems: "center", marginTop: 8, borderWidth: 1, borderStyle: "dashed", borderColor: "#93c5fd", backgroundColor: "#eff6ff" }, lyricsButton: { flex: 1, minHeight: 52, flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 12 }, lyricsTitle: { fontSize: 12, fontWeight: "800", color: "#2563eb" }, lyricsHint: { marginTop: 2, fontSize: 10, color: "#64748b" }, removeLyrics: { width: 42, height: 42, alignItems: "center", justifyContent: "center" }, addButton: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, borderWidth: 1, borderStyle: "dashed", borderColor: "#f87171" }, addText: { fontWeight: "800", color: "#b91c1c" }, actions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 14 }, cancelButton: { minWidth: 115, minHeight: 46, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#cbd5e1" }, cancelText: { fontWeight: "800", color: "#475569" }, saveButton: { minWidth: 155, minHeight: 46, alignItems: "center", justifyContent: "center", backgroundColor: "#dc2626" }, disabled: { opacity: 0.4 }, saveText: { fontWeight: "900", color: "#fff" },
 });
