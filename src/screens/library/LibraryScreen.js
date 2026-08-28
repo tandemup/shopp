@@ -458,7 +458,10 @@ export default function LibraryScreen({ navigation }) {
                 onChangeText={setSearch}
                 placeholder="Buscar por URL, dominio o autor…"
                 placeholderTextColor="#94a3b8"
-                style={styles.searchInput}
+                style={[
+                  styles.searchInput,
+                  Platform.OS === "web" && styles.webInputNoOutline,
+                ]}
                 autoCorrect={false}
               />
               {search ? (
@@ -1158,6 +1161,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   searchInput: { flex: 1, minHeight: 42, fontSize: 14, color: "#111827" },
+  webInputNoOutline: { outlineStyle: "none", outlineWidth: 0 },
   backupRow: {
     flexDirection: "row",
     alignItems: "center",

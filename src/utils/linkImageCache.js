@@ -16,6 +16,13 @@ export async function getCachedLinkImageUri(url) {
 
   try {
     if (Platform.OS === "web" && typeof caches !== "undefined") {
+      // Cache Storage necesita CORS para leer la respuesta. Las imágenes de
+      // periódicos suelen permitir <img src>, pero bloquean fetch(). En ese
+      // caso dejamos que el navegador las muestre y use su caché HTTP normal.
+      if (typeof window !== "undefined") {
+        const imageUrl = new URL(normalized, window.location.href);
+        if (imageUrl.origin !== window.location.origin) return normalized;
+      }
       const cache = await caches.open(CACHE_NAME);
       const response = await cache.match(normalized);
       if (response) {
@@ -36,7 +43,9 @@ export async function getCachedLinkImageUri(url) {
     const downloaded = await FileSystem.downloadAsync(normalized, localUri);
     return downloaded?.status === 200 ? downloaded.uri : normalized;
   } catch (error) {
-    console.warn("[linkImageCache] image cache failed", error);
+    if (Platform.OS !== "web") {
+      console.warn("[linkImageCache] image cache failed", error);
+    }
     return normalized;
   }
 }
