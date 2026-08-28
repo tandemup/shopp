@@ -15,7 +15,10 @@ import { useMutation, useQuery } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
 import { I18nText as Text } from "@/src/i18n";
-import { safeAlert } from "@/src/components/ui/alert/safeAlert";
+import {
+  safeAlert,
+  safeConfirm,
+} from "@/src/components/ui/alert/safeAlert";
 
 const EMPTY_FORM = {
   title: "",
@@ -174,8 +177,10 @@ function LiveChat({ channelId }) {
 function ChannelEditor({ channel, onClose }) {
   const createChannel = useMutation(api.live.createChannel);
   const updateChannel = useMutation(api.live.updateChannel);
+  const deleteChannel = useMutation(api.live.deleteChannel);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setForm(
@@ -211,6 +216,29 @@ function ChannelEditor({ channel, onClose }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const confirmDelete = () => {
+    if (!channel || deleting) return;
+    safeConfirm(
+      "Eliminar canal",
+      `¿Quieres eliminar «${channel.title}»? También se borrarán los mensajes del chat de este canal.`,
+      async () => {
+        setDeleting(true);
+        try {
+          await deleteChannel({ channelId: channel._id });
+          onClose();
+        } catch (error) {
+          safeAlert(
+            "Shopp Live",
+            error?.message || "No se pudo eliminar el canal.",
+          );
+        } finally {
+          setDeleting(false);
+        }
+      },
+      { confirmText: "Eliminar", destructive: true },
+    );
   };
 
   return (
@@ -273,6 +301,22 @@ function ChannelEditor({ channel, onClose }) {
           <Text style={styles.primaryButtonText}>Guardar canal</Text>
         )}
       </Pressable>
+      {channel ? (
+        <Pressable
+          onPress={confirmDelete}
+          disabled={saving || deleting}
+          style={styles.deleteButton}
+        >
+          {deleting ? (
+            <ActivityIndicator color="#B91C1C" />
+          ) : (
+            <>
+              <Ionicons name="trash-outline" size={18} color="#B91C1C" />
+              <Text style={styles.deleteButtonText}>Eliminar canal</Text>
+            </>
+          )}
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -287,7 +331,13 @@ export default function ShoppLiveScreen() {
   const [editorChannel, setEditorChannel] = useState(null);
 
   useEffect(() => {
-    if (!selectedId && channels?.length) setSelectedId(channels[0]._id);
+    if (
+      channels?.length &&
+      (!selectedId || !channels.some((channel) => channel._id === selectedId))
+    ) {
+      setSelectedId(channels[0]._id);
+    }
+    if (channels?.length === 0 && selectedId) setSelectedId(null);
   }, [channels, selectedId]);
 
   const selected = useMemo(
@@ -490,6 +540,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#7C3AED",
   },
   primaryButtonText: { color: "#FFFFFF", fontWeight: "700" },
+  deleteButton: {
+    minHeight: 42,
+    flexDirection: "row",
+    gap: 7,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    backgroundColor: "#FEF2F2",
+  },
+  deleteButtonText: { color: "#B91C1C", fontWeight: "700" },
   channelList: { gap: 10, paddingBottom: 16 },
   channelCard: {
     width: 190,

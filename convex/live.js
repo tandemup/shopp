@@ -91,6 +91,25 @@ export const updateChannel = mutation({
   },
 });
 
+export const deleteChannel = mutation({
+  args: { channelId: v.id("liveChannels") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const channel = await ctx.db.get(args.channelId);
+    if (!channel) throw new Error("Canal no encontrado.");
+
+    const messages = await ctx.db
+      .query("liveMessages")
+      .withIndex("by_channel_createdAt", (q) => q.eq("channelId", args.channelId))
+      .collect();
+
+    for (const message of messages) {
+      await ctx.db.delete(message._id);
+    }
+    await ctx.db.delete(args.channelId);
+  },
+});
+
 export const setLiveStatus = mutation({
   args: {
     channelId: v.id("liveChannels"),
