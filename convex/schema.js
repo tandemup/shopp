@@ -991,4 +991,28 @@ export default defineSchema({
       "barcode",
       "status",
     ]),
+
+  liveChannels: defineTable({
+    ownerId: v.id("users"),
+    title: v.string(),
+    category: v.optional(v.string()),
+    description: v.optional(v.string()),
+    playbackUrl: v.optional(v.string()),
+    thumbnailUrl: v.optional(v.string()),
+    status: v.union(v.literal("offline"), v.literal("live")),
+    startedAt: v.optional(v.float64()),
+    endedAt: v.optional(v.float64()),
+    createdAt: v.float64(),
+    updatedAt: v.float64(),
+  })
+    .index("by_status_updatedAt", ["status", "updatedAt"])
+    .index("by_owner_updatedAt", ["ownerId", "updatedAt"]),
+
+  liveMessages: defineTable({
+    channelId: v.id("liveChannels"),
+    userId: v.id("users"),
+    username: v.string(),
+    text: v.string(),
+    createdAt: v.float64(),
+  }).index("by_channel_createdAt", ["channelId", "createdAt"]),
 });

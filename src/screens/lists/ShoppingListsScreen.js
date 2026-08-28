@@ -258,6 +258,17 @@ function QuickActions({
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.PLAY_LIST),
       },
       {
+        key: "shoppLive",
+        label: "Shopp Live",
+        description: "Canales, directos y chat",
+        icon: "radio-outline",
+        iconColor: COLORS.red,
+        iconBackground: COLORS.redSoft,
+        badgeLabel: "DEV",
+        onPress: () =>
+          navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.SHOPP_LIVE),
+      },
+      {
         key: "chatPrototype",
         label: "Chat prototipo",
         description: "Prueba el nuevo chat de compras",
