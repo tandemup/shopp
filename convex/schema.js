@@ -999,6 +999,10 @@ export default defineSchema({
     description: v.optional(v.string()),
     playbackUrl: v.optional(v.string()),
     thumbnailUrl: v.optional(v.string()),
+    broadcastMode: v.optional(
+      v.union(v.literal("external"), v.literal("camera")),
+    ),
+    cameraBroadcasterId: v.optional(v.string()),
     status: v.union(v.literal("offline"), v.literal("live")),
     startedAt: v.optional(v.float64()),
     endedAt: v.optional(v.float64()),
@@ -1015,4 +1019,28 @@ export default defineSchema({
     text: v.string(),
     createdAt: v.float64(),
   }).index("by_channel_createdAt", ["channelId", "createdAt"]),
+
+  liveViewerSessions: defineTable({
+    channelId: v.id("liveChannels"),
+    viewerId: v.id("users"),
+    clientId: v.string(),
+    offer: v.string(),
+    answer: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("connected"),
+      v.literal("ended"),
+    ),
+    createdAt: v.float64(),
+    updatedAt: v.float64(),
+  })
+    .index("by_channel_status", ["channelId", "status"])
+    .index("by_viewer_client", ["viewerId", "clientId"]),
+
+  liveIceCandidates: defineTable({
+    sessionId: v.id("liveViewerSessions"),
+    side: v.union(v.literal("viewer"), v.literal("broadcaster")),
+    candidate: v.string(),
+    createdAt: v.float64(),
+  }).index("by_session_side", ["sessionId", "side"]),
 });

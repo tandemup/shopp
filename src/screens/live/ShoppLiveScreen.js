@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -19,6 +19,7 @@ import {
   safeAlert,
   safeConfirm,
 } from "@/src/components/ui/alert/safeAlert";
+import { CameraBroadcaster, CameraViewer } from "./LiveCameraWeb";
 
 const EMPTY_FORM = {
   title: "",
@@ -326,9 +327,21 @@ export default function ShoppLiveScreen() {
   const currentUser = useQuery(api.users.current);
   const channels = useQuery(api.live.listChannels);
   const setLiveStatus = useMutation(api.live.setLiveStatus);
+  const startCameraBroadcast = useMutation(api.live.startCameraBroadcast);
+  const stopCameraBroadcast = useMutation(api.live.stopCameraBroadcast);
   const [selectedId, setSelectedId] = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorChannel, setEditorChannel] = useState(null);
+  const deviceBroadcasterId = useMemo(() => {
+    if (Platform.OS !== "web") return "native-device";
+    const key = "shopp-live-broadcaster-id";
+    let value = window.sessionStorage.getItem(key);
+    if (!value) {
+      value = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+      window.sessionStorage.setItem(key, value);
+    }
+    return value;
+  }, []);
 
   useEffect(() => {
     if (
@@ -359,6 +372,49 @@ export default function ShoppLiveScreen() {
       );
     }
   };
+
+  const startCamera = async () => {
+    if (Platform.OS !== "web" || !navigator.mediaDevices?.getUserMedia) {
+      safeAlert(
+        "Shopp Live",
+        "La cámara en directo requiere abrir Shopp como PWA en un navegador compatible.",
+      );
+      return;
+    }
+    try {
+      await startCameraBroadcast({
+        channelId: selected._id,
+        broadcasterId: deviceBroadcasterId,
+      });
+    } catch (error) {
+      safeAlert("Shopp Live", error?.message || "No se pudo iniciar la cámara.");
+    }
+  };
+
+  const stopCamera = async () => {
+    try {
+      await stopCameraBroadcast({ channelId: selected._id });
+    } catch (error) {
+      safeAlert("Shopp Live", error?.message || "No se pudo detener la cámara.");
+    }
+  };
+
+  const handleCameraError = useCallback((error) => {
+    safeAlert(
+      "Cámara y micrófono",
+      error?.message || "No se pudo acceder a la cámara o al micrófono.",
+    );
+  }, []);
+
+  const handleBroadcasterError = useCallback(
+    async (error) => {
+      handleCameraError(error);
+      if (selected?._id) {
+        await stopCameraBroadcast({ channelId: selected._id }).catch(() => {});
+      }
+    },
+    [handleCameraError, selected?._id, stopCameraBroadcast],
+  );
 
   if (channels === undefined || currentUser === undefined) {
     return (
@@ -435,7 +491,21 @@ export default function ShoppLiveScreen() {
 
           <View style={[styles.liveLayout, wide && styles.liveLayoutWide]}>
             <View style={styles.videoColumn}>
-              <Playback channel={selected} />
+              {selected.status === "live" && selected.broadcastMode === "camera" ? (
+                selected.cameraBroadcasterId === deviceBroadcasterId ? (
+                  <CameraBroadcaster
+                    channelId={selected._id}
+                    onError={handleBroadcasterError}
+                  />
+                ) : (
+                  <CameraViewer
+                    channelId={selected._id}
+                    onError={handleCameraError}
+                  />
+                )
+              ) : (
+                <Playback channel={selected} />
+              )}
               <View style={styles.streamInfo}>
                 <View style={styles.streamTitleRow}>
                   <View style={styles.streamTitleCopy}>
@@ -472,7 +542,12 @@ export default function ShoppLiveScreen() {
                       <Text style={styles.editButtonText}>Editar canal</Text>
                     </Pressable>
                     <Pressable
-                      onPress={toggleStatus}
+                      onPress={
+                        selected.status === "live" &&
+                        selected.broadcastMode === "camera"
+                          ? stopCamera
+                          : toggleStatus
+                      }
                       style={[
                         styles.statusButton,
                         selected.status === "live" && styles.stopButton,
@@ -493,6 +568,12 @@ export default function ShoppLiveScreen() {
                           : "Marcar en directo"}
                       </Text>
                     </Pressable>
+                    {selected.status === "offline" ? (
+                      <Pressable onPress={startCamera} style={styles.cameraButton}>
+                        <Ionicons name="videocam-outline" size={19} color="#FFFFFF" />
+                        <Text style={styles.primaryButtonText}>Emitir con cámara</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 ) : null}
               </View>
@@ -658,6 +739,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#E11D48",
   },
   stopButton: { backgroundColor: "#334155" },
+  cameraButton: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    gap: 7,
+    alignItems: "center",
+    borderRadius: 9,
+    paddingHorizontal: 14,
+    minHeight: 40,
+    backgroundColor: "#7C3AED",
+  },
   chatPanel: {
     width: "100%",
     maxWidth: 380,
