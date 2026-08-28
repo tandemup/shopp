@@ -358,6 +358,7 @@ export default function ShoppLiveScreen() {
     [channels, selectedId],
   );
   const wide = width >= 900;
+  const compact = width < 640;
 
   const toggleStatus = async () => {
     try {
@@ -426,8 +427,8 @@ export default function ShoppLiveScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.page}>
-      <View style={styles.hero}>
-        <View>
+      <View style={[styles.hero, compact && styles.heroCompact]}>
+        <View style={styles.heroCopy}>
           <Text style={styles.heroTitle}>Shopp Live</Text>
           <Text style={styles.heroSubtitle}>
             Retransmisiones y conversación en tiempo real
@@ -439,7 +440,10 @@ export default function ShoppLiveScreen() {
               setEditorChannel(null);
               setEditorOpen(true);
             }}
-            style={styles.primaryButton}
+            style={[
+              styles.primaryButton,
+              compact && styles.newChannelButtonCompact,
+            ]}
           >
             <Ionicons name="add" size={18} color="#FFFFFF" />
             <Text style={styles.primaryButtonText}>Nuevo canal</Text>
@@ -603,6 +607,12 @@ const styles = StyleSheet.create({
     gap: 16,
     marginBottom: 16,
   },
+  heroCompact: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 12,
+  },
+  heroCopy: { flex: 1, minWidth: 0 },
   heroTitle: {
     fontSize: 29,
     lineHeight: 35,
@@ -621,6 +631,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#7C3AED",
   },
   primaryButtonText: { color: "#FFFFFF", fontWeight: "700" },
+  newChannelButtonCompact: { width: "100%" },
   deleteButton: {
     minHeight: 42,
     flexDirection: "row",
