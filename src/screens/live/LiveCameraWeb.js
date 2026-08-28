@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
 import { useMutation, useQuery } from "convex/react";
 
@@ -8,6 +8,8 @@ import { I18nText as Text } from "@/src/i18n";
 const RTC_CONFIG = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
+
+const DATA_CHANNEL_LABEL = "shopp-live-data";
 
 function Video({ videoRef, muted = false }) {
   return React.createElement("video", {
@@ -20,7 +22,63 @@ function Video({ videoRef, muted = false }) {
   });
 }
 
-function BroadcasterPeer({ session, stream }) {
+function normalizeRtcMessage(rawValue) {
+  const receivedAt = Date.now();
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (parsed && typeof parsed === "object") {
+      return {
+        ...parsed,
+        receivedAt,
+      };
+    }
+  } catch {
+    // Los mensajes de texto plano también son válidos.
+  }
+  return {
+    type: "MESSAGE",
+    text: String(rawValue),
+    timestamp: receivedAt,
+    receivedAt,
+  };
+}
+
+function bindDataChannel(channel, { onMessage, onReady }) {
+  if (!channel) return () => {};
+
+  const send = (message) => {
+    if (channel.readyState !== "open") {
+      throw new Error("El canal de datos WebRTC todavía no está conectado.");
+    }
+    const payload =
+      typeof message === "string"
+        ? message
+        : JSON.stringify({ timestamp: Date.now(), ...message });
+    channel.send(payload);
+  };
+
+  channel.onopen = () => onReady?.(send, true);
+  channel.onclose = () => onReady?.(null, false);
+  channel.onerror = () => onReady?.(null, false);
+  channel.onmessage = (event) => onMessage?.(normalizeRtcMessage(event.data));
+
+  if (channel.readyState === "open") onReady?.(send, true);
+
+  return () => {
+    channel.onopen = null;
+    channel.onclose = null;
+    channel.onerror = null;
+    channel.onmessage = null;
+    onReady?.(null, false);
+  };
+}
+
+function BroadcasterPeer({
+  session,
+  stream,
+  onDataMessage,
+  onDataChannelReady,
+}) {
   const answerSession = useMutation(api.live.answerCameraSession);
   const addCandidate = useMutation(api.live.addCameraIceCandidate);
   const remoteCandidates = useQuery(api.live.listCameraIceCandidates, {
@@ -28,6 +86,7 @@ function BroadcasterPeer({ session, stream }) {
     side: "viewer",
   });
   const peerRef = useRef(null);
+  const dataCleanupRef = useRef(null);
   const appliedRef = useRef(new Set());
   const [remoteReady, setRemoteReady] = useState(false);
 
@@ -37,6 +96,18 @@ function BroadcasterPeer({ session, stream }) {
     const peer = new RTCPeerConnection(RTC_CONFIG);
     peerRef.current = peer;
     stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+
+    peer.ondatachannel = (event) => {
+      if (event.channel?.label !== DATA_CHANNEL_LABEL) return;
+      dataCleanupRef.current?.();
+      dataCleanupRef.current = bindDataChannel(event.channel, {
+        onMessage: (message) =>
+          onDataMessage?.({ ...message, peerSessionId: session._id }),
+        onReady: (send, connected) =>
+          onDataChannelReady?.(session._id, send, connected),
+      });
+    };
+
     peer.onicecandidate = ({ candidate }) => {
       if (!candidate || cancelled) return;
       addCandidate({
@@ -64,10 +135,21 @@ function BroadcasterPeer({ session, stream }) {
 
     return () => {
       cancelled = true;
+      dataCleanupRef.current?.();
+      dataCleanupRef.current = null;
+      onDataChannelReady?.(session._id, null, false);
       peer.close();
       peerRef.current = null;
     };
-  }, [addCandidate, answerSession, session._id, session.offer, stream]);
+  }, [
+    addCandidate,
+    answerSession,
+    onDataChannelReady,
+    onDataMessage,
+    session._id,
+    session.offer,
+    stream,
+  ]);
 
   useEffect(() => {
     const peer = peerRef.current;
@@ -82,10 +164,51 @@ function BroadcasterPeer({ session, stream }) {
   return null;
 }
 
-export function CameraBroadcaster({ channelId, onError, onStreamReady }) {
+export function CameraBroadcaster({
+  channelId,
+  onError,
+  onStreamReady,
+  onDataMessage,
+  onDataSenderReady,
+}) {
   const sessions = useQuery(api.live.listCameraSessions, { channelId });
   const videoRef = useRef(null);
+  const dataSendersRef = useRef(new Map());
   const [stream, setStream] = useState(null);
+
+  useEffect(() => {
+    const broadcastSend = (message) => {
+      const senders = Array.from(dataSendersRef.current.values());
+      if (senders.length === 0) {
+        throw new Error("No hay espectadores conectados al canal de datos.");
+      }
+      senders.forEach((send) => send(message));
+    };
+    onDataSenderReady?.(
+      dataSendersRef.current.size ? broadcastSend : null,
+      dataSendersRef.current.size > 0,
+    );
+  }, [onDataSenderReady]);
+
+  const handleDataChannelReady = useCallback(
+    (sessionId, send, connected) => {
+      if (connected && send) dataSendersRef.current.set(sessionId, send);
+      else dataSendersRef.current.delete(sessionId);
+
+      const broadcastSend = (message) => {
+        const senders = Array.from(dataSendersRef.current.values());
+        if (senders.length === 0) {
+          throw new Error("No hay espectadores conectados al canal de datos.");
+        }
+        senders.forEach((sender) => sender(message));
+      };
+      onDataSenderReady?.(
+        dataSendersRef.current.size ? broadcastSend : null,
+        dataSendersRef.current.size > 0,
+      );
+    },
+    [onDataSenderReady],
+  );
 
   useEffect(() => {
     if (Platform.OS !== "web" || !navigator.mediaDevices?.getUserMedia) {
@@ -97,7 +220,11 @@ export function CameraBroadcaster({ channelId, onError, onStreamReady }) {
     (async () => {
       try {
         localStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: {
+            facingMode: "user",
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
           audio: true,
         });
         if (cancelled) {
@@ -122,7 +249,9 @@ export function CameraBroadcaster({ channelId, onError, onStreamReady }) {
   }, [stream]);
 
   if (Platform.OS !== "web") {
-    return <Text style={styles.message}>La emisión con cámara está disponible en la PWA.</Text>;
+    return (
+      <Text style={styles.message}>La emisión con cámara está disponible en la PWA.</Text>
+    );
   }
 
   return (
@@ -136,14 +265,25 @@ export function CameraBroadcaster({ channelId, onError, onStreamReady }) {
       {!stream ? <ActivityIndicator style={styles.loader} color="#FFFFFF" /> : null}
       {stream
         ? sessions?.map((session) => (
-            <BroadcasterPeer key={session._id} session={session} stream={stream} />
+            <BroadcasterPeer
+              key={session._id}
+              session={session}
+              stream={stream}
+              onDataMessage={onDataMessage}
+              onDataChannelReady={handleDataChannelReady}
+            />
           ))
         : null}
     </View>
   );
 }
 
-export function CameraViewer({ channelId, onError }) {
+export function CameraViewer({
+  channelId,
+  onError,
+  onDataMessage,
+  onDataSenderReady,
+}) {
   const createSession = useMutation(api.live.createCameraSession);
   const addCandidate = useMutation(api.live.addCameraIceCandidate);
   const leaveSession = useMutation(api.live.leaveCameraSession);
@@ -159,6 +299,7 @@ export function CameraViewer({ channelId, onError }) {
   );
   const videoRef = useRef(null);
   const peerRef = useRef(null);
+  const dataCleanupRef = useRef(null);
   const sessionIdRef = useRef(null);
   const queuedCandidatesRef = useRef([]);
   const appliedRef = useRef(new Set());
@@ -172,6 +313,15 @@ export function CameraViewer({ channelId, onError }) {
     peerRef.current = peer;
     peer.addTransceiver("video", { direction: "recvonly" });
     peer.addTransceiver("audio", { direction: "recvonly" });
+
+    const dataChannel = peer.createDataChannel(DATA_CHANNEL_LABEL, {
+      ordered: true,
+    });
+    dataCleanupRef.current = bindDataChannel(dataChannel, {
+      onMessage: onDataMessage,
+      onReady: onDataSenderReady,
+    });
+
     peer.ontrack = ({ streams }) => {
       if (videoRef.current && streams[0]) videoRef.current.srcObject = streams[0];
     };
@@ -195,7 +345,8 @@ export function CameraViewer({ channelId, onError }) {
         await peer.setLocalDescription(offer);
         const id = await createSession({
           channelId,
-          clientId: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+          clientId:
+            globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
           offer: JSON.stringify(peer.localDescription),
         });
         if (cancelled) {
@@ -217,12 +368,22 @@ export function CameraViewer({ channelId, onError }) {
 
     return () => {
       cancelled = true;
+      dataCleanupRef.current?.();
+      dataCleanupRef.current = null;
       peer.close();
       peerRef.current = null;
       const id = sessionIdRef.current;
       if (id) leaveSession({ sessionId: id }).catch(() => {});
     };
-  }, [addCandidate, channelId, createSession, leaveSession, onError]);
+  }, [
+    addCandidate,
+    channelId,
+    createSession,
+    leaveSession,
+    onDataMessage,
+    onDataSenderReady,
+    onError,
+  ]);
 
   useEffect(() => {
     if (!sessionId) return undefined;
@@ -238,7 +399,10 @@ export function CameraViewer({ channelId, onError }) {
     const peer = peerRef.current;
     if (!peer || !session?.answer || answerAppliedRef.current) return;
     answerAppliedRef.current = true;
-    peer.setRemoteDescription(JSON.parse(session.answer)).then(() => setRemoteReady(true)).catch(onError);
+    peer
+      .setRemoteDescription(JSON.parse(session.answer))
+      .then(() => setRemoteReady(true))
+      .catch(onError);
   }, [onError, session?.answer]);
 
   useEffect(() => {

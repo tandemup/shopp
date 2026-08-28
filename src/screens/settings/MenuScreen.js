@@ -20,7 +20,7 @@ import { api } from "@/convex/_generated/api";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useCameraPermissions } from "expo-camera";
+import { useCameraPermissions, useMicrophonePermissions } from "expo-camera";
 import * as Location from "expo-location";
 
 import { ROUTES } from "@/src/navigation/ROUTES";
@@ -52,6 +52,7 @@ const EXPORT_STORAGE_KEYS = {
 };
 
 const CAMERA_GRANTED_STORAGE_KEY = "shopp:web-camera-access-granted";
+const MICROPHONE_GRANTED_STORAGE_KEY = "shopp:web-microphone-access-granted";
 
 const ADMIN_EMAIL = "info@ramshopp.com";
 const IMPORT_ITEMS_CHUNK_SIZE = 150;
@@ -559,6 +560,73 @@ async function getWebCameraPermissionStatus() {
   }
 }
 
+async function getWebMicrophonePermissionStatus() {
+  if (Platform.OS !== "web") return null;
+
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    return { granted: false, status: "denied", canAskAgain: false };
+  }
+
+  if (!navigator.permissions?.query) {
+    const remembered =
+      window.localStorage.getItem(MICROPHONE_GRANTED_STORAGE_KEY) === "true";
+    return {
+      granted: remembered,
+      status: remembered ? "granted" : "undetermined",
+      canAskAgain: true,
+    };
+  }
+
+  try {
+    const permission = await navigator.permissions.query({ name: "microphone" });
+    return {
+      granted: permission.state === "granted",
+      status:
+        permission.state === "granted"
+          ? "granted"
+          : permission.state === "denied"
+            ? "denied"
+            : "undetermined",
+      canAskAgain: permission.state !== "denied",
+    };
+  } catch (error) {
+    const remembered =
+      window.localStorage.getItem(MICROPHONE_GRANTED_STORAGE_KEY) === "true";
+    return {
+      granted: remembered,
+      status: remembered ? "granted" : "undetermined",
+      canAskAgain: true,
+    };
+  }
+}
+
+async function requestWebMicrophonePermission() {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    return { granted: false, status: "denied", canAskAgain: false };
+  }
+
+  let stream = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: false,
+      audio: true,
+    });
+    window.localStorage.setItem(MICROPHONE_GRANTED_STORAGE_KEY, "true");
+    return { granted: true, status: "granted", canAskAgain: true };
+  } catch (error) {
+    window.localStorage.removeItem(MICROPHONE_GRANTED_STORAGE_KEY);
+    const blocked =
+      error?.name === "NotAllowedError" || error?.name === "SecurityError";
+    return {
+      granted: false,
+      status: blocked ? "denied" : "undetermined",
+      canAskAgain: !blocked,
+    };
+  } finally {
+    stream?.getTracks?.().forEach((track) => track.stop());
+  }
+}
+
 async function requestWebCameraPermission() {
   if (
     typeof navigator === "undefined" ||
@@ -619,8 +687,11 @@ export default function MenuScreen({ navigation }) {
 
   const [nativeCameraPermission, requestNativeCameraPermission] =
     useCameraPermissions();
+  const [nativeMicrophonePermission, requestNativeMicrophonePermission] =
+    useMicrophonePermissions();
 
   const [webCameraPermission, setWebCameraPermission] = useState(null);
+  const [webMicrophonePermission, setWebMicrophonePermission] = useState(null);
 
   const [locationPermission, setLocationPermission] = useState(null);
   const [exportingUserData, setExportingUserData] = useState(false);
@@ -682,6 +753,8 @@ export default function MenuScreen({ navigation }) {
 
   const cameraPermission =
     Platform.OS === "web" ? webCameraPermission : nativeCameraPermission;
+  const microphonePermission =
+    Platform.OS === "web" ? webMicrophonePermission : nativeMicrophonePermission;
 
   useFocusEffect(
     useCallback(() => {
@@ -690,10 +763,14 @@ export default function MenuScreen({ navigation }) {
       async function refreshWebCameraPermission() {
         if (Platform.OS !== "web") return;
 
-        const result = await getWebCameraPermissionStatus();
+        const [cameraResult, microphoneResult] = await Promise.all([
+          getWebCameraPermissionStatus(),
+          getWebMicrophonePermissionStatus(),
+        ]);
 
         if (active) {
-          setWebCameraPermission(result);
+          setWebCameraPermission(cameraResult);
+          setWebMicrophonePermission(microphoneResult);
         }
       }
 
@@ -837,6 +914,16 @@ export default function MenuScreen({ navigation }) {
         canAskAgain: true,
       });
     }
+  };
+
+  const requestMicrophonePermission = async () => {
+    if (Platform.OS === "web") {
+      const result = await requestWebMicrophonePermission();
+      setWebMicrophonePermission(result);
+      return result;
+    }
+
+    return requestNativeMicrophonePermission();
   };
 
   const requestCameraPermission = async () => {
@@ -1309,20 +1396,19 @@ export default function MenuScreen({ navigation }) {
                 }
               />
 
-              {Platform.OS !== "web" ? (
-                <PermissionRow
-                  icon="mic-outline"
-                  title="Micrófono"
-                  description="Necesario solo si grabas vídeo con audio."
-                  permission={null}
-                  onPress={() => {
-                    safeAlert(
-                      "Micrófono",
-                      "Shopp no necesita micrófono para escanear códigos de barras.",
-                    );
-                  }}
-                />
-              ) : null}
+              <PermissionRow
+                icon="mic-outline"
+                title="Micrófono"
+                description="Necesario para retransmisiones y vídeo con audio."
+                permission={microphonePermission}
+                onPress={() =>
+                  handlePermissionPress(
+                    microphonePermission,
+                    requestMicrophonePermission,
+                    "Micrófono",
+                  )
+                }
+              />
 
               <PermissionRow
                 icon="location-outline"

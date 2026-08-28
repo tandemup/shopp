@@ -175,6 +175,102 @@ function LiveChat({ channelId }) {
   );
 }
 
+
+function RtcDataPanel({ connected, messages, onSend }) {
+  const [text, setText] = useState("");
+
+  const sendPayload = (payload) => {
+    try {
+      onSend?.(payload);
+    } catch (error) {
+      safeAlert("RTCDataChannel", error?.message || "No se pudo enviar el mensaje P2P.");
+    }
+  };
+
+  const sendText = () => {
+    const value = text.trim();
+    if (!value) return;
+    sendPayload({ type: "MESSAGE", text: value });
+    setText("");
+  };
+
+  return (
+    <View style={styles.rtcPanel}>
+      <View style={styles.rtcHeader}>
+        <View>
+          <Text style={styles.panelTitle}>RTCDataChannel</Text>
+          <Text style={styles.rtcHelp}>Mensajes P2P sin pasar por Convex.</Text>
+        </View>
+        <View style={[styles.rtcState, connected && styles.rtcStateConnected]}>
+          <Text style={[styles.rtcStateText, connected && styles.rtcStateTextConnected]}>
+            {connected ? "CONECTADO" : "DESCONECTADO"}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.rtcActions}>
+        <Pressable
+          disabled={!connected}
+          onPress={() => sendPayload({ type: "PING" })}
+          style={[styles.rtcActionButton, !connected && styles.rtcActionDisabled]}
+        >
+          <Text style={styles.rtcActionText}>PING</Text>
+        </Pressable>
+        <Pressable
+          disabled={!connected}
+          onPress={() => sendPayload({ type: "HELP", text: "Solicitud de ayuda" })}
+          style={[styles.rtcActionButton, !connected && styles.rtcActionDisabled]}
+        >
+          <Text style={styles.rtcActionText}>HELP</Text>
+        </Pressable>
+        <Pressable
+          disabled={!connected}
+          onPress={() => sendPayload({ type: "FIRE_ALERT", text: "Alerta de incendio" })}
+          style={[styles.rtcDangerButton, !connected && styles.rtcActionDisabled]}
+        >
+          <Text style={styles.rtcDangerText}>FIRE_ALERT</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.rtcComposer}>
+        <TextInput
+          value={text}
+          onChangeText={setText}
+          placeholder="Mensaje P2P"
+          placeholderTextColor="#94A3B8"
+          onSubmitEditing={sendText}
+          style={styles.rtcInput}
+        />
+        <Pressable
+          disabled={!connected || !text.trim()}
+          onPress={sendText}
+          style={[styles.rtcSendButton, (!connected || !text.trim()) && styles.rtcActionDisabled]}
+        >
+          <Ionicons name="send" size={17} color="#FFFFFF" />
+        </Pressable>
+      </View>
+
+      <ScrollView style={styles.rtcMessages} contentContainerStyle={styles.rtcMessagesContent}>
+        {messages.length === 0 ? (
+          <Text style={styles.emptyText}>Aún no se han recibido mensajes P2P.</Text>
+        ) : (
+          messages.map((message) => (
+            <View key={message.id} style={styles.rtcMessageRow}>
+              <Text style={styles.rtcMessageType}>{message.type || "MESSAGE"}</Text>
+              <Text style={styles.rtcMessageBody}>
+                {message.text || JSON.stringify(message.payload || {})}
+              </Text>
+              <Text style={styles.rtcMessageTime}>
+                {new Date(message.receivedAt || message.timestamp || Date.now()).toLocaleTimeString()}
+              </Text>
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
 function ChannelEditor({ channel, onClose }) {
   const createChannel = useMutation(api.live.createChannel);
   const updateChannel = useMutation(api.live.updateChannel);
@@ -332,6 +428,9 @@ export default function ShoppLiveScreen() {
   const [selectedId, setSelectedId] = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorChannel, setEditorChannel] = useState(null);
+  const [rtcMessages, setRtcMessages] = useState([]);
+  const [rtcSend, setRtcSend] = useState(null);
+  const [rtcConnected, setRtcConnected] = useState(false);
   const deviceBroadcasterId = useMemo(() => {
     if (Platform.OS !== "web") return "native-device";
     const key = "shopp-live-broadcaster-id";
@@ -359,6 +458,12 @@ export default function ShoppLiveScreen() {
   );
   const wide = width >= 900;
   const compact = width < 640;
+
+  useEffect(() => {
+    setRtcMessages([]);
+    setRtcSend(null);
+    setRtcConnected(false);
+  }, [selected?._id]);
 
   const toggleStatus = async () => {
     try {
@@ -416,6 +521,28 @@ export default function ShoppLiveScreen() {
     },
     [handleCameraError, selected?._id, stopCameraBroadcast],
   );
+
+  const handleRtcMessage = useCallback((message) => {
+    setRtcMessages((current) => [
+      {
+        ...message,
+        id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+      },
+      ...current,
+    ].slice(0, 30));
+  }, []);
+
+  const handleRtcSenderReady = useCallback((send, connected) => {
+    setRtcSend(() => send || null);
+    setRtcConnected(Boolean(connected && send));
+  }, []);
+
+  const sendRtcMessage = useCallback((message) => {
+    if (!rtcSend) {
+      throw new Error("El RTCDataChannel no está conectado.");
+    }
+    rtcSend(message);
+  }, [rtcSend]);
 
   if (channels === undefined || currentUser === undefined) {
     return (
@@ -500,11 +627,15 @@ export default function ShoppLiveScreen() {
                   <CameraBroadcaster
                     channelId={selected._id}
                     onError={handleBroadcasterError}
+                    onDataMessage={handleRtcMessage}
+                    onDataSenderReady={handleRtcSenderReady}
                   />
                 ) : (
                   <CameraViewer
                     channelId={selected._id}
                     onError={handleCameraError}
+                    onDataMessage={handleRtcMessage}
+                    onDataSenderReady={handleRtcSenderReady}
                   />
                 )
               ) : (
@@ -581,6 +712,13 @@ export default function ShoppLiveScreen() {
                   </View>
                 ) : null}
               </View>
+              {selected.status === "live" && selected.broadcastMode === "camera" ? (
+                <RtcDataPanel
+                  connected={rtcConnected}
+                  messages={rtcMessages}
+                  onSend={sendRtcMessage}
+                />
+              ) : null}
             </View>
             <LiveChat channelId={selected._id} />
           </View>
@@ -833,4 +971,82 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   emptyText: { color: "#64748B", textAlign: "center" },
+
+  rtcPanel: {
+    marginTop: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    gap: 10,
+  },
+  rtcHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  rtcHelp: { color: "#64748B", fontSize: 12, marginTop: 2 },
+  rtcState: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "#F1F5F9",
+  },
+  rtcStateConnected: { backgroundColor: "#DCFCE7" },
+  rtcStateText: { color: "#64748B", fontSize: 10, fontWeight: "800" },
+  rtcStateTextConnected: { color: "#166534" },
+  rtcActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  rtcActionButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: "#EDE9FE",
+  },
+  rtcActionText: { color: "#5B21B6", fontSize: 12, fontWeight: "800" },
+  rtcDangerButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: "#FEE2E2",
+  },
+  rtcDangerText: { color: "#B91C1C", fontSize: 12, fontWeight: "800" },
+  rtcActionDisabled: { opacity: 0.42 },
+  rtcComposer: { flexDirection: "row", gap: 8 },
+  rtcInput: {
+    flex: 1,
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    color: "#0F172A",
+    backgroundColor: "#FFFFFF",
+  },
+  rtcSendButton: {
+    width: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 9,
+    backgroundColor: "#7C3AED",
+  },
+  rtcMessages: { maxHeight: 180 },
+  rtcMessagesContent: { gap: 6 },
+  rtcMessageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+  },
+  rtcMessageType: {
+    minWidth: 72,
+    color: "#5B21B6",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  rtcMessageBody: { flex: 1, color: "#334155", fontSize: 12 },
+  rtcMessageTime: { color: "#94A3B8", fontSize: 10 },
 });
