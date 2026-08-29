@@ -38,6 +38,15 @@ const NEWS_DEFAULT_FOLDERS = [
 
 const URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
 const TRAILING_PUNCTUATION = /[.,!?;:]+$/;
+const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
+const TRACKING_QUERY_KEYS = new Set([
+  "fbclid",
+  "gclid",
+  "mc_cid",
+  "mc_eid",
+  "redir_esc",
+  "si",
+]);
 
 function cleanClientId(value) {
   return String(value || "").trim().slice(0, 120);
@@ -54,10 +63,28 @@ function normalizeLink(value) {
   try {
     const url = new URL(String(value || "").replace(TRAILING_PUNCTUATION, ""));
     if (!/^https?:$/.test(url.protocol) || !url.hostname) return null;
+    url.hostname = url.hostname.replace(/^www\./i, "").toLowerCase();
     url.hash = "";
+    for (const key of [...url.searchParams.keys()]) {
+      const normalizedKey = key.toLowerCase();
+      if (
+        normalizedKey.startsWith("utm_") ||
+        TRACKING_QUERY_KEYS.has(normalizedKey)
+      ) {
+        url.searchParams.delete(key);
+      }
+    }
+    if (url.pathname.length > 1) {
+      url.pathname = url.pathname.replace(/\/+$/, "");
+    }
+    const sortedParams = [...url.searchParams.entries()].sort(
+      ([keyA, valueA], [keyB, valueB]) =>
+        keyA.localeCompare(keyB) || valueA.localeCompare(valueB),
+    );
+    url.search = new URLSearchParams(sortedParams).toString();
     return {
       url: url.toString(),
-      hostname: url.hostname.replace(/^www\./, "").toLowerCase(),
+      hostname: url.hostname,
     };
   } catch {
     return null;
@@ -129,6 +156,32 @@ export const ensureDefaultFolders = mutation({
       .query("computerLinkFolders")
       .withIndex("by_name", (q) => q.eq("name", "Noticias"))
       .first();
+    const booksFolder = await ctx.db
+      .query("computerLinkFolders")
+      .withIndex("by_name", (q) => q.eq("name", "Libros"))
+      .first();
+    let migratedBooks = 0;
+
+    if (booksFolder) {
+      const legacyBookLinks = await ctx.db
+        .query("computerLinks")
+        .collect();
+
+      for (const link of legacyBookLinks) {
+        if (
+          String(link.folderId || "") === String(booksFolder._id) &&
+          (link.linkType === "general" || link.linkType === undefined)
+        ) {
+          await ctx.db.patch(link._id, {
+            linkType: "bookLink",
+            sourceDomain: link.sourceDomain || link.hostname,
+            status: "reviewed",
+            updatedAt: now,
+          });
+          migratedBooks += 1;
+        }
+      }
+    }
 
     for (let index = 0; index < LEGACY_DEFAULT_FOLDER_NAMES.length; index += 1) {
       const name = LEGACY_DEFAULT_FOLDER_NAMES[index];
@@ -182,7 +235,7 @@ export const ensureDefaultFolders = mutation({
         }
       }
     }
-    return { created };
+    return { created, migratedBooks };
   },
 });
 
@@ -200,6 +253,76 @@ export const syncFromChat = mutation({
       }
     }
     return { created };
+  },
+});
+
+export const normalizeAndDeduplicate = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const links = await ctx.db.query("computerLinks").collect();
+    const canonicalLinks = new Map();
+    let normalizedCount = 0;
+    let duplicatesRemoved = 0;
+
+    for (const link of links) {
+      const normalized = normalizeLink(link.normalizedUrl || link.url);
+      if (!normalized) continue;
+
+      const canonical = normalized.url;
+      const existing = canonicalLinks.get(canonical);
+      if (!existing) {
+        canonicalLinks.set(canonical, link);
+        if (
+          link.normalizedUrl !== canonical ||
+          link.url !== canonical ||
+          link.hostname !== normalized.hostname
+        ) {
+          await ctx.db.patch(link._id, {
+            url: canonical,
+            normalizedUrl: canonical,
+            hostname: normalized.hostname,
+            updatedAt: Date.now(),
+          });
+          normalizedCount += 1;
+        }
+        continue;
+      }
+
+      const existingHasFolder = Boolean(existing.folderId);
+      const duplicateHasFolder = Boolean(link.folderId);
+      const existingScore =
+        Number(existing.favorite) * 4 +
+        Number(Boolean(existing.notes)) * 2 +
+        Number(Boolean(existing.hashtags?.length)) * 2 +
+        Number(existingHasFolder);
+      const duplicateScore =
+        Number(link.favorite) * 4 +
+        Number(Boolean(link.notes)) * 2 +
+        Number(Boolean(link.hashtags?.length)) * 2 +
+        Number(duplicateHasFolder);
+      const primary = duplicateScore > existingScore ? link : existing;
+      const duplicate = primary._id === link._id ? existing : link;
+
+      if (primary._id === link._id) {
+        canonicalLinks.set(canonical, link);
+      }
+      if (
+        primary.normalizedUrl !== canonical ||
+        primary.url !== canonical ||
+        primary.hostname !== normalized.hostname
+      ) {
+        await ctx.db.patch(primary._id, {
+          url: canonical,
+          normalizedUrl: canonical,
+          hostname: normalized.hostname,
+          updatedAt: Date.now(),
+        });
+      }
+      await ctx.db.delete(duplicate._id);
+      duplicatesRemoved += 1;
+    }
+
+    return { normalizedCount, duplicatesRemoved };
   },
 });
 
@@ -529,6 +652,8 @@ export const importBackup = mutation({
   args: {
     clientId: v.optional(v.string()),
     backup: v.any(),
+    categoryKeys: v.optional(v.array(v.string())),
+    replaceExisting: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const backup = args.backup;
@@ -550,6 +675,30 @@ export const importBackup = mutation({
     let foldersCreated = 0;
     let linksCreated = 0;
     let linksUpdated = 0;
+    let foldersDeleted = 0;
+    let linksDeleted = 0;
+
+    if (args.replaceExisting === true) {
+      const existingLinks = await ctx.db.query("computerLinks").collect();
+      for (const link of existingLinks) {
+        await ctx.db.delete(link._id);
+        linksDeleted += 1;
+      }
+      const existingFolders = await ctx.db
+        .query("computerLinkFolders")
+        .collect();
+      for (const folder of existingFolders) {
+        await ctx.db.delete(folder._id);
+        foldersDeleted += 1;
+      }
+    }
+    const selectedCategoryKeys = Array.isArray(args.categoryKeys)
+      ? new Set(
+          args.categoryKeys
+            .map((key) => String(key).trim())
+            .filter(Boolean),
+        )
+      : null;
 
     const backupFolders = backup.data.folders
       .filter(
@@ -566,7 +715,45 @@ export const importBackup = mutation({
           String(a.key).localeCompare(String(b.key)),
       );
 
-    for (const item of backupFolders) {
+    const backupFolderByKey = new Map(
+      backupFolders.map((folder) => [String(folder.key), folder]),
+    );
+
+    const getBackupRootFolderKey = (folderKey) => {
+      let folder = backupFolderByKey.get(String(folderKey || ""));
+      let remainingDepth = 20;
+
+      while (folder?.parentKey && remainingDepth > 0) {
+        folder = backupFolderByKey.get(String(folder.parentKey));
+        remainingDepth -= 1;
+      }
+
+      return folder?.key ? String(folder.key) : null;
+    };
+
+    const isBackupFolderSelected = (folderKey) => {
+      if (!selectedCategoryKeys) return true;
+      const rootKey = getBackupRootFolderKey(folderKey);
+      return Boolean(rootKey && selectedCategoryKeys.has(rootKey));
+    };
+
+    const foldersToImport = selectedCategoryKeys
+      ? backupFolders.filter((folder) => isBackupFolderSelected(folder.key))
+      : backupFolders;
+
+    const getBackupRootFolderName = (folderKey) => {
+      let folder = backupFolderByKey.get(String(folderKey || ""));
+      let remainingDepth = 20;
+
+      while (folder?.parentKey && remainingDepth > 0) {
+        folder = backupFolderByKey.get(String(folder.parentKey));
+        remainingDepth -= 1;
+      }
+
+      return String(folder?.name || "").trim().toLowerCase();
+    };
+
+    for (const item of foldersToImport) {
       const key = String(item.key).trim().slice(0, 300);
       const name = String(item.name).trim().slice(0, 50);
       const parentKey = item.parentKey
@@ -611,16 +798,34 @@ export const importBackup = mutation({
 
     for (const item of backup.data.links) {
       if (!item || typeof item.url !== "string") continue;
+      if (selectedCategoryKeys) {
+        const hasFolderKey =
+          typeof item.folderKey === "string" && item.folderKey.trim();
+        if (hasFolderKey) {
+          if (!isBackupFolderSelected(item.folderKey)) continue;
+        } else if (!selectedCategoryKeys.has(UNCLASSIFIED_IMPORT_KEY)) {
+          continue;
+        }
+      }
       const normalized = normalizeLink(item.normalizedUrl || item.url);
       if (!normalized) continue;
       const folderId = item.folderKey
         ? folderIdByKey.get(String(item.folderKey))
         : undefined;
-      const linkType = ["general", "newsSource", "newsArticle", "bookStore", "bookLink"].includes(
+      let linkType = ["general", "newsSource", "newsArticle", "bookStore", "bookLink"].includes(
         item.linkType,
       )
         ? item.linkType
         : "general";
+
+      // Las copias anteriores a bookLink guardaban las fichas de libros como
+      // enlaces generales. Al importarlas, las promovemos según su carpeta.
+      if (
+        linkType === "general" &&
+        getBackupRootFolderName(item.folderKey) === "libros"
+      ) {
+        linkType = "bookLink";
+      }
       const hashtags = Array.from(
         new Set(
           (Array.isArray(item.hashtags) ? item.hashtags : [])
@@ -680,7 +885,13 @@ export const importBackup = mutation({
       }
     }
 
-    return { foldersCreated, linksCreated, linksUpdated };
+    return {
+      foldersCreated,
+      linksCreated,
+      linksUpdated,
+      foldersDeleted,
+      linksDeleted,
+    };
   },
 });
 

@@ -298,6 +298,30 @@ export function useScannedHistoryStorage() {
     return localResult;
   }, [clearMyScanHistory, resolveSyncEnabled]);
 
+  const replaceScannedHistory = useCallback(
+    async (items = []) => {
+      if (!Array.isArray(items)) {
+        throw new Error("El historial importado no es una lista válida.");
+      }
+
+      const savedItems = await saveLocalScannedHistory(items);
+      const shouldSync = await resolveSyncEnabled();
+
+      if (shouldSync) {
+        await clearMyScanHistory({});
+
+        for (const item of savedItems) {
+          await syncMyScannedEntry(
+            toConvexSyncPayload(item.barcode, item),
+          );
+        }
+      }
+
+      return savedItems;
+    },
+    [clearMyScanHistory, resolveSyncEnabled, syncMyScannedEntry],
+  );
+
   return useMemo(
     () => ({
       syncEnabled,
@@ -308,6 +332,7 @@ export function useScannedHistoryStorage() {
       updateScannedEntry,
       removeScannedItem,
       clearScannedHistory,
+      replaceScannedHistory,
     }),
     [
       syncEnabled,
@@ -318,6 +343,7 @@ export function useScannedHistoryStorage() {
       updateScannedEntry,
       removeScannedItem,
       clearScannedHistory,
+      replaceScannedHistory,
     ],
   );
 }

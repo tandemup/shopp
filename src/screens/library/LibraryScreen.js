@@ -21,6 +21,158 @@ import WebPreviewCard from "@/src/components/chat/WebPreviewCard";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 const CLIENT_ID_KEY = "shopp-chat-client-id";
+const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
+
+function defaultBackupFilename() {
+  const day = new Date().toISOString().slice(0, 10);
+  return `shopp-biblioteca-${day}.json`;
+}
+
+function normalizeBackupFilename(value) {
+  const cleanName = String(value || "")
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ");
+
+  if (!cleanName) return "";
+  return cleanName.toLowerCase().endsWith(".json")
+    ? cleanName
+    : `${cleanName}.json`;
+}
+
+function getBackupRootFolderKey(folderKey, folderByKey) {
+  let folder = folderByKey.get(String(folderKey || ""));
+  let remainingDepth = 20;
+
+  while (folder?.parentKey && remainingDepth > 0) {
+    folder = folderByKey.get(String(folder.parentKey));
+    remainingDepth -= 1;
+  }
+
+  return folder?.key ? String(folder.key) : null;
+}
+
+function buildImportCategoryOptions(data) {
+  const backupFolders = Array.isArray(data?.folders) ? data.folders : [];
+  const backupLinks = Array.isArray(data?.links) ? data.links : [];
+  const validFolders = backupFolders.filter(
+    (folder) =>
+      folder &&
+      typeof folder.key === "string" &&
+      typeof folder.name === "string" &&
+      folder.key.trim() &&
+      folder.name.trim(),
+  );
+  const folderByKey = new Map(
+    validFolders.map((folder) => [String(folder.key), folder]),
+  );
+  const rootFolders = validFolders
+    .filter((folder) => !folder.parentKey)
+    .sort(
+      (a, b) =>
+        Number(a.order || 0) - Number(b.order || 0) ||
+        String(a.name).localeCompare(String(b.name)),
+    );
+  const linkCounts = new Map(
+    rootFolders.map((folder) => [String(folder.key), 0]),
+  );
+  let unclassifiedCount = 0;
+
+  backupLinks.forEach((link) => {
+    const rootKey = getBackupRootFolderKey(link?.folderKey, folderByKey);
+    if (rootKey && linkCounts.has(rootKey)) {
+      linkCounts.set(rootKey, linkCounts.get(rootKey) + 1);
+    } else {
+      unclassifiedCount += 1;
+    }
+  });
+
+  const options = rootFolders.map((folder) => ({
+    key: String(folder.key),
+    name: String(folder.name).trim(),
+    icon: folder.icon || "folder-outline",
+    color: folder.color || "#475569",
+    linkCount: linkCounts.get(String(folder.key)) || 0,
+  }));
+
+  if (unclassifiedCount > 0) {
+    options.push({
+      key: UNCLASSIFIED_IMPORT_KEY,
+      name: "Sin categoría",
+      icon: "file-tray-outline",
+      color: "#64748b",
+      linkCount: unclassifiedCount,
+    });
+  }
+
+  return options;
+}
+
+function filterBackupByCategories(data, selectedCategoryKeys) {
+  const folders = Array.isArray(data?.folders) ? data.folders : [];
+  const links = Array.isArray(data?.links) ? data.links : [];
+  const selectedKeys = new Set(selectedCategoryKeys || []);
+  const folderByKey = new Map(
+    folders
+      .filter((folder) => folder && typeof folder.key === "string")
+      .map((folder) => [String(folder.key), folder]),
+  );
+
+  const isSelectedFolder = (folderKey) => {
+    const rootKey = getBackupRootFolderKey(folderKey, folderByKey);
+    return Boolean(rootKey && selectedKeys.has(rootKey));
+  };
+
+  return {
+    ...data,
+    folders: folders.filter((folder) => isSelectedFolder(folder?.key)),
+    links: links.filter((link) => {
+      if (typeof link?.folderKey === "string" && link.folderKey.trim()) {
+        return isSelectedFolder(link.folderKey);
+      }
+      return selectedKeys.has(UNCLASSIFIED_IMPORT_KEY);
+    }),
+  };
+}
+
+function ImportCheckbox({
+  checked,
+  label,
+  detail,
+  icon,
+  color,
+  onPress,
+  disabled = false,
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked, disabled }}
+      style={({ pressed }) => [
+        styles.importOption,
+        checked && styles.importOptionChecked,
+        pressed && styles.importOptionPressed,
+        disabled && styles.buttonDisabled,
+      ]}
+    >
+      <View
+        style={[
+          styles.importCheckbox,
+          checked && styles.importCheckboxChecked,
+        ]}
+      >
+        {checked ? <Ionicons name="checkmark" size={15} color="#fff" /> : null}
+      </View>
+      <Ionicons name={icon || "folder-outline"} size={18} color={color} />
+      <View style={styles.importOptionText}>
+        <Text style={styles.importOptionLabel}>{label}</Text>
+        {detail ? <Text style={styles.importOptionDetail}>{detail}</Text> : null}
+      </View>
+    </Pressable>
+  );
+}
 
 function getClientId() {
   if (typeof window !== "undefined") {
@@ -54,6 +206,17 @@ export default function LibraryScreen({ navigation }) {
   const [saving, setSaving] = useState(false);
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [exportNameVisible, setExportNameVisible] = useState(false);
+  const [exportFilename, setExportFilename] = useState("");
+  const [exportReview, setExportReview] = useState(null);
+  const [selectedExportCategoryKeys, setSelectedExportCategoryKeys] = useState(
+    [],
+  );
+  const [importReview, setImportReview] = useState(null);
+  const [selectedImportCategoryKeys, setSelectedImportCategoryKeys] = useState(
+    [],
+  );
+  const [importMode, setImportMode] = useState("combine");
 
   const folders = useQuery(api.computerLinks.listFolders) || [];
   const libraryBackup = useQuery(api.computerLinks.exportBackup);
@@ -99,12 +262,16 @@ export default function LibraryScreen({ navigation }) {
   const removeLink = useMutation(api.computerLinks.remove);
   const removeNewsSource = useMutation(api.computerLinks.removeNewsSource);
   const importBackup = useMutation(api.computerLinks.importBackup);
+  const normalizeAndDeduplicate = useMutation(
+    api.computerLinks.normalizeAndDeduplicate,
+  );
 
   useEffect(() => {
     ensureDefaultFolders({ clientId })
       .then(() => syncFromChat({ clientId }))
+      .then(() => normalizeAndDeduplicate({}))
       .catch((error) => console.warn("[LibraryScreen] sync failed", error));
-  }, [clientId, ensureDefaultFolders, syncFromChat]);
+  }, [clientId, ensureDefaultFolders, normalizeAndDeduplicate, syncFromChat]);
 
   const folderById = useMemo(
     () => new Map(folders.map((folder) => [String(folder._id), folder])),
@@ -279,8 +446,20 @@ export default function LibraryScreen({ navigation }) {
     }
   }, [editingLink, hashtagsInput, notesInput, saving, updateMetadata]);
 
-  const handleExportBackup = useCallback(async () => {
-    if (!libraryBackup || backupBusy) return;
+  const performExportBackup = useCallback(async () => {
+    const filename = normalizeBackupFilename(exportFilename);
+    if (!exportReview || backupBusy || !filename) return;
+
+    const exportAll =
+      exportReview.categories.length === 0 ||
+      selectedExportCategoryKeys.length === exportReview.categories.length;
+    const selectedData = exportAll
+      ? exportReview.data
+      : filterBackupByCategories(exportReview.data, selectedExportCategoryKeys);
+
+    setExportNameVisible(false);
+    setExportReview(null);
+    setSelectedExportCategoryKeys([]);
     setBackupBusy(true);
     try {
       const payload = {
@@ -288,11 +467,9 @@ export default function LibraryScreen({ navigation }) {
         version: 1,
         exportedAt: new Date().toISOString(),
         app: "Shopp",
-        data: libraryBackup,
+        data: selectedData,
       };
       const json = JSON.stringify(payload, null, 2);
-      const day = new Date().toISOString().slice(0, 10);
-      const filename = `shopp-biblioteca-${day}.json`;
 
       if (Platform.OS === "web" && typeof document !== "undefined") {
         const blob = new Blob([json], {
@@ -321,7 +498,93 @@ export default function LibraryScreen({ navigation }) {
     } finally {
       setBackupBusy(false);
     }
+  }, [backupBusy, exportFilename, exportReview, selectedExportCategoryKeys]);
+
+  const handleExportBackup = useCallback(() => {
+    if (!libraryBackup || backupBusy) return;
+    setExportFilename(defaultBackupFilename());
+    const categories = buildImportCategoryOptions(libraryBackup);
+    setExportReview({
+      data: libraryBackup,
+      categories,
+      folderCount: libraryBackup.folders.length,
+      linkCount: libraryBackup.links.length,
+      sourceCount: libraryBackup.links.filter((link) =>
+        ["newsSource", "bookStore"].includes(link?.linkType),
+      ).length,
+      savedLinkCount:
+        libraryBackup.links.length -
+        libraryBackup.links.filter((link) =>
+          ["newsSource", "bookStore"].includes(link?.linkType),
+        ).length,
+    });
+    setSelectedExportCategoryKeys(categories.map((category) => category.key));
+    setExportNameVisible(true);
   }, [backupBusy, libraryBackup]);
+
+  const handleImportSelected = useCallback(async () => {
+    if (!importReview || backupBusy) return;
+
+    const categoryKeys = selectedImportCategoryKeys;
+    if (importReview.categories.length > 0 && categoryKeys.length === 0) {
+      return;
+    }
+
+    const importAll =
+      importReview.categories.length === 0 ||
+      categoryKeys.length === importReview.categories.length;
+    const importArgs = {
+      clientId,
+      backup: importReview.parsed,
+      replaceExisting: importMode === "replace",
+    };
+
+    if (!importAll) {
+      importArgs.categoryKeys = categoryKeys;
+    }
+
+    const executeImport = async () => {
+      setImportReview(null);
+      setSelectedImportCategoryKeys([]);
+      setImportMode("combine");
+      setBackupBusy(true);
+      try {
+        const summary = await importBackup(importArgs);
+        safeAlert(
+          "Biblioteca restaurada",
+          `${importMode === "replace" ? "Reemplazo completado." : "Modo combinar completado."}\n\n${summary.linksDeleted ? `Enlaces eliminados: ${summary.linksDeleted}\n` : ""}${summary.foldersDeleted ? `Categorías eliminadas: ${summary.foldersDeleted}\n` : ""}Carpetas creadas: ${summary.foldersCreated}\nEnlaces creados: ${summary.linksCreated}\nEnlaces actualizados: ${summary.linksUpdated}`,
+        );
+      } catch (error) {
+        safeAlert(
+          "No se pudo importar",
+          error?.message || "No se pudo modificar la Biblioteca.",
+        );
+      } finally {
+        setBackupBusy(false);
+      }
+    };
+
+    if (importMode === "replace") {
+      safeAlert(
+        "Reemplazar Biblioteca",
+        `Se eliminarán todas las categorías y enlaces actuales y se conservarán únicamente los seleccionados del fichero ${importReview.fileName}. Esta acción no se puede deshacer.`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Reemplazar", style: "destructive", onPress: executeImport },
+        ],
+      );
+      return;
+    }
+
+    await executeImport();
+  }, [
+    backupBusy,
+    clientId,
+    importBackup,
+    importMode,
+    importReview,
+    selectedImportCategoryKeys,
+  ]);
 
   const handleImportBackup = useCallback(async () => {
     if (backupBusy) return;
@@ -358,14 +621,24 @@ export default function LibraryScreen({ navigation }) {
         throw new Error("La copia está incompleta: faltan carpetas o enlaces.");
       }
 
-      const summary = await importBackup({
-        clientId,
-        backup: parsed,
+      const folderCount = parsed.data.folders.length;
+      const linkCount = parsed.data.links.length;
+      const sourceCount = parsed.data.links.filter((link) =>
+        ["newsSource", "bookStore"].includes(link?.linkType),
+      ).length;
+      const savedLinkCount = linkCount - sourceCount;
+      const categories = buildImportCategoryOptions(parsed.data);
+      setImportReview({
+        fileName: asset.name || "copia de Biblioteca",
+        parsed,
+        categories,
+        folderCount,
+        linkCount,
+        sourceCount,
+        savedLinkCount,
       });
-      safeAlert(
-        "Biblioteca restaurada",
-        `Modo combinar completado.\n\nCarpetas creadas: ${summary.foldersCreated}\nEnlaces creados: ${summary.linksCreated}\nEnlaces actualizados: ${summary.linksUpdated}`,
-      );
+      setSelectedImportCategoryKeys(categories.map((category) => category.key));
+      setImportMode("combine");
     } catch (error) {
       if (String(error?.name || "") === "SyntaxError") {
         safeAlert(
@@ -381,7 +654,52 @@ export default function LibraryScreen({ navigation }) {
     } finally {
       setBackupBusy(false);
     }
-  }, [backupBusy, clientId, importBackup]);
+  }, [backupBusy]);
+
+  const importCategories = importReview?.categories || [];
+  const allImportCategoriesSelected =
+    importCategories.length === 0 ||
+    selectedImportCategoryKeys.length === importCategories.length;
+
+  const closeImportReview = useCallback(() => {
+    if (backupBusy) return;
+    setImportReview(null);
+    setSelectedImportCategoryKeys([]);
+    setImportMode("combine");
+  }, [backupBusy]);
+
+  const toggleImportCategory = useCallback((categoryKey) => {
+    setSelectedImportCategoryKeys((current) =>
+      current.includes(categoryKey)
+        ? current.filter((key) => key !== categoryKey)
+        : [...current, categoryKey],
+    );
+  }, []);
+
+  const exportCategories = exportReview?.categories || [];
+  const allExportCategoriesSelected =
+    exportCategories.length === 0 ||
+    selectedExportCategoryKeys.length === exportCategories.length;
+  const selectedExportLinkCount = allExportCategoriesSelected
+    ? exportReview?.linkCount || 0
+    : exportCategories
+        .filter((category) => selectedExportCategoryKeys.includes(category.key))
+        .reduce((total, category) => total + category.linkCount, 0);
+
+  const closeExportReview = useCallback(() => {
+    if (backupBusy) return;
+    setExportNameVisible(false);
+    setExportReview(null);
+    setSelectedExportCategoryKeys([]);
+  }, [backupBusy]);
+
+  const toggleExportCategory = useCallback((categoryKey) => {
+    setSelectedExportCategoryKeys((current) =>
+      current.includes(categoryKey)
+        ? current.filter((key) => key !== categoryKey)
+        : [...current, categoryKey],
+    );
+  }, []);
 
   const topFolders = folders.filter((folder) => !folder.parentFolderId);
   const filters = [
@@ -488,7 +806,11 @@ export default function LibraryScreen({ navigation }) {
                   (backupBusy || !libraryBackup) && styles.buttonDisabled,
                 ]}
               >
-                <Ionicons name="download-outline" size={17} color="#2563eb" />
+                <Ionicons
+                  name="cloud-upload-outline"
+                  size={17}
+                  color="#2563eb"
+                />
                 <Text style={styles.backupButtonText}>Exportar JSON</Text>
               </Pressable>
               <Pressable
@@ -500,15 +822,12 @@ export default function LibraryScreen({ navigation }) {
                 ]}
               >
                 <Ionicons
-                  name="cloud-upload-outline"
+                  name="download-outline"
                   size={17}
                   color="#2563eb"
                 />
                 <Text style={styles.backupButtonText}>Importar JSON</Text>
               </Pressable>
-              <Text style={styles.backupHint}>
-                Restauración: combinar sin duplicar URL
-              </Text>
             </View>
           </View>
         ) : null}
@@ -867,7 +1186,9 @@ export default function LibraryScreen({ navigation }) {
                             ? `Libro · ${item.sourceDomain || item.hostname}`
                         : item.linkType === "newsArticle"
                           ? `Noticia · ${item.sourceDomain || item.hostname}${""}`
-                          : folder?.name || "Sin clasificar"}
+                          : folder?.name === "Libros"
+                            ? `Libro · ${item.sourceDomain || item.hostname}`
+                            : folder?.name || "Sin clasificar"}
                     </Text>
                   </View>
                   <View style={styles.cardActionButtons}>
@@ -932,6 +1253,332 @@ export default function LibraryScreen({ navigation }) {
             </View>
           }
         />
+
+        <Modal
+          visible={exportNameVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={closeExportReview}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalCard, styles.importModalCard]}>
+              <ScrollView
+                style={styles.importModalScroll}
+                contentContainerStyle={styles.importModalContent}
+                showsVerticalScrollIndicator
+              >
+                <Text style={styles.modalTitle}>Exportar Biblioteca</Text>
+
+                <Text style={styles.fieldLabel}>Nombre del archivo JSON</Text>
+                <TextInput
+                  value={exportFilename}
+                  onChangeText={setExportFilename}
+                  placeholder="shopp-biblioteca.json"
+                  placeholderTextColor="#94a3b8"
+                  style={styles.modalInput}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  maxLength={120}
+                  autoFocus
+                  selectTextOnFocus
+                  onSubmitEditing={performExportBackup}
+                />
+                <Text style={styles.fieldHelp}>
+                  Si omites la extensión, se añadirá automáticamente .json.
+                </Text>
+
+                <Text style={styles.fieldLabel}>Informe del contenido</Text>
+                <View style={styles.importSummaryBox}>
+                  <View style={styles.importSummaryRow}>
+                    <Ionicons name="folder-outline" size={17} color="#2563eb" />
+                    <Text style={styles.importSummaryText}>
+                      {exportReview?.folderCount || 0} carpetas
+                    </Text>
+                  </View>
+                  <View style={styles.importSummaryRow}>
+                    <Ionicons name="link-outline" size={17} color="#2563eb" />
+                    <Text style={styles.importSummaryText}>
+                      {exportReview?.linkCount || 0} enlaces en total
+                    </Text>
+                  </View>
+                  <View style={styles.importSummaryRow}>
+                    <Ionicons name="newspaper-outline" size={17} color="#dc2626" />
+                    <Text style={styles.importSummaryText}>
+                      {exportReview?.sourceCount || 0} periódicos o tiendas de libros
+                    </Text>
+                  </View>
+                  <View style={styles.importSummaryRow}>
+                    <Ionicons name="bookmark-outline" size={17} color="#7c3aed" />
+                    <Text style={styles.importSummaryText}>
+                      {exportReview?.savedLinkCount || 0} enlaces guardados
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.fieldLabel}>Categorías a exportar</Text>
+                <Text style={styles.fieldHelp}>
+                  Elige todas las categorías o solo las que quieras incluir. Las subcategorías se exportan con su categoría principal.
+                </Text>
+
+                <View style={styles.importCategoryList}>
+                  <ImportCheckbox
+                    checked={allExportCategoriesSelected}
+                    label="Todas las categorías"
+                    detail={`${exportReview?.linkCount || 0} enlaces`}
+                    icon="apps-outline"
+                    color="#2563eb"
+                    onPress={() =>
+                      setSelectedExportCategoryKeys(
+                        allExportCategoriesSelected
+                          ? []
+                          : exportCategories.map((category) => category.key),
+                      )
+                    }
+                    disabled={exportCategories.length === 0}
+                  />
+                  {exportCategories.map((category) => (
+                    <ImportCheckbox
+                      key={category.key}
+                      checked={selectedExportCategoryKeys.includes(category.key)}
+                      label={category.name}
+                      detail={`${category.linkCount} ${category.linkCount === 1 ? "enlace" : "enlaces"}`}
+                      icon={category.icon}
+                      color={category.color}
+                      onPress={() => toggleExportCategory(category.key)}
+                    />
+                  ))}
+                </View>
+
+                <Text style={styles.importSelectionHelp}>
+                  Se exportarán {selectedExportLinkCount} enlaces. La copia mantendrá el formato compatible de Biblioteca.
+                </Text>
+              </ScrollView>
+
+              <View style={styles.modalActions}>
+                <Pressable
+                  onPress={closeExportReview}
+                  disabled={backupBusy}
+                  style={styles.cancelButton}
+                >
+                  <Text style={styles.cancelText}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  onPress={performExportBackup}
+                  disabled={
+                    backupBusy ||
+                    !normalizeBackupFilename(exportFilename) ||
+                    (exportCategories.length > 0 &&
+                      selectedExportCategoryKeys.length === 0)
+                  }
+                  style={[
+                    styles.saveButton,
+                    styles.exportConfirmButton,
+                    (backupBusy ||
+                      !normalizeBackupFilename(exportFilename) ||
+                      (exportCategories.length > 0 &&
+                        selectedExportCategoryKeys.length === 0)) &&
+                      styles.buttonDisabled,
+                  ]}
+                >
+                  <Ionicons name="cloud-upload-outline" size={17} color="#fff" />
+                  <Text style={styles.saveText}>
+                    {backupBusy ? "Exportando…" : "Exportar seleccionados"}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={Boolean(importReview)}
+          transparent
+          animationType="fade"
+          onRequestClose={closeImportReview}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalCard, styles.importModalCard]}>
+              <ScrollView
+                style={styles.importModalScroll}
+                contentContainerStyle={styles.importModalContent}
+                showsVerticalScrollIndicator
+              >
+                <Text style={styles.modalTitle}>Importar Biblioteca</Text>
+
+                <Text style={styles.fieldLabel}>Fichero seleccionado</Text>
+                <View style={styles.importFileBox}>
+                  <Ionicons name="document-text-outline" size={20} color="#2563eb" />
+                  <Text style={styles.importFileName} numberOfLines={2}>
+                    {importReview?.fileName}
+                  </Text>
+                </View>
+
+                <Text style={styles.fieldLabel}>Informe del contenido</Text>
+                <View style={styles.importSummaryBox}>
+                  <View style={styles.importSummaryRow}>
+                    <Ionicons name="folder-outline" size={17} color="#2563eb" />
+                    <Text style={styles.importSummaryText}>
+                      {importReview?.folderCount || 0} carpetas
+                    </Text>
+                  </View>
+                  <View style={styles.importSummaryRow}>
+                    <Ionicons name="link-outline" size={17} color="#2563eb" />
+                    <Text style={styles.importSummaryText}>
+                      {importReview?.linkCount || 0} enlaces en total
+                    </Text>
+                  </View>
+                  <View style={styles.importSummaryRow}>
+                    <Ionicons name="newspaper-outline" size={17} color="#dc2626" />
+                    <Text style={styles.importSummaryText}>
+                      {importReview?.sourceCount || 0} periódicos o tiendas de libros
+                    </Text>
+                  </View>
+                  <View style={styles.importSummaryRow}>
+                    <Ionicons name="bookmark-outline" size={17} color="#7c3aed" />
+                    <Text style={styles.importSummaryText}>
+                      {importReview?.savedLinkCount || 0} enlaces guardados
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.fieldLabel}>Categorías a importar</Text>
+                <Text style={styles.fieldHelp}>
+                  Elige todas las categorías o solo las que quieras añadir. Las subcategorías se incluyen con su categoría principal.
+                </Text>
+
+                <View style={styles.importCategoryList}>
+                  <ImportCheckbox
+                    checked={allImportCategoriesSelected}
+                    label="Todas las categorías"
+                    detail={`${importReview?.linkCount || 0} enlaces`}
+                    icon="apps-outline"
+                    color="#2563eb"
+                    onPress={() =>
+                      setSelectedImportCategoryKeys(
+                        allImportCategoriesSelected
+                          ? []
+                          : importCategories.map((category) => category.key),
+                      )
+                    }
+                    disabled={importCategories.length === 0}
+                  />
+                  {importCategories.map((category) => (
+                    <ImportCheckbox
+                      key={category.key}
+                      checked={selectedImportCategoryKeys.includes(category.key)}
+                      label={category.name}
+                      detail={`${category.linkCount} ${category.linkCount === 1 ? "enlace" : "enlaces"}`}
+                      icon={category.icon}
+                      color={category.color}
+                      onPress={() => toggleImportCategory(category.key)}
+                    />
+                  ))}
+                </View>
+
+                <Text style={styles.importSelectionHelp}>
+                  {importMode === "replace"
+                    ? "Se eliminarán los datos actuales y se conservarán únicamente los elementos seleccionados."
+                    : "Se combinarán los elementos seleccionados. Los datos actuales se conservarán y las URL repetidas se actualizarán."}
+                </Text>
+
+                <Text style={styles.fieldLabel}>Modo de importación</Text>
+                <View style={styles.importModeList}>
+                  <Pressable
+                    onPress={() => setImportMode("combine")}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: importMode === "combine" }}
+                    style={[
+                      styles.importModeOption,
+                      importMode === "combine" && styles.importModeSelected,
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        importMode === "combine"
+                          ? "radio-button-on"
+                          : "radio-button-off"
+                      }
+                      size={20}
+                      color={importMode === "combine" ? "#2563eb" : "#94a3b8"}
+                    />
+                    <View style={styles.importOptionText}>
+                      <Text style={styles.importOptionLabel}>Combinar</Text>
+                      <Text style={styles.importOptionDetail}>
+                        Conserva YouTube, El País y el resto de datos actuales.
+                      </Text>
+                    </View>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setImportMode("replace")}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: importMode === "replace" }}
+                    style={[
+                      styles.importModeOption,
+                      importMode === "replace" && styles.importModeReplaceSelected,
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        importMode === "replace"
+                          ? "radio-button-on"
+                          : "radio-button-off"
+                      }
+                      size={20}
+                      color={importMode === "replace" ? "#dc2626" : "#94a3b8"}
+                    />
+                    <View style={styles.importOptionText}>
+                      <Text style={styles.importOptionLabel}>
+                        Reemplazar Biblioteca
+                      </Text>
+                      <Text style={styles.importOptionDetail}>
+                        Elimina lo actual y deja solo lo seleccionado.
+                      </Text>
+                    </View>
+                  </Pressable>
+                </View>
+              </ScrollView>
+
+              <View style={styles.modalActions}>
+                <Pressable
+                  onPress={closeImportReview}
+                  disabled={backupBusy}
+                  style={styles.cancelButton}
+                >
+                  <Text style={styles.cancelText}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleImportSelected}
+                  disabled={
+                    backupBusy ||
+                    (importCategories.length > 0 &&
+                      selectedImportCategoryKeys.length === 0)
+                  }
+                  style={[
+                    styles.saveButton,
+                    styles.exportConfirmButton,
+                    (backupBusy ||
+                      (importCategories.length > 0 &&
+                        selectedImportCategoryKeys.length === 0)) &&
+                      styles.buttonDisabled,
+                  ]}
+                >
+                  <Ionicons
+                    name={importMode === "replace" ? "trash-outline" : "download-outline"}
+                    size={17}
+                    color="#fff"
+                  />
+                  <Text style={styles.saveText}>
+                    {backupBusy
+                      ? "Importando…"
+                      : importMode === "replace"
+                        ? "Reemplazar Biblioteca"
+                        : "Importar seleccionados"}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         <Modal
           visible={Boolean(editingSource)}
@@ -1176,8 +1823,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
     paddingHorizontal: 10,
-    paddingTop: 10,
-    paddingBottom: 10,
+    paddingVertical: 10,
   },
   backupButton: {
     minHeight: 36,
@@ -1193,11 +1839,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     color: "#1d4ed8",
-  },
-  backupHint: {
-    flexShrink: 1,
-    fontSize: 10,
-    color: "#64748b",
   },
   folderScroll: {
     flexGrow: 0,
@@ -1519,6 +2160,12 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: "#fff",
   },
+  importModalCard: {
+    maxHeight: "88%",
+    padding: 0,
+  },
+  importModalScroll: { flexShrink: 1 },
+  importModalContent: { padding: 16, paddingBottom: 6 },
   modalTitle: {
     marginBottom: 12,
     fontSize: 18,
@@ -1543,6 +2190,92 @@ const styles = StyleSheet.create({
     color: "#334155",
   },
   fieldHelp: { marginTop: 5, fontSize: 10, color: "#64748b" },
+  importFileBox: {
+    minHeight: 45,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+  importFileName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#1e3a8a",
+  },
+  importSummaryBox: {
+    gap: 7,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+  },
+  importSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  importSummaryText: { flex: 1, fontSize: 12, color: "#334155" },
+  importCategoryList: { marginTop: 10, gap: 6 },
+  importOption: {
+    minHeight: 49,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 9,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#fff",
+  },
+  importOptionChecked: {
+    borderColor: "#bfdbfe",
+    backgroundColor: "#f8fbff",
+  },
+  importOptionPressed: { opacity: 0.75 },
+  importCheckbox: {
+    width: 21,
+    height: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#94a3b8",
+    backgroundColor: "#fff",
+  },
+  importCheckboxChecked: {
+    borderColor: "#2563eb",
+    backgroundColor: "#2563eb",
+  },
+  importOptionText: { flex: 1, minWidth: 0 },
+  importOptionLabel: { fontSize: 13, fontWeight: "800", color: "#334155" },
+  importOptionDetail: { marginTop: 2, fontSize: 10, color: "#64748b" },
+  importSelectionHelp: {
+    marginTop: 10,
+    fontSize: 10,
+    lineHeight: 15,
+    color: "#64748b",
+  },
+  importModeList: { gap: 6, marginTop: 8 },
+  importModeOption: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 9,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#fff",
+  },
+  importModeSelected: {
+    borderColor: "#bfdbfe",
+    backgroundColor: "#f8fbff",
+  },
+  importModeReplaceSelected: {
+    borderColor: "#fecaca",
+    backgroundColor: "#fff7f7",
+  },
   modalActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -1565,6 +2298,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     backgroundColor: "#2563eb",
   },
+  exportConfirmButton: { flexDirection: "row", gap: 7 },
   saveText: { fontSize: 13, fontWeight: "900", color: "#fff" },
   moveList: { flexGrow: 0, marginBottom: 12 },
   moveItem: {
