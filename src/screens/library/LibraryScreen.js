@@ -66,7 +66,9 @@ export default function LibraryScreen({ navigation }) {
     (folder) => String(folder._id) === String(selectedFolderId),
   );
   const isNewsFolder = selectedFolder?.name === "Noticias";
-  const isSourceCatalog = isNewsFolder && newsView === "sources";
+  const isBooksFolder = selectedFolder?.name === "Libros";
+  const isCatalogFolder = isNewsFolder || isBooksFolder;
+  const isSourceCatalog = isCatalogFolder && newsView === "sources";
   const cardColumns = Math.max(
     1,
     Math.min(6, Math.floor((screenWidth - 20) / 270)),
@@ -77,10 +79,10 @@ export default function LibraryScreen({ navigation }) {
     onlyFavorites: folderFilter === "favorites" || undefined,
     onlyUnclassified: folderFilter === "unclassified" || undefined,
     excludeNewsSources: folderFilter === "all" || undefined,
-    linkType: isNewsFolder
+    linkType: isCatalogFolder
       ? newsView === "sources"
-        ? "newsSource"
-        : "newsArticle"
+        ? isBooksFolder ? "bookStore" : "newsSource"
+        : isBooksFolder ? "bookLink" : "newsArticle"
       : undefined,
   });
 
@@ -119,10 +121,10 @@ export default function LibraryScreen({ navigation }) {
         clientId,
         username: "Biblioteca",
         folderId: selectedFolderId,
-        linkType: isNewsFolder
+        linkType: isCatalogFolder
           ? newsView === "sources"
-            ? "newsSource"
-            : "newsArticle"
+            ? isBooksFolder ? "bookStore" : "newsSource"
+            : isBooksFolder ? "bookLink" : "newsArticle"
           : "general",
       });
       setUrlInput("");
@@ -143,7 +145,8 @@ export default function LibraryScreen({ navigation }) {
   }, [
     addUrl,
     clientId,
-    isNewsFolder,
+    isCatalogFolder,
+    isBooksFolder,
     newsView,
     saving,
     selectedFolderId,
@@ -229,8 +232,8 @@ export default function LibraryScreen({ navigation }) {
   const confirmRemoveSource = useCallback(
     (source) => {
       safeAlert(
-        "Eliminar periódico",
-        `Se eliminará ${source.customTitle || source.hostname} y sus noticias guardadas.`,
+        isBooksFolder ? "Eliminar tienda" : "Eliminar periódico",
+        `Se eliminará ${source.customTitle || source.hostname} y sus ${isBooksFolder ? "libros" : "noticias"} guardados.`,
         [
           { text: "Cancelar", style: "cancel" },
           {
@@ -250,7 +253,7 @@ export default function LibraryScreen({ navigation }) {
         ],
       );
     },
-    [removeNewsSource],
+    [isBooksFolder, removeNewsSource],
   );
 
   const handleSaveMetadata = useCallback(async () => {
@@ -427,10 +430,12 @@ export default function LibraryScreen({ navigation }) {
                 value={urlInput}
                 onChangeText={setUrlInput}
                 placeholder={
-                  isNewsFolder && newsView === "sources"
-                    ? "https://www.elmundo.es"
-                    : isNewsFolder
-                      ? "Pega la URL de una noticia"
+                  isSourceCatalog
+                    ? isBooksFolder ? "https://www.casadellibro.com" : "https://www.elmundo.es"
+                    : isBooksFolder
+                      ? "Pega la URL de un libro"
+                      : isNewsFolder
+                        ? "Pega la URL de una noticia"
                       : "https://ejemplo.com"
                 }
                 placeholderTextColor="#94a3b8"
@@ -538,7 +543,7 @@ export default function LibraryScreen({ navigation }) {
               </Pressable>
             );
           })}
-          {!(isNewsFolder && newsView === "sources") ? (
+          {!isSourceCatalog ? (
             <Pressable
               onPress={() => {
                 setEditingFolder(null);
@@ -703,7 +708,7 @@ export default function LibraryScreen({ navigation }) {
           </ScrollView>
         ) : null}
 
-        {isNewsFolder ? (
+        {isCatalogFolder ? (
           <View style={styles.newsTabs}>
             <Pressable
               onPress={() => {
@@ -717,7 +722,7 @@ export default function LibraryScreen({ navigation }) {
               ]}
             >
               <Ionicons
-                name="newspaper-outline"
+                name={isBooksFolder ? "storefront-outline" : "newspaper-outline"}
                 size={16}
                 color={newsView === "sources" ? "#fff" : "#475569"}
               />
@@ -727,7 +732,7 @@ export default function LibraryScreen({ navigation }) {
                   newsView === "sources" && styles.newsTabTextActive,
                 ]}
               >
-                Periódicos
+                {isBooksFolder ? "Tiendas de libros" : "Periódicos"}
               </Text>
             </Pressable>
             <Pressable
@@ -738,7 +743,7 @@ export default function LibraryScreen({ navigation }) {
               ]}
             >
               <Ionicons
-                name="bookmark-outline"
+                name={isBooksFolder ? "book-outline" : "bookmark-outline"}
                 size={16}
                 color={newsView === "articles" ? "#fff" : "#475569"}
               />
@@ -748,7 +753,7 @@ export default function LibraryScreen({ navigation }) {
                   newsView === "articles" && styles.newsTabTextActive,
                 ]}
               >
-                Noticias guardadas
+                {isBooksFolder ? "Libros guardados" : "Noticias guardadas"}
               </Text>
             </Pressable>
           </View>
@@ -781,9 +786,9 @@ export default function LibraryScreen({ navigation }) {
                   >
                     <View style={styles.sourceTileIcon}>
                       <Ionicons
-                        name="newspaper-outline"
+                        name={isBooksFolder ? "storefront-outline" : "newspaper-outline"}
                         size={24}
-                        color="#dc2626"
+                        color={isBooksFolder ? "#7c3aed" : "#dc2626"}
                       />
                     </View>
                     <Text style={styles.sourceTileTitle} numberOfLines={1}>
@@ -829,15 +834,15 @@ export default function LibraryScreen({ navigation }) {
             return (
               <View style={styles.linkCard}>
                 <WebPreviewCard url={item.normalizedUrl} compact dense />
-                {item.linkType === "newsSource" && item.customTitle ? (
+                {["newsSource", "bookStore"].includes(item.linkType) && item.customTitle ? (
                   <Text style={styles.sourceCustomTitle}>
                     {item.customTitle}
                   </Text>
                 ) : null}
-                {item.linkType !== "newsSource" && item.notes ? (
+                {!["newsSource", "bookStore"].includes(item.linkType) && item.notes ? (
                   <Text style={styles.linkNotes}>{item.notes}</Text>
                 ) : null}
-                {item.linkType !== "newsSource" && item.hashtags?.length ? (
+                {!["newsSource", "bookStore"].includes(item.linkType) && item.hashtags?.length ? (
                   <View style={styles.hashtagRow}>
                     {item.hashtags.map((tag) => (
                       <Pressable key={tag} onPress={() => setSearch(tag)}>
@@ -856,6 +861,10 @@ export default function LibraryScreen({ navigation }) {
                     <Text style={styles.categoryText} numberOfLines={1}>
                       {item.linkType === "newsSource"
                         ? `Periódico · ${item.sourceDomain || item.hostname}`
+                        : item.linkType === "bookStore"
+                          ? `Tienda de libros · ${item.sourceDomain || item.hostname}`
+                          : item.linkType === "bookLink"
+                            ? `Libro · ${item.sourceDomain || item.hostname}`
                         : item.linkType === "newsArticle"
                           ? `Noticia · ${item.sourceDomain || item.hostname}${""}`
                           : folder?.name || "Sin clasificar"}
@@ -864,7 +873,7 @@ export default function LibraryScreen({ navigation }) {
                   <View style={styles.cardActionButtons}>
                     <Pressable
                       onPress={() =>
-                        item.linkType === "newsSource"
+                        ["newsSource", "bookStore"].includes(item.linkType)
                           ? openSourceEditor(item)
                           : openMetadataEditor(item)
                       }
@@ -932,12 +941,12 @@ export default function LibraryScreen({ navigation }) {
         >
           <View style={styles.modalBackdrop}>
             <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Editar periódico</Text>
+              <Text style={styles.modalTitle}>{editingSource?.linkType === "bookStore" ? "Editar tienda de libros" : "Editar periódico"}</Text>
               <Text style={styles.fieldLabel}>Nombre</Text>
               <TextInput
                 value={sourceNameInput}
                 onChangeText={setSourceNameInput}
-                placeholder="Por ejemplo: El País"
+                placeholder={editingSource?.linkType === "bookStore" ? "Por ejemplo: Casa del Libro" : "Por ejemplo: El País"}
                 placeholderTextColor="#94a3b8"
                 style={styles.modalInput}
                 maxLength={80}
@@ -946,7 +955,7 @@ export default function LibraryScreen({ navigation }) {
               <TextInput
                 value={sourceUrlInput}
                 onChangeText={setSourceUrlInput}
-                placeholder="https://elpais.com"
+                placeholder={editingSource?.linkType === "bookStore" ? "https://www.casadellibro.com" : "https://elpais.com"}
                 placeholderTextColor="#94a3b8"
                 style={styles.modalInput}
                 autoCorrect={false}
@@ -954,8 +963,7 @@ export default function LibraryScreen({ navigation }) {
                 onSubmitEditing={handleSaveSource}
               />
               <Text style={styles.fieldHelp}>
-                Los comentarios y hashtags se añaden a las noticias, no al
-                periódico.
+                Los comentarios y hashtags se añaden a los {editingSource?.linkType === "bookStore" ? "libros" : "noticias"} guardados, no a la fuente.
               </Text>
               <View style={styles.modalActions}>
                 <Pressable

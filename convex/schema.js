@@ -319,6 +319,8 @@ export default defineSchema({
         v.literal("general"),
         v.literal("newsSource"),
         v.literal("newsArticle"),
+        v.literal("bookStore"),
+        v.literal("bookLink"),
       ),
     ),
     sourceDomain: v.optional(v.string()),

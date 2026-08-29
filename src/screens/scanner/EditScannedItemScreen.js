@@ -805,6 +805,13 @@ export default function EditScannedItemScreen({ route, navigation }) {
   } = useProductLookupWithCache();
 
   const initializedBarcodeRef = useRef(null);
+  const screenMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      screenMountedRef.current = false;
+    };
+  }, []);
 
   const [product, setProduct] = useState(initialProduct);
 
@@ -1242,7 +1249,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
           await searchExternalProduct({ silent: true });
         }
 
-        if (active) {
+        if (screenMountedRef.current) {
           setInitializing(false);
         }
 
@@ -1281,7 +1288,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
           );
         }
       } finally {
-        if (active) {
+        if (screenMountedRef.current) {
           setInitializing(false);
         }
       }

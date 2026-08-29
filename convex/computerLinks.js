@@ -4,6 +4,7 @@ import { v } from "convex/values";
 
 const DEFAULT_FOLDERS = [
   ["Noticias", "newspaper-outline", "#dc2626"],
+  ["Libros", "book-outline", "#7c3aed"],
   ["Informática", "laptop-outline", "#2563eb"],
   ["Política", "business-outline", "#7c3aed"],
   ["Ingeniería", "construct-outline", "#ea580c"],
@@ -333,13 +334,15 @@ export const addUrl = mutation({
         v.literal("general"),
         v.literal("newsSource"),
         v.literal("newsArticle"),
+        v.literal("bookStore"),
+        v.literal("bookLink"),
       ),
     ),
   },
   handler: async (ctx, args) => {
     let normalized = normalizeLink(args.url);
     if (!normalized) throw new Error("Introduce una URL http o https válida.");
-    if (args.linkType === "newsSource") {
+    if (["newsSource", "bookStore"].includes(args.linkType)) {
       const sourceUrl = new URL(normalized.url);
       sourceUrl.pathname = "/";
       sourceUrl.search = "";
@@ -356,7 +359,7 @@ export const addUrl = mutation({
       await ctx.db.patch(existing._id, {
         folderId: args.folderId || existing.folderId,
         linkType: args.linkType || existing.linkType,
-        sourceDomain: args.linkType?.startsWith("news")
+        sourceDomain: ["newsSource", "newsArticle", "bookStore", "bookLink"].includes(args.linkType)
           ? normalized.hostname
           : existing.sourceDomain,
         status: args.folderId || existing.folderId ? "reviewed" : "pending",
@@ -375,7 +378,7 @@ export const addUrl = mutation({
       createdBy: ownerId,
       folderId: args.folderId,
       linkType: args.linkType || "general",
-      sourceDomain: args.linkType?.startsWith("news")
+      sourceDomain: ["newsSource", "newsArticle", "bookStore", "bookLink"].includes(args.linkType)
         ? normalized.hostname
         : undefined,
       favorite: false,
@@ -396,7 +399,12 @@ export const list = query({
     excludeNewsSources: v.optional(v.boolean()),
     includeChildFolders: v.optional(v.boolean()),
     linkType: v.optional(
-      v.union(v.literal("newsSource"), v.literal("newsArticle")),
+      v.union(
+        v.literal("newsSource"),
+        v.literal("newsArticle"),
+        v.literal("bookStore"),
+        v.literal("bookLink"),
+      ),
     ),
   },
   handler: async (ctx, args) => {
@@ -426,6 +434,7 @@ export const list = query({
       if (args.excludeNewsSources && link.linkType === "newsSource") {
         return false;
       }
+      if (args.excludeNewsSources && link.linkType === "bookStore") return false;
       if (args.linkType === "newsSource" && link.linkType !== "newsSource") {
         return false;
       }
@@ -436,6 +445,12 @@ export const list = query({
       ) {
         return false;
       }
+      if (args.linkType === "bookStore" && link.linkType !== "bookStore") return false;
+      if (
+        args.linkType === "bookLink" &&
+        link.linkType !== "bookLink" &&
+        link.linkType !== undefined
+      ) return false;
       if (!search) return true;
       return [
         link.normalizedUrl,
@@ -601,7 +616,7 @@ export const importBackup = mutation({
       const folderId = item.folderKey
         ? folderIdByKey.get(String(item.folderKey))
         : undefined;
-      const linkType = ["general", "newsSource", "newsArticle"].includes(
+      const linkType = ["general", "newsSource", "newsArticle", "bookStore", "bookLink"].includes(
         item.linkType,
       )
         ? item.linkType
@@ -642,13 +657,13 @@ export const importBackup = mutation({
         username,
         folderId,
         linkType,
-        sourceDomain: linkType.startsWith("news") ? sourceDomain : undefined,
+        sourceDomain: ["newsSource", "newsArticle", "bookStore", "bookLink"].includes(linkType) ? sourceDomain : undefined,
         customTitle: customTitle || undefined,
         favorite: Boolean(item.favorite),
         status: folderId ? "reviewed" : "pending",
-        notes: linkType === "newsSource" ? undefined : notes || undefined,
+        notes: ["newsSource", "bookStore"].includes(linkType) ? undefined : notes || undefined,
         hashtags:
-          linkType === "newsSource" || !hashtags.length ? undefined : hashtags,
+          ["newsSource", "bookStore"].includes(linkType) || !hashtags.length ? undefined : hashtags,
         updatedAt: now,
       };
 
@@ -691,8 +706,8 @@ export const updateMetadata = mutation({
   handler: async (ctx, args) => {
     const link = await ctx.db.get(args.linkId);
     if (!link) throw new Error("El enlace ya no existe.");
-    if (link.linkType === "newsSource") {
-      throw new Error("Los comentarios y hashtags pertenecen a las noticias.");
+    if (["newsSource", "bookStore"].includes(link.linkType)) {
+      throw new Error("Los comentarios y hashtags pertenecen a los enlaces guardados, no al catálogo.");
     }
 
     const notes = String(args.notes || "").trim().slice(0, 1000);
@@ -728,8 +743,8 @@ export const updateNewsSource = mutation({
   },
   handler: async (ctx, args) => {
     const link = await ctx.db.get(args.linkId);
-    if (!link || link.linkType !== "newsSource") {
-      throw new Error("El periódico ya no existe.");
+    if (!link || !["newsSource", "bookStore"].includes(link.linkType)) {
+      throw new Error("La fuente ya no existe.");
     }
     let normalized = normalizeLink(args.url);
     if (!normalized) throw new Error("Introduce una URL http o https válida.");
@@ -743,7 +758,7 @@ export const updateNewsSource = mutation({
       .withIndex("by_normalizedUrl", (q) => q.eq("normalizedUrl", normalized.url))
       .first();
     if (duplicate && duplicate._id !== args.linkId) {
-      throw new Error("Ese periódico ya existe en el catálogo.");
+      throw new Error("Esa fuente ya existe en el catálogo.");
     }
     const customTitle = String(args.customTitle || "").trim().slice(0, 80);
     await ctx.db.patch(args.linkId, {
@@ -794,8 +809,8 @@ export const removeNewsSource = mutation({
   args: { linkId: v.id("computerLinks") },
   handler: async (ctx, args) => {
     const source = await ctx.db.get(args.linkId);
-    if (!source || source.linkType !== "newsSource") {
-      throw new Error("El periódico ya no existe.");
+    if (!source || !["newsSource", "bookStore"].includes(source.linkType)) {
+      throw new Error("La fuente ya no existe.");
     }
     const domain = String(source.sourceDomain || source.hostname || "")
       .trim().toLowerCase().replace(/^www\./, "");
@@ -805,7 +820,8 @@ export const removeNewsSource = mutation({
     for (const link of links) {
       const linkDomain = String(link.sourceDomain || link.hostname || "")
         .trim().toLowerCase().replace(/^www\./, "");
-      if (link._id === source._id || (link.linkType === "newsArticle" && linkDomain === domain)) {
+      const relatedType = source.linkType === "bookStore" ? "bookLink" : "newsArticle";
+      if (link._id === source._id || (link.linkType === relatedType && linkDomain === domain)) {
         await ctx.db.patch(link._id, { status: "archived", updatedAt: now });
         if (link._id !== source._id) archivedArticles += 1;
       }

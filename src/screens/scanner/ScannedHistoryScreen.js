@@ -21,40 +21,36 @@ import { useScannedHistoryStorage } from "@/src/hooks/useScannedHistoryStorage";
 import { getProductImages } from "@/src/storage/productImageStorage";
 import { restoreTemporaryProductImages } from "@/src/services/temporaryProductImageSync";
 import SearchBar from "@/src/components/features/search/SearchBar";
+import {
+  DEFAULT_PRODUCT_SEARCH_TYPE,
+  PRODUCT_SEARCH_TYPE,
+  PRODUCT_SEARCH_TYPES,
+  normalizeProductSearchType,
+} from "@/src/constants/productSearchTypes";
 
 const HISTORY_FILTERS = [
-  { id: "all", label: "Todos" },
-  { id: "supermarket", label: "Supermercado" },
-  { id: "books", label: "Libros" },
-  { id: "music", label: "Música" },
+  ...PRODUCT_SEARCH_TYPES.map(({ value, label }) => ({ id: value, label })),
+  { id: PRODUCT_SEARCH_TYPE.ALL, label: PRODUCT_SEARCH_TYPE.ALL },
 ];
 
 function getItemGroup(item) {
-  if (item?.isBook === true) return "books";
+  if (item?.isBook === true) return PRODUCT_SEARCH_TYPE.BOOKS;
 
-  const value = String(
-    item?.productType || item?.category || item?.categoryId || "",
-  )
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-
-  if (value.includes("libro") || value.includes("book")) return "books";
-  if (value.includes("music") || value.includes("musica")) return "music";
-
-  return "supermarket";
+  return normalizeProductSearchType(
+    item?.productType || item?.category || item?.categoryId,
+    PRODUCT_SEARCH_TYPE.SUPERMARKET,
+  );
 }
 
 function getItemSecondaryText(item) {
   const group = getItemGroup(item);
   const details = item?.details || {};
 
-  if (group === "books") {
+  if (group === PRODUCT_SEARCH_TYPE.BOOKS) {
     return details.authors || details.publisher || item.brand || "Libro";
   }
 
-  if (group === "music") {
+  if (group === PRODUCT_SEARCH_TYPE.MUSIC) {
     return details.artist || details.composer || details.label || "Música";
   }
 
@@ -166,7 +162,9 @@ export default function ScannedHistoryScreen({ navigation, route }) {
   const [scannedItems, setScannedItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [filteredItems, setFilteredItems] = useState([]);
-  const [activeFilter, setActiveFilter] = useState("all");
+  const [activeFilter, setActiveFilter] = useState(
+    DEFAULT_PRODUCT_SEARCH_TYPE,
+  );
 
   const isFocused = useIsFocused();
   const scanHistoryStorage = useScannedHistoryStorage();
@@ -216,7 +214,8 @@ export default function ScannedHistoryScreen({ navigation, route }) {
 
     const results = scannedItems.filter((item) => {
       const matchesGroup =
-        activeFilter === "all" || getItemGroup(item) === activeFilter;
+        activeFilter === PRODUCT_SEARCH_TYPE.ALL ||
+        getItemGroup(item) === activeFilter;
 
       if (!matchesGroup) return false;
       if (!q) return true;
@@ -269,7 +268,11 @@ export default function ScannedHistoryScreen({ navigation, route }) {
   const renderItem = ({ item }) => {
     const itemGroup = getItemGroup(item);
     const typeIcon =
-      itemGroup === "books" ? "📚 " : itemGroup === "music" ? "💿 " : "";
+      itemGroup === PRODUCT_SEARCH_TYPE.BOOKS
+        ? "📚 "
+        : itemGroup === PRODUCT_SEARCH_TYPE.MUSIC
+          ? "💿 "
+          : "";
 
     return (
       <View style={[styles.card, item.isBook && styles.cardBook]}>

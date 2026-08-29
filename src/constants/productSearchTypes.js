@@ -1,11 +1,35 @@
+export const PRODUCT_SEARCH_TYPE = Object.freeze({
+  FOOD: "Alimentos",
+  SUPERMARKET: "Supermercado",
+  BOOKS: "Libros",
+  MUSIC: "Música",
+  ALL: "Todos",
+});
+
 export const PRODUCT_SEARCH_TYPES = [
-  { value: "Alimentos", label: "Alimentos", icon: "fast-food-outline" },
-  { value: "Supermercado", label: "Supermercado", icon: "basket-outline" },
-  { value: "Libros", label: "Libros", icon: "book-outline" },
-  { value: "Música", label: "Música", icon: "disc-outline" },
+  {
+    value: PRODUCT_SEARCH_TYPE.FOOD,
+    label: "Alimentos",
+    icon: "fast-food-outline",
+  },
+  {
+    value: PRODUCT_SEARCH_TYPE.SUPERMARKET,
+    label: "Supermercado",
+    icon: "basket-outline",
+  },
+  {
+    value: PRODUCT_SEARCH_TYPE.BOOKS,
+    label: "Libros",
+    icon: "book-outline",
+  },
+  {
+    value: PRODUCT_SEARCH_TYPE.MUSIC,
+    label: "Música",
+    icon: "disc-outline",
+  },
 ];
 
-export const DEFAULT_PRODUCT_SEARCH_TYPE = "Alimentos";
+export const DEFAULT_PRODUCT_SEARCH_TYPE = PRODUCT_SEARCH_TYPE.FOOD;
 
 export function normalizeProductSearchType(
   value,
@@ -18,13 +42,13 @@ export function normalizeProductSearchType(
     .toLowerCase();
 
   if (normalized === "alimentos" || normalized === "alimento" || normalized === "food") {
-    return "Alimentos";
+    return PRODUCT_SEARCH_TYPE.FOOD;
   }
   if (normalized === "supermercado" || normalized === "supermarket") {
-    return "Supermercado";
+    return PRODUCT_SEARCH_TYPE.SUPERMARKET;
   }
   if (normalized === "libros" || normalized === "libro" || normalized === "book") {
-    return "Libros";
+    return PRODUCT_SEARCH_TYPE.BOOKS;
   }
   if (
     normalized === "musica" ||
@@ -32,7 +56,7 @@ export function normalizeProductSearchType(
     normalized === "cd" ||
     normalized === "cd/dvd"
   ) {
-    return "Música";
+    return PRODUCT_SEARCH_TYPE.MUSIC;
   }
 
   return fallback;
