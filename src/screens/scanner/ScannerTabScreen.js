@@ -26,6 +26,10 @@ import {
 } from "@/src/storage/settingsStorage";
 import { SEARCH_ENGINES } from "@/src/constants/searchEngines";
 import { buildHeaderConfig } from "@/src/utils/layout/headerStyles";
+import {
+  DEFAULT_PRODUCT_SEARCH_TYPE,
+  PRODUCT_SEARCH_TYPES,
+} from "@/src/constants/productSearchTypes";
 
 function buildProductSearchEngineSubtitle(settings) {
   const engineId =
@@ -66,6 +70,9 @@ export default function ScannerTabScreen({ navigation }) {
   );
   const [manualBarcode, setManualBarcode] = useState("");
   const [manualUserHint, setManualUserHint] = useState("");
+  const [manualProductType, setManualProductType] = useState(
+    DEFAULT_PRODUCT_SEARCH_TYPE,
+  );
   const [manualBarcodeError, setManualBarcodeError] = useState("");
   const [productSearchEngineSubtitle, setProductSearchEngineSubtitle] =
     useState("Motor activo: Google");
@@ -174,6 +181,7 @@ export default function ScannerTabScreen({ navigation }) {
     navigation.navigate(ROUTES.NEW_PRODUCT_SCANNER2, {
       captureMode: "manual-barcode",
       manualBarcode: barcode,
+      productType: manualProductType,
       userHint: manualUserHint.trim(),
       saveToHistory: true,
       barcodeTypes: enabledBarcodeTypes,
@@ -269,10 +277,46 @@ export default function ScannerTabScreen({ navigation }) {
                     </Text>
                     <Text style={styles.developmentBadge}>DESARROLLO</Text>
                   </View>
+                  <Text style={styles.manualProductTypeLabel}>
+                    Tipo de producto
+                  </Text>
+                  <View style={styles.manualProductTypeOptions}>
+                    {PRODUCT_SEARCH_TYPES.map((option) => {
+                      const selected = manualProductType === option.value;
+                      return (
+                        <Pressable
+                          key={option.value}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          accessibilityLabel={`Tipo de producto: ${option.label}`}
+                          onPress={() => setManualProductType(option.value)}
+                          style={({ pressed }) => [
+                            styles.manualProductTypeOption,
+                            selected && styles.manualProductTypeOptionSelected,
+                            pressed && styles.manualProductTypeOptionPressed,
+                          ]}
+                        >
+                          <Ionicons
+                            name={option.icon}
+                            size={15}
+                            color={selected ? "#FFFFFF" : "#6D28D9"}
+                          />
+                          <Text
+                            style={[
+                              styles.manualProductTypeText,
+                              selected && styles.manualProductTypeTextSelected,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                   <TextInput
                     value={manualUserHint}
                     onChangeText={setManualUserHint}
-                    placeholder="Información adicional: libro, CD/DVD, alimento…"
+                    placeholder="Información adicional opcional: marca, autor, intérprete…"
                     placeholderTextColor={TEXT_MUTED}
                     multiline
                     style={styles.manualHintInput}
@@ -526,6 +570,52 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     fontSize: 9,
     fontWeight: "900",
+  },
+
+  manualProductTypeLabel: {
+    marginTop: 10,
+    marginBottom: 6,
+    color: "#475569",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  manualProductTypeOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+  },
+
+  manualProductTypeOption: {
+    minHeight: 34,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: "#C4B5FD",
+    borderRadius: 999,
+    backgroundColor: "#FFFFFF",
+  },
+
+  manualProductTypeOptionSelected: {
+    borderColor: "#7C3AED",
+    backgroundColor: "#7C3AED",
+  },
+
+  manualProductTypeOptionPressed: {
+    opacity: 0.78,
+  },
+
+  manualProductTypeText: {
+    color: "#6D28D9",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  manualProductTypeTextSelected: {
+    color: "#FFFFFF",
   },
 
   manualBarcodeRow: {

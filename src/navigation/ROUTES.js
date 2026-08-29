@@ -45,9 +45,6 @@ export const ROUTES = {
   // Scanner principal
   NEW_PRODUCT_SCANNER2: "NewProductScanner2",
 
-  // Pantalla para mostrar información obtenida del producto escaneado
-  PRODUCT_INFO: "ProductInfo",
-
   // Scanner auxiliares / existentes
   SCANNER_SCREEN: "Scanner Screen",
   QUICK_SCANNER_SCREEN: "QuickScanner Screen",

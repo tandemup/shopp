@@ -159,7 +159,7 @@ El ISBN-13 corresponde a una edición concreta. Usa el ISBN como identificador p
 
 Consulta y contrasta fuentes fiables como editoriales, catálogos bibliográficos, Google Books, Open Library, librerías reconocidas u otras bases de datos bibliográficas.
 
-Necesito obtener ISBN-13, título, autor o autores, año de publicación de esta edición, editorial, idioma, imagen de portada y resumen o sinopsis.
+Necesito obtener ISBN-13, título, autor o autores, año de publicación de esta edición, editorial, idioma, número de páginas, categoría, formato físico, imagen de portada, URL de la ficha y resumen o sinopsis.
 
 Para la portada, devuelve una URL pública de la imagen correspondiente exactamente a este ISBN. Si no puedes identificar una portada fiable, devuelve null.
 
@@ -176,7 +176,11 @@ Usa exactamente esta estructura:
   "publicationYear": null,
   "publisher": null,
   "language": null,
+  "pageCount": null,
+  "category": null,
+  "physicalFormat": null,
   "coverImageUrl": null,
+  "productPageUrl": null,
   "summary": null
 }`;
 }

@@ -3,6 +3,7 @@ import { useConvex, useMutation } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
 import { lookupProductByBarcode } from "@/src/services/productLookup";
+import { normalizeProductSearchType } from "@/src/constants/productSearchTypes";
 
 function normalizeBarcode(value) {
   return String(value || "").replace(/\D/g, "");
@@ -34,8 +35,9 @@ export function useProductLookupWithCache() {
 
   const lookupWithCache = useCallback(
     async (barcode, options = {}) => {
-      const { forceRefresh = false } = options;
+      const { forceRefresh = false, productType } = options;
       const normalizedBarcode = normalizeBarcode(barcode);
+      const normalizedProductType = normalizeProductSearchType(productType);
 
       if (!normalizedBarcode) {
         throw new Error("Código de barras vacío.");
@@ -57,7 +59,11 @@ export function useProductLookupWithCache() {
           },
         );
 
-        if (!forceRefresh && hasUsefulProductData(cachedProduct)) {
+        const cachedTypeMatches =
+          !cachedProduct?.productType ||
+          normalizeProductSearchType(cachedProduct.productType) === normalizedProductType;
+
+        if (!forceRefresh && cachedTypeMatches && hasUsefulProductData(cachedProduct)) {
           return {
             fromCache: true,
             barcode: normalizedBarcode,
@@ -67,6 +73,8 @@ export function useProductLookupWithCache() {
 
         const negativeCacheActive =
           !forceRefresh &&
+          normalizedProductType !== "Libros" &&
+          cachedTypeMatches &&
           cachedProduct?.status === "not_found" &&
           Number(cachedProduct?.nextExternalLookupAt || 0) > Date.now();
 
@@ -80,7 +88,9 @@ export function useProductLookupWithCache() {
           };
         }
 
-        const lookupResult = await lookupProductByBarcode(normalizedBarcode);
+        const lookupResult = await lookupProductByBarcode(normalizedBarcode, {
+          productType: normalizedProductType,
+        });
 
         if (!lookupResult?.found || !lookupResult?.product) {
           const notFoundProduct = await markAsNotFound({
@@ -102,12 +112,14 @@ export function useProductLookupWithCache() {
           barcode: normalizedBarcode,
           name: String(externalProduct.name || "").trim() || undefined,
           brand: String(externalProduct.brand || "").trim() || undefined,
+          productType: normalizedProductType,
           category: String(externalProduct.category || "").trim() || undefined,
           imageUrl: String(externalProduct.imageUrl || "").trim() || undefined,
           productUrl:
             String(
               externalProduct.productUrl || externalProduct.url || "",
             ).trim() || undefined,
+          details: externalProduct.details || undefined,
           source: "internet",
           status: "complete",
         });

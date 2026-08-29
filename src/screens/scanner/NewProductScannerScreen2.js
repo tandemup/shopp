@@ -47,6 +47,11 @@ import { useScannedHistoryStorage } from "@/src/hooks/useScannedHistoryStorage";
 import { normalizeBarcode } from "@/src/utils/barcodeNormalization";
 import { storage } from "@/src/storage";
 import {
+  DEFAULT_PRODUCT_SEARCH_TYPE,
+  PRODUCT_SEARCH_TYPES,
+  normalizeProductSearchType,
+} from "@/src/constants/productSearchTypes";
+import {
   DEFAULT_SCANNER_ZOOM,
   SCANNER_ZOOM_VALUES,
   getNextScannerZoom,
@@ -83,116 +88,38 @@ function normalizeBarcodeTypes(value) {
   return DEFAULT_BARCODE_TYPES;
 }
 
-function getProductTypeMeta(productType) {
-  const normalized = String(productType || "Automático")
-    .trim()
-    .toLowerCase();
-
-  if (normalized === "libros" || normalized === "libro") {
-    return {
-      label: "Libros",
-      icon: "book-outline",
-    };
-  }
-
-  if (
-    normalized === "música" ||
-    normalized === "musica" ||
-    normalized === "music"
-  ) {
-    return {
-      label: "Música",
-      icon: "musical-notes-outline",
-    };
-  }
-
-  if (normalized === "cd/dvd" || normalized === "dvd" || normalized === "cd") {
-    return { label: "CD/DVD", icon: "musical-notes-outline" };
-  }
-
-  if (normalized === "automatico" || normalized === "auto") {
-    return { label: "Automático", icon: "sparkles-outline" };
-  }
-
-  return {
-    label: "Supermercado",
-    icon: "cart-outline",
-  };
-}
-
-const PRODUCT_TYPE_OPTIONS = [
-  { value: "Automático", label: "Automático", icon: "sparkles-outline" },
-  {
-    value: "Supermercado",
-    label: "Supermercado",
-    icon: "cart-outline",
-  },
-  {
-    value: "Libros",
-    label: "Libros",
-    icon: "book-outline",
-  },
-  {
-    value: "CD/DVD",
-    label: "CD/DVD",
-    icon: "musical-notes-outline",
-  },
-];
-
 const SCANNER_PRODUCT_TYPE_STORAGE_KEY = "@shopping/scanner-product-type";
 
-function normalizeProductType(value, fallback = "Automático") {
-  const normalized = String(value || "")
-    .trim()
-    .toLowerCase();
-
-  if (normalized === "libros" || normalized === "libro") {
-    return "Libros";
-  }
-
-  if (
-    normalized === "música" ||
-    normalized === "musica" ||
-    normalized === "music"
-  ) {
-    return "CD/DVD";
-  }
-
-  if (normalized === "cd/dvd" || normalized === "dvd" || normalized === "cd") return "CD/DVD";
-  if (normalized === "automático" || normalized === "automatico" || normalized === "auto") return "Automático";
-
-  if (normalized === "supermercado") {
-    return "Supermercado";
-  }
-
-  return fallback;
-}
-
 function ProductTypeSelector({ value, onChange }) {
-  const currentIndex = Math.max(
-    0,
-    PRODUCT_TYPE_OPTIONS.findIndex((option) => option.value === value),
-  );
-  const currentOption = PRODUCT_TYPE_OPTIONS[currentIndex];
-  const nextOption =
-    PRODUCT_TYPE_OPTIONS[(currentIndex + 1) % PRODUCT_TYPE_OPTIONS.length];
-
   return (
     <View style={styles.productTypeSelector} pointerEvents="box-none">
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Tipo de producto: ${currentOption.label}. Pulsar para cambiar a ${nextOption.label}`}
-        accessibilityHint="Cambia al siguiente tipo de producto"
-        style={({ pressed }) => [
-          styles.productTypeOption,
-          pressed && styles.productTypeOptionPressed,
-        ]}
-        onPress={() => onChange(nextOption.value)}
-      >
-        <Ionicons name={currentOption.icon} size={20} color="#FFFFFF" />
-        <Text style={styles.productTypeOptionText}>{currentOption.label}</Text>
-        <Ionicons name="chevron-forward" size={17} color="#DBEAFE" />
-      </Pressable>
+      <Text style={styles.productTypeTitle}>¿Qué quieres buscar?</Text>
+      <View style={styles.productTypeOptions}>
+        {PRODUCT_SEARCH_TYPES.map((option) => {
+          const selected = value === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`Buscar en ${option.label}`}
+              style={({ pressed }) => [
+                styles.productTypeOption,
+                selected && styles.productTypeOptionSelected,
+                pressed && styles.productTypeOptionPressed,
+              ]}
+              onPress={() => onChange(option.value)}
+            >
+              <Ionicons
+                name={option.icon}
+                size={17}
+                color={selected ? "#FFFFFF" : "#D6E4FF"}
+              />
+              <Text style={styles.productTypeOptionText}>{option.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -274,7 +201,7 @@ export default function NewProductScannerScreen2() {
     manualBarcode = "",
     userHint = "",
 
-    productType = "Automático",
+    productType = DEFAULT_PRODUCT_SEARCH_TYPE,
 
     saveToHistory: routeSaveToHistory = null,
 
@@ -312,7 +239,7 @@ export default function NewProductScannerScreen2() {
   const [scannerSession, setScannerSession] = useState(0);
 
   const [selectedProductType, setSelectedProductType] = useState(() =>
-    normalizeProductType(productType),
+    normalizeProductSearchType(productType),
   );
 
   const [webCameraState, setWebCameraState] = useState(
@@ -333,7 +260,7 @@ export default function NewProductScannerScreen2() {
         }
 
         setSelectedProductType(
-          normalizeProductType(storedProductType, selectedProductType),
+          normalizeProductSearchType(storedProductType, selectedProductType),
         );
       } catch (error) {
         console.warn(
@@ -351,7 +278,7 @@ export default function NewProductScannerScreen2() {
   }, []);
 
   const handleProductTypeChange = useCallback(async (nextProductType) => {
-    const normalizedProductType = normalizeProductType(nextProductType);
+    const normalizedProductType = normalizeProductSearchType(nextProductType);
 
     setSelectedProductType(normalizedProductType);
 
@@ -636,7 +563,9 @@ export default function NewProductScannerScreen2() {
       return updatedItem;
     }
 
-    const lookup = await lookupWithCache(barcode);
+    const lookup = await lookupWithCache(barcode, {
+      productType: selectedProductType,
+    });
 
     const product = lookup?.product || null;
 
@@ -1095,26 +1024,49 @@ const styles = StyleSheet.create({
   productTypeSelector: {
     position: "absolute",
     top: 16,
-    left: 0,
-    right: 0,
+    left: 12,
+    right: 12,
     zIndex: 30,
 
-    alignItems: "center",
+    padding: 10,
+    borderRadius: 16,
+    backgroundColor: "rgba(7, 17, 31, 0.88)",
+  },
+
+  productTypeTitle: {
+    marginBottom: 8,
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+
+  productTypeOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 7,
   },
 
   productTypeOption: {
-    minWidth: 190,
-    minHeight: 44,
+    minHeight: 38,
 
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
 
-    paddingHorizontal: 16,
-    paddingVertical: 9,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
 
     borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#54709A",
+    backgroundColor: "#24344C",
+  },
+
+  productTypeOptionSelected: {
+    borderColor: "#60A5FA",
     backgroundColor: "#2563EB",
   },
 
@@ -1125,7 +1077,7 @@ const styles = StyleSheet.create({
   productTypeOptionText: {
     color: "#FFFFFF",
 
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "800",
   },
 

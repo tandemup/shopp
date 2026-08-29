@@ -18,6 +18,7 @@ import {
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 
 import { Image } from "expo-image";
+import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 
@@ -56,7 +57,10 @@ import {
   buildSupermarketLookupPrompt,
 } from "@/src/constants/productLookupPrompts";
 import { buildBookLookupPrompt } from "@/src/utils/productLookupPrompts";
-import { buildUnifiedProductLookupPrompt } from "@/src/utils/productLookupPrompts";
+import {
+  PRODUCT_SEARCH_TYPES,
+  normalizeProductSearchType,
+} from "@/src/constants/productSearchTypes";
 
 const PRODUCT_DETAIL_MAX_SIZE = 512;
 const PRODUCT_THUMBNAIL_MAX_SIZE = 128;
@@ -442,10 +446,20 @@ function FormField({
   );
 }
 
-const PRODUCT_TYPES = ["Supermercado", "Libros", "Música"];
+const PRODUCT_TYPES = PRODUCT_SEARCH_TYPES.map((option) => option.value);
 
 const DETAIL_FIELDS = {
+  Alimentos: [
+    ["quantity", "Cantidad", "Ej. 400 g"],
+    ["category", "Categoría", "Categoría del alimento"],
+    ["subcategory", "Subcategoría", "Subcategoría del alimento"],
+    ["manufacturer", "Fabricante", "Empresa fabricante"],
+    ["countryOfOrigin", "País de origen", "País de origen"],
+    ["ingredients", "Ingredientes", "Lista de ingredientes", true],
+    ["allergens", "Alérgenos", "Alérgenos declarados", true],
+  ],
   Supermercado: [
+    ["quantity", "Cantidad o formato", "Ej. 1 l, 40 lavados"],
     ["category", "Categoría", "Categoría del producto"],
     ["subcategory", "Subcategoría", "Subcategoría del producto"],
     ["manufacturer", "Fabricante", "Empresa fabricante"],
@@ -645,73 +659,6 @@ function ExternalSearchButton({ busy, barcode, engineLabel, onPress }) {
   );
 }
 
-function ActualizarDesdeInternet({
-  busy,
-  consultingInternet,
-  internetLookupLoading,
-  onPress,
-}) {
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.secondaryButton,
-        pressed && styles.secondaryButtonPressed,
-        busy && styles.disabledButton,
-      ]}
-      onPress={onPress}
-      disabled={busy}
-    >
-      {consultingInternet || internetLookupLoading ? (
-        <ActivityIndicator color="#2563EB" />
-      ) : (
-        <>
-          <Ionicons name="refresh-outline" size={20} color="#2563EB" />
-          <View style={styles.buttonTextBlock}>
-            <Text style={styles.secondaryButtonText}>
-              Actualizar desde internet
-            </Text>
-            <Text style={styles.secondaryButtonHint}>
-              Sustituye los campos con datos externos
-            </Text>
-          </View>
-        </>
-      )}
-    </Pressable>
-  );
-}
-
-function ProductInfo({ busy, barcode, dataSource, navigation, product }) {
-  const handleShowProductInfo = useCallback(() => {
-    navigation.navigate(ROUTES.PRODUCT_INFO, {
-      barcode,
-      product: product || null,
-      fromCache: dataSource === "convex",
-    });
-  }, [barcode, dataSource, navigation, product]);
-
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.secondaryButton,
-        pressed && styles.secondaryButtonPressed,
-        busy && styles.disabledButton,
-      ]}
-      onPress={handleShowProductInfo}
-      disabled={busy || !barcode}
-    >
-      <Ionicons name="information-circle-outline" size={20} color="#2563EB" />
-      <View style={styles.buttonTextBlock}>
-        <Text style={styles.secondaryButtonText}>
-          Ver información del producto
-        </Text>
-        <Text style={styles.secondaryButtonHint}>
-          Consulta la ficha completa del producto
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
 function EliminarDelHistorial({ busy, deleting, onDelete }) {
   const handlePress = useCallback(() => {
     safeConfirm(
@@ -878,7 +825,9 @@ export default function EditScannedItemScreen({ route, navigation }) {
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
   const [category, setCategory] = useState("");
-  const [productType, setProductType] = useState("");
+  const [productType, setProductType] = useState(() =>
+    normalizeProductSearchType(params.productType),
+  );
   const [userHint, setUserHint] = useState(params.userHint || "");
   const [details, setDetails] = useState({});
   const [notes, setNotes] = useState("");
@@ -886,6 +835,8 @@ export default function EditScannedItemScreen({ route, navigation }) {
   const [musicJson, setMusicJson] = useState("");
   const [bookJson, setBookJson] = useState("");
   const [supermarketJson, setSupermarketJson] = useState("");
+  const [showLookupPrompt, setShowLookupPrompt] = useState(false);
+  const [promptCopied, setPromptCopied] = useState(false);
   const [selectingImage, setSelectingImage] = useState(false);
   const [localImageUri, setLocalImageUri] = useState("");
   const [imageSizeBytes, setImageSizeBytes] = useState(null);
@@ -1043,6 +994,60 @@ export default function EditScannedItemScreen({ route, navigation }) {
     input.click();
   }, [persistLocalProductImage]);
 
+  const handlePasteProductImage = useCallback(async () => {
+    if (
+      Platform.OS !== "web" ||
+      typeof navigator === "undefined" ||
+      typeof navigator.clipboard?.read !== "function"
+    ) {
+      setLocalError(
+        "Este navegador no permite leer imágenes del portapapeles. Usa Importar imagen.",
+      );
+      return;
+    }
+
+    setSelectingImage(true);
+    setLocalError(null);
+
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      let imageBlob = null;
+
+      for (const clipboardItem of clipboardItems) {
+        const imageType = clipboardItem.types?.find((type) =>
+          String(type).toLowerCase().startsWith("image/"),
+        );
+
+        if (imageType) {
+          imageBlob = await clipboardItem.getType(imageType);
+          break;
+        }
+      }
+
+      if (!imageBlob) {
+        throw new Error(
+          "El portapapeles no contiene una imagen. Copia primero una portada o fotografía.",
+        );
+      }
+
+      await persistLocalProductImage(imageBlob, "clipboard");
+    } catch (error) {
+      console.error("EditScannedItemScreen clipboard image error:", error);
+
+      const permissionDenied =
+        error?.name === "NotAllowedError" ||
+        error?.name === "SecurityError";
+
+      setLocalError(
+        permissionDenied
+          ? "Chrome no ha permitido leer el portapapeles. Autoriza el acceso o usa Importar imagen."
+          : error?.message || "No se pudo pegar la imagen del portapapeles.",
+      );
+    } finally {
+      setSelectingImage(false);
+    }
+  }, [persistLocalProductImage]);
+
   useEffect(() => {
     let active = true;
 
@@ -1074,6 +1079,28 @@ export default function EditScannedItemScreen({ route, navigation }) {
     SEARCH_ENGINES[selectedSearchEngine] || SEARCH_ENGINES[DEFAULT_ENGINE];
   const selectedEngineLabel = selectedEngine?.label || "Buscar producto";
 
+  const currentLookupPrompt = useMemo(() => {
+    if (!barcode) return "";
+    if (isMusicProductType(productType)) {
+      return buildMusicCdLookupPrompt(barcode);
+    }
+    if (isBookProductType(productType)) {
+      return buildBookLookupPrompt(barcode, userHint);
+    }
+    return buildSupermarketLookupPrompt(barcode);
+  }, [barcode, productType, userHint]);
+
+  const handleCopyLookupPrompt = useCallback(async () => {
+    if (!currentLookupPrompt) return;
+    try {
+      await Clipboard.setStringAsync(currentLookupPrompt);
+      setPromptCopied(true);
+      setTimeout(() => setPromptCopied(false), 1800);
+    } catch (error) {
+      setLocalError(error?.message || "No se pudo copiar el prompt.");
+    }
+  }, [currentLookupPrompt]);
+
   const resolvedName = useMemo(() => {
     return (
       normalizeString(name) ||
@@ -1088,8 +1115,8 @@ export default function EditScannedItemScreen({ route, navigation }) {
         return;
       }
 
-      const nextProductType = normalizeString(
-        nextProduct.productType || nextProduct.product_type,
+      const nextProductType = normalizeProductSearchType(
+        nextProduct.productType || nextProduct.product_type || params.productType,
       );
 
       setName(getProductDisplayName(nextProduct, barcode));
@@ -1109,7 +1136,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
         ),
       );
     },
-    [barcode],
+    [barcode, params.productType],
   );
 
   const applyConvexProduct = useCallback(
@@ -1144,6 +1171,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
       try {
         const result = await lookupWithCache(barcode, {
           forceRefresh: !silent,
+          productType,
         });
         const cachedProduct = result?.product ?? null;
 
@@ -1178,7 +1206,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
         setConsultingInternet(false);
       }
     },
-    [barcode, lookupWithCache, applyConvexProduct],
+    [barcode, productType, lookupWithCache, applyConvexProduct],
   );
 
   useEffect(() => {
@@ -1494,19 +1522,11 @@ export default function EditScannedItemScreen({ route, navigation }) {
 
     try {
       setLocalError(null);
-      const normalizedType = normalizeString(productType).toLowerCase();
-      const query = isMusicProductType(productType)
-        ? buildMusicCdLookupPrompt(barcode)
-        : isBookProductType(productType)
-          ? buildBookLookupPrompt(barcode, userHint)
-          : normalizedType === "automático" || normalizedType === "automatico" || normalizedType === "auto"
-            ? buildUnifiedProductLookupPrompt(barcode, "Automático")
-          : buildSupermarketLookupPrompt(barcode);
-      await openGoogleAIMode(query);
+      await openGoogleAIMode(currentLookupPrompt);
     } catch (error) {
       setLocalError(error?.message || "No se pudo abrir Google Modo IA.");
     }
-  }, [barcode, productType, userHint]);
+  }, [barcode, currentLookupPrompt]);
 
   useEffect(() => {
     if (!params.autoOpenEngine || !barcode || !productType) return;
@@ -1535,7 +1555,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
         allergens: joinJsonValues(data.allergens),
       };
 
-      setProductType("Supermercado");
+      setProductType(normalizeProductSearchType(productType));
       if (normalizeString(data.name)) setName(normalizeString(data.name));
       if (normalizeString(data.brand)) setBrand(normalizeString(data.brand));
       if (normalizeString(data.category)) {
@@ -1563,7 +1583,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
           : error?.message || "No se pudo aplicar la ficha de supermercado.",
       );
     }
-  }, [barcode, supermarketJson]);
+  }, [barcode, productType, supermarketJson]);
 
   const handleApplyMusicJson = useCallback(() => {
     try {
@@ -1618,7 +1638,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
     }
   }, [barcode, musicJson]);
 
-  const handleApplyBookJson = useCallback(() => {
+  const handleApplyBookJson = useCallback(async () => {
     try {
       setLocalError(null);
       const data = parseMusicJson(bookJson);
@@ -1641,11 +1661,16 @@ export default function EditScannedItemScreen({ route, navigation }) {
         pageCount: normalizeString(data.pageCount),
         category: normalizeString(data.category || data.genre),
         format: normalizeString(data.physicalFormat || data.format),
-        synopsis: normalizeString(data.synopsis || data.description),
+        synopsis: normalizeString(
+          data.summary || data.synopsis || data.description,
+        ),
       };
 
       setProductType("Libros");
       if (normalizeString(data.title)) setName(normalizeString(data.title));
+      if (normalizeString(data.category || data.genre)) {
+        setCategory(normalizeString(data.category || data.genre));
+      }
       setDetails((current) => {
         const merged = { ...current };
         Object.entries(nextDetails).forEach(([key, value]) => {
@@ -1657,7 +1682,35 @@ export default function EditScannedItemScreen({ route, navigation }) {
         const nextProductUrl = normalizeExternalUrl(data.productPageUrl);
         if (nextProductUrl) setProductUrl(nextProductUrl);
       }
+
+      const coverImageUrl = normalizeExternalUrl(
+        data.coverImageUrl || data.imageUrl,
+      );
+      let coverWarning = "";
+
+      if (coverImageUrl) {
+        setSelectingImage(true);
+        try {
+          const response = await fetch(coverImageUrl);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const imageBlob = await response.blob();
+          if (!String(imageBlob.type || "").startsWith("image/")) {
+            throw new Error("La URL no devolvió una imagen.");
+          }
+          await persistLocalProductImage(imageBlob, "book-cover-url");
+        } catch (coverError) {
+          console.warn("Book cover import failed:", coverError);
+          coverWarning =
+            "Los datos se aplicaron, pero Chrome no pudo descargar la portada. Puedes usar Paste image.";
+        } finally {
+          setSelectingImage(false);
+        }
+      }
+
       setBookJson("");
+      if (coverWarning) setLocalError(coverWarning);
     } catch (error) {
       setLocalError(
         error instanceof SyntaxError
@@ -1665,7 +1718,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
           : error?.message || "No se pudo aplicar la ficha del libro.",
       );
     }
-  }, [barcode, bookJson]);
+  }, [barcode, bookJson, persistLocalProductImage]);
 
   if (userIsLoading) {
     return (
@@ -1811,6 +1864,43 @@ export default function EditScannedItemScreen({ route, navigation }) {
                       </Text>
                     </View>
                   </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Paste image from clipboard"
+                    accessibilityState={{ disabled: selectingImage }}
+                    style={({ pressed }) => [
+                      styles.pasteImageButton,
+                      styles.imageImportButton,
+                      styles.clipboardImageButton,
+                      pressed && styles.pasteImageButtonPressed,
+                      selectingImage && styles.pasteImageButtonDisabled,
+                    ]}
+                    onPress={handlePasteProductImage}
+                    disabled={selectingImage}
+                  >
+                    {selectingImage ? (
+                      <ActivityIndicator size="small" color="#6D28D9" />
+                    ) : (
+                      <Ionicons
+                        name="clipboard-outline"
+                        size={18}
+                        color="#6D28D9"
+                      />
+                    )}
+                    <View style={styles.imageImportTextBlock}>
+                      <Text
+                        style={[
+                          styles.pasteImageButtonText,
+                          styles.clipboardImageButtonText,
+                        ]}
+                      >
+                        {selectingImage ? "Procesando imagen..." : "Paste image"}
+                      </Text>
+                      <Text style={styles.imageImportHint}>
+                        Usa la imagen copiada en el clipboard
+                      </Text>
+                    </View>
+                  </Pressable>
                 </View>
               ) : null}
 
@@ -1935,6 +2025,62 @@ export default function EditScannedItemScreen({ route, navigation }) {
                 }
                 multiline
               />
+
+              <View style={styles.promptPreviewSection}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: showLookupPrompt }}
+                  accessibilityLabel={
+                    showLookupPrompt ? "Ocultar prompt utilizado" : "Ver prompt utilizado"
+                  }
+                  onPress={() => setShowLookupPrompt((current) => !current)}
+                  style={({ pressed }) => [
+                    styles.promptPreviewToggle,
+                    pressed && styles.promptPreviewTogglePressed,
+                  ]}
+                >
+                  <Ionicons name="code-slash-outline" size={18} color="#475467" />
+                  <View style={styles.promptPreviewToggleText}>
+                    <Text style={styles.promptPreviewTitle}>
+                      {showLookupPrompt ? "Ocultar prompt" : "Ver prompt utilizado"}
+                    </Text>
+                    <Text style={styles.promptPreviewDescription}>
+                      Texto exacto enviado a Google Modo IA
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name={showLookupPrompt ? "chevron-up" : "chevron-down"}
+                    size={18}
+                    color="#667085"
+                  />
+                </Pressable>
+
+                {showLookupPrompt ? (
+                  <View style={styles.promptPreviewBody}>
+                    <Text style={styles.promptPreviewText} selectable>
+                      {currentLookupPrompt}
+                    </Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Copiar prompt"
+                      onPress={handleCopyLookupPrompt}
+                      style={({ pressed }) => [
+                        styles.copyPromptButton,
+                        pressed && styles.copyPromptButtonPressed,
+                      ]}
+                    >
+                      <Ionicons
+                        name={promptCopied ? "checkmark-outline" : "copy-outline"}
+                        size={17}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.copyPromptButtonText}>
+                        {promptCopied ? "Prompt copiado" : "Copiar prompt"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
 
               {isSupermarketProductType(productType) ? (
                 <>
@@ -2091,7 +2237,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
                 </>
               ) : null}
 
-              {!productType || productType === "Supermercado" ? (
+              {isSupermarketProductType(productType) ? (
                 <FormField
                   label="Marca"
                   value={brand}
@@ -2176,19 +2322,6 @@ export default function EditScannedItemScreen({ route, navigation }) {
 
               {isAdmin ? (
                 <>
-                  <ActualizarDesdeInternet
-                    busy={busy}
-                    consultingInternet={consultingInternet}
-                    internetLookupLoading={internetLookupLoading}
-                    onPress={() => searchExternalProduct({ silent: false })}
-                  />
-                  <ProductInfo
-                    busy={busy}
-                    barcode={barcode}
-                    dataSource={dataSource}
-                    navigation={navigation}
-                    product={product}
-                  />
                   <EliminarDelHistorial
                     busy={busy}
                     deleting={deleting}
@@ -2417,6 +2550,13 @@ const styles = StyleSheet.create({
   imageImportButton: {
     width: "100%",
     justifyContent: "center",
+  },
+  clipboardImageButton: {
+    marginTop: 8,
+    borderColor: "#8B5CF6",
+  },
+  clipboardImageButtonText: {
+    color: "#6D28D9",
   },
   imageImportTextBlock: {
     flex: 1,
@@ -2651,6 +2791,80 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
 
+  promptPreviewSection: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#D0D5DD",
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: "#F9FAFB",
+  },
+
+  promptPreviewToggle: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+  },
+
+  promptPreviewTogglePressed: {
+    backgroundColor: "#F2F4F7",
+  },
+
+  promptPreviewToggleText: {
+    flex: 1,
+  },
+
+  promptPreviewTitle: {
+    color: "#344054",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  promptPreviewDescription: {
+    marginTop: 2,
+    color: "#667085",
+    fontSize: 11,
+  },
+
+  promptPreviewBody: {
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#E4E7EC",
+    backgroundColor: "#FFFFFF",
+  },
+
+  promptPreviewText: {
+    color: "#344054",
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: Platform.OS === "web" ? "monospace" : undefined,
+  },
+
+  copyPromptButton: {
+    minHeight: 40,
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingHorizontal: 13,
+    borderRadius: 10,
+    backgroundColor: "#475467",
+  },
+
+  copyPromptButtonPressed: {
+    opacity: 0.82,
+  },
+
+  copyPromptButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
   musicJsonDescription: {
     marginTop: 4,
     marginBottom: 10,
@@ -2817,41 +3031,6 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "900",
-  },
-
-  secondaryButton: {
-    minHeight: 58,
-    marginTop: 10,
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    paddingHorizontal: 16,
-  },
-
-  secondaryButtonPressed: {
-    backgroundColor: "#DBEAFE",
-    transform: [{ scale: 0.995 }],
-  },
-
-  buttonTextBlock: {
-    alignItems: "center",
-  },
-
-  secondaryButtonText: {
-    color: "#1D4ED8",
-    fontSize: 14,
-    fontWeight: "900",
-  },
-
-  secondaryButtonHint: {
-    color: "#5B76A8",
-    fontSize: 10,
-    marginTop: 2,
   },
 
   dangerZone: {
