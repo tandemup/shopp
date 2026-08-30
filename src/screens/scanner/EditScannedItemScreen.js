@@ -53,6 +53,7 @@ import BarcodeLink from "@/src/components/controls/BarcodeLink";
 import { ROUTES } from "@/src/navigation/ROUTES";
 import { safeConfirm } from "@/src/components/ui/alert/safeAlert";
 import {
+  buildFoodLookupPrompt,
   buildMusicCdLookupPrompt,
   buildSupermarketLookupPrompt,
 } from "@/src/constants/productLookupPrompts";
@@ -93,6 +94,19 @@ function isSupermarketProductType(value) {
     normalizedValue === "supermercado" ||
     normalizedValue === "food" ||
     normalizedValue === "alimentos"
+  );
+}
+
+function isFoodProductType(value) {
+  const normalizedValue = normalizeString(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  return (
+    normalizedValue === "alimentos" ||
+    normalizedValue === "alimento" ||
+    normalizedValue === "food"
   );
 }
 
@@ -572,6 +586,7 @@ function GoogleModeIA({
   barcode,
   musicJsonSearch = false,
   bookJsonSearch = false,
+  foodJsonSearch = false,
   supermarketJsonSearch = false,
   onPress,
 }) {
@@ -579,6 +594,8 @@ function GoogleModeIA({
     ? "Buscar ficha de CD (JSON)"
     : bookJsonSearch
       ? "Buscar ficha de libro (JSON)"
+      : foodJsonSearch
+        ? "Buscar ficha de alimentos (JSON)"
       : supermarketJsonSearch
         ? "Buscar ficha de supermercado (JSON)"
         : "Google Modo IA";
@@ -586,9 +603,11 @@ function GoogleModeIA({
     ? "Identifica la edición y devuelve sus datos"
     : bookJsonSearch
       ? "Identifica la edición y devuelve los datos bibliográficos"
-      : supermarketJsonSearch
-        ? "Identifica el producto y devuelve sus datos"
-        : "Respuesta generada a partir del código";
+      : foodJsonSearch
+        ? "Identifica el alimento o la bebida y devuelve sus datos"
+        : supermarketJsonSearch
+          ? "Identifica el producto y devuelve sus datos"
+          : "Respuesta generada a partir del código";
 
   return (
     <Pressable
@@ -1094,6 +1113,9 @@ export default function EditScannedItemScreen({ route, navigation }) {
     if (isBookProductType(productType)) {
       return buildBookLookupPrompt(barcode, userHint);
     }
+    if (isFoodProductType(productType)) {
+      return buildFoodLookupPrompt(barcode);
+    }
     return buildSupermarketLookupPrompt(barcode);
   }, [barcode, productType, userHint]);
 
@@ -1587,7 +1609,10 @@ export default function EditScannedItemScreen({ route, navigation }) {
       setLocalError(
         error instanceof SyntaxError
           ? "El texto pegado no es un JSON válido. Copia únicamente el objeto JSON."
-          : error?.message || "No se pudo aplicar la ficha de supermercado.",
+          : error?.message ||
+            (isFoodProductType(productType)
+              ? "No se pudo aplicar la ficha de alimentos."
+              : "No se pudo aplicar la ficha de supermercado."),
       );
     }
   }, [barcode, productType, supermarketJson]);
@@ -2095,13 +2120,16 @@ export default function EditScannedItemScreen({ route, navigation }) {
                     <GoogleModeIA
                       busy={busy}
                       barcode={barcode}
-                      supermarketJsonSearch
+                      foodJsonSearch={isFoodProductType(productType)}
+                      supermarketJsonSearch={!isFoodProductType(productType)}
                       onPress={handleGoogleAIModeSearch}
                     />
                   </View>
                   <View style={styles.musicJsonImporter}>
                     <Text style={styles.label}>
-                      JSON de la ficha de supermercado
+                      {isFoodProductType(productType)
+                        ? "JSON de la ficha de alimentos"
+                        : "JSON de la ficha de supermercado"}
                     </Text>
                     <Text style={styles.musicJsonDescription}>
                       Copia la respuesta de Google Modo IA, pégala aquí y
@@ -2119,7 +2147,11 @@ export default function EditScannedItemScreen({ route, navigation }) {
                     />
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel="Aplicar JSON a la ficha de supermercado"
+                      accessibilityLabel={
+                        isFoodProductType(productType)
+                          ? "Aplicar JSON a la ficha de alimentos"
+                          : "Aplicar JSON a la ficha de supermercado"
+                      }
                       disabled={busy || !normalizeString(supermarketJson)}
                       onPress={handleApplySupermarketJson}
                       style={({ pressed }) => [

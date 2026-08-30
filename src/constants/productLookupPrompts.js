@@ -33,6 +33,7 @@ DATOS PROPORCIONADOS POR EL USUARIO
 - Mercado preferente: ${normalizedMarket}
 
 TIPOS DE PRODUCTO ADMITIDOS
+- "Alimentos"
 - "Supermercado"
 - "Libros"
 - "CD / DVD"
@@ -43,7 +44,8 @@ INSTRUCCIONES
 2. Usa el tipo y la información adicional del usuario para orientar la búsqueda, pero no asumas que sean correctos.
 3. Busca primero el código exacto entre comillas y contrasta al menos dos fuentes cuando sea posible.
 4. Da prioridad a fuentes primarias y especializadas:
-   - Supermercado: fabricante, GS1, Open Food Facts y supermercados.
+   - Alimentos: fabricante, GS1, Open Food Facts y supermercados.
+   - Supermercado: fabricante, GS1 y distribuidores o supermercados.
    - Libros: editorial, ISBN, bibliotecas nacionales, Google Books, Open Library y WorldCat.
    - CD/DVD: sello, estudio, distribuidor, MusicBrainz, Discogs, Blu-ray.com, TMDB o catálogo oficial.
 5. Identifica la edición exacta. No mezcles formatos, países, reediciones, idiomas, tamaños o variantes.
@@ -54,7 +56,8 @@ INSTRUCCIONES
 10. No uses resultados pertenecientes a códigos parecidos.
 
 DATOS ESPECÍFICOS
-- Supermercado: nombre, marca, fabricante, variedad, cantidad, formato, categorías, ingredientes, alérgenos, nutrición, Nutri-Score, NOVA, origen y conservación.
+- Alimentos: nombre, marca, fabricante, variedad, cantidad, formato, categoría, ingredientes, alérgenos, nutrición, Nutri-Score, NOVA, origen y conservación.
+- Supermercado: nombre, marca, fabricante, modelo o variante, cantidad, formato, categoría, subcategoría, materiales, modo de empleo, advertencias, origen y conservación. No solicites datos nutricionales propios de alimentos.
 - Libros: ISBN-10/13, título, autores, editorial, publicación, idioma, páginas, encuadernación, edición, categoría y sinopsis.
 - CD/DVD: determina si es CD musical, DVD musical, DVD de vídeo, Blu-ray u otro soporte; busca título, artista/compositor/director/reparto, sello/estudio, edición, país, discos, género, catálogo, pistas o contenidos, región, idiomas, subtítulos y duración.
 
@@ -62,7 +65,7 @@ DEVUELVE EXCLUSIVAMENTE UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA
 {
   "barcode": "${normalizedBarcode}",
   "status": "found | partial | not_found | invalid_barcode",
-  "productType": "Supermercado | Libros | CD / DVD | Desconocido",
+  "productType": "Alimentos | Supermercado | Libros | CD / DVD | Desconocido",
   "mediaType": null,
   "name": null,
   "brand": null,
@@ -103,26 +106,25 @@ DEVUELVE EXCLUSIVAMENTE UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA
 }`;
 }
 
-export function buildSupermarketLookupPrompt(barcode) {
+export function buildFoodLookupPrompt(barcode) {
   const normalizedBarcode = normalizePromptBarcode(barcode);
 
-  return `Identifica el producto de supermercado con código EAN/GTIN ${normalizedBarcode}, destinado al mercado español.
+  return `Identifica el alimento o la bebida correspondiente al código de barras EAN/GTIN ${normalizedBarcode}, destinado al mercado español.
 
-Usa fuentes fiables como Open Food Facts, el fabricante, GS1 o supermercados españoles. Identifica exactamente la marca, variedad y formato; no mezcles variantes.
+Usa fuentes fiables y específicas de alimentación, como Open Food Facts, la web oficial del fabricante, GS1 y fichas de supermercados españoles. Comprueba que el código corresponde exactamente a la marca, variedad, sabor, cantidad y formato encontrados; no mezcles variantes.
 
-No busques imágenes.
+Busca una fotografía frontal directa y pública que corresponda exactamente a este código de barras. Prioriza la web oficial del fabricante y Open Food Facts. Si no puedes verificar la imagen exacta, devuelve null.
 
-Devuelve los datos en formato JSON con estas propiedades:
+Devuelve exclusivamente un único bloque de código JSON, sin texto antes ni después, con esta estructura:
 {
   "barcode": "${normalizedBarcode}",
-  "productType": "Supermercado",
+  "productType": "Alimentos",
   "name": null,
   "brand": null,
   "description": null,
   "category": null,
   "subcategory": null,
-  "manufacturer": null,
-  "countryOfOrigin": null,
+  "quantity": null,
   "ingredients": null,
   "allergens": [],
   "nutritionPer100": {
@@ -137,14 +139,73 @@ Devuelve los datos en formato JSON con estas propiedades:
   },
   "nutriScore": null,
   "novaGroup": null,
+  "countryOfOrigin": null,
+  "manufacturer": null,
   "labels": [],
   "packaging": null,
   "storageInstructions": null,
+  "imageUrl": null,
+  "productPageUrl": null,
+  "openFoodFactsUrl": null,
+  "sourceUrls": [],
   "verificationStatus": "unverified",
   "verificationNotes": null
 }
 
-No inventes datos. Mantén los nombres de las propiedades.`;
+Reglas:
+- nutritionPer100 debe corresponder a 100 g o 100 ml, no a una ración.
+- nutriScore solo puede ser A, B, C, D, E o null.
+- novaGroup solo puede ser 1, 2, 3, 4 o null.
+- imageUrl solo puede contener una URL HTTPS directa, pública y estable de la imagen frontal exacta.
+- openFoodFactsUrl y sourceUrls solo deben contener URL realmente consultadas.
+- No uses resultados de búsqueda, URL temporales, imágenes data: ni Markdown.
+- No inventes datos; usa null o [] cuando no puedas verificarlos.`;
+}
+
+export function buildSupermarketLookupPrompt(barcode) {
+  const normalizedBarcode = normalizePromptBarcode(barcode);
+
+  return `Identifica el producto no alimentario de gran consumo vendido en supermercados con código EAN/GTIN ${normalizedBarcode}, destinado al mercado español.
+
+Trata este código como un producto de supermercado no alimentario, por ejemplo un artículo de limpieza, higiene personal, cuidado del hogar, papelería, mascotas o similar. No lo clasifiques como alimento ni solicites datos nutricionales, ingredientes alimentarios, Nutri-Score o NOVA.
+
+Usa fuentes fiables como la web oficial del fabricante, GS1 y fichas de distribuidores o supermercados españoles. Identifica exactamente la marca, modelo o variante, cantidad y formato; no mezcles tamaños, aromas, colores, presentaciones ni variantes.
+
+Busca una fotografía frontal directa y pública que corresponda exactamente a este código de barras. Prioriza la web oficial del fabricante y las fichas de distribuidores. Si no puedes verificar la imagen exacta, devuelve null.
+
+Devuelve exclusivamente un único bloque de código JSON, sin texto antes ni después, con esta estructura:
+{
+  "barcode": "${normalizedBarcode}",
+  "productType": "Supermercado",
+  "name": null,
+  "brand": null,
+  "description": null,
+  "category": null,
+  "subcategory": null,
+  "modelOrVariant": null,
+  "quantity": null,
+  "format": null,
+  "manufacturer": null,
+  "countryOfOrigin": null,
+  "materials": null,
+  "usageInstructions": null,
+  "warnings": [],
+  "labels": [],
+  "packaging": null,
+  "storageInstructions": null,
+  "imageUrl": null,
+  "productPageUrl": null,
+  "sourceUrls": [],
+  "verificationStatus": "unverified",
+  "verificationNotes": null
+}
+
+Reglas:
+- No incluyas información nutricional ni clasifiques el producto como alimento.
+- imageUrl solo puede contener una URL HTTPS directa, pública y estable de la imagen frontal exacta.
+- sourceUrls solo debe contener URL realmente consultadas.
+- No uses resultados de búsqueda, URL temporales, imágenes data: ni Markdown.
+- No inventes datos; usa null o [] cuando no puedas verificarlos.`;
 }
 
 export function buildMusicCdLookupPrompt(barcode) {

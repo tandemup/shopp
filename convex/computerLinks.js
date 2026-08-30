@@ -47,6 +47,7 @@ const TRACKING_QUERY_KEYS = new Set([
   "redir_esc",
   "si",
 ]);
+const NEWS_ARTICLE_DOMAINS = new Set(["elcomercio.es"]);
 
 function cleanClientId(value) {
   return String(value || "").trim().slice(0, 120);
@@ -89,6 +90,16 @@ function normalizeLink(value) {
   } catch {
     return null;
   }
+}
+
+function classifyLinkType(linkType, hostname) {
+  if (
+    (linkType === "general" || linkType === undefined) &&
+    NEWS_ARTICLE_DOMAINS.has(String(hostname || "").toLowerCase())
+  ) {
+    return "newsArticle";
+  }
+  return linkType || "general";
 }
 
 async function insertLinkIfMissing(ctx, message, rawUrl) {
@@ -268,6 +279,11 @@ export const normalizeAndDeduplicate = mutation({
       const normalized = normalizeLink(link.normalizedUrl || link.url);
       if (!normalized) continue;
 
+      const classifiedLinkType = classifyLinkType(
+        link.linkType,
+        normalized.hostname,
+      );
+
       const canonical = normalized.url;
       const existing = canonicalLinks.get(canonical);
       if (!existing) {
@@ -275,12 +291,18 @@ export const normalizeAndDeduplicate = mutation({
         if (
           link.normalizedUrl !== canonical ||
           link.url !== canonical ||
-          link.hostname !== normalized.hostname
+          link.hostname !== normalized.hostname ||
+          link.linkType !== classifiedLinkType
         ) {
           await ctx.db.patch(link._id, {
             url: canonical,
             normalizedUrl: canonical,
             hostname: normalized.hostname,
+            linkType: classifiedLinkType,
+            sourceDomain:
+              classifiedLinkType === "newsArticle"
+                ? normalized.hostname
+                : link.sourceDomain,
             updatedAt: Date.now(),
           });
           normalizedCount += 1;
@@ -309,12 +331,22 @@ export const normalizeAndDeduplicate = mutation({
       if (
         primary.normalizedUrl !== canonical ||
         primary.url !== canonical ||
-        primary.hostname !== normalized.hostname
+        primary.hostname !== normalized.hostname ||
+        primary.linkType !== classifyLinkType(primary.linkType, normalized.hostname)
       ) {
+        const primaryLinkType = classifyLinkType(
+          primary.linkType,
+          normalized.hostname,
+        );
         await ctx.db.patch(primary._id, {
           url: canonical,
           normalizedUrl: canonical,
           hostname: normalized.hostname,
+          linkType: primaryLinkType,
+          sourceDomain:
+            primaryLinkType === "newsArticle"
+              ? normalized.hostname
+              : primary.sourceDomain,
           updatedAt: Date.now(),
         });
       }
@@ -471,6 +503,11 @@ export const addUrl = mutation({
       sourceUrl.search = "";
       normalized = normalizeLink(sourceUrl.toString());
     }
+    const requestedLinkType = args.linkType || "general";
+    const classifiedLinkType = classifyLinkType(
+      requestedLinkType,
+      normalized.hostname,
+    );
     if (args.folderId && !(await ctx.db.get(args.folderId))) {
       throw new Error("La categoría ya no existe.");
     }
@@ -479,10 +516,16 @@ export const addUrl = mutation({
       .withIndex("by_normalizedUrl", (q) => q.eq("normalizedUrl", normalized.url))
       .first();
     if (existing) {
+      const linkType =
+        requestedLinkType === "general" &&
+        existing.linkType &&
+        existing.linkType !== "general"
+          ? existing.linkType
+          : classifiedLinkType;
       await ctx.db.patch(existing._id, {
         folderId: args.folderId || existing.folderId,
-        linkType: args.linkType || existing.linkType,
-        sourceDomain: ["newsSource", "newsArticle", "bookStore", "bookLink"].includes(args.linkType)
+        linkType,
+        sourceDomain: ["newsSource", "newsArticle", "bookStore", "bookLink"].includes(linkType)
           ? normalized.hostname
           : existing.sourceDomain,
         status: args.folderId || existing.folderId ? "reviewed" : "pending",
@@ -500,8 +543,8 @@ export const addUrl = mutation({
       username: String(args.username || "Biblioteca").trim().slice(0, 40),
       createdBy: ownerId,
       folderId: args.folderId,
-      linkType: args.linkType || "general",
-      sourceDomain: ["newsSource", "newsArticle", "bookStore", "bookLink"].includes(args.linkType)
+      linkType: classifiedLinkType,
+      sourceDomain: ["newsSource", "newsArticle", "bookStore", "bookLink"].includes(classifiedLinkType)
         ? normalized.hostname
         : undefined,
       favorite: false,

@@ -44,11 +44,11 @@ function normalizeProductType(value) {
     return "Música";
   }
 
-  if (
-    normalized.includes("supermerc") ||
-    normalized.includes("aliment") ||
-    normalized.includes("food")
-  ) {
+  if (normalized.includes("aliment") || normalized.includes("food")) {
+    return "Alimentos";
+  }
+
+  if (normalized.includes("supermerc")) {
     return "Supermercado";
   }
 
@@ -64,7 +64,7 @@ function canonicalProductType(productType, category) {
 
   const legacy = normalizeProductType(category);
 
-  return ["Supermercado", "Libros", "Música"].includes(legacy)
+  return ["Alimentos", "Supermercado", "Libros", "Música"].includes(legacy)
     ? legacy
     : undefined;
 }

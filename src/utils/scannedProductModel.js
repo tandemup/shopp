@@ -1,6 +1,11 @@
 import { normalizeBarcode } from "@/src/utils/barcodeNormalization";
 
-export const SCANNED_PRODUCT_TYPES = ["Supermercado", "Libros", "Música"];
+export const SCANNED_PRODUCT_TYPES = [
+  "Alimentos",
+  "Supermercado",
+  "Libros",
+  "Música",
+];
 
 function text(value) {
   if (value === undefined || value === null) {
@@ -44,11 +49,11 @@ export function normalizeProductType(value) {
     return "Música";
   }
 
-  if (
-    normalized.includes("supermerc") ||
-    normalized.includes("aliment") ||
-    normalized.includes("food")
-  ) {
+  if (normalized.includes("aliment") || normalized.includes("food")) {
+    return "Alimentos";
+  }
+
+  if (normalized.includes("supermerc")) {
     return "Supermercado";
   }
 
@@ -189,6 +194,10 @@ export function getScannedProductGroup(product) {
 
   if (value.includes("music") || value.includes("musica")) {
     return "music";
+  }
+
+  if (value.includes("aliment") || value.includes("food")) {
+    return "food";
   }
 
   return "supermarket";

@@ -121,7 +121,23 @@ async function lookupFactsProduct(cleanBarcode, productType) {
     `${apiBaseUrl}/${cleanBarcode}.json?fields=${encodeURIComponent(fields)}`,
     { method: "GET", headers: { Accept: "application/json" } },
   );
-  if (!response.ok) return { found: false, product: null, reason: "http_error", status: response.status };
+  if (!response.ok) {
+    if (response.status === 404) {
+      return {
+        found: false,
+        product: null,
+        reason: "not_found",
+        status: response.status,
+      };
+    }
+
+    return {
+      found: false,
+      product: null,
+      reason: "http_error",
+      status: response.status,
+    };
+  }
   const data = await response.json();
   if (data?.status !== 1 || !data?.product) return { found: false, product: null, reason: "not_found" };
   const product = data.product;
@@ -264,7 +280,23 @@ async function lookupMusic(cleanBarcode) {
     `${MUSICBRAINZ_API_BASE_URL}/?query=${query}&fmt=json&limit=5`,
     { headers: { Accept: "application/json" } },
   );
-  if (!response.ok) return { found: false, product: null, reason: "http_error", status: response.status };
+  if (!response.ok) {
+    if (response.status === 404) {
+      return {
+        found: false,
+        product: null,
+        reason: "not_found",
+        status: response.status,
+      };
+    }
+
+    return {
+      found: false,
+      product: null,
+      reason: "http_error",
+      status: response.status,
+    };
+  }
   const data = await response.json();
   const release =
     data?.releases?.find((item) => barcodeCandidates.includes(item?.barcode)) ||

@@ -5,8 +5,13 @@ import {
   View,
   StyleSheet,
   Pressable,
-  ScrollView
+  ScrollView,
+  Platform,
+  Share,
+  Modal,
 } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 
 import { StatusBar } from "expo-status-bar";
@@ -30,6 +35,22 @@ import {
   DEFAULT_PRODUCT_SEARCH_TYPE,
   PRODUCT_SEARCH_TYPES,
 } from "@/src/constants/productSearchTypes";
+import {
+  getScannedHistory,
+  saveScannedHistory,
+} from "@/src/services/scannerHistory";
+import { normalizeScannedProduct } from "@/src/utils/scannedProductModel";
+
+const SCANNER_JSON_FORMAT = "shopp-scanner-products";
+
+function normalizedProducts(items) {
+  const byBarcode = new Map();
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const product = normalizeScannedProduct(item, item?.barcode);
+    if (product.barcode) byBarcode.set(product.barcode, product);
+  });
+  return Array.from(byBarcode.values());
+}
 
 function buildProductSearchEngineSubtitle(settings) {
   const engineId =
@@ -76,6 +97,47 @@ export default function ScannerTabScreen({ navigation }) {
   const [manualBarcodeError, setManualBarcodeError] = useState("");
   const [productSearchEngineSubtitle, setProductSearchEngineSubtitle] =
     useState("Motor activo: Google");
+  const [transferModal, setTransferModal] = useState(null);
+
+  const exportProductsNow = async () => {
+    const products = normalizedProducts(await getScannedHistory());
+    if (!products.length) return;
+    const json = JSON.stringify({
+      app: "Shopp",
+      format: SCANNER_JSON_FORMAT,
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      data: { products },
+    }, null, 2);
+    const filename = `shopp-scanner-products-${Date.now()}.json`;
+    if (Platform.OS === "web") {
+      const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+      const anchor = document.createElement("a");
+      anchor.href = url; anchor.download = filename; anchor.click(); URL.revokeObjectURL(url);
+      return;
+    }
+    const uri = `${FileSystem.documentDirectory}${filename}`;
+    await FileSystem.writeAsStringAsync(uri, json, { encoding: FileSystem.EncodingType.UTF8 });
+    await Share.share({ title: filename, url: uri, message: Platform.OS === "android" ? json : undefined });
+  };
+
+  const importProductsNow = async () => {
+    const result = await DocumentPicker.getDocumentAsync({ type: ["application/json", "text/json", "text/plain"], copyToCacheDirectory: true });
+    if (result.canceled) return;
+    const asset = result.assets?.[0];
+    const text = Platform.OS === "web" && asset?.file
+      ? await asset.file.text()
+      : await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.UTF8 });
+    const parsed = JSON.parse(text);
+    if (parsed?.format !== SCANNER_JSON_FORMAT || parsed?.version !== 1 || !Array.isArray(parsed?.data?.products)) {
+      throw new Error("El fichero no es compatible con el scanner.");
+    }
+    const current = normalizedProducts(await getScannedHistory());
+    await saveScannedHistory(normalizedProducts([...current, ...parsed.data.products]));
+  };
+
+  const exportProducts = () => setTransferModal("export");
+  const importProducts = () => setTransferModal("import");
 
   const headerConfig = useMemo(
     () =>
@@ -208,6 +270,17 @@ export default function ScannerTabScreen({ navigation }) {
             Escanea nuevos productos o consulta el historial de códigos
             escaneados.
           </Text>
+
+          <View style={styles.transferRow}>
+            <Pressable style={styles.transferButton} onPress={importProducts}>
+              <Ionicons name="download-outline" size={18} color="#2563EB" />
+              <Text style={styles.transferText}>Importar JSON</Text>
+            </Pressable>
+            <Pressable style={styles.transferButton} onPress={exportProducts}>
+              <Ionicons name="cloud-upload-outline" size={18} color="#2563EB" />
+              <Text style={styles.transferText}>Exportar JSON</Text>
+            </Pressable>
+          </View>
 
           <View style={styles.actions}>
             <Pressable
@@ -443,6 +516,36 @@ export default function ScannerTabScreen({ navigation }) {
           </View>
         </ScrollView>
       </SafeAreaView>
+
+      <Modal transparent visible={Boolean(transferModal)} animationType="fade" onRequestClose={() => setTransferModal(null)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              {transferModal === "import" ? "Importar productos" : "Exportar productos"}
+            </Text>
+            <Text style={styles.modalDescription}>
+              {transferModal === "import"
+                ? "Selecciona un fichero JSON de productos escaneados. Se normalizará y se combinará sin duplicar códigos de barras."
+                : "Se exportarán los productos escaneados con sus datos normalizados en formato JSON."}
+            </Text>
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelButton} onPress={() => setTransferModal(null)}>
+                <Text style={styles.modalCancelText}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalConfirmButton}
+                onPress={async () => {
+                  const action = transferModal === "import" ? importProductsNow : exportProductsNow;
+                  setTransferModal(null);
+                  try { await action(); } catch (error) { console.warn("Scanner JSON transfer error", error); }
+                }}
+              >
+                <Text style={styles.modalConfirmText}>Continuar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -489,6 +592,41 @@ const styles = StyleSheet.create({
     color: TEXT_SECONDARY,
     marginBottom: 16,
   },
+
+  transferRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 16,
+  },
+
+  transferButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 7,
+  },
+
+  transferText: {
+    color: "#2563EB",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", alignItems: "center", justifyContent: "center", padding: 20 },
+  modalCard: { width: "100%", maxWidth: 430, borderRadius: 18, padding: 22, backgroundColor: "#FFFFFF" },
+  modalTitle: { color: TEXT_PRIMARY, fontSize: 20, fontWeight: "800", marginBottom: 8 },
+  modalDescription: { color: TEXT_SECONDARY, fontSize: 14, lineHeight: 21, marginBottom: 20 },
+  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10 },
+  modalCancelButton: { paddingHorizontal: 15, paddingVertical: 11, borderRadius: 10, backgroundColor: "#F3F4F6" },
+  modalCancelText: { color: TEXT_PRIMARY, fontWeight: "700" },
+  modalConfirmButton: { paddingHorizontal: 15, paddingVertical: 11, borderRadius: 10, backgroundColor: "#2563EB" },
+  modalConfirmText: { color: "#FFFFFF", fontWeight: "700" },
 
   actions: {
     gap: 12,
