@@ -9,6 +9,7 @@ import {
   StyleSheet,
   View
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { I18nText as Text } from "@/src/i18n";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -41,6 +42,16 @@ function getHostname(value) {
   } catch {
     return "";
   }
+}
+
+function getDomainIconUrl(hostname) {
+  const cleanHostname = String(hostname || "")
+    .replace(/^www\./i, "")
+    .trim()
+    .toLowerCase();
+
+  if (!cleanHostname) return "";
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(cleanHostname)}&sz=64`;
 }
 
 function absolutizeUrl(value, baseUrl) {
@@ -135,6 +146,7 @@ export default function WebPreviewCard({
   compact = false,
   dense = false,
   onPress,
+  showDomainIcon = false,
 }) {
   const getLinkPreview = useAction(api.linkPreviews.get);
   const normalizedUrl = useMemo(() => normalizePreviewUrl(url), [url]);
@@ -147,6 +159,7 @@ export default function WebPreviewCard({
   const [preview, setPreview] = useState(null);
   const [failed, setFailed] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
+  const [domainIconFailed, setDomainIconFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -155,6 +168,7 @@ export default function WebPreviewCard({
       setPreview(null);
       setFailed(false);
       setImageFailed(false);
+      setDomainIconFailed(false);
 
       if (!normalizedUrl || !allowed) {
         setFailed(true);
@@ -240,9 +254,18 @@ export default function WebPreviewCard({
         </View>
 
         <View style={styles.textBlock}>
-          <Text style={styles.siteName} numberOfLines={1}>
-            {getHostname(normalizedUrl)}
-          </Text>
+          <View style={styles.siteNameRow}>
+            {showDomainIcon ? (
+              <DomainIcon
+                hostname={getHostname(normalizedUrl)}
+                failed={domainIconFailed}
+                onError={() => setDomainIconFailed(true)}
+              />
+            ) : null}
+            <Text style={styles.siteName} numberOfLines={1}>
+              {getHostname(normalizedUrl)}
+            </Text>
+          </View>
 
           <Text style={styles.title} numberOfLines={2}>
             {getFallbackTitle(normalizedUrl)}
@@ -259,6 +282,7 @@ export default function WebPreviewCard({
   }
 
   const shouldShowImage = Boolean(preview.image) && !imageFailed;
+  const previewHostname = preview.hostname || getHostname(normalizedUrl);
 
   return (
     <Pressable
@@ -284,9 +308,18 @@ export default function WebPreviewCard({
         <View style={styles.leftAccent} />
 
         <View style={styles.textBlock}>
-          <Text style={styles.siteName} numberOfLines={1}>
-            {preview.siteName || preview.hostname || getHostname(normalizedUrl)}
-          </Text>
+          <View style={styles.siteNameRow}>
+            {showDomainIcon ? (
+              <DomainIcon
+                hostname={previewHostname}
+                failed={domainIconFailed}
+                onError={() => setDomainIconFailed(true)}
+              />
+            ) : null}
+            <Text style={styles.siteName} numberOfLines={1}>
+              {preview.siteName || previewHostname}
+            </Text>
+          </View>
 
           <Text style={[styles.title, dense && styles.titleDense]} numberOfLines={dense ? 2 : 3}>
             {preview.title || getFallbackTitle(normalizedUrl)}
@@ -308,6 +341,27 @@ export default function WebPreviewCard({
         <View pointerEvents="none" style={styles.blurOverlay} />
       ) : null}
     </Pressable>
+  );
+}
+
+function DomainIcon({ hostname, failed, onError }) {
+  if (failed || !getDomainIconUrl(hostname)) {
+    return (
+      <View style={styles.domainIconFallback}>
+        <Ionicons name="newspaper-outline" size={13} color="#2563eb" />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.domainIconBox}>
+      <CachedLinkImage
+        uri={getDomainIconUrl(hostname)}
+        style={styles.domainIcon}
+        resizeMode="contain"
+        onError={onError}
+      />
+    </View>
   );
 }
 
@@ -370,11 +424,46 @@ const styles = StyleSheet.create({
   },
 
   siteName: {
+    flex: 1,
+    minWidth: 0,
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "900",
     color: "#2563eb",
     textTransform: "uppercase",
+  },
+
+  siteNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+    gap: 5,
+  },
+
+  domainIconBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#dbe3ef",
+    overflow: "hidden",
+  },
+
+  domainIcon: {
+    width: 16,
+    height: 16,
+  },
+
+  domainIconFallback: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#e0ecff",
   },
 
   title: {

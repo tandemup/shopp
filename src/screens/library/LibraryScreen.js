@@ -18,10 +18,70 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 import WebPreviewCard from "@/src/components/chat/WebPreviewCard";
+import CachedLinkImage from "@/src/components/chat/CachedLinkImage";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 const CLIENT_ID_KEY = "shopp-chat-client-id";
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
+
+function getDomainFaviconUrl(hostname) {
+  const cleanHostname = String(hostname || "")
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .split("/")[0]
+    .trim()
+    .toLowerCase();
+
+  if (!cleanHostname) return "";
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(cleanHostname)}&sz=64`;
+}
+
+function DomainFavicon({ hostname }) {
+  const [failed, setFailed] = useState(false);
+  const faviconUrl = getDomainFaviconUrl(hostname);
+
+  if (!faviconUrl || failed) {
+    return (
+      <View style={styles.sourceTileFaviconFallback}>
+        <Ionicons name="newspaper-outline" size={24} color="#dc2626" />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.sourceTileFavicon}>
+      <CachedLinkImage
+        uri={faviconUrl}
+        style={styles.sourceTileFaviconImage}
+        resizeMode="contain"
+        onError={() => setFailed(true)}
+      />
+    </View>
+  );
+}
+
+function isValidHttpUrl(value) {
+  const candidate = String(value || "").trim();
+  if (!/^https?:\/\/\S+$/i.test(candidate)) return false;
+
+  try {
+    const parsed = new URL(candidate);
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      Boolean(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function getAddUrlErrorMessage(error) {
+  const message = String(error?.message || "");
+  if (/url|http|https|válida|invalid/i.test(message)) {
+    return "Introduce una dirección web completa que empiece por http:// o https://.";
+  }
+  return message || "No se pudo guardar el enlace.";
+}
 
 function defaultBackupFilename() {
   const day = new Date().toISOString().slice(0, 10);
@@ -281,6 +341,15 @@ export default function LibraryScreen({ navigation }) {
   const handleAddUrl = useCallback(async () => {
     const url = urlInput.trim();
     if (!url || saving) return;
+
+    if (!isValidHttpUrl(url)) {
+      safeAlert(
+        "URL no válida",
+        "Introduce una dirección web completa que empiece por http:// o https://.",
+      );
+      return;
+    }
+
     setSaving(true);
     try {
       const result = await addUrl({
@@ -302,10 +371,7 @@ export default function LibraryScreen({ navigation }) {
         );
       }
     } catch (error) {
-      safeAlert(
-        "URL no válida",
-        error?.message || "No se pudo guardar el enlace.",
-      );
+      safeAlert("No se pudo guardar", getAddUrlErrorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -1104,11 +1170,17 @@ export default function LibraryScreen({ navigation }) {
                     style={styles.sourceTileMain}
                   >
                     <View style={styles.sourceTileIcon}>
-                      <Ionicons
-                        name={isBooksFolder ? "storefront-outline" : "newspaper-outline"}
-                        size={24}
-                        color={isBooksFolder ? "#7c3aed" : "#dc2626"}
-                      />
+                      {isBooksFolder ? (
+                        <Ionicons
+                          name="storefront-outline"
+                          size={24}
+                          color="#7c3aed"
+                        />
+                      ) : (
+                        <DomainFavicon
+                          hostname={item.sourceDomain || item.hostname}
+                        />
+                      )}
                     </View>
                     <Text style={styles.sourceTileTitle} numberOfLines={1}>
                       {item.customTitle || item.hostname}
@@ -2030,6 +2102,29 @@ const styles = StyleSheet.create({
     marginBottom: 9,
     borderRadius: 12,
     backgroundColor: "#fef2f2",
+  },
+  sourceTileFavicon: {
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 9,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    overflow: "hidden",
+  },
+  sourceTileFaviconImage: {
+    width: 28,
+    height: 28,
+  },
+  sourceTileFaviconFallback: {
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 9,
+    backgroundColor: "#fee2e2",
   },
   sourceTileTitle: { fontSize: 14, fontWeight: "900", color: "#1e293b" },
   sourceTileDomain: {
