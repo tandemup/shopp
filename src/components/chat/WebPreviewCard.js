@@ -5,9 +5,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
+  Platform,
   Pressable,
   StyleSheet,
-  View
+  View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { I18nText as Text } from "@/src/i18n";
@@ -54,6 +55,15 @@ function getDomainIconUrl(hostname) {
   return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(cleanHostname)}&sz=64`;
 }
 
+function BlurOverlay() {
+  const webOverlayProps =
+    Platform.OS === "web"
+      ? { style: [styles.blurOverlay, styles.pointerEventsNone] }
+      : { pointerEvents: "none", style: styles.blurOverlay };
+
+  return <View {...webOverlayProps} />;
+}
+
 function absolutizeUrl(value, baseUrl) {
   const text = String(value || "").trim();
 
@@ -69,13 +79,17 @@ function absolutizeUrl(value, baseUrl) {
 function getFallbackTitle(url) {
   try {
     const parsed = new URL(normalizePreviewUrl(url));
-    const slug = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() || "")
+    const slug = decodeURIComponent(
+      parsed.pathname.split("/").filter(Boolean).pop() || "",
+    )
       .replace(/\.(html?|php)$/i, "")
       .replace(/[-_]+/g, " ")
       .replace(/\b\d{4}\b|\b\d{1,2}\b/g, " ")
       .replace(/\s+/g, " ")
       .trim();
-    return slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : getHostname(url) || "Vista previa";
+    return slug
+      ? slug.charAt(0).toUpperCase() + slug.slice(1)
+      : getHostname(url) || "Vista previa";
   } catch {
     return getHostname(url) || "Vista previa";
   }
@@ -227,7 +241,13 @@ export default function WebPreviewCard({
 
   if (loading && !preview) {
     return (
-      <View style={[styles.card, compact && styles.cardCompact, dense && styles.cardDense]}>
+      <View
+        style={[
+          styles.card,
+          compact && styles.cardCompact,
+          dense && styles.cardDense,
+        ]}
+      >
         <View style={styles.loadingRow}>
           <ActivityIndicator size="small" />
           <Text style={styles.loadingText}>Cargando vista previa...</Text>
@@ -274,9 +294,7 @@ export default function WebPreviewCard({
           <Text style={styles.fullUrlText}>{normalizedUrl}</Text>
         </View>
 
-        {!allowed ? (
-          <View pointerEvents="none" style={styles.blurOverlay} />
-        ) : null}
+        {!allowed ? <BlurOverlay /> : null}
       </Pressable>
     );
   }
@@ -298,7 +316,11 @@ export default function WebPreviewCard({
       {shouldShowImage ? (
         <CachedLinkImage
           uri={preview.image}
-          style={[styles.image, compact && styles.imageCompact, dense && styles.imageDense]}
+          style={[
+            styles.image,
+            compact && styles.imageCompact,
+            dense && styles.imageDense,
+          ]}
           resizeMode="cover"
           onError={() => setImageFailed(true)}
         />
@@ -321,25 +343,32 @@ export default function WebPreviewCard({
             </Text>
           </View>
 
-          <Text style={[styles.title, dense && styles.titleDense]} numberOfLines={dense ? 2 : 3}>
+          <Text
+            style={[styles.title, dense && styles.titleDense]}
+            numberOfLines={dense ? 2 : 3}
+          >
             {preview.title || getFallbackTitle(normalizedUrl)}
           </Text>
 
           {preview.description ? (
-            <Text style={[styles.description, dense && styles.descriptionDense]} numberOfLines={dense ? 1 : 2}>
+            <Text
+              style={[styles.description, dense && styles.descriptionDense]}
+              numberOfLines={dense ? 1 : 2}
+            >
               {preview.description}
             </Text>
           ) : null}
 
-          <Text style={[styles.fullUrlText, dense && styles.urlDense]} numberOfLines={dense ? 1 : undefined}>
+          <Text
+            style={[styles.fullUrlText, dense && styles.urlDense]}
+            numberOfLines={dense ? 1 : undefined}
+          >
             {preview.url || normalizedUrl}
           </Text>
         </View>
       </View>
 
-      {!allowed ? (
-        <View pointerEvents="none" style={styles.blurOverlay} />
-      ) : null}
+      {!allowed ? <BlurOverlay /> : null}
     </Pressable>
   );
 }
@@ -387,12 +416,18 @@ const styles = StyleSheet.create({
     maxWidth: PREVIEW_CARD_MAX_WIDTH,
     borderRadius: 14,
   },
-  cardDense: { width: PREVIEW_DENSE_CARD_WIDTH, maxWidth: "100%", marginTop: 5, borderRadius: 9 },
+  cardDense: {
+    width: PREVIEW_DENSE_CARD_WIDTH,
+    maxWidth: "100%",
+    marginTop: 5,
+    borderRadius: 9,
+  },
 
   blurOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(255, 255, 255, 0.42)",
   },
+  pointerEventsNone: { pointerEvents: "none" },
 
   image: {
     width: "100%",

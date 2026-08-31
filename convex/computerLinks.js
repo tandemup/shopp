@@ -40,6 +40,7 @@ const NEWS_DEFAULT_FOLDERS = [
 const URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
 const TRAILING_PUNCTUATION = /[.,!?;:]+$/;
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
+const LIBRARY_LIST_LIMIT = 1000;
 const TRACKING_QUERY_KEYS = new Set([
   "fbclid",
   "gclid",
@@ -650,25 +651,15 @@ export const list = query({
         .query("computerLinks")
         .withIndex("by_updatedAt")
         .order("desc")
-        .take(300);
+        .take(LIBRARY_LIST_LIMIT);
     } else {
       const linkPages = await Promise.all(
         selectedFolderIds.map((folderId) =>
-          args.linkType
-            ? ctx.db
-                .query("computerLinks")
-                .withIndex("by_folder_linkType_updatedAt", (q) =>
-                  q.eq("folderId", folderId).eq("linkType", args.linkType),
-                )
-                .order("desc")
-                .take(1000)
-            : ctx.db
-                .query("computerLinks")
-                .withIndex("by_folder_updatedAt", (q) =>
-                  q.eq("folderId", folderId),
-                )
-                .order("desc")
-                .take(1000),
+          ctx.db
+            .query("computerLinks")
+            .withIndex("by_folder_updatedAt", (q) => q.eq("folderId", folderId))
+            .order("desc")
+            .take(LIBRARY_LIST_LIMIT),
         ),
       );
       links = linkPages.flat();
@@ -693,8 +684,7 @@ export const list = query({
       }
       if (
         args.linkType === "newsArticle" &&
-        link.linkType !== "newsArticle" &&
-        link.linkType !== undefined
+        ![undefined, "general", "newsArticle"].includes(link.linkType)
       ) {
         return false;
       }
@@ -702,8 +692,7 @@ export const list = query({
         return false;
       if (
         args.linkType === "bookLink" &&
-        link.linkType !== "bookLink" &&
-        link.linkType !== undefined
+        ![undefined, "general", "bookLink"].includes(link.linkType)
       )
         return false;
       if (!search) return true;

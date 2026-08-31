@@ -61,7 +61,9 @@ function collectMetadata(html) {
   const metadata = new Map();
   for (const match of String(html || "").matchAll(/<meta\b[^>]*>/gi)) {
     const attributes = readAttributes(match[0]);
-    const key = String(attributes.property || attributes.name || "").toLowerCase();
+    const key = String(
+      attributes.property || attributes.name || "",
+    ).toLowerCase();
     if (key && attributes.content && !metadata.has(key)) {
       metadata.set(key, attributes.content);
     }
@@ -83,13 +85,19 @@ function flattenJsonLd(value, result = []) {
 }
 
 function collectJsonLdArticle(html) {
-  for (const match of String(html || "").matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+  for (const match of String(html || "").matchAll(
+    /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+  )) {
     try {
       const parsed = JSON.parse(match[1].trim());
       const entries = flattenJsonLd(parsed);
       const article = entries.find((entry) => {
-        const type = Array.isArray(entry?.["@type"]) ? entry["@type"] : [entry?.["@type"]];
-        return type.some((value) => /article|newsarticle|reportage/i.test(String(value)));
+        const type = Array.isArray(entry?.["@type"])
+          ? entry["@type"]
+          : [entry?.["@type"]];
+        return type.some((value) =>
+          /article|newsarticle|reportage/i.test(String(value)),
+        );
       });
       if (article) return article;
     } catch {
@@ -103,10 +111,16 @@ function getYouTubeVideoId(value) {
   try {
     const url = new URL(value);
     const hostname = url.hostname.replace(/^www\./, "").toLowerCase();
-    if (hostname === "youtu.be") return url.pathname.split("/").filter(Boolean)[0] || "";
-    if (!["youtube.com", "m.youtube.com", "music.youtube.com"].includes(hostname)) return "";
+    if (hostname === "youtu.be")
+      return url.pathname.split("/").filter(Boolean)[0] || "";
+    if (
+      !["youtube.com", "m.youtube.com", "music.youtube.com"].includes(hostname)
+    )
+      return "";
     if (url.pathname === "/watch") return url.searchParams.get("v") || "";
-    const match = url.pathname.match(/^\/(?:shorts|live|embed)\/([A-Za-z0-9_-]{11})/);
+    const match = url.pathname.match(
+      /^\/(?:shorts|live|embed)\/([A-Za-z0-9_-]{11})/,
+    );
     return match?.[1] || "";
   } catch {
     return "";
@@ -130,7 +144,9 @@ async function getYouTubePreview(url) {
   const canonicalUrl = `https://www.youtube.com/watch?v=${videoId}`;
   const response = await fetch(
     `https://www.youtube.com/oembed?url=${encodeURIComponent(canonicalUrl)}&format=json`,
-    { headers: { Accept: "application/json", "User-Agent": BROWSER_USER_AGENT } },
+    {
+      headers: { Accept: "application/json", "User-Agent": BROWSER_USER_AGENT },
+    },
   );
   if (!response.ok) return null;
   const data = await response.json();
@@ -139,15 +155,20 @@ async function getYouTubePreview(url) {
     hostname: "youtube.com",
     siteName: "YouTube",
     title: decodeHtml(data?.title) || "Vídeo de YouTube",
-    description: data?.author_name ? `Canal: ${decodeHtml(data.author_name)}` : "",
-    image: data?.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    description: data?.author_name
+      ? `Canal: ${decodeHtml(data.author_name)}`
+      : "",
+    image:
+      data?.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
     fallback: false,
     reason: "",
   };
 }
 
 function normalizeCharset(value) {
-  const charset = String(value || "").trim().toLowerCase();
+  const charset = String(value || "")
+    .trim()
+    .toLowerCase();
   if (!charset) return "";
   if (["latin1", "latin-1", "iso-8859-1", "iso8859-1"].includes(charset)) {
     return "windows-1252";
@@ -157,7 +178,9 @@ function normalizeCharset(value) {
 }
 
 function getDeclaredCharset(contentType, bytes) {
-  const headerCharset = contentType.match(/charset\s*=\s*["']?([^;\s"']+)/i)?.[1];
+  const headerCharset = contentType.match(
+    /charset\s*=\s*["']?([^;\s"']+)/i,
+  )?.[1];
   if (headerCharset) return normalizeCharset(headerCharset);
 
   const probe = new TextDecoder("windows-1252").decode(bytes.slice(0, 8192));
@@ -210,10 +233,36 @@ function absolutize(value, baseUrl) {
   }
 }
 
+function isUnusablePreviewImage(value) {
+  try {
+    const parsed = new URL(String(value || ""));
+    const hostname = parsed.hostname.toLowerCase();
+    const path = parsed.pathname.toLowerCase();
+    return (
+      path.includes("favicon") ||
+      path.includes("apple-touch-icon") ||
+      (hostname.endsWith("gstatic.com") && path.includes("icon")) ||
+      hostname.startsWith("staging.")
+    );
+  } catch {
+    return true;
+  }
+}
+
+function getUsablePreviewImage(values, baseUrl) {
+  for (const value of values) {
+    const image = absolutize(value, baseUrl);
+    if (image && !isUnusablePreviewImage(image)) return image;
+  }
+  return "";
+}
+
 function fallbackPreview(url, reason = "unavailable") {
   const parsed = new URL(url);
   const hostname = parsed.hostname.replace(/^www\./, "");
-  const slug = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() || "")
+  const slug = decodeURIComponent(
+    parsed.pathname.split("/").filter(Boolean).pop() || "",
+  )
     .replace(/\.(?:html?|php)$/i, "")
     .replace(/[-_]+/g, " ")
     .replace(/\s+/g, " ")
@@ -246,7 +295,7 @@ async function getMicrolinkPreview(url) {
     siteName: decodeHtml(data?.publisher) || "EL PAÍS",
     title,
     description: decodeHtml(data?.description),
-    image: data?.image?.url || "",
+    image: getUsablePreviewImage([data?.image?.url], url),
     fallback: false,
     reason: "",
   };
@@ -264,12 +313,17 @@ async function getProviderPreviewOrFallback(url, reason) {
 
 async function fetchWithValidatedRedirects(initialUrl) {
   let currentUrl = initialUrl;
-  for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
+  for (
+    let redirectCount = 0;
+    redirectCount <= MAX_REDIRECTS;
+    redirectCount += 1
+  ) {
     if (!isPublicHttpUrl(currentUrl)) throw new Error("unsafe_url");
     const response = await fetch(currentUrl, {
       redirect: "manual",
       headers: {
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "es-ES,es;q=0.9,en;q=0.7",
         "Cache-Control": "no-cache",
         "User-Agent": BROWSER_USER_AGENT,
@@ -303,19 +357,29 @@ export const get = action({
     try {
       const youtubePreview = await getYouTubePreview(normalizedUrl);
       if (youtubePreview) return youtubePreview;
-      const normalizedHostname = new URL(normalizedUrl).hostname.replace(/^www\./, "");
+      const normalizedHostname = new URL(normalizedUrl).hostname.replace(
+        /^www\./,
+        "",
+      );
       if (normalizedHostname === "elpais.com") {
         try {
           const providerPreview = await getMicrolinkPreview(normalizedUrl);
           if (providerPreview) return providerPreview;
         } catch (providerError) {
-          console.warn("[linkPreviews.get] Microlink fallback failed", providerError);
+          console.warn(
+            "[linkPreviews.get] Microlink fallback failed",
+            providerError,
+          );
         }
       }
       const metadataUrl = getMetadataFetchUrl(normalizedUrl);
-      const { response, finalUrl } = await fetchWithValidatedRedirects(metadataUrl);
+      const { response, finalUrl } =
+        await fetchWithValidatedRedirects(metadataUrl);
       if (!response.ok) {
-        return await getProviderPreviewOrFallback(normalizedUrl, `http_${response.status}`);
+        return await getProviderPreviewOrFallback(
+          normalizedUrl,
+          `http_${response.status}`,
+        );
       }
 
       const contentType = response.headers.get("content-type") || "";
@@ -335,8 +399,8 @@ export const get = action({
         : typeof article?.image === "object"
           ? article.image?.url
           : article?.image;
-      const image = absolutize(
-        metadata.get("og:image") || metadata.get("twitter:image") || articleImage,
+      const image = getUsablePreviewImage(
+        [metadata.get("og:image"), metadata.get("twitter:image"), articleImage],
         finalUrl,
       );
 

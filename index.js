@@ -33,7 +33,11 @@ if (typeof window !== "undefined" && typeof document !== "undefined") {
   // Keep the standard dark status icons. We intentionally do not use
   // black-translucent because it changes the status-bar presentation and can
   // reduce icon contrast on this light Shopp header.
-  upsertMeta("apple-mobile-web-app-capable", "yes");
+  // Meta estándar para indicar que la aplicación puede funcionar como PWA.
+  // La variante apple-mobile-web-app-capable provoca un aviso deprecado en
+  // Chrome; Safari conserva el comportamiento standalone mediante el
+  // manifest y su configuración específica de status bar.
+  upsertMeta("mobile-web-app-capable", "yes");
   upsertMeta("apple-mobile-web-app-status-bar-style", "default");
 }
 

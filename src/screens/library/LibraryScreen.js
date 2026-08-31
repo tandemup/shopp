@@ -126,6 +126,16 @@ function getNewsDisplayTitle(link) {
   return customTitle || domain || "Noticia";
 }
 
+function getLinkDisplayTitle(link) {
+  if (link?.linkType === "newsArticle") return getNewsDisplayTitle(link);
+
+  const title = String(
+    link?.title || link?.pageTitle || link?.previewTitle || link?.name || "",
+  ).trim();
+  const customTitle = String(link?.customTitle || "").trim();
+  return title || customTitle || getLinkDomain(link) || link?.normalizedUrl || "Enlace";
+}
+
 function buildLibraryIntegrityReport(links, folders) {
   const safeLinks = Array.isArray(links) ? links : [];
   const folderById = new Map(
@@ -398,6 +408,7 @@ export default function LibraryScreen({ navigation }) {
   const [sourceUrlInput, setSourceUrlInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [toolsExpanded, setToolsExpanded] = useState(false);
+  const [toolsModalVisible, setToolsModalVisible] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
   const [exportNameVisible, setExportNameVisible] = useState(false);
   const [exportFilename, setExportFilename] = useState("");
@@ -412,7 +423,7 @@ export default function LibraryScreen({ navigation }) {
   const [importMode, setImportMode] = useState("combine");
   const [integrityBusy, setIntegrityBusy] = useState(false);
   const [integrityReport, setIntegrityReport] = useState(null);
-  const [newsCompactDisplay, setNewsCompactDisplay] = useState(false);
+  const [libraryView, setLibraryView] = useState("cards");
 
   const folders = useQuery(api.computerLinks.listFolders) || [];
   const {
@@ -1054,6 +1065,13 @@ export default function LibraryScreen({ navigation }) {
             <Text style={styles.compactTopText}>Biblioteca</Text>
           </View>
           <Pressable
+            onPress={() => setToolsModalVisible(true)}
+            style={styles.compactTopButton}
+            accessibilityLabel="Abrir herramientas de Biblioteca"
+          >
+            <Ionicons name="options-outline" size={21} color="#2563eb" />
+          </Pressable>
+          <Pressable
             onPress={() => setToolsExpanded((value) => !value)}
             style={styles.compactTopButton}
             accessibilityLabel={
@@ -1127,103 +1145,145 @@ export default function LibraryScreen({ navigation }) {
                 </Pressable>
               ) : null}
             </View>
+          </View>
+        ) : null}
 
-            <View style={styles.backupRow}>
-              <Pressable
-                onPress={handleExportBackup}
-                disabled={backupBusy || !libraryBackup}
-                style={[
-                  styles.backupButton,
-                  (backupBusy || !libraryBackup) && styles.buttonDisabled,
-                ]}
-              >
-                <Ionicons
-                  name="cloud-upload-outline"
-                  size={17}
-                  color="#2563eb"
-                />
-                <Text style={styles.backupButtonText}>Exportar JSON</Text>
-              </Pressable>
-              <Pressable
-                onPress={handleImportBackup}
-                disabled={backupBusy}
-                style={[
-                  styles.backupButton,
-                  backupBusy && styles.buttonDisabled,
-                ]}
-              >
-                <Ionicons name="download-outline" size={17} color="#2563eb" />
-                <Text style={styles.backupButtonText}>Importar JSON</Text>
-              </Pressable>
-              <Pressable
-                onPress={handleCheckIntegrity}
-                disabled={integrityBusy || !Array.isArray(exportedLinks)}
-                style={[
-                  styles.backupButton,
-                  styles.integrityButton,
-                  (integrityBusy || !Array.isArray(exportedLinks)) &&
-                    styles.buttonDisabled,
-                ]}
-              >
-                <Ionicons
-                  name="shield-checkmark-outline"
-                  size={17}
-                  color="#047857"
-                />
-                <Text style={styles.integrityButtonText}>
-                  {integrityBusy ? "Comprobando…" : "Comprobar integridad"}
-                </Text>
-              </Pressable>
-              {isNewsFolder && newsView === "articles" ? (
+        <Modal
+          visible={toolsModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setToolsModalVisible(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalCard, styles.toolsModalCard]}>
+              <View style={styles.toolsModalHeader}>
+                <View style={styles.toolsModalTitleRow}>
+                  <Ionicons name="options-outline" size={19} color="#2563eb" />
+                  <Text style={styles.toolsModalTitle}>Herramientas</Text>
+                </View>
+                <Pressable
+                  onPress={() => setToolsModalVisible(false)}
+                  style={styles.toolsModalClose}
+                  accessibilityLabel="Cerrar herramientas"
+                >
+                  <Ionicons name="close" size={21} color="#475569" />
+                </Pressable>
+              </View>
+
+              <View style={styles.toolsModalActions}>
+                <Pressable
+                  onPress={() => {
+                    setToolsModalVisible(false);
+                    handleExportBackup();
+                  }}
+                  disabled={backupBusy || !libraryBackup}
+                  style={[
+                    styles.backupButton,
+                    styles.toolsModalActionButton,
+                    (backupBusy || !libraryBackup) && styles.buttonDisabled,
+                  ]}
+                >
+                  <Ionicons
+                    name="cloud-upload-outline"
+                    size={17}
+                    color="#2563eb"
+                  />
+                  <Text style={styles.backupButtonText}>Exportar JSON</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    setToolsModalVisible(false);
+                    handleImportBackup();
+                  }}
+                  disabled={backupBusy}
+                  style={[
+                    styles.backupButton,
+                    styles.toolsModalActionButton,
+                    backupBusy && styles.buttonDisabled,
+                  ]}
+                >
+                  <Ionicons name="download-outline" size={17} color="#2563eb" />
+                  <Text style={styles.backupButtonText}>Importar JSON</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    setToolsModalVisible(false);
+                    handleCheckIntegrity();
+                  }}
+                  disabled={integrityBusy || !Array.isArray(exportedLinks)}
+                  style={[
+                    styles.backupButton,
+                    styles.toolsModalActionButton,
+                    styles.integrityButton,
+                    (integrityBusy || !Array.isArray(exportedLinks)) &&
+                      styles.buttonDisabled,
+                  ]}
+                >
+                  <Ionicons
+                    name="shield-checkmark-outline"
+                    size={17}
+                    color="#047857"
+                  />
+                  <Text style={styles.integrityButtonText}>
+                    {integrityBusy ? "Comprobando…" : "Comprobar integridad"}
+                  </Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.toolsModalDisplaySection}>
+                <Text style={styles.displayModeLabel}>Vista de Biblioteca</Text>
                 <View style={styles.displayModeInline}>
-                  <Text style={styles.displayModeLabel}>Vista</Text>
                   <Pressable
-                    onPress={() => setNewsCompactDisplay(false)}
+                    onPress={() => setLibraryView("cards")}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: libraryView === "cards" }}
                     style={[
                       styles.displayModeButton,
-                      !newsCompactDisplay && styles.displayModeButtonActive,
+                      libraryView === "cards" && styles.displayModeButtonActive,
                     ]}
                   >
                     <Ionicons
                       name="grid-outline"
                       size={15}
-                      color={!newsCompactDisplay ? "#fff" : "#475569"}
+                      color={libraryView === "cards" ? "#fff" : "#475569"}
                     />
                     <Text
                       style={[
                         styles.displayModeText,
-                        !newsCompactDisplay && styles.displayModeTextActive,
+                        libraryView === "cards" && styles.displayModeTextActive,
                       ]}
                     >
                       Cards
                     </Text>
                   </Pressable>
                   <Pressable
-                    onPress={() => setNewsCompactDisplay(true)}
+                    onPress={() => setLibraryView("minimal")}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: libraryView === "minimal" }}
                     style={[
                       styles.displayModeButton,
-                      newsCompactDisplay && styles.displayModeButtonActive,
+                      libraryView === "minimal" && styles.displayModeButtonActive,
                     ]}
                   >
                     <Ionicons
                       name="list-outline"
                       size={15}
-                      color={newsCompactDisplay ? "#fff" : "#475569"}
+                      color={libraryView === "minimal" ? "#fff" : "#475569"}
                     />
                     <Text
                       style={[
                         styles.displayModeText,
-                        newsCompactDisplay && styles.displayModeTextActive,
+                        libraryView === "minimal" && styles.displayModeTextActive,
                       ]}
                     >
-                      Mínima
+                      Minimal
                     </Text>
                   </Pressable>
                 </View>
-              ) : null}
+              </View>
             </View>
           </View>
-        ) : null}
+        </Modal>
 
         <ScrollView
           horizontal
@@ -1473,15 +1533,21 @@ export default function LibraryScreen({ navigation }) {
           </View>
         ) : null}
 
-        <FlatList
+          <FlatList
           key={
-            isSourceCatalog ? "source-catalog" : `library-links-${cardColumns}`
+            isSourceCatalog
+              ? "source-catalog"
+              : `library-links-${libraryView}-${cardColumns}`
           }
           data={links || []}
           horizontal={isSourceCatalog}
-          numColumns={isSourceCatalog ? 1 : cardColumns}
+          numColumns={
+            isSourceCatalog || libraryView === "minimal" ? 1 : cardColumns
+          }
           columnWrapperStyle={
-            !isSourceCatalog && cardColumns > 1 ? styles.linkRow : undefined
+            !isSourceCatalog && libraryView === "cards" && cardColumns > 1
+              ? styles.linkRow
+              : undefined
           }
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => String(item._id)}
@@ -1548,21 +1614,24 @@ export default function LibraryScreen({ navigation }) {
                 </View>
               );
             }
-            if (isNewsFolder && newsView === "articles" && newsCompactDisplay) {
+            if (!isSourceCatalog && libraryView === "minimal") {
               return (
                 <Pressable
-                  style={styles.minimalNewsCard}
+                  style={styles.minimalLinkCard}
                   onPress={() => Linking.openURL(item.normalizedUrl)}
                 >
                   <DomainFavicon hostname={getLinkDomain(item)} />
-                  <View style={styles.minimalNewsText}>
-                    <Text style={styles.minimalNewsTitle} numberOfLines={2}>
-                      {getNewsDisplayTitle(item)}
+                  <View style={styles.minimalLinkText}>
+                    <Text style={styles.minimalLinkDomain} numberOfLines={1}>
+                      {getLinkDomain(item)}
+                    </Text>
+                    <Text style={styles.minimalLinkTitle} numberOfLines={2}>
+                      {getLinkDisplayTitle(item)}
                     </Text>
                     {formatLinkDate(
                       item.publishedAt || item.createdAt || item.updatedAt,
                     ) ? (
-                      <Text style={styles.minimalNewsDate}>
+                      <Text style={styles.minimalLinkDate}>
                         {formatLinkDate(
                           item.publishedAt || item.createdAt || item.updatedAt,
                         )}
@@ -1676,7 +1745,9 @@ export default function LibraryScreen({ navigation }) {
                 {links === undefined ? "Cargando…" : "No hay enlaces"}
               </Text>
               <Text style={styles.emptyText}>
-                Añade una URL o selecciona otra categoría.
+                {links === undefined
+                  ? "Cargando los enlaces guardados…"
+                  : "Añade una URL o selecciona otra categoría."}
               </Text>
             </View>
           }
@@ -1775,7 +1846,7 @@ export default function LibraryScreen({ navigation }) {
                   autoCorrect={false}
                   autoCapitalize="none"
                   maxLength={120}
-                  autoFocus
+                  autoFocus={exportNameVisible}
                   selectTextOnFocus
                   onSubmitEditing={performExportBackup}
                 />
@@ -2367,13 +2438,48 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, minHeight: 42, fontSize: 14, color: "#111827" },
   webInputNoOutline: { outlineStyle: "none", outlineWidth: 0 },
-  backupRow: {
+  toolsModalCard: {
+    width: 430,
+    maxHeight: "82%",
+    padding: 0,
+  },
+  toolsModalHeader: {
+    minHeight: 52,
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
+    justifyContent: "space-between",
+    paddingLeft: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+  },
+  toolsModalTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+  },
+  toolsModalTitle: { fontSize: 17, fontWeight: "900", color: "#111827" },
+  toolsModalClose: {
+    width: 48,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toolsModalActions: {
+    gap: 8,
+    padding: 16,
+  },
+  toolsModalActionButton: {
+    minHeight: 43,
+    justifyContent: "center",
+  },
+  toolsModalDisplaySection: {
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#e2e8f0",
   },
   backupButton: {
     minHeight: 36,
@@ -2688,6 +2794,33 @@ const styles = StyleSheet.create({
     borderColor: "#dbe3ef",
     backgroundColor: "#fff",
   },
+  minimalLinkCard: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: 720,
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+    padding: 7,
+    borderWidth: 1,
+    borderColor: "#dbe3ef",
+    backgroundColor: "#fff",
+  },
+  minimalLinkText: { flex: 1, minWidth: 0, marginLeft: 8 },
+  minimalLinkDomain: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: "#2563eb",
+  },
+  minimalLinkTitle: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "800",
+    color: "#1e293b",
+  },
+  minimalLinkDate: { marginTop: 2, fontSize: 10, color: "#64748b" },
   minimalNewsCard: {
     flex: 1,
     minWidth: 0,
