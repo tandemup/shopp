@@ -1,5 +1,6 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 
 const DEFAULT_FOLDERS = [
@@ -50,7 +51,9 @@ const TRACKING_QUERY_KEYS = new Set([
 const NEWS_ARTICLE_DOMAINS = new Set(["elcomercio.es"]);
 
 function cleanClientId(value) {
-  return String(value || "").trim().slice(0, 120);
+  return String(value || "")
+    .trim()
+    .slice(0, 120);
 }
 
 async function getOwnerId(ctx, clientId) {
@@ -100,6 +103,35 @@ function classifyLinkType(linkType, hostname) {
     return "newsArticle";
   }
   return linkType || "general";
+}
+
+function isDomainHomepage(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return (
+      /^https?:$/.test(url.protocol) &&
+      Boolean(url.hostname) &&
+      (url.pathname === "" || url.pathname === "/") &&
+      !url.search
+    );
+  } catch {
+    return false;
+  }
+}
+
+function normalizeNewsDomain(value) {
+  try {
+    const candidate = String(value || "").trim();
+    if (!candidate) return null;
+    const url = new URL(
+      /^[a-z][a-z0-9+.-]*:\/\//i.test(candidate)
+        ? candidate
+        : `https://${candidate}`,
+    );
+    return url.hostname.replace(/^www\./i, "").toLowerCase() || null;
+  } catch {
+    return null;
+  }
 }
 
 async function insertLinkIfMissing(ctx, message, rawUrl) {
@@ -174,9 +206,7 @@ export const ensureDefaultFolders = mutation({
     let migratedBooks = 0;
 
     if (booksFolder) {
-      const legacyBookLinks = await ctx.db
-        .query("computerLinks")
-        .collect();
+      const legacyBookLinks = await ctx.db.query("computerLinks").collect();
 
       for (const link of legacyBookLinks) {
         if (
@@ -194,7 +224,11 @@ export const ensureDefaultFolders = mutation({
       }
     }
 
-    for (let index = 0; index < LEGACY_DEFAULT_FOLDER_NAMES.length; index += 1) {
+    for (
+      let index = 0;
+      index < LEGACY_DEFAULT_FOLDER_NAMES.length;
+      index += 1
+    ) {
       const name = LEGACY_DEFAULT_FOLDER_NAMES[index];
       const legacyFolder = await ctx.db
         .query("computerLinkFolders")
@@ -252,7 +286,7 @@ export const ensureDefaultFolders = mutation({
 
 export const syncFromChat = mutation({
   args: { clientId: v.optional(v.string()) },
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const messages = await ctx.db
       .query("chatMessages")
       .withIndex("by_room_createdAt", (q) => q.eq("room", "informatica"))
@@ -332,7 +366,8 @@ export const normalizeAndDeduplicate = mutation({
         primary.normalizedUrl !== canonical ||
         primary.url !== canonical ||
         primary.hostname !== normalized.hostname ||
-        primary.linkType !== classifyLinkType(primary.linkType, normalized.hostname)
+        primary.linkType !==
+          classifyLinkType(primary.linkType, normalized.hostname)
       ) {
         const primaryLinkType = classifyLinkType(
           primary.linkType,
@@ -457,9 +492,12 @@ export const removeFolder = mutation({
     }
     const children = await ctx.db
       .query("computerLinkFolders")
-      .withIndex("by_parent_order", (q) => q.eq("parentFolderId", args.folderId))
+      .withIndex("by_parent_order", (q) =>
+        q.eq("parentFolderId", args.folderId),
+      )
       .first();
-    if (children) throw new Error("Elimina primero sus subcategorías internas.");
+    if (children)
+      throw new Error("Elimina primero sus subcategorías internas.");
 
     const links = await ctx.db
       .query("computerLinks")
@@ -513,7 +551,9 @@ export const addUrl = mutation({
     }
     const existing = await ctx.db
       .query("computerLinks")
-      .withIndex("by_normalizedUrl", (q) => q.eq("normalizedUrl", normalized.url))
+      .withIndex("by_normalizedUrl", (q) =>
+        q.eq("normalizedUrl", normalized.url),
+      )
       .first();
     if (existing) {
       const linkType =
@@ -525,7 +565,12 @@ export const addUrl = mutation({
       await ctx.db.patch(existing._id, {
         folderId: args.folderId || existing.folderId,
         linkType,
-        sourceDomain: ["newsSource", "newsArticle", "bookStore", "bookLink"].includes(linkType)
+        sourceDomain: [
+          "newsSource",
+          "newsArticle",
+          "bookStore",
+          "bookLink",
+        ].includes(linkType)
           ? normalized.hostname
           : existing.sourceDomain,
         status: args.folderId || existing.folderId ? "reviewed" : "pending",
@@ -540,11 +585,18 @@ export const addUrl = mutation({
       url: normalized.url,
       normalizedUrl: normalized.url,
       hostname: normalized.hostname,
-      username: String(args.username || "Biblioteca").trim().slice(0, 40),
+      username: String(args.username || "Biblioteca")
+        .trim()
+        .slice(0, 40),
       createdBy: ownerId,
       folderId: args.folderId,
       linkType: classifiedLinkType,
-      sourceDomain: ["newsSource", "newsArticle", "bookStore", "bookLink"].includes(classifiedLinkType)
+      sourceDomain: [
+        "newsSource",
+        "newsArticle",
+        "bookStore",
+        "bookLink",
+      ].includes(classifiedLinkType)
         ? normalized.hostname
         : undefined,
       favorite: false,
@@ -574,12 +626,9 @@ export const list = query({
     ),
   },
   handler: async (ctx, args) => {
-    const search = String(args.search || "").trim().toLowerCase();
-    const links = await ctx.db
-      .query("computerLinks")
-      .withIndex("by_updatedAt")
-      .order("desc")
-      .take(300);
+    const search = String(args.search || "")
+      .trim()
+      .toLowerCase();
     const childFolderIds = args.folderId
       ? new Set(
           (
@@ -592,15 +641,53 @@ export const list = query({
           ).map((folder) => String(folder._id)),
         )
       : null;
+    const selectedFolderIds = args.folderId
+      ? [args.folderId, ...(childFolderIds || [])]
+      : [];
+    let links;
+    if (!args.folderId) {
+      links = await ctx.db
+        .query("computerLinks")
+        .withIndex("by_updatedAt")
+        .order("desc")
+        .take(300);
+    } else {
+      const linkPages = await Promise.all(
+        selectedFolderIds.map((folderId) =>
+          args.linkType
+            ? ctx.db
+                .query("computerLinks")
+                .withIndex("by_folder_linkType_updatedAt", (q) =>
+                  q.eq("folderId", folderId).eq("linkType", args.linkType),
+                )
+                .order("desc")
+                .take(1000)
+            : ctx.db
+                .query("computerLinks")
+                .withIndex("by_folder_updatedAt", (q) =>
+                  q.eq("folderId", folderId),
+                )
+                .order("desc")
+                .take(1000),
+        ),
+      );
+      links = linkPages.flat();
+    }
     return links.filter((link) => {
       if (link.status === "archived") return false;
-      if (args.folderId && link.folderId !== args.folderId && !childFolderIds.has(String(link.folderId || ""))) return false;
+      if (
+        args.folderId &&
+        link.folderId !== args.folderId &&
+        !childFolderIds.has(String(link.folderId || ""))
+      )
+        return false;
       if (args.onlyFavorites && !link.favorite) return false;
       if (args.onlyUnclassified && link.folderId) return false;
       if (args.excludeNewsSources && link.linkType === "newsSource") {
         return false;
       }
-      if (args.excludeNewsSources && link.linkType === "bookStore") return false;
+      if (args.excludeNewsSources && link.linkType === "bookStore")
+        return false;
       if (args.linkType === "newsSource" && link.linkType !== "newsSource") {
         return false;
       }
@@ -611,12 +698,14 @@ export const list = query({
       ) {
         return false;
       }
-      if (args.linkType === "bookStore" && link.linkType !== "bookStore") return false;
+      if (args.linkType === "bookStore" && link.linkType !== "bookStore")
+        return false;
       if (
         args.linkType === "bookLink" &&
         link.linkType !== "bookLink" &&
         link.linkType !== undefined
-      ) return false;
+      )
+        return false;
       if (!search) return true;
       return [
         link.normalizedUrl,
@@ -632,10 +721,9 @@ export const list = query({
 });
 
 export const exportBackup = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
     const folders = await ctx.db.query("computerLinkFolders").collect();
-    const links = await ctx.db.query("computerLinks").collect();
     const folderById = new Map(
       folders.map((folder) => [String(folder._id), folder]),
     );
@@ -655,21 +743,16 @@ export const exportBackup = query({
       return key;
     };
 
+    const linksPage = await ctx.db
+      .query("computerLinks")
+      .withIndex("by_updatedAt")
+      .order("desc")
+      .filter((q) => q.neq(q.field("status"), "archived"))
+      .paginate(args.paginationOpts);
+
     return {
-      folders: folders
-        .map((folder) => ({
-          key: folderKey(folder),
-          name: folder.name,
-          parentKey: folder.parentFolderId
-            ? folderKey(folderById.get(String(folder.parentFolderId)))
-            : null,
-          icon: folder.icon || null,
-          color: folder.color || null,
-          order: Number(folder.order || 0),
-        }))
-        .sort((a, b) => a.key.localeCompare(b.key)),
-      links: links
-        .filter((link) => link.status !== "archived")
+      ...linksPage,
+      page: linksPage.page
         .map((link) => ({
           url: link.url,
           normalizedUrl: link.normalizedUrl,
@@ -687,6 +770,108 @@ export const exportBackup = query({
           createdAt: Number(link.createdAt || 0),
         }))
         .sort((a, b) => a.normalizedUrl.localeCompare(b.normalizedUrl)),
+    };
+  },
+});
+
+export const ensureNewsSources = mutation({
+  args: {
+    clientId: v.optional(v.string()),
+    cursor: v.optional(v.string()),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    if (!ownerId) throw new Error("No se pudo identificar este dispositivo.");
+
+    const newsFolder = await ctx.db
+      .query("computerLinkFolders")
+      .withIndex("by_name", (q) => q.eq("name", "Noticias"))
+      .first();
+    if (!newsFolder) {
+      return { isDone: true, continueCursor: null, processed: 0, created: 0 };
+    }
+
+    const existingSources = await ctx.db
+      .query("computerLinks")
+      .withIndex("by_folder_linkType_updatedAt", (q) =>
+        q.eq("folderId", newsFolder._id).eq("linkType", "newsSource"),
+      )
+      .collect();
+    const sourceByUrl = new Map(
+      existingSources.map((link) => [String(link.normalizedUrl), link]),
+    );
+    const checkedDomains = new Set();
+    const page = await ctx.db
+      .query("computerLinks")
+      .withIndex("by_folder_linkType_updatedAt", (q) =>
+        q.eq("folderId", newsFolder._id).eq("linkType", "newsArticle"),
+      )
+      .order("asc")
+      .paginate({
+        numItems: Math.min(Math.max(Number(args.batchSize) || 1000, 1), 2000),
+        cursor: args.cursor ?? null,
+      });
+
+    let created = 0;
+    let processed = 0;
+    for (const article of page.page) {
+      processed += 1;
+      const domain = normalizeNewsDomain(
+        article.sourceDomain || article.hostname || article.url,
+      );
+      if (!domain || checkedDomains.has(domain)) continue;
+      checkedDomains.add(domain);
+
+      const homepage = normalizeLink(`https://${domain}/`);
+      if (!homepage || sourceByUrl.has(homepage.url)) continue;
+
+      const candidates = await ctx.db
+        .query("computerLinks")
+        .withIndex("by_normalizedUrl", (q) =>
+          q.eq("normalizedUrl", homepage.url),
+        )
+        .collect();
+      const existing = candidates.find(
+        (link) => link.folderId === newsFolder._id,
+      );
+
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          folderId: newsFolder._id,
+          linkType: "newsSource",
+          sourceDomain: domain,
+          status: "reviewed",
+          updatedAt: Date.now(),
+        });
+        sourceByUrl.set(homepage.url, { ...existing, linkType: "newsSource" });
+        continue;
+      }
+
+      const now = Date.now();
+      const sourceId = await ctx.db.insert("computerLinks", {
+        url: homepage.url,
+        normalizedUrl: homepage.url,
+        hostname: homepage.hostname,
+        username: "Biblioteca",
+        createdBy: ownerId,
+        folderId: newsFolder._id,
+        linkType: "newsSource",
+        sourceDomain: domain,
+        favorite: false,
+        status: "reviewed",
+        createdAt: now,
+        updatedAt: now,
+      });
+      sourceByUrl.set(homepage.url, { _id: sourceId });
+      created += 1;
+    }
+
+    return {
+      isDone: page.isDone,
+      continueCursor: page.isDone ? null : page.continueCursor,
+      processed,
+      created,
     };
   },
 });
@@ -720,12 +905,16 @@ export const importBackup = mutation({
     let linksUpdated = 0;
     let foldersDeleted = 0;
     let linksDeleted = 0;
+    const existingByNormalizedUrl = new Map();
 
     if (args.replaceExisting === true) {
-      const existingLinks = await ctx.db.query("computerLinks").collect();
-      for (const link of existingLinks) {
-        await ctx.db.delete(link._id);
-        linksDeleted += 1;
+      while (true) {
+        const existingLinks = await ctx.db.query("computerLinks").take(1000);
+        if (existingLinks.length === 0) break;
+        for (const link of existingLinks) {
+          await ctx.db.delete(link._id);
+          linksDeleted += 1;
+        }
       }
       const existingFolders = await ctx.db
         .query("computerLinkFolders")
@@ -737,9 +926,7 @@ export const importBackup = mutation({
     }
     const selectedCategoryKeys = Array.isArray(args.categoryKeys)
       ? new Set(
-          args.categoryKeys
-            .map((key) => String(key).trim())
-            .filter(Boolean),
+          args.categoryKeys.map((key) => String(key).trim()).filter(Boolean),
         )
       : null;
 
@@ -793,7 +980,9 @@ export const importBackup = mutation({
         remainingDepth -= 1;
       }
 
-      return String(folder?.name || "").trim().toLowerCase();
+      return String(folder?.name || "")
+        .trim()
+        .toLowerCase();
     };
 
     for (const item of foldersToImport) {
@@ -813,8 +1002,7 @@ export const importBackup = mutation({
         .collect();
       let existing = candidates.find(
         (folder) =>
-          String(folder.parentFolderId || "") ===
-          String(parentFolderId || ""),
+          String(folder.parentFolderId || "") === String(parentFolderId || ""),
       );
 
       if (!existing) {
@@ -855,9 +1043,13 @@ export const importBackup = mutation({
       const folderId = item.folderKey
         ? folderIdByKey.get(String(item.folderKey))
         : undefined;
-      let linkType = ["general", "newsSource", "newsArticle", "bookStore", "bookLink"].includes(
-        item.linkType,
-      )
+      let linkType = [
+        "general",
+        "newsSource",
+        "newsArticle",
+        "bookStore",
+        "bookLink",
+      ].includes(item.linkType)
         ? item.linkType
         : "general";
 
@@ -868,6 +1060,9 @@ export const importBackup = mutation({
         getBackupRootFolderName(item.folderKey) === "libros"
       ) {
         linkType = "bookLink";
+      }
+      if (linkType === "newsArticle" && isDomainHomepage(normalized.url)) {
+        linkType = "newsSource";
       }
       const hashtags = Array.from(
         new Set(
@@ -883,20 +1078,32 @@ export const importBackup = mutation({
             .map((tag) => tag.slice(0, 40)),
         ),
       ).slice(0, 20);
-      const notes = String(item.notes || "").trim().slice(0, 1000);
-      const customTitle = String(item.customTitle || "").trim().slice(0, 80);
+      const notes = String(item.notes || "")
+        .trim()
+        .slice(0, 1000);
+      const customTitle = String(item.customTitle || "")
+        .trim()
+        .slice(0, 80);
       const sourceDomain = String(item.sourceDomain || normalized.hostname)
         .trim()
         .slice(0, 160);
-      const username = String(item.username || "Biblioteca").trim().slice(0, 40);
+      const username = String(item.username || "Biblioteca")
+        .trim()
+        .slice(0, 40);
       const createdAt = Number(item.createdAt);
 
-      const existing = await ctx.db
-        .query("computerLinks")
-        .withIndex("by_normalizedUrl", (q) =>
-          q.eq("normalizedUrl", normalized.url),
-        )
-        .first();
+      let existing;
+      if (existingByNormalizedUrl.has(normalized.url)) {
+        existing = existingByNormalizedUrl.get(normalized.url);
+      } else {
+        existing = await ctx.db
+          .query("computerLinks")
+          .withIndex("by_normalizedUrl", (q) =>
+            q.eq("normalizedUrl", normalized.url),
+          )
+          .first();
+        existingByNormalizedUrl.set(normalized.url, existing || null);
+      }
 
       const patch = {
         url: normalized.url,
@@ -905,25 +1112,39 @@ export const importBackup = mutation({
         username,
         folderId,
         linkType,
-        sourceDomain: ["newsSource", "newsArticle", "bookStore", "bookLink"].includes(linkType) ? sourceDomain : undefined,
+        sourceDomain: [
+          "newsSource",
+          "newsArticle",
+          "bookStore",
+          "bookLink",
+        ].includes(linkType)
+          ? sourceDomain
+          : undefined,
         customTitle: customTitle || undefined,
         favorite: Boolean(item.favorite),
         status: folderId ? "reviewed" : "pending",
-        notes: ["newsSource", "bookStore"].includes(linkType) ? undefined : notes || undefined,
+        notes: ["newsSource", "bookStore"].includes(linkType)
+          ? undefined
+          : notes || undefined,
         hashtags:
-          ["newsSource", "bookStore"].includes(linkType) || !hashtags.length ? undefined : hashtags,
+          ["newsSource", "bookStore"].includes(linkType) || !hashtags.length
+            ? undefined
+            : hashtags,
         updatedAt: now,
       };
 
       if (existing) {
         await ctx.db.patch(existing._id, patch);
+        existingByNormalizedUrl.set(normalized.url, { ...existing, ...patch });
         linksUpdated += 1;
       } else {
-        await ctx.db.insert("computerLinks", {
+        const linkId = await ctx.db.insert("computerLinks", {
           ...patch,
           createdBy: ownerId,
-          createdAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : now,
+          createdAt:
+            Number.isFinite(createdAt) && createdAt > 0 ? createdAt : now,
         });
+        existingByNormalizedUrl.set(normalized.url, { ...patch, _id: linkId });
         linksCreated += 1;
       }
     }
@@ -961,10 +1182,14 @@ export const updateMetadata = mutation({
     const link = await ctx.db.get(args.linkId);
     if (!link) throw new Error("El enlace ya no existe.");
     if (["newsSource", "bookStore"].includes(link.linkType)) {
-      throw new Error("Los comentarios y hashtags pertenecen a los enlaces guardados, no al catálogo.");
+      throw new Error(
+        "Los comentarios y hashtags pertenecen a los enlaces guardados, no al catálogo.",
+      );
     }
 
-    const notes = String(args.notes || "").trim().slice(0, 1000);
+    const notes = String(args.notes || "")
+      .trim()
+      .slice(0, 1000);
     const hashtags = Array.from(
       new Set(
         (args.hashtags || [])
@@ -1009,12 +1234,16 @@ export const updateNewsSource = mutation({
 
     const duplicate = await ctx.db
       .query("computerLinks")
-      .withIndex("by_normalizedUrl", (q) => q.eq("normalizedUrl", normalized.url))
+      .withIndex("by_normalizedUrl", (q) =>
+        q.eq("normalizedUrl", normalized.url),
+      )
       .first();
     if (duplicate && duplicate._id !== args.linkId) {
       throw new Error("Esa fuente ya existe en el catálogo.");
     }
-    const customTitle = String(args.customTitle || "").trim().slice(0, 80);
+    const customTitle = String(args.customTitle || "")
+      .trim()
+      .slice(0, 80);
     await ctx.db.patch(args.linkId, {
       url: normalized.url,
       normalizedUrl: normalized.url,
@@ -1067,15 +1296,23 @@ export const removeNewsSource = mutation({
       throw new Error("La fuente ya no existe.");
     }
     const domain = String(source.sourceDomain || source.hostname || "")
-      .trim().toLowerCase().replace(/^www\./, "");
+      .trim()
+      .toLowerCase()
+      .replace(/^www\./, "");
     const links = await ctx.db.query("computerLinks").collect();
     let archivedArticles = 0;
     const now = Date.now();
     for (const link of links) {
       const linkDomain = String(link.sourceDomain || link.hostname || "")
-        .trim().toLowerCase().replace(/^www\./, "");
-      const relatedType = source.linkType === "bookStore" ? "bookLink" : "newsArticle";
-      if (link._id === source._id || (link.linkType === relatedType && linkDomain === domain)) {
+        .trim()
+        .toLowerCase()
+        .replace(/^www\./, "");
+      const relatedType =
+        source.linkType === "bookStore" ? "bookLink" : "newsArticle";
+      if (
+        link._id === source._id ||
+        (link.linkType === relatedType && linkDomain === domain)
+      ) {
         await ctx.db.patch(link._id, { status: "archived", updatedAt: now });
         if (link._id !== source._id) archivedArticles += 1;
       }

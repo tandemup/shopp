@@ -337,6 +337,11 @@ export default defineSchema({
     updatedAt: v.float64(),
   })
     .index("by_normalizedUrl", ["normalizedUrl"])
+    .index("by_folder_linkType_updatedAt", [
+      "folderId",
+      "linkType",
+      "updatedAt",
+    ])
     .index("by_folder_updatedAt", ["folderId", "updatedAt"])
     .index("by_updatedAt", ["updatedAt"]),
 

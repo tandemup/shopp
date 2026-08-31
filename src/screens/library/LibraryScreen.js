@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   FlatList,
   Linking,
@@ -14,7 +20,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 import WebPreviewCard from "@/src/components/chat/WebPreviewCard";
@@ -23,6 +29,7 @@ import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 const CLIENT_ID_KEY = "shopp-chat-client-id";
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
+const IMPORT_BATCH_SIZE = 1000;
 
 function getDomainFaviconUrl(hostname) {
   const cleanHostname = String(hostname || "")
@@ -75,6 +82,94 @@ function isValidHttpUrl(value) {
   }
 }
 
+function getLinkDomain(link) {
+  return String(link?.sourceDomain || link?.hostname || "")
+    .replace(/^www\./i, "")
+    .trim()
+    .toLowerCase();
+}
+
+function formatLinkDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function getNewsDisplayTitle(link) {
+  const domain = getLinkDomain(link);
+  const storedTitle = String(
+    link?.title || link?.pageTitle || link?.previewTitle || link?.name || "",
+  ).trim();
+  const customTitle = String(link?.customTitle || "").trim();
+  if (storedTitle && storedTitle.toLowerCase() !== domain) return storedTitle;
+  if (customTitle && customTitle.toLowerCase() !== domain) return customTitle;
+
+  try {
+    const pathname = new URL(link?.normalizedUrl || link?.url || "").pathname;
+    const slug = decodeURIComponent(pathname)
+      .split("/")
+      .filter(Boolean)
+      .pop()
+      ?.replace(/\.(html?|php)$/i, "")
+      .replace(/[-_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (slug) return slug.charAt(0).toUpperCase() + slug.slice(1);
+  } catch {
+    // The URL has already been validated before being stored.
+  }
+  return customTitle || domain || "Noticia";
+}
+
+function buildLibraryIntegrityReport(links, folders) {
+  const safeLinks = Array.isArray(links) ? links : [];
+  const folderById = new Map(
+    (Array.isArray(folders) ? folders : []).map((folder) => [
+      String(folder._id),
+      folder,
+    ]),
+  );
+  const newsArticles = safeLinks.filter(
+    (link) => link?.linkType === "newsArticle",
+  );
+  const newsSources = safeLinks.filter(
+    (link) => link?.linkType === "newsSource",
+  );
+  const sourceDomains = new Set(newsSources.map(getLinkDomain).filter(Boolean));
+  const missingSourceDomains = [
+    ...new Set(
+      newsArticles
+        .map(getLinkDomain)
+        .filter((domain) => domain && !sourceDomains.has(domain)),
+    ),
+  ];
+  const categoryCounts = new Map();
+  safeLinks.forEach((link) => {
+    const folderName = link?.folderId
+      ? folderById.get(String(link.folderId))?.name
+      : null;
+    const category =
+      link?.linkType === "newsArticle"
+        ? `Noticia · ${getLinkDomain(link) || "sin dominio"}`
+        : folderName || "Sin clasificar";
+    categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1);
+  });
+  return {
+    totalLinks: safeLinks.length,
+    newsPosts: newsArticles.length,
+    newsSources: newsSources.length,
+    missingSourceDomains,
+    categoryCounts: [...categoryCounts.entries()].sort((a, b) =>
+      a[0].localeCompare(b[0]),
+    ),
+  };
+}
+
 function getAddUrlErrorMessage(error) {
   const message = String(error?.message || "");
   if (/url|http|https|válida|invalid/i.test(message)) {
@@ -98,6 +193,45 @@ function normalizeBackupFilename(value) {
   return cleanName.toLowerCase().endsWith(".json")
     ? cleanName
     : `${cleanName}.json`;
+}
+
+function buildBackupFolders(folders) {
+  const folderById = new Map(
+    (Array.isArray(folders) ? folders : []).map((folder) => [
+      String(folder._id),
+      folder,
+    ]),
+  );
+  const keyCache = new Map();
+
+  const folderKey = (folder) => {
+    if (!folder) return null;
+    const id = String(folder._id);
+    if (keyCache.has(id)) return keyCache.get(id);
+    const parent = folder.parentFolderId
+      ? folderById.get(String(folder.parentFolderId))
+      : null;
+    const parentKey = parent ? folderKey(parent) : null;
+    const key = parentKey
+      ? `${parentKey}/${encodeURIComponent(folder.name)}`
+      : encodeURIComponent(folder.name);
+    keyCache.set(id, key);
+    return key;
+  };
+
+  return (Array.isArray(folders) ? folders : [])
+    .map((folder) => ({
+      key: folderKey(folder),
+      name: folder.name,
+      parentKey: folder.parentFolderId
+        ? folderKey(folderById.get(String(folder.parentFolderId)))
+        : null,
+      icon: folder.icon || null,
+      color: folder.color || null,
+      order: Number(folder.order || 0),
+    }))
+    .filter((folder) => folder.key)
+    .sort((a, b) => a.key.localeCompare(b.key));
 }
 
 function getBackupRootFolderKey(folderKey, folderByKey) {
@@ -218,17 +352,16 @@ function ImportCheckbox({
       ]}
     >
       <View
-        style={[
-          styles.importCheckbox,
-          checked && styles.importCheckboxChecked,
-        ]}
+        style={[styles.importCheckbox, checked && styles.importCheckboxChecked]}
       >
         {checked ? <Ionicons name="checkmark" size={15} color="#fff" /> : null}
       </View>
       <Ionicons name={icon || "folder-outline"} size={18} color={color} />
       <View style={styles.importOptionText}>
         <Text style={styles.importOptionLabel}>{label}</Text>
-        {detail ? <Text style={styles.importOptionDetail}>{detail}</Text> : null}
+        {detail ? (
+          <Text style={styles.importOptionDetail}>{detail}</Text>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -277,9 +410,29 @@ export default function LibraryScreen({ navigation }) {
     [],
   );
   const [importMode, setImportMode] = useState("combine");
+  const [integrityBusy, setIntegrityBusy] = useState(false);
+  const [integrityReport, setIntegrityReport] = useState(null);
+  const [newsCompactDisplay, setNewsCompactDisplay] = useState(false);
 
   const folders = useQuery(api.computerLinks.listFolders) || [];
-  const libraryBackup = useQuery(api.computerLinks.exportBackup);
+  const {
+    results: exportedLinks,
+    status: exportStatus,
+    loadMore: loadMoreExportedLinks,
+  } = usePaginatedQuery(
+    api.computerLinks.exportBackup,
+    {},
+    { initialNumItems: IMPORT_BATCH_SIZE },
+  );
+  const libraryBackup = useMemo(() => {
+    if (exportStatus !== "Exhausted" || !Array.isArray(exportedLinks)) {
+      return null;
+    }
+    return {
+      folders: buildBackupFolders(folders),
+      links: exportedLinks,
+    };
+  }, [exportStatus, exportedLinks, folders]);
   const selectedFolderId = !["all", "favorites", "unclassified"].includes(
     folderFilter,
   )
@@ -304,8 +457,12 @@ export default function LibraryScreen({ navigation }) {
     excludeNewsSources: folderFilter === "all" || undefined,
     linkType: isCatalogFolder
       ? newsView === "sources"
-        ? isBooksFolder ? "bookStore" : "newsSource"
-        : isBooksFolder ? "bookLink" : "newsArticle"
+        ? isBooksFolder
+          ? "bookStore"
+          : "newsSource"
+        : isBooksFolder
+          ? "bookLink"
+          : "newsArticle"
       : undefined,
   });
 
@@ -322,9 +479,40 @@ export default function LibraryScreen({ navigation }) {
   const removeLink = useMutation(api.computerLinks.remove);
   const removeNewsSource = useMutation(api.computerLinks.removeNewsSource);
   const importBackup = useMutation(api.computerLinks.importBackup);
+  const ensureNewsSources = useMutation(api.computerLinks.ensureNewsSources);
   const normalizeAndDeduplicate = useMutation(
     api.computerLinks.normalizeAndDeduplicate,
   );
+  const newsSourceSyncStarted = useRef(false);
+
+  useEffect(() => {
+    if (!isNewsFolder || newsSourceSyncStarted.current) return;
+    newsSourceSyncStarted.current = true;
+    let cursor = null;
+    (async () => {
+      try {
+        while (true) {
+          const result = await ensureNewsSources({
+            clientId,
+            batchSize: IMPORT_BATCH_SIZE,
+            ...(cursor ? { cursor } : {}),
+          });
+          if (result?.isDone) break;
+          cursor = result?.continueCursor || null;
+          if (!cursor) break;
+        }
+      } catch (error) {
+        newsSourceSyncStarted.current = false;
+        console.warn("[LibraryScreen] news source sync failed", error);
+      }
+    })();
+  }, [clientId, ensureNewsSources, isNewsFolder]);
+
+  useEffect(() => {
+    if (exportStatus === "CanLoadMore") {
+      loadMoreExportedLinks(IMPORT_BATCH_SIZE);
+    }
+  }, [exportStatus, loadMoreExportedLinks]);
 
   useEffect(() => {
     ensureDefaultFolders({ clientId })
@@ -359,8 +547,12 @@ export default function LibraryScreen({ navigation }) {
         folderId: selectedFolderId,
         linkType: isCatalogFolder
           ? newsView === "sources"
-            ? isBooksFolder ? "bookStore" : "newsSource"
-            : isBooksFolder ? "bookLink" : "newsArticle"
+            ? isBooksFolder
+              ? "bookStore"
+              : "newsSource"
+            : isBooksFolder
+              ? "bookLink"
+              : "newsArticle"
           : "general",
       });
       setUrlInput("");
@@ -599,15 +791,15 @@ export default function LibraryScreen({ navigation }) {
     const importAll =
       importReview.categories.length === 0 ||
       categoryKeys.length === importReview.categories.length;
-    const importArgs = {
-      clientId,
-      backup: importReview.parsed,
-      replaceExisting: importMode === "replace",
-    };
-
-    if (!importAll) {
-      importArgs.categoryKeys = categoryKeys;
+    const selectedData = importAll
+      ? importReview.parsed.data
+      : filterBackupByCategories(importReview.parsed.data, categoryKeys);
+    const links = Array.isArray(selectedData.links) ? selectedData.links : [];
+    const linkBatches = [];
+    for (let index = 0; index < links.length; index += IMPORT_BATCH_SIZE) {
+      linkBatches.push(links.slice(index, index + IMPORT_BATCH_SIZE));
     }
+    if (linkBatches.length === 0) linkBatches.push([]);
 
     const executeImport = async () => {
       setImportReview(null);
@@ -615,7 +807,28 @@ export default function LibraryScreen({ navigation }) {
       setImportMode("combine");
       setBackupBusy(true);
       try {
-        const summary = await importBackup(importArgs);
+        const summary = {
+          foldersCreated: 0,
+          linksCreated: 0,
+          linksUpdated: 0,
+          foldersDeleted: 0,
+          linksDeleted: 0,
+        };
+        for (let index = 0; index < linkBatches.length; index += 1) {
+          const importArgs = {
+            clientId,
+            backup: {
+              ...importReview.parsed,
+              data: { ...selectedData, links: linkBatches[index] },
+            },
+            replaceExisting: importMode === "replace" && index === 0,
+          };
+          if (!importAll) importArgs.categoryKeys = categoryKeys;
+          const batchSummary = await importBackup(importArgs);
+          Object.keys(summary).forEach((key) => {
+            summary[key] += Number(batchSummary?.[key] || 0);
+          });
+        }
         safeAlert(
           "Biblioteca restaurada",
           `${importMode === "replace" ? "Reemplazo completado." : "Modo combinar completado."}\n\n${summary.linksDeleted ? `Enlaces eliminados: ${summary.linksDeleted}\n` : ""}${summary.foldersDeleted ? `Categorías eliminadas: ${summary.foldersDeleted}\n` : ""}Carpetas creadas: ${summary.foldersCreated}\nEnlaces creados: ${summary.linksCreated}\nEnlaces actualizados: ${summary.linksUpdated}`,
@@ -767,6 +980,56 @@ export default function LibraryScreen({ navigation }) {
     );
   }, []);
 
+  const handleCheckIntegrity = useCallback(async () => {
+    if (integrityBusy) return;
+    setIntegrityBusy(true);
+    try {
+      const before = buildLibraryIntegrityReport(exportedLinks, folders);
+      let cursor = null;
+      let sourceSyncResult = null;
+      while (true) {
+        sourceSyncResult = await ensureNewsSources({
+          clientId,
+          batchSize: IMPORT_BATCH_SIZE,
+          ...(cursor ? { cursor } : {}),
+        });
+        if (sourceSyncResult?.isDone) break;
+        cursor = sourceSyncResult?.continueCursor || null;
+        if (!cursor) break;
+      }
+      const normalizationResult = await normalizeAndDeduplicate({});
+      setIntegrityReport({
+        ...before,
+        addedSources: Number(
+          sourceSyncResult?.created || sourceSyncResult?.createdSources || 0,
+        ),
+        correctedPosts: Number(
+          normalizationResult?.correctedNewsPosts ||
+            normalizationResult?.updatedNewsPosts ||
+            normalizationResult?.corrected ||
+            normalizationResult?.updatedCount ||
+            normalizationResult?.updated ||
+            0,
+        ),
+        checkedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      safeAlert(
+        "No se pudo comprobar",
+        error?.message || "No se pudo revisar la integridad de la Biblioteca.",
+      );
+    } finally {
+      setIntegrityBusy(false);
+    }
+  }, [
+    clientId,
+    ensureNewsSources,
+    exportedLinks,
+    folders,
+    integrityBusy,
+    normalizeAndDeduplicate,
+  ]);
+
   const topFolders = folders.filter((folder) => !folder.parentFolderId);
   const filters = [
     { _id: "all", name: "Todos", icon: "apps-outline" },
@@ -815,12 +1078,14 @@ export default function LibraryScreen({ navigation }) {
                 onChangeText={setUrlInput}
                 placeholder={
                   isSourceCatalog
-                    ? isBooksFolder ? "https://www.casadellibro.com" : "https://www.elmundo.es"
+                    ? isBooksFolder
+                      ? "https://www.casadellibro.com"
+                      : "https://www.elmundo.es"
                     : isBooksFolder
                       ? "Pega la URL de un libro"
                       : isNewsFolder
                         ? "Pega la URL de una noticia"
-                      : "https://ejemplo.com"
+                        : "https://ejemplo.com"
                 }
                 placeholderTextColor="#94a3b8"
                 style={styles.urlInput}
@@ -887,13 +1152,75 @@ export default function LibraryScreen({ navigation }) {
                   backupBusy && styles.buttonDisabled,
                 ]}
               >
-                <Ionicons
-                  name="download-outline"
-                  size={17}
-                  color="#2563eb"
-                />
+                <Ionicons name="download-outline" size={17} color="#2563eb" />
                 <Text style={styles.backupButtonText}>Importar JSON</Text>
               </Pressable>
+              <Pressable
+                onPress={handleCheckIntegrity}
+                disabled={integrityBusy || !Array.isArray(exportedLinks)}
+                style={[
+                  styles.backupButton,
+                  styles.integrityButton,
+                  (integrityBusy || !Array.isArray(exportedLinks)) &&
+                    styles.buttonDisabled,
+                ]}
+              >
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={17}
+                  color="#047857"
+                />
+                <Text style={styles.integrityButtonText}>
+                  {integrityBusy ? "Comprobando…" : "Comprobar integridad"}
+                </Text>
+              </Pressable>
+              {isNewsFolder && newsView === "articles" ? (
+                <View style={styles.displayModeInline}>
+                  <Text style={styles.displayModeLabel}>Vista</Text>
+                  <Pressable
+                    onPress={() => setNewsCompactDisplay(false)}
+                    style={[
+                      styles.displayModeButton,
+                      !newsCompactDisplay && styles.displayModeButtonActive,
+                    ]}
+                  >
+                    <Ionicons
+                      name="grid-outline"
+                      size={15}
+                      color={!newsCompactDisplay ? "#fff" : "#475569"}
+                    />
+                    <Text
+                      style={[
+                        styles.displayModeText,
+                        !newsCompactDisplay && styles.displayModeTextActive,
+                      ]}
+                    >
+                      Cards
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setNewsCompactDisplay(true)}
+                    style={[
+                      styles.displayModeButton,
+                      newsCompactDisplay && styles.displayModeButtonActive,
+                    ]}
+                  >
+                    <Ionicons
+                      name="list-outline"
+                      size={15}
+                      color={newsCompactDisplay ? "#fff" : "#475569"}
+                    />
+                    <Text
+                      style={[
+                        styles.displayModeText,
+                        newsCompactDisplay && styles.displayModeTextActive,
+                      ]}
+                    >
+                      Mínima
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
           </View>
         ) : null}
@@ -1107,7 +1434,9 @@ export default function LibraryScreen({ navigation }) {
               ]}
             >
               <Ionicons
-                name={isBooksFolder ? "storefront-outline" : "newspaper-outline"}
+                name={
+                  isBooksFolder ? "storefront-outline" : "newspaper-outline"
+                }
                 size={16}
                 color={newsView === "sources" ? "#fff" : "#475569"}
               />
@@ -1219,21 +1548,48 @@ export default function LibraryScreen({ navigation }) {
                 </View>
               );
             }
+            if (isNewsFolder && newsView === "articles" && newsCompactDisplay) {
+              return (
+                <Pressable
+                  style={styles.minimalNewsCard}
+                  onPress={() => Linking.openURL(item.normalizedUrl)}
+                >
+                  <DomainFavicon hostname={getLinkDomain(item)} />
+                  <View style={styles.minimalNewsText}>
+                    <Text style={styles.minimalNewsTitle} numberOfLines={2}>
+                      {getNewsDisplayTitle(item)}
+                    </Text>
+                    {formatLinkDate(
+                      item.publishedAt || item.createdAt || item.updatedAt,
+                    ) ? (
+                      <Text style={styles.minimalNewsDate}>
+                        {formatLinkDate(
+                          item.publishedAt || item.createdAt || item.updatedAt,
+                        )}
+                      </Text>
+                    ) : null}
+                  </View>
+                </Pressable>
+              );
+            }
             const folder = item.folderId
               ? folderById.get(String(item.folderId))
               : null;
             return (
               <View style={styles.linkCard}>
                 <WebPreviewCard url={item.normalizedUrl} compact dense />
-                {["newsSource", "bookStore"].includes(item.linkType) && item.customTitle ? (
+                {["newsSource", "bookStore"].includes(item.linkType) &&
+                item.customTitle ? (
                   <Text style={styles.sourceCustomTitle}>
                     {item.customTitle}
                   </Text>
                 ) : null}
-                {!["newsSource", "bookStore"].includes(item.linkType) && item.notes ? (
+                {!["newsSource", "bookStore"].includes(item.linkType) &&
+                item.notes ? (
                   <Text style={styles.linkNotes}>{item.notes}</Text>
                 ) : null}
-                {!["newsSource", "bookStore"].includes(item.linkType) && item.hashtags?.length ? (
+                {!["newsSource", "bookStore"].includes(item.linkType) &&
+                item.hashtags?.length ? (
                   <View style={styles.hashtagRow}>
                     {item.hashtags.map((tag) => (
                       <Pressable key={tag} onPress={() => setSearch(tag)}>
@@ -1256,11 +1612,11 @@ export default function LibraryScreen({ navigation }) {
                           ? `Tienda de libros · ${item.sourceDomain || item.hostname}`
                           : item.linkType === "bookLink"
                             ? `Libro · ${item.sourceDomain || item.hostname}`
-                        : item.linkType === "newsArticle"
-                          ? `Noticia · ${item.sourceDomain || item.hostname}${""}`
-                          : folder?.name === "Libros"
-                            ? `Libro · ${item.sourceDomain || item.hostname}`
-                            : folder?.name || "Sin clasificar"}
+                            : item.linkType === "newsArticle"
+                              ? `Noticia · ${item.sourceDomain || item.hostname}${""}`
+                              : folder?.name === "Libros"
+                                ? `Libro · ${item.sourceDomain || item.hostname}`
+                                : folder?.name || "Sin clasificar"}
                     </Text>
                   </View>
                   <View style={styles.cardActionButtons}>
@@ -1327,6 +1683,74 @@ export default function LibraryScreen({ navigation }) {
         />
 
         <Modal
+          visible={Boolean(integrityReport)}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setIntegrityReport(null)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Integridad de los enlaces</Text>
+              <View style={styles.integritySummaryBox}>
+                <Text style={styles.integritySummaryText}>
+                  {integrityReport?.totalLinks || 0} enlaces ·{" "}
+                  {integrityReport?.newsPosts || 0} noticias ·{" "}
+                  {integrityReport?.newsSources || 0} news sources
+                </Text>
+                <Text style={styles.integritySummaryText}>
+                  News sources añadidos: {integrityReport?.addedSources || 0}
+                </Text>
+                <Text style={styles.integritySummaryText}>
+                  Posts corregidos: {integrityReport?.correctedPosts || 0}
+                </Text>
+              </View>
+              {integrityReport?.missingSourceDomains?.length ? (
+                <View style={styles.integrityWarningBox}>
+                  <Text style={styles.integrityWarning}>
+                    Dominios que requerían news source antes de la reparación:{" "}
+                    {integrityReport.missingSourceDomains.length}
+                  </Text>
+                  <ScrollView
+                    style={styles.integrityDomainList}
+                    nestedScrollEnabled
+                  >
+                    <Text style={styles.integrityDomainText}>
+                      {integrityReport.missingSourceDomains.join(", ")}
+                    </Text>
+                  </ScrollView>
+                </View>
+              ) : (
+                <Text style={styles.integrityOk}>
+                  Todos los dominios de noticias tenían news source.
+                </Text>
+              )}
+              <Text style={styles.fieldLabel}>Posts por categoría</Text>
+              <ScrollView style={styles.integrityCategoryList}>
+                {integrityReport?.categoryCounts?.map(([category, count]) => (
+                  <View key={category} style={styles.integrityCategoryRow}>
+                    <Text
+                      style={styles.integrityCategoryName}
+                      numberOfLines={1}
+                    >
+                      {category}
+                    </Text>
+                    <Text style={styles.integrityCategoryCount}>{count}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+              <View style={styles.modalActions}>
+                <Pressable
+                  onPress={() => setIntegrityReport(null)}
+                  style={styles.saveButton}
+                >
+                  <Text style={styles.saveText}>Cerrar</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
           visible={exportNameVisible}
           transparent
           animationType="fade"
@@ -1374,13 +1798,22 @@ export default function LibraryScreen({ navigation }) {
                     </Text>
                   </View>
                   <View style={styles.importSummaryRow}>
-                    <Ionicons name="newspaper-outline" size={17} color="#dc2626" />
+                    <Ionicons
+                      name="newspaper-outline"
+                      size={17}
+                      color="#dc2626"
+                    />
                     <Text style={styles.importSummaryText}>
-                      {exportReview?.sourceCount || 0} periódicos o tiendas de libros
+                      {exportReview?.sourceCount || 0} periódicos o tiendas de
+                      libros
                     </Text>
                   </View>
                   <View style={styles.importSummaryRow}>
-                    <Ionicons name="bookmark-outline" size={17} color="#7c3aed" />
+                    <Ionicons
+                      name="bookmark-outline"
+                      size={17}
+                      color="#7c3aed"
+                    />
                     <Text style={styles.importSummaryText}>
                       {exportReview?.savedLinkCount || 0} enlaces guardados
                     </Text>
@@ -1389,7 +1822,8 @@ export default function LibraryScreen({ navigation }) {
 
                 <Text style={styles.fieldLabel}>Categorías a exportar</Text>
                 <Text style={styles.fieldHelp}>
-                  Elige todas las categorías o solo las que quieras incluir. Las subcategorías se exportan con su categoría principal.
+                  Elige todas las categorías o solo las que quieras incluir. Las
+                  subcategorías se exportan con su categoría principal.
                 </Text>
 
                 <View style={styles.importCategoryList}>
@@ -1411,7 +1845,9 @@ export default function LibraryScreen({ navigation }) {
                   {exportCategories.map((category) => (
                     <ImportCheckbox
                       key={category.key}
-                      checked={selectedExportCategoryKeys.includes(category.key)}
+                      checked={selectedExportCategoryKeys.includes(
+                        category.key,
+                      )}
                       label={category.name}
                       detail={`${category.linkCount} ${category.linkCount === 1 ? "enlace" : "enlaces"}`}
                       icon={category.icon}
@@ -1422,7 +1858,8 @@ export default function LibraryScreen({ navigation }) {
                 </View>
 
                 <Text style={styles.importSelectionHelp}>
-                  Se exportarán {selectedExportLinkCount} enlaces. La copia mantendrá el formato compatible de Biblioteca.
+                  Se exportarán {selectedExportLinkCount} enlaces. La copia
+                  mantendrá el formato compatible de Biblioteca.
                 </Text>
               </ScrollView>
 
@@ -1452,7 +1889,11 @@ export default function LibraryScreen({ navigation }) {
                       styles.buttonDisabled,
                   ]}
                 >
-                  <Ionicons name="cloud-upload-outline" size={17} color="#fff" />
+                  <Ionicons
+                    name="cloud-upload-outline"
+                    size={17}
+                    color="#fff"
+                  />
                   <Text style={styles.saveText}>
                     {backupBusy ? "Exportando…" : "Exportar seleccionados"}
                   </Text>
@@ -1479,7 +1920,11 @@ export default function LibraryScreen({ navigation }) {
 
                 <Text style={styles.fieldLabel}>Fichero seleccionado</Text>
                 <View style={styles.importFileBox}>
-                  <Ionicons name="document-text-outline" size={20} color="#2563eb" />
+                  <Ionicons
+                    name="document-text-outline"
+                    size={20}
+                    color="#2563eb"
+                  />
                   <Text style={styles.importFileName} numberOfLines={2}>
                     {importReview?.fileName}
                   </Text>
@@ -1500,13 +1945,22 @@ export default function LibraryScreen({ navigation }) {
                     </Text>
                   </View>
                   <View style={styles.importSummaryRow}>
-                    <Ionicons name="newspaper-outline" size={17} color="#dc2626" />
+                    <Ionicons
+                      name="newspaper-outline"
+                      size={17}
+                      color="#dc2626"
+                    />
                     <Text style={styles.importSummaryText}>
-                      {importReview?.sourceCount || 0} periódicos o tiendas de libros
+                      {importReview?.sourceCount || 0} periódicos o tiendas de
+                      libros
                     </Text>
                   </View>
                   <View style={styles.importSummaryRow}>
-                    <Ionicons name="bookmark-outline" size={17} color="#7c3aed" />
+                    <Ionicons
+                      name="bookmark-outline"
+                      size={17}
+                      color="#7c3aed"
+                    />
                     <Text style={styles.importSummaryText}>
                       {importReview?.savedLinkCount || 0} enlaces guardados
                     </Text>
@@ -1515,7 +1969,8 @@ export default function LibraryScreen({ navigation }) {
 
                 <Text style={styles.fieldLabel}>Categorías a importar</Text>
                 <Text style={styles.fieldHelp}>
-                  Elige todas las categorías o solo las que quieras añadir. Las subcategorías se incluyen con su categoría principal.
+                  Elige todas las categorías o solo las que quieras añadir. Las
+                  subcategorías se incluyen con su categoría principal.
                 </Text>
 
                 <View style={styles.importCategoryList}>
@@ -1537,7 +1992,9 @@ export default function LibraryScreen({ navigation }) {
                   {importCategories.map((category) => (
                     <ImportCheckbox
                       key={category.key}
-                      checked={selectedImportCategoryKeys.includes(category.key)}
+                      checked={selectedImportCategoryKeys.includes(
+                        category.key,
+                      )}
                       label={category.name}
                       detail={`${category.linkCount} ${category.linkCount === 1 ? "enlace" : "enlaces"}`}
                       icon={category.icon}
@@ -1586,7 +2043,8 @@ export default function LibraryScreen({ navigation }) {
                     accessibilityState={{ selected: importMode === "replace" }}
                     style={[
                       styles.importModeOption,
-                      importMode === "replace" && styles.importModeReplaceSelected,
+                      importMode === "replace" &&
+                        styles.importModeReplaceSelected,
                     ]}
                   >
                     <Ionicons
@@ -1635,7 +2093,11 @@ export default function LibraryScreen({ navigation }) {
                   ]}
                 >
                   <Ionicons
-                    name={importMode === "replace" ? "trash-outline" : "download-outline"}
+                    name={
+                      importMode === "replace"
+                        ? "trash-outline"
+                        : "download-outline"
+                    }
                     size={17}
                     color="#fff"
                   />
@@ -1660,12 +2122,20 @@ export default function LibraryScreen({ navigation }) {
         >
           <View style={styles.modalBackdrop}>
             <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>{editingSource?.linkType === "bookStore" ? "Editar tienda de libros" : "Editar periódico"}</Text>
+              <Text style={styles.modalTitle}>
+                {editingSource?.linkType === "bookStore"
+                  ? "Editar tienda de libros"
+                  : "Editar periódico"}
+              </Text>
               <Text style={styles.fieldLabel}>Nombre</Text>
               <TextInput
                 value={sourceNameInput}
                 onChangeText={setSourceNameInput}
-                placeholder={editingSource?.linkType === "bookStore" ? "Por ejemplo: Casa del Libro" : "Por ejemplo: El País"}
+                placeholder={
+                  editingSource?.linkType === "bookStore"
+                    ? "Por ejemplo: Casa del Libro"
+                    : "Por ejemplo: El País"
+                }
                 placeholderTextColor="#94a3b8"
                 style={styles.modalInput}
                 maxLength={80}
@@ -1674,7 +2144,11 @@ export default function LibraryScreen({ navigation }) {
               <TextInput
                 value={sourceUrlInput}
                 onChangeText={setSourceUrlInput}
-                placeholder={editingSource?.linkType === "bookStore" ? "https://www.casadellibro.com" : "https://elpais.com"}
+                placeholder={
+                  editingSource?.linkType === "bookStore"
+                    ? "https://www.casadellibro.com"
+                    : "https://elpais.com"
+                }
                 placeholderTextColor="#94a3b8"
                 style={styles.modalInput}
                 autoCorrect={false}
@@ -1682,7 +2156,11 @@ export default function LibraryScreen({ navigation }) {
                 onSubmitEditing={handleSaveSource}
               />
               <Text style={styles.fieldHelp}>
-                Los comentarios y hashtags se añaden a los {editingSource?.linkType === "bookStore" ? "libros" : "noticias"} guardados, no a la fuente.
+                Los comentarios y hashtags se añaden a los{" "}
+                {editingSource?.linkType === "bookStore"
+                  ? "libros"
+                  : "noticias"}{" "}
+                guardados, no a la fuente.
               </Text>
               <View style={styles.modalActions}>
                 <Pressable
@@ -1912,6 +2390,15 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#1d4ed8",
   },
+  integrityButton: {
+    borderColor: "#a7f3d0",
+    backgroundColor: "#ecfdf5",
+  },
+  integrityButtonText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#047857",
+  },
   folderScroll: {
     flexGrow: 0,
     flexShrink: 0,
@@ -2072,6 +2559,43 @@ const styles = StyleSheet.create({
   newsTabActive: { borderColor: "#dc2626", backgroundColor: "#dc2626" },
   newsTabText: { fontSize: 11, fontWeight: "800", color: "#475569" },
   newsTabTextActive: { color: "#fff" },
+  displayModeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: "#fff",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#cbd5e1",
+  },
+  displayModeInline: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  displayModeLabel: {
+    marginRight: 2,
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#64748b",
+  },
+  displayModeButton: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 9,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#f8fafc",
+  },
+  displayModeButtonActive: {
+    borderColor: "#2563eb",
+    backgroundColor: "#2563eb",
+  },
+  displayModeText: { fontSize: 10, fontWeight: "800", color: "#475569" },
+  displayModeTextActive: { color: "#fff" },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 16 },
   linkRow: { gap: 8 },
@@ -2164,6 +2688,27 @@ const styles = StyleSheet.create({
     borderColor: "#dbe3ef",
     backgroundColor: "#fff",
   },
+  minimalNewsCard: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: 420,
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+    padding: 7,
+    borderWidth: 1,
+    borderColor: "#dbe3ef",
+    backgroundColor: "#fff",
+  },
+  minimalNewsText: { flex: 1, minWidth: 0, marginLeft: 8 },
+  minimalNewsTitle: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "800",
+    color: "#1e293b",
+  },
+  minimalNewsDate: { marginTop: 2, fontSize: 10, color: "#64748b" },
   linkNotes: {
     marginTop: 7,
     paddingHorizontal: 8,
@@ -2314,6 +2859,62 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   importSummaryText: { flex: 1, fontSize: 12, color: "#334155" },
+  integritySummaryBox: {
+    gap: 7,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#a7f3d0",
+    backgroundColor: "#ecfdf5",
+  },
+  integritySummaryText: { fontSize: 12, color: "#065f46" },
+  integrityOk: { marginTop: 10, fontSize: 12, color: "#047857" },
+  integrityWarningBox: {
+    marginTop: 10,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+    backgroundColor: "#fff7ed",
+  },
+  integrityWarning: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: "#b45309",
+  },
+  integrityDomainList: {
+    maxHeight: 92,
+    marginTop: 5,
+    paddingTop: 5,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#fed7aa",
+  },
+  integrityDomainText: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: "#92400e",
+  },
+  integrityWarningLegacy: {
+    marginTop: 10,
+    fontSize: 12,
+    lineHeight: 17,
+    color: "#b45309",
+  },
+  integrityCategoryList: {
+    maxHeight: 180,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  integrityCategoryRow: {
+    minHeight: 31,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    paddingHorizontal: 9,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e2e8f0",
+  },
+  integrityCategoryName: { flex: 1, fontSize: 11, color: "#334155" },
+  integrityCategoryCount: { fontSize: 12, fontWeight: "900", color: "#2563eb" },
   importCategoryList: { marginTop: 10, gap: 6 },
   importOption: {
     minHeight: 49,
