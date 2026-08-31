@@ -45,6 +45,19 @@ function decodeHtml(value) {
     .trim();
 }
 
+function cleanSlugTitle(value) {
+  const slug = String(value || "")
+    .replace(/\.(html?|php|aspx?)$/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\s+\d{5,}(?:\s+\d{1,4})?(?:\s+(?:nt|noticia|video))?$/i, "")
+    .replace(/\s+(?:nt|noticia)$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : "";
+}
+
 function readAttributes(tag) {
   const attributes = {};
   const regex = /([:\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
@@ -260,18 +273,14 @@ function getUsablePreviewImage(values, baseUrl) {
 function fallbackPreview(url, reason = "unavailable") {
   const parsed = new URL(url);
   const hostname = parsed.hostname.replace(/^www\./, "");
-  const slug = decodeURIComponent(
-    parsed.pathname.split("/").filter(Boolean).pop() || "",
-  )
-    .replace(/\.(?:html?|php)$/i, "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const title = cleanSlugTitle(
+    decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() || ""),
+  );
   return {
     url: parsed.toString(),
     hostname,
     siteName: hostname,
-    title: slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : hostname,
+    title: title || hostname,
     description: "",
     image: "",
     fallback: true,

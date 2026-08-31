@@ -55,6 +55,19 @@ function getDomainIconUrl(hostname) {
   return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(cleanHostname)}&sz=64`;
 }
 
+function cleanSlugTitle(value) {
+  const slug = String(value || "")
+    .replace(/\.(html?|php|aspx?)$/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\s+\d{5,}(?:\s+\d{1,4})?(?:\s+(?:nt|noticia|video))?$/i, "")
+    .replace(/\s+(?:nt|noticia)$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : "";
+}
+
 function BlurOverlay() {
   const webOverlayProps =
     Platform.OS === "web"
@@ -79,17 +92,12 @@ function absolutizeUrl(value, baseUrl) {
 function getFallbackTitle(url) {
   try {
     const parsed = new URL(normalizePreviewUrl(url));
-    const slug = decodeURIComponent(
-      parsed.pathname.split("/").filter(Boolean).pop() || "",
-    )
-      .replace(/\.(html?|php)$/i, "")
-      .replace(/[-_]+/g, " ")
-      .replace(/\b\d{4}\b|\b\d{1,2}\b/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    return slug
-      ? slug.charAt(0).toUpperCase() + slug.slice(1)
-      : getHostname(url) || "Vista previa";
+    const title = cleanSlugTitle(
+      decodeURIComponent(
+        parsed.pathname.split("/").filter(Boolean).pop() || "",
+      ),
+    );
+    return title || getHostname(url) || "Vista previa";
   } catch {
     return getHostname(url) || "Vista previa";
   }

@@ -40,7 +40,8 @@ const NEWS_DEFAULT_FOLDERS = [
 const URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
 const TRAILING_PUNCTUATION = /[.,!?;:]+$/;
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
-const LIBRARY_LIST_LIMIT = 1000;
+const DEFAULT_VISIBLE_LINK_LIMIT = 80;
+const MAX_VISIBLE_LINK_LIMIT = 200;
 const TRACKING_QUERY_KEYS = new Set([
   "fbclid",
   "gclid",
@@ -625,11 +626,16 @@ export const list = query({
         v.literal("bookLink"),
       ),
     ),
+    limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const search = String(args.search || "")
       .trim()
       .toLowerCase();
+    const listLimit = Math.min(
+      Math.max(Number(args.limit) || DEFAULT_VISIBLE_LINK_LIMIT, 1),
+      MAX_VISIBLE_LINK_LIMIT,
+    );
     const childFolderIds = args.folderId
       ? new Set(
           (
@@ -651,7 +657,7 @@ export const list = query({
         .query("computerLinks")
         .withIndex("by_updatedAt")
         .order("desc")
-        .take(LIBRARY_LIST_LIMIT);
+        .take(listLimit);
     } else {
       const linkPages = await Promise.all(
         selectedFolderIds.map((folderId) =>
@@ -659,7 +665,7 @@ export const list = query({
             .query("computerLinks")
             .withIndex("by_folder_updatedAt", (q) => q.eq("folderId", folderId))
             .order("desc")
-            .take(LIBRARY_LIST_LIMIT),
+            .take(listLimit),
         ),
       );
       links = linkPages.flat();
@@ -705,7 +711,7 @@ export const list = query({
       ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(search));
-    });
+    }).slice(0, listLimit);
   },
 });
 
@@ -1200,6 +1206,31 @@ export const updateMetadata = mutation({
       updatedAt: Date.now(),
     });
     return { notes, hashtags };
+  },
+});
+
+export const updateCustomTitle = mutation({
+  args: {
+    linkId: v.id("computerLinks"),
+    customTitle: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const link = await ctx.db.get(args.linkId);
+    if (!link) throw new Error("El enlace ya no existe.");
+    if (["newsSource", "bookStore"].includes(link.linkType)) {
+      throw new Error("Edita el nombre de la fuente desde su catálogo.");
+    }
+
+    const customTitle = String(args.customTitle || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 240);
+
+    await ctx.db.patch(args.linkId, {
+      customTitle: customTitle || undefined,
+      updatedAt: Date.now(),
+    });
+    return { customTitle };
   },
 });
 

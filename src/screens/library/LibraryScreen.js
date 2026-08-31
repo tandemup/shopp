@@ -2,7 +2,6 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
@@ -20,7 +19,12 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import {
+  useAction,
+  useMutation,
+  usePaginatedQuery,
+  useQuery,
+} from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 import WebPreviewCard from "@/src/components/chat/WebPreviewCard";
@@ -30,6 +34,10 @@ import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 const CLIENT_ID_KEY = "shopp-chat-client-id";
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
 const IMPORT_BATCH_SIZE = 1000;
+const LIBRARY_VISIBLE_LINK_LIMIT = 80;
+const PREVIEW_TITLE_CACHE = new Map();
+const PREVIEW_TITLE_REQUESTS = new Map();
+let previewTitleSaveDisabled = false;
 
 function getDomainFaviconUrl(hostname) {
   const cleanHostname = String(hostname || "")
@@ -89,6 +97,84 @@ function getLinkDomain(link) {
     .toLowerCase();
 }
 
+function getHostnameFromUrl(value) {
+  try {
+    return new URL(value || "").hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function isYouTubeDomain(domain) {
+  return ["youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(
+    String(domain || "").replace(/^www\./i, "").toLowerCase(),
+  );
+}
+
+function isYouTubeLink(link) {
+  return (
+    isYouTubeDomain(getLinkDomain(link)) ||
+    isYouTubeDomain(getHostnameFromUrl(link?.normalizedUrl || link?.url || ""))
+  );
+}
+
+function sentenceCaseTitle(value) {
+  const title = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return title ? title.charAt(0).toUpperCase() + title.slice(1) : "";
+}
+
+function stripImportedDomainPrefix(value, domain) {
+  const title = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const compactDomain = String(domain || "")
+    .replace(/^www\./i, "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
+  const [firstToken, ...rest] = title.split(" ");
+  const compactFirstToken = String(firstToken || "")
+    .replace(/^#/, "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
+
+  if (
+    rest.length > 0 &&
+    compactDomain &&
+    [compactDomain, `www${compactDomain}`].includes(compactFirstToken)
+  ) {
+    return rest.join(" ").trim();
+  }
+  return title;
+}
+
+function cleanSlugTitle(value) {
+  const slug = String(value || "")
+    .replace(/\.(html?|php|aspx?)$/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\s+\d{5,}(?:\s+\d{1,4})?(?:\s+(?:nt|noticia|video))?$/i, "")
+    .replace(/\s+(?:nt|noticia)$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return sentenceCaseTitle(slug);
+}
+
+function getUrlFallbackTitle(value) {
+  try {
+    const pathname = new URL(value || "").pathname;
+    const slug = decodeURIComponent(pathname)
+      .split("/")
+      .filter(Boolean)
+      .pop();
+    return cleanSlugTitle(slug);
+  } catch {
+    return "";
+  }
+}
+
 function formatLinkDate(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -102,28 +188,24 @@ function formatLinkDate(value) {
 
 function getNewsDisplayTitle(link) {
   const domain = getLinkDomain(link);
-  const storedTitle = String(
+  const storedTitle = stripImportedDomainPrefix(
     link?.title || link?.pageTitle || link?.previewTitle || link?.name || "",
-  ).trim();
-  const customTitle = String(link?.customTitle || "").trim();
-  if (storedTitle && storedTitle.toLowerCase() !== domain) return storedTitle;
-  if (customTitle && customTitle.toLowerCase() !== domain) return customTitle;
-
-  try {
-    const pathname = new URL(link?.normalizedUrl || link?.url || "").pathname;
-    const slug = decodeURIComponent(pathname)
-      .split("/")
-      .filter(Boolean)
-      .pop()
-      ?.replace(/\.(html?|php)$/i, "")
-      .replace(/[-_]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (slug) return slug.charAt(0).toUpperCase() + slug.slice(1);
-  } catch {
-    // The URL has already been validated before being stored.
+    domain,
+  );
+  const customTitle = stripImportedDomainPrefix(link?.customTitle || "", domain);
+  if (storedTitle && storedTitle.toLowerCase() !== domain) {
+    return sentenceCaseTitle(storedTitle);
   }
-  return customTitle || domain || "Noticia";
+  if (customTitle && customTitle.toLowerCase() !== domain) {
+    return sentenceCaseTitle(customTitle);
+  }
+
+  return (
+    getUrlFallbackTitle(link?.normalizedUrl || link?.url) ||
+    customTitle ||
+    domain ||
+    "Noticia"
+  );
 }
 
 function getLinkDisplayTitle(link) {
@@ -133,7 +215,87 @@ function getLinkDisplayTitle(link) {
     link?.title || link?.pageTitle || link?.previewTitle || link?.name || "",
   ).trim();
   const customTitle = String(link?.customTitle || "").trim();
-  return title || customTitle || getLinkDomain(link) || link?.normalizedUrl || "Enlace";
+  return (
+    title ||
+    customTitle ||
+    getLinkDomain(link) ||
+    link?.normalizedUrl ||
+    "Enlace"
+  );
+}
+
+function getStoredLinkTitle(link) {
+  const domain = getLinkDomain(link);
+  return stripImportedDomainPrefix(
+    link?.title ||
+      link?.pageTitle ||
+      link?.previewTitle ||
+      link?.name ||
+      link?.customTitle ||
+      "",
+    domain,
+  );
+}
+
+function getPreviewTitleCandidate(preview, domain) {
+  const description = String(preview?.description || "").trim();
+  const metadataTitle = preview?.fallback
+    ? ""
+    : String(preview?.title || "").trim();
+  const isYouTube =
+    ["youtube.com", "youtu.be"].includes(String(domain || "").toLowerCase()) ||
+    String(preview?.siteName || "").toLowerCase() === "youtube";
+  const title = stripImportedDomainPrefix(
+    isYouTube ? metadataTitle || description : description || metadataTitle,
+    domain,
+  );
+  if (!title || title.toLowerCase() === domain) return "";
+  return sentenceCaseTitle(title).slice(0, 240);
+}
+
+function getPreviewSubtitleCandidate(preview, domain) {
+  const isYouTube =
+    ["youtube.com", "youtu.be"].includes(String(domain || "").toLowerCase()) ||
+    String(preview?.siteName || "").toLowerCase() === "youtube";
+  if (!isYouTube) return "";
+
+  const subtitle = String(preview?.description || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return subtitle && subtitle.toLowerCase() !== domain
+    ? subtitle.slice(0, 120)
+    : "";
+}
+
+function isMissingConvexFunctionError(error) {
+  return /Could not find public function/i.test(
+    String(error?.message || error || ""),
+  );
+}
+
+async function loadPreviewTitleOnce(url, domain, getLinkPreview) {
+  if (PREVIEW_TITLE_CACHE.has(url)) return PREVIEW_TITLE_CACHE.get(url);
+  if (PREVIEW_TITLE_REQUESTS.has(url)) return PREVIEW_TITLE_REQUESTS.get(url);
+
+  const request = getLinkPreview({ url })
+    .then((preview) => {
+      const result = {
+        title: getPreviewTitleCandidate(preview, domain),
+        subtitle: getPreviewSubtitleCandidate(preview, domain),
+      };
+      PREVIEW_TITLE_CACHE.set(url, result.title ? result : null);
+      return PREVIEW_TITLE_CACHE.get(url);
+    })
+    .catch((error) => {
+      PREVIEW_TITLE_CACHE.set(url, null);
+      throw error;
+    })
+    .finally(() => {
+      PREVIEW_TITLE_REQUESTS.delete(url);
+    });
+
+  PREVIEW_TITLE_REQUESTS.set(url, request);
+  return request;
 }
 
 function buildLibraryIntegrityReport(links, folders) {
@@ -377,6 +539,92 @@ function ImportCheckbox({
   );
 }
 
+function MinimalLinkTitle({ item }) {
+  const getLinkPreview = useAction(api.linkPreviews.get);
+  const updateCustomTitle = useMutation(api.computerLinks.updateCustomTitle);
+  const fallbackTitle = getLinkDisplayTitle(item);
+  const [previewTitle, setPreviewTitle] = useState("");
+  const [previewSubtitle, setPreviewSubtitle] = useState("");
+  const storedTitle = getStoredLinkTitle(item);
+  const domain = getLinkDomain(item);
+  const itemId = item?._id;
+  const linkType = item?.linkType;
+  const url = item?.normalizedUrl || item?.url || "";
+  const shouldLoadPreview = isYouTubeLink(item);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPreviewTitle("");
+    setPreviewSubtitle("");
+
+    if (
+      storedTitle ||
+      !itemId ||
+      ["newsSource", "bookStore"].includes(linkType) ||
+      !shouldLoadPreview ||
+      !isValidHttpUrl(url)
+    ) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    (async () => {
+      try {
+        const preview = await loadPreviewTitleOnce(url, domain, getLinkPreview);
+        if (cancelled) return;
+        const nextTitle = preview?.title || "";
+        if (!nextTitle) return;
+
+        setPreviewTitle(nextTitle);
+        setPreviewSubtitle(preview?.subtitle || "");
+        if (!previewTitleSaveDisabled) {
+          try {
+            await updateCustomTitle({
+              linkId: itemId,
+              customTitle: nextTitle,
+            });
+          } catch (error) {
+            if (isMissingConvexFunctionError(error)) {
+              previewTitleSaveDisabled = true;
+              return;
+            }
+            console.warn("[LibraryScreen] preview title save failed", error);
+          }
+        }
+      } catch (error) {
+        console.warn("[LibraryScreen] preview title load failed", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    domain,
+    getLinkPreview,
+    itemId,
+    linkType,
+    shouldLoadPreview,
+    storedTitle,
+    updateCustomTitle,
+    url,
+  ]);
+
+  return (
+    <>
+      <Text style={styles.minimalLinkTitle} numberOfLines={2}>
+        {previewTitle || fallbackTitle}
+      </Text>
+      {previewSubtitle ? (
+        <Text style={styles.minimalLinkPreviewDetail} numberOfLines={1}>
+          {previewSubtitle}
+        </Text>
+      ) : null}
+    </>
+  );
+}
+
 function getClientId() {
   if (typeof window !== "undefined") {
     const saved = window.localStorage?.getItem(CLIENT_ID_KEY);
@@ -410,6 +658,7 @@ export default function LibraryScreen({ navigation }) {
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [toolsModalVisible, setToolsModalVisible] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [backupMode, setBackupMode] = useState(null);
   const [exportNameVisible, setExportNameVisible] = useState(false);
   const [exportFilename, setExportFilename] = useState("");
   const [exportReview, setExportReview] = useState(null);
@@ -432,7 +681,7 @@ export default function LibraryScreen({ navigation }) {
     loadMore: loadMoreExportedLinks,
   } = usePaginatedQuery(
     api.computerLinks.exportBackup,
-    {},
+    backupMode ? {} : "skip",
     { initialNumItems: IMPORT_BATCH_SIZE },
   );
   const libraryBackup = useMemo(() => {
@@ -475,12 +724,12 @@ export default function LibraryScreen({ navigation }) {
           ? "bookLink"
           : "newsArticle"
       : undefined,
+    limit: LIBRARY_VISIBLE_LINK_LIMIT,
   });
 
   const ensureDefaultFolders = useMutation(
     api.computerLinks.ensureDefaultFolders,
   );
-  const syncFromChat = useMutation(api.computerLinks.syncFromChat);
   const addUrl = useMutation(api.computerLinks.addUrl);
   const createFolder = useMutation(api.computerLinks.createFolder);
   const toggleFavorite = useMutation(api.computerLinks.toggleFavorite);
@@ -494,43 +743,106 @@ export default function LibraryScreen({ navigation }) {
   const normalizeAndDeduplicate = useMutation(
     api.computerLinks.normalizeAndDeduplicate,
   );
-  const newsSourceSyncStarted = useRef(false);
-
   useEffect(() => {
-    if (!isNewsFolder || newsSourceSyncStarted.current) return;
-    newsSourceSyncStarted.current = true;
-    let cursor = null;
-    (async () => {
-      try {
-        while (true) {
-          const result = await ensureNewsSources({
-            clientId,
-            batchSize: IMPORT_BATCH_SIZE,
-            ...(cursor ? { cursor } : {}),
-          });
-          if (result?.isDone) break;
-          cursor = result?.continueCursor || null;
-          if (!cursor) break;
-        }
-      } catch (error) {
-        newsSourceSyncStarted.current = false;
-        console.warn("[LibraryScreen] news source sync failed", error);
-      }
-    })();
-  }, [clientId, ensureNewsSources, isNewsFolder]);
-
-  useEffect(() => {
+    if (!backupMode) return;
     if (exportStatus === "CanLoadMore") {
       loadMoreExportedLinks(IMPORT_BATCH_SIZE);
+      return;
     }
-  }, [exportStatus, loadMoreExportedLinks]);
+    if (exportStatus === "Exhausted" && libraryBackup) {
+      const currentBackupMode = backupMode;
+      const currentBackup = libraryBackup;
+      setBackupMode(null);
+
+      if (currentBackupMode === "export") {
+        const categories = buildImportCategoryOptions(currentBackup);
+        setExportReview({
+          data: currentBackup,
+          categories,
+          folderCount: currentBackup.folders.length,
+          linkCount: currentBackup.links.length,
+          sourceCount: currentBackup.links.filter((link) =>
+            ["newsSource", "bookStore"].includes(link?.linkType),
+          ).length,
+          savedLinkCount:
+            currentBackup.links.length -
+            currentBackup.links.filter((link) =>
+              ["newsSource", "bookStore"].includes(link?.linkType),
+            ).length,
+        });
+        setSelectedExportCategoryKeys(
+          categories.map((category) => category.key),
+        );
+        setExportNameVisible(true);
+        setBackupBusy(false);
+        return;
+      }
+
+      if (currentBackupMode === "integrity") {
+        (async () => {
+          try {
+            const before = buildLibraryIntegrityReport(
+              currentBackup.links,
+              currentBackup.folders,
+            );
+            let cursor = null;
+            let sourceSyncResult = null;
+            while (true) {
+              sourceSyncResult = await ensureNewsSources({
+                clientId,
+                batchSize: IMPORT_BATCH_SIZE,
+                ...(cursor ? { cursor } : {}),
+              });
+              if (sourceSyncResult?.isDone) break;
+              cursor = sourceSyncResult?.continueCursor || null;
+              if (!cursor) break;
+            }
+            const normalizationResult = await normalizeAndDeduplicate({});
+            setIntegrityReport({
+              ...before,
+              addedSources: Number(
+                sourceSyncResult?.created ||
+                  sourceSyncResult?.createdSources ||
+                  0,
+              ),
+              correctedPosts: Number(
+                normalizationResult?.correctedNewsPosts ||
+                  normalizationResult?.updatedNewsPosts ||
+                  normalizationResult?.corrected ||
+                  normalizationResult?.updatedCount ||
+                  normalizationResult?.updated ||
+                  0,
+              ),
+              checkedAt: new Date().toISOString(),
+            });
+          } catch (error) {
+            safeAlert(
+              "No se pudo comprobar",
+              error?.message ||
+                "No se pudo revisar la integridad de la Biblioteca.",
+            );
+          } finally {
+            setIntegrityBusy(false);
+            setBackupBusy(false);
+          }
+        })();
+      }
+    }
+  }, [
+    backupMode,
+    clientId,
+    ensureNewsSources,
+    exportStatus,
+    libraryBackup,
+    loadMoreExportedLinks,
+    normalizeAndDeduplicate,
+  ]);
 
   useEffect(() => {
-    ensureDefaultFolders({ clientId })
-      .then(() => syncFromChat({ clientId }))
-      .then(() => normalizeAndDeduplicate({}))
-      .catch((error) => console.warn("[LibraryScreen] sync failed", error));
-  }, [clientId, ensureDefaultFolders, normalizeAndDeduplicate, syncFromChat]);
+    ensureDefaultFolders({ clientId }).catch((error) =>
+      console.warn("[LibraryScreen] folder setup failed", error),
+    );
+  }, [clientId, ensureDefaultFolders]);
 
   const folderById = useMemo(
     () => new Map(folders.map((folder) => [String(folder._id), folder])),
@@ -770,26 +1082,11 @@ export default function LibraryScreen({ navigation }) {
   }, [backupBusy, exportFilename, exportReview, selectedExportCategoryKeys]);
 
   const handleExportBackup = useCallback(() => {
-    if (!libraryBackup || backupBusy) return;
+    if (backupBusy) return;
     setExportFilename(defaultBackupFilename());
-    const categories = buildImportCategoryOptions(libraryBackup);
-    setExportReview({
-      data: libraryBackup,
-      categories,
-      folderCount: libraryBackup.folders.length,
-      linkCount: libraryBackup.links.length,
-      sourceCount: libraryBackup.links.filter((link) =>
-        ["newsSource", "bookStore"].includes(link?.linkType),
-      ).length,
-      savedLinkCount:
-        libraryBackup.links.length -
-        libraryBackup.links.filter((link) =>
-          ["newsSource", "bookStore"].includes(link?.linkType),
-        ).length,
-    });
-    setSelectedExportCategoryKeys(categories.map((category) => category.key));
-    setExportNameVisible(true);
-  }, [backupBusy, libraryBackup]);
+    setBackupBusy(true);
+    setBackupMode("export");
+  }, [backupBusy]);
 
   const handleImportSelected = useCallback(async () => {
     if (!importReview || backupBusy) return;
@@ -994,52 +1291,8 @@ export default function LibraryScreen({ navigation }) {
   const handleCheckIntegrity = useCallback(async () => {
     if (integrityBusy) return;
     setIntegrityBusy(true);
-    try {
-      const before = buildLibraryIntegrityReport(exportedLinks, folders);
-      let cursor = null;
-      let sourceSyncResult = null;
-      while (true) {
-        sourceSyncResult = await ensureNewsSources({
-          clientId,
-          batchSize: IMPORT_BATCH_SIZE,
-          ...(cursor ? { cursor } : {}),
-        });
-        if (sourceSyncResult?.isDone) break;
-        cursor = sourceSyncResult?.continueCursor || null;
-        if (!cursor) break;
-      }
-      const normalizationResult = await normalizeAndDeduplicate({});
-      setIntegrityReport({
-        ...before,
-        addedSources: Number(
-          sourceSyncResult?.created || sourceSyncResult?.createdSources || 0,
-        ),
-        correctedPosts: Number(
-          normalizationResult?.correctedNewsPosts ||
-            normalizationResult?.updatedNewsPosts ||
-            normalizationResult?.corrected ||
-            normalizationResult?.updatedCount ||
-            normalizationResult?.updated ||
-            0,
-        ),
-        checkedAt: new Date().toISOString(),
-      });
-    } catch (error) {
-      safeAlert(
-        "No se pudo comprobar",
-        error?.message || "No se pudo revisar la integridad de la Biblioteca.",
-      );
-    } finally {
-      setIntegrityBusy(false);
-    }
-  }, [
-    clientId,
-    ensureNewsSources,
-    exportedLinks,
-    folders,
-    integrityBusy,
-    normalizeAndDeduplicate,
-  ]);
+    setBackupMode("integrity");
+  }, [integrityBusy]);
 
   const topFolders = folders.filter((folder) => !folder.parentFolderId);
   const filters = [
@@ -1176,11 +1429,11 @@ export default function LibraryScreen({ navigation }) {
                     setToolsModalVisible(false);
                     handleExportBackup();
                   }}
-                  disabled={backupBusy || !libraryBackup}
+                  disabled={backupBusy}
                   style={[
                     styles.backupButton,
                     styles.toolsModalActionButton,
-                    (backupBusy || !libraryBackup) && styles.buttonDisabled,
+                    backupBusy && styles.buttonDisabled,
                   ]}
                 >
                   <Ionicons
@@ -1188,7 +1441,9 @@ export default function LibraryScreen({ navigation }) {
                     size={17}
                     color="#2563eb"
                   />
-                  <Text style={styles.backupButtonText}>Exportar JSON</Text>
+                  <Text style={styles.backupButtonText}>
+                    {backupBusy ? "Preparando..." : "Exportar JSON"}
+                  </Text>
                 </Pressable>
                 <Pressable
                   onPress={() => {
@@ -1210,13 +1465,12 @@ export default function LibraryScreen({ navigation }) {
                     setToolsModalVisible(false);
                     handleCheckIntegrity();
                   }}
-                  disabled={integrityBusy || !Array.isArray(exportedLinks)}
+                  disabled={integrityBusy || backupBusy}
                   style={[
                     styles.backupButton,
                     styles.toolsModalActionButton,
                     styles.integrityButton,
-                    (integrityBusy || !Array.isArray(exportedLinks)) &&
-                      styles.buttonDisabled,
+                    (integrityBusy || backupBusy) && styles.buttonDisabled,
                   ]}
                 >
                   <Ionicons
@@ -1552,6 +1806,10 @@ export default function LibraryScreen({ navigation }) {
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => String(item._id)}
           style={[styles.list, isSourceCatalog && styles.sourceList]}
+          initialNumToRender={libraryView === "minimal" ? 12 : 6}
+          maxToRenderPerBatch={libraryView === "minimal" ? 12 : 6}
+          windowSize={5}
+          removeClippedSubviews
           contentContainerStyle={[
             isSourceCatalog ? styles.sourceListContent : styles.listContent,
             links?.length === 0 && styles.listEmpty,
@@ -1625,9 +1883,7 @@ export default function LibraryScreen({ navigation }) {
                     <Text style={styles.minimalLinkDomain} numberOfLines={1}>
                       {getLinkDomain(item)}
                     </Text>
-                    <Text style={styles.minimalLinkTitle} numberOfLines={2}>
-                      {getLinkDisplayTitle(item)}
-                    </Text>
+                    <MinimalLinkTitle item={item} />
                     {formatLinkDate(
                       item.publishedAt || item.createdAt || item.updatedAt,
                     ) ? (
@@ -2819,6 +3075,13 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: "800",
     color: "#1e293b",
+  },
+  minimalLinkPreviewDetail: {
+    marginTop: 1,
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: "700",
+    color: "#64748b",
   },
   minimalLinkDate: { marginTop: 2, fontSize: 10, color: "#64748b" },
   minimalNewsCard: {
