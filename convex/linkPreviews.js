@@ -6,6 +6,31 @@ const MAX_HTML_BYTES = 512 * 1024;
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36";
+const DATE_METADATA_KEYS = [
+  "article:published_time",
+  "article:published",
+  "datepublished",
+  "datecreated",
+  "uploaddate",
+  "pubdate",
+  "publishdate",
+  "publish_date",
+  "published-date",
+  "published_time",
+  "date",
+  "dc.date.issued",
+  "dc.date",
+  "dcterms.issued",
+  "dcterms.date",
+  "parsely-pub-date",
+  "sailthru.date",
+  "sailthru.date.published",
+  "bt:pubdate",
+  "cxenseparse:recs:publishtime",
+  "article:modified_time",
+  "og:updated_time",
+  "last-modified",
+];
 
 function isPublicHttpUrl(value) {
   let url;
@@ -58,6 +83,87 @@ function cleanSlugTitle(value) {
   return slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : "";
 }
 
+function normalizeComparableText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/^www\./i, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function cleanPreviewTitle(value, siteName = "", hostname = "") {
+  let title = decodeHtml(value).replace(/\s+/g, " ").trim();
+  if (!title) return "";
+
+  const suffixParts = title.split(/\s+(?:[-|–—:])\s+/);
+  if (suffixParts.length > 1) {
+    const suffix = suffixParts[suffixParts.length - 1];
+    const normalizedSuffix = normalizeComparableText(suffix);
+    const normalizedSite = normalizeComparableText(siteName);
+    const normalizedHost = normalizeComparableText(hostname.split(".")[0]);
+    const isSiteSuffix =
+      normalizedSuffix &&
+      (normalizedSuffix === normalizedSite ||
+        normalizedSuffix === normalizedHost ||
+        normalizedSite.includes(normalizedSuffix));
+    if (isSiteSuffix) {
+      title = suffixParts.slice(0, -1).join(" - ").trim();
+    }
+  }
+
+  return title;
+}
+
+function toUtcTimestamp(year, month, day, hour = 0, minute = 0, second = 0) {
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    date.getUTCHours() !== hour ||
+    date.getUTCMinutes() !== minute ||
+    date.getUTCSeconds() !== second
+  ) {
+    return null;
+  }
+  return date.getTime();
+}
+
+function parseDateCandidate(value) {
+  const raw = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!raw) return null;
+
+  if (/^\d{13}$/.test(raw)) {
+    const timestamp = Number(raw);
+    return timestamp > 0 ? timestamp : null;
+  }
+  if (/^\d{10}$/.test(raw)) {
+    const timestamp = Number(raw) * 1000;
+    return timestamp > 0 ? timestamp : null;
+  }
+
+  const separated = raw.match(
+    /\b((?:19|20)\d{2})[/-](0?[1-9]|1[0-2])[/-](0?[1-9]|[12]\d|3[01])(?:[T\s]+([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?)?/,
+  );
+  if (separated) {
+    const timestamp = toUtcTimestamp(
+      Number(separated[1]),
+      Number(separated[2]),
+      Number(separated[3]),
+      separated[4] ? Number(separated[4]) : 0,
+      separated[5] ? Number(separated[5]) : 0,
+      separated[6] ? Number(separated[6]) : 0,
+    );
+    if (timestamp) return timestamp;
+  }
+
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 function readAttributes(tag) {
   const attributes = {};
   const regex = /([:\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
@@ -75,7 +181,7 @@ function collectMetadata(html) {
   for (const match of String(html || "").matchAll(/<meta\b[^>]*>/gi)) {
     const attributes = readAttributes(match[0]);
     const key = String(
-      attributes.property || attributes.name || "",
+      attributes.property || attributes.name || attributes.itemprop || "",
     ).toLowerCase();
     if (key && attributes.content && !metadata.has(key)) {
       metadata.set(key, attributes.content);
@@ -118,6 +224,64 @@ function collectJsonLdArticle(html) {
     }
   }
   return null;
+}
+
+function firstJsonLdDate(value) {
+  if (!value) return null;
+  const candidates = Array.isArray(value) ? value : [value];
+  for (const candidate of candidates) {
+    const timestamp = parseDateCandidate(candidate);
+    if (timestamp) return timestamp;
+  }
+  return null;
+}
+
+function collectPublishedAtFromJsonLd(article) {
+  return (
+    firstJsonLdDate(article?.datePublished) ||
+    firstJsonLdDate(article?.dateCreated) ||
+    firstJsonLdDate(article?.uploadDate) ||
+    firstJsonLdDate(article?.dateModified) ||
+    null
+  );
+}
+
+function collectPublishedAtFromMetadata(metadata) {
+  for (const key of DATE_METADATA_KEYS) {
+    const timestamp = parseDateCandidate(metadata.get(key));
+    if (timestamp) return timestamp;
+  }
+  return null;
+}
+
+function collectPublishedAtFromTimeTags(html) {
+  let firstTimestamp = null;
+  for (const match of String(html || "").matchAll(/<time\b[^>]*>/gi)) {
+    const attributes = readAttributes(match[0]);
+    const timestamp = parseDateCandidate(
+      attributes.datetime || attributes.content || "",
+    );
+    if (!timestamp) continue;
+    const itemprop = String(attributes.itemprop || "").toLowerCase();
+    if (
+      attributes.pubdate !== undefined ||
+      itemprop === "datepublished" ||
+      itemprop === "datecreated"
+    ) {
+      return timestamp;
+    }
+    if (!firstTimestamp) firstTimestamp = timestamp;
+  }
+  return firstTimestamp;
+}
+
+function collectPublishedAt(html, metadata, article) {
+  return (
+    collectPublishedAtFromJsonLd(article) ||
+    collectPublishedAtFromMetadata(metadata) ||
+    collectPublishedAtFromTimeTags(html) ||
+    null
+  );
 }
 
 function getYouTubeVideoId(value) {
@@ -173,6 +337,7 @@ async function getYouTubePreview(url) {
       : "",
     image:
       data?.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    publishedAt: null,
     fallback: false,
     reason: "",
   };
@@ -283,6 +448,7 @@ function fallbackPreview(url, reason = "unavailable") {
     title: title || hostname,
     description: "",
     image: "",
+    publishedAt: null,
     fallback: true,
     reason,
   };
@@ -296,15 +462,19 @@ async function getMicrolinkPreview(url) {
   if (!response.ok) return null;
   const payload = await response.json();
   const data = payload?.data;
-  const title = decodeHtml(data?.title);
+  const siteName = decodeHtml(data?.publisher) || "EL PAÍS";
+  const title = cleanPreviewTitle(data?.title, siteName, new URL(url).hostname);
   if (!title) return null;
   return {
     url,
     hostname: new URL(url).hostname.replace(/^www\./, ""),
-    siteName: decodeHtml(data?.publisher) || "EL PAÍS",
+    siteName,
     title,
     description: decodeHtml(data?.description),
     image: getUsablePreviewImage([data?.image?.url], url),
+    publishedAt: parseDateCandidate(
+      data?.date || data?.publishedAt || data?.published_at || data?.createdAt,
+    ),
     fallback: false,
     reason: "",
   };
@@ -400,6 +570,7 @@ export const get = action({
       const html = decodeDocument(bytes.slice(0, MAX_HTML_BYTES), contentType);
       const metadata = collectMetadata(html);
       const article = collectJsonLdArticle(html);
+      const publishedAt = collectPublishedAt(html, metadata, article);
       const titleTag = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1];
       const parsed = new URL(finalUrl);
       const hostname = parsed.hostname.replace(/^www\./, "");
@@ -412,23 +583,27 @@ export const get = action({
         [metadata.get("og:image"), metadata.get("twitter:image"), articleImage],
         finalUrl,
       );
+      const siteName = metadata.get("og:site_name") || hostname;
+      const rawTitle =
+        metadata.get("og:title") ||
+        metadata.get("twitter:title") ||
+        article?.headline ||
+        article?.name ||
+        decodeHtml(titleTag) ||
+        hostname;
 
       return {
         url: normalizedUrl,
         hostname,
-        siteName: metadata.get("og:site_name") || hostname,
-        title:
-          metadata.get("og:title") ||
-          metadata.get("twitter:title") ||
-          article?.headline ||
-          decodeHtml(titleTag) ||
-          hostname,
+        siteName,
+        title: cleanPreviewTitle(rawTitle, siteName, hostname) || hostname,
         description:
           metadata.get("og:description") ||
           metadata.get("twitter:description") ||
           metadata.get("description") ||
           "",
         image,
+        publishedAt,
         fallback: false,
         reason: "",
       };

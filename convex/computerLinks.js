@@ -58,6 +58,13 @@ function cleanClientId(value) {
     .slice(0, 120);
 }
 
+function normalizeSearchText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 async function getOwnerId(ctx, clientId) {
   const authUserId = await getAuthUserId(ctx);
   if (authUserId) return String(authUserId);
@@ -95,6 +102,55 @@ function normalizeLink(value) {
   } catch {
     return null;
   }
+}
+
+function toUtcTimestamp(year, month, day, hour = 0, minute = 0, second = 0) {
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    date.getUTCHours() !== hour ||
+    date.getUTCMinutes() !== minute ||
+    date.getUTCSeconds() !== second
+  ) {
+    return null;
+  }
+  return date.getTime();
+}
+
+function extractPublishedAtFromUrl(value) {
+  let text;
+  try {
+    const parsed = new URL(String(value || ""));
+    text = decodeURIComponent(`${parsed.pathname} ${parsed.search}`);
+  } catch {
+    text = String(value || "");
+  }
+
+  const separated = text.match(
+    /(?:^|[^\d])((?:19|20)\d{2})[/-](0?[1-9]|1[0-2])[/-](0?[1-9]|[12]\d|3[01])(?:[^\d]|$)/,
+  );
+  if (separated) {
+    return toUtcTimestamp(
+      Number(separated[1]),
+      Number(separated[2]),
+      Number(separated[3]),
+    );
+  }
+
+  const compact = text.match(
+    /(?:^|[^\d])((?:19|20)\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])((?:[01]\d|2[0-3])?)([0-5]\d)?([0-5]\d)?(?:[^\d]|$)/,
+  );
+  if (!compact) return null;
+  return toUtcTimestamp(
+    Number(compact[1]),
+    Number(compact[2]),
+    Number(compact[3]),
+    compact[4] ? Number(compact[4]) : 0,
+    compact[5] ? Number(compact[5]) : 0,
+    compact[6] ? Number(compact[6]) : 0,
+  );
 }
 
 function classifyLinkType(linkType, hostname) {
@@ -319,6 +375,10 @@ export const normalizeAndDeduplicate = mutation({
         link.linkType,
         normalized.hostname,
       );
+      const publishedAt =
+        classifiedLinkType === "newsArticle"
+          ? extractPublishedAtFromUrl(normalized.url)
+          : null;
 
       const canonical = normalized.url;
       const existing = canonicalLinks.get(canonical);
@@ -328,7 +388,8 @@ export const normalizeAndDeduplicate = mutation({
           link.normalizedUrl !== canonical ||
           link.url !== canonical ||
           link.hostname !== normalized.hostname ||
-          link.linkType !== classifiedLinkType
+          link.linkType !== classifiedLinkType ||
+          (publishedAt && link.publishedAt !== publishedAt)
         ) {
           await ctx.db.patch(link._id, {
             url: canonical,
@@ -339,6 +400,7 @@ export const normalizeAndDeduplicate = mutation({
               classifiedLinkType === "newsArticle"
                 ? normalized.hostname
                 : link.sourceDomain,
+            publishedAt: publishedAt || link.publishedAt,
             updatedAt: Date.now(),
           });
           normalizedCount += 1;
@@ -375,6 +437,10 @@ export const normalizeAndDeduplicate = mutation({
           primary.linkType,
           normalized.hostname,
         );
+        const primaryPublishedAt =
+          primaryLinkType === "newsArticle"
+            ? extractPublishedAtFromUrl(canonical)
+            : null;
         await ctx.db.patch(primary._id, {
           url: canonical,
           normalizedUrl: canonical,
@@ -384,6 +450,7 @@ export const normalizeAndDeduplicate = mutation({
             primaryLinkType === "newsArticle"
               ? normalized.hostname
               : primary.sourceDomain,
+          publishedAt: primaryPublishedAt || primary.publishedAt,
           updatedAt: Date.now(),
         });
       }
@@ -548,6 +615,10 @@ export const addUrl = mutation({
       requestedLinkType,
       normalized.hostname,
     );
+    const publishedAt =
+      classifiedLinkType === "newsArticle"
+        ? extractPublishedAtFromUrl(normalized.url)
+        : null;
     if (args.folderId && !(await ctx.db.get(args.folderId))) {
       throw new Error("La categoría ya no existe.");
     }
@@ -575,6 +646,10 @@ export const addUrl = mutation({
         ].includes(linkType)
           ? normalized.hostname
           : existing.sourceDomain,
+        publishedAt:
+          linkType === "newsArticle"
+            ? extractPublishedAtFromUrl(normalized.url) || existing.publishedAt
+            : existing.publishedAt,
         status: args.folderId || existing.folderId ? "reviewed" : "pending",
         updatedAt: Date.now(),
       });
@@ -601,6 +676,7 @@ export const addUrl = mutation({
       ].includes(classifiedLinkType)
         ? normalized.hostname
         : undefined,
+      publishedAt: publishedAt || undefined,
       favorite: false,
       status: args.folderId ? "reviewed" : "pending",
       createdAt: now,
@@ -632,10 +708,15 @@ export const list = query({
     const search = String(args.search || "")
       .trim()
       .toLowerCase();
+    const normalizedSearch = normalizeSearchText(search);
     const listLimit = Math.min(
       Math.max(Number(args.limit) || DEFAULT_VISIBLE_LINK_LIMIT, 1),
       MAX_VISIBLE_LINK_LIMIT,
     );
+    const shouldSearch = normalizedSearch.length > 0;
+    const selectedFolder = args.folderId ? await ctx.db.get(args.folderId) : null;
+    const includeAllNewsArticles =
+      args.linkType === "newsArticle" && selectedFolder?.name === "Noticias";
     const childFolderIds = args.folderId
       ? new Set(
           (
@@ -652,21 +733,29 @@ export const list = query({
       ? [args.folderId, ...(childFolderIds || [])]
       : [];
     let links;
-    if (!args.folderId) {
-      links = await ctx.db
+    if (includeAllNewsArticles) {
+      const query = ctx.db
+        .query("computerLinks")
+        .withIndex("by_linkType_publishedAt", (q) =>
+          q.eq("linkType", "newsArticle"),
+        )
+        .order("desc");
+      links = shouldSearch ? await query.collect() : await query.take(listLimit);
+    } else if (!args.folderId) {
+      const query = ctx.db
         .query("computerLinks")
         .withIndex("by_updatedAt")
-        .order("desc")
-        .take(listLimit);
+        .order("desc");
+      links = shouldSearch ? await query.collect() : await query.take(listLimit);
     } else {
       const linkPages = await Promise.all(
-        selectedFolderIds.map((folderId) =>
-          ctx.db
+        selectedFolderIds.map((folderId) => {
+          const query = ctx.db
             .query("computerLinks")
             .withIndex("by_folder_updatedAt", (q) => q.eq("folderId", folderId))
-            .order("desc")
-            .take(listLimit),
-        ),
+            .order("desc");
+          return shouldSearch ? query.collect() : query.take(listLimit);
+        }),
       );
       links = linkPages.flat();
     }
@@ -674,6 +763,7 @@ export const list = query({
       if (link.status === "archived") return false;
       if (
         args.folderId &&
+        !includeAllNewsArticles &&
         link.folderId !== args.folderId &&
         !childFolderIds.has(String(link.folderId || ""))
       )
@@ -701,16 +791,21 @@ export const list = query({
         ![undefined, "general", "bookLink"].includes(link.linkType)
       )
         return false;
-      if (!search) return true;
+      if (!normalizedSearch) return true;
       return [
+        link.url,
         link.normalizedUrl,
         link.hostname,
+        link.sourceDomain,
         link.username,
+        link.customTitle,
         link.notes,
         ...(link.hashtags || []),
       ]
         .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(search));
+        .some((value) =>
+          normalizeSearchText(value).includes(normalizedSearch),
+        );
     }).slice(0, listLimit);
   },
 });
@@ -762,6 +857,7 @@ export const exportBackup = query({
           favorite: Boolean(link.favorite),
           notes: link.notes || null,
           hashtags: Array.isArray(link.hashtags) ? link.hashtags : [],
+          publishedAt: Number(link.publishedAt || 0) || null,
           createdAt: Number(link.createdAt || 0),
         }))
         .sort((a, b) => a.normalizedUrl.localeCompare(b.normalizedUrl)),
@@ -1078,7 +1174,7 @@ export const importBackup = mutation({
         .slice(0, 1000);
       const customTitle = String(item.customTitle || "")
         .trim()
-        .slice(0, 80);
+        .slice(0, 240);
       const sourceDomain = String(item.sourceDomain || normalized.hostname)
         .trim()
         .slice(0, 160);
@@ -1086,6 +1182,13 @@ export const importBackup = mutation({
         .trim()
         .slice(0, 40);
       const createdAt = Number(item.createdAt);
+      const importedPublishedAt = Number(item.publishedAt);
+      const publishedAt =
+        linkType === "newsArticle"
+          ? Number.isFinite(importedPublishedAt) && importedPublishedAt > 0
+            ? importedPublishedAt
+            : extractPublishedAtFromUrl(normalized.url) || undefined
+          : undefined;
 
       let existing;
       if (existingByNormalizedUrl.has(normalized.url)) {
@@ -1115,6 +1218,9 @@ export const importBackup = mutation({
         ].includes(linkType)
           ? sourceDomain
           : undefined,
+        publishedAt:
+          publishedAt ||
+          (linkType === "newsArticle" ? existing?.publishedAt : undefined),
         customTitle: customTitle || undefined,
         favorite: Boolean(item.favorite),
         status: folderId ? "reviewed" : "pending",
@@ -1231,6 +1337,47 @@ export const updateCustomTitle = mutation({
       updatedAt: Date.now(),
     });
     return { customTitle };
+  },
+});
+
+export const updatePreviewMetadata = mutation({
+  args: {
+    linkId: v.id("computerLinks"),
+    customTitle: v.optional(v.string()),
+    publishedAt: v.optional(v.float64()),
+  },
+  handler: async (ctx, args) => {
+    const link = await ctx.db.get(args.linkId);
+    if (!link) throw new Error("El enlace ya no existe.");
+    if (["newsSource", "bookStore"].includes(link.linkType)) {
+      throw new Error("Edita el nombre de la fuente desde su catálogo.");
+    }
+
+    const patch = { updatedAt: Date.now() };
+    const customTitle = String(args.customTitle || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 240);
+    const publishedAt = Number(args.publishedAt || 0);
+
+    if (customTitle) {
+      patch.customTitle = customTitle;
+    }
+    if (Number.isFinite(publishedAt) && publishedAt > 0) {
+      patch.publishedAt = publishedAt;
+    }
+    if (!patch.customTitle && !patch.publishedAt) {
+      return {
+        customTitle: link.customTitle || "",
+        publishedAt: link.publishedAt || null,
+      };
+    }
+
+    await ctx.db.patch(args.linkId, patch);
+    return {
+      customTitle: patch.customTitle || link.customTitle || "",
+      publishedAt: patch.publishedAt || link.publishedAt || null,
+    };
   },
 });
 

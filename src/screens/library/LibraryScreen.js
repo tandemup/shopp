@@ -34,6 +34,7 @@ import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 const CLIENT_ID_KEY = "shopp-chat-client-id";
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
 const IMPORT_BATCH_SIZE = 1000;
+const IMPORT_PREVIEW_CONCURRENCY = 3;
 const LIBRARY_VISIBLE_LINK_LIMIT = 80;
 const PREVIEW_TITLE_CACHE = new Map();
 const PREVIEW_TITLE_REQUESTS = new Map();
@@ -116,6 +117,30 @@ function isYouTubeLink(link) {
     isYouTubeDomain(getLinkDomain(link)) ||
     isYouTubeDomain(getHostnameFromUrl(link?.normalizedUrl || link?.url || ""))
   );
+}
+
+function normalizeLabel(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function isInformaticaFolder(folder) {
+  return normalizeLabel(folder?.name) === "informatica";
+}
+
+function getFolderTabIcon(folder) {
+  return normalizeLabel(folder?.name) === "youtube"
+    ? "logo-youtube"
+    : folder?.icon || "folder-outline";
+}
+
+function getFolderTabColor(folder) {
+  return normalizeLabel(folder?.name) === "youtube"
+    ? "#dc2626"
+    : folder?.color || "#475569";
 }
 
 function sentenceCaseTitle(value) {
@@ -237,34 +262,47 @@ function getStoredLinkTitle(link) {
   );
 }
 
-function getPreviewTitleCandidate(preview, domain) {
+function getPreviewTitleCandidate(preview, domain, previewMode = "default") {
   const description = String(preview?.description || "").trim();
   const metadataTitle = preview?.fallback
     ? ""
     : String(preview?.title || "").trim();
   const isYouTube =
     ["youtube.com", "youtu.be"].includes(String(domain || "").toLowerCase()) ||
-    String(preview?.siteName || "").toLowerCase() === "youtube";
+      String(preview?.siteName || "").toLowerCase() === "youtube";
   const title = stripImportedDomainPrefix(
-    isYouTube ? metadataTitle || description : description || metadataTitle,
+    isYouTube || previewMode === "document"
+      ? metadataTitle || description
+      : description || metadataTitle,
     domain,
   );
   if (!title || title.toLowerCase() === domain) return "";
   return sentenceCaseTitle(title).slice(0, 240);
 }
 
-function getPreviewSubtitleCandidate(preview, domain) {
+function getPreviewSubtitleCandidate(
+  preview,
+  domain,
+  previewMode = "default",
+  previewTitle = "",
+) {
   const isYouTube =
     ["youtube.com", "youtu.be"].includes(String(domain || "").toLowerCase()) ||
     String(preview?.siteName || "").toLowerCase() === "youtube";
-  if (!isYouTube) return "";
+  if (!isYouTube && previewMode !== "document") return "";
 
   const subtitle = String(preview?.description || "")
     .replace(/\s+/g, " ")
     .trim();
-  return subtitle && subtitle.toLowerCase() !== domain
-    ? subtitle.slice(0, 120)
-    : "";
+  const normalizedSubtitle = subtitle.toLowerCase();
+  if (
+    !subtitle ||
+    normalizedSubtitle === domain ||
+    normalizedSubtitle === String(previewTitle || "").toLowerCase()
+  ) {
+    return "";
+  }
+  return subtitle.slice(0, previewMode === "document" ? 240 : 120);
 }
 
 function isMissingConvexFunctionError(error) {
@@ -273,28 +311,47 @@ function isMissingConvexFunctionError(error) {
   );
 }
 
-async function loadPreviewTitleOnce(url, domain, getLinkPreview) {
-  if (PREVIEW_TITLE_CACHE.has(url)) return PREVIEW_TITLE_CACHE.get(url);
-  if (PREVIEW_TITLE_REQUESTS.has(url)) return PREVIEW_TITLE_REQUESTS.get(url);
+async function loadPreviewTitleOnce(
+  url,
+  domain,
+  getLinkPreview,
+  previewMode = "default",
+) {
+  const cacheKey = `${previewMode}:${url}`;
+  if (PREVIEW_TITLE_CACHE.has(cacheKey))
+    return PREVIEW_TITLE_CACHE.get(cacheKey);
+  if (PREVIEW_TITLE_REQUESTS.has(cacheKey))
+    return PREVIEW_TITLE_REQUESTS.get(cacheKey);
 
   const request = getLinkPreview({ url })
     .then((preview) => {
+      const title = getPreviewTitleCandidate(preview, domain, previewMode);
+      const publishedAt = Number(preview?.publishedAt || 0) || null;
       const result = {
-        title: getPreviewTitleCandidate(preview, domain),
-        subtitle: getPreviewSubtitleCandidate(preview, domain),
+        title,
+        publishedAt,
+        subtitle: getPreviewSubtitleCandidate(
+          preview,
+          domain,
+          previewMode,
+          title,
+        ),
       };
-      PREVIEW_TITLE_CACHE.set(url, result.title ? result : null);
-      return PREVIEW_TITLE_CACHE.get(url);
+      PREVIEW_TITLE_CACHE.set(
+        cacheKey,
+        result.title || result.subtitle || result.publishedAt ? result : null,
+      );
+      return PREVIEW_TITLE_CACHE.get(cacheKey);
     })
     .catch((error) => {
-      PREVIEW_TITLE_CACHE.set(url, null);
+      PREVIEW_TITLE_CACHE.set(cacheKey, null);
       throw error;
     })
     .finally(() => {
-      PREVIEW_TITLE_REQUESTS.delete(url);
+      PREVIEW_TITLE_REQUESTS.delete(cacheKey);
     });
 
-  PREVIEW_TITLE_REQUESTS.set(url, request);
+  PREVIEW_TITLE_REQUESTS.set(cacheKey, request);
   return request;
 }
 
@@ -501,6 +558,75 @@ function filterBackupByCategories(data, selectedCategoryKeys) {
   };
 }
 
+function isNewsBackupLink(link, folderByKey) {
+  if (!link || ["newsSource", "bookStore"].includes(link.linkType)) {
+    return false;
+  }
+  if (link.linkType === "newsArticle") return true;
+
+  const rootKey = getBackupRootFolderKey(link.folderKey, folderByKey);
+  const rootFolder = folderByKey.get(String(rootKey || ""));
+  return normalizeLabel(rootFolder?.name) === "noticias";
+}
+
+async function enrichImportedNewsMetadata(data, getLinkPreview) {
+  const folders = Array.isArray(data?.folders) ? data.folders : [];
+  const links = Array.isArray(data?.links) ? data.links : [];
+  const folderByKey = new Map(
+    folders
+      .filter((folder) => folder && typeof folder.key === "string")
+      .map((folder) => [String(folder.key), folder]),
+  );
+  const enrichedLinks = [...links];
+  const jobs = links
+    .map((link, index) => ({ link, index }))
+    .filter(({ link }) => isNewsBackupLink(link, folderByKey))
+    .filter(({ link }) => isValidHttpUrl(link.normalizedUrl || link.url || ""));
+  let nextJobIndex = 0;
+  let updated = 0;
+
+  const worker = async () => {
+    while (nextJobIndex < jobs.length) {
+      const current = jobs[nextJobIndex];
+      nextJobIndex += 1;
+      const { link, index } = current;
+      try {
+        const url = link.normalizedUrl || link.url;
+        const domain =
+          String(link.sourceDomain || "").trim() || getHostnameFromUrl(url);
+        const preview = await getLinkPreview({ url });
+        const title = getPreviewTitleCandidate(preview, domain, "document");
+        const publishedAt = Number(preview?.publishedAt || 0) || null;
+        if (!title && !publishedAt) continue;
+
+        enrichedLinks[index] = {
+          ...link,
+          linkType:
+            link.linkType === "newsArticle" ? link.linkType : "newsArticle",
+          sourceDomain: domain || link.sourceDomain,
+          customTitle: title || link.customTitle,
+          publishedAt: publishedAt || link.publishedAt,
+        };
+        updated += 1;
+      } catch {
+        // Si una web falla, conservamos el dato importado y seguimos.
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(IMPORT_PREVIEW_CONCURRENCY, jobs.length) },
+      () => worker(),
+    ),
+  );
+
+  return {
+    data: { ...data, links: enrichedLinks },
+    summary: { checked: jobs.length, updated },
+  };
+}
+
 function ImportCheckbox({
   checked,
   label,
@@ -539,9 +665,11 @@ function ImportCheckbox({
   );
 }
 
-function MinimalLinkTitle({ item }) {
+function MinimalLinkTitle({ item, previewMode = "default" }) {
   const getLinkPreview = useAction(api.linkPreviews.get);
-  const updateCustomTitle = useMutation(api.computerLinks.updateCustomTitle);
+  const updatePreviewMetadata = useMutation(
+    api.computerLinks.updatePreviewMetadata,
+  );
   const fallbackTitle = getLinkDisplayTitle(item);
   const [previewTitle, setPreviewTitle] = useState("");
   const [previewSubtitle, setPreviewSubtitle] = useState("");
@@ -550,7 +678,12 @@ function MinimalLinkTitle({ item }) {
   const itemId = item?._id;
   const linkType = item?.linkType;
   const url = item?.normalizedUrl || item?.url || "";
-  const shouldLoadPreview = isYouTubeLink(item);
+  const hasUsefulStoredTitle =
+    storedTitle &&
+    storedTitle.toLowerCase() !== String(domain || "").toLowerCase();
+  const shouldRefreshArticleMetadata = linkType === "newsArticle";
+  const shouldLoadPreview =
+    isYouTubeLink(item) || previewMode === "document" || shouldRefreshArticleMetadata;
 
   useEffect(() => {
     let cancelled = false;
@@ -558,7 +691,9 @@ function MinimalLinkTitle({ item }) {
     setPreviewSubtitle("");
 
     if (
-      storedTitle ||
+      (hasUsefulStoredTitle &&
+        previewMode !== "document" &&
+        !shouldRefreshArticleMetadata) ||
       !itemId ||
       ["newsSource", "bookStore"].includes(linkType) ||
       !shouldLoadPreview ||
@@ -571,25 +706,42 @@ function MinimalLinkTitle({ item }) {
 
     (async () => {
       try {
-        const preview = await loadPreviewTitleOnce(url, domain, getLinkPreview);
+        const preview = await loadPreviewTitleOnce(
+          url,
+          domain,
+          getLinkPreview,
+          previewMode,
+        );
         if (cancelled) return;
         const nextTitle = preview?.title || "";
-        if (!nextTitle) return;
+        const nextSubtitle = preview?.subtitle || "";
+        const nextPublishedAt = Number(preview?.publishedAt || 0) || null;
+        if (!nextTitle && !nextSubtitle && !nextPublishedAt) return;
 
         setPreviewTitle(nextTitle);
-        setPreviewSubtitle(preview?.subtitle || "");
-        if (!previewTitleSaveDisabled) {
+        setPreviewSubtitle(nextSubtitle);
+        const shouldSaveTitle = !hasUsefulStoredTitle && nextTitle;
+        const shouldSaveDate =
+          nextPublishedAt && Number(item?.publishedAt || 0) !== nextPublishedAt;
+        if (
+          (shouldSaveTitle || shouldSaveDate) &&
+          !previewTitleSaveDisabled
+        ) {
           try {
-            await updateCustomTitle({
+            await updatePreviewMetadata({
               linkId: itemId,
-              customTitle: nextTitle,
+              customTitle: shouldSaveTitle ? nextTitle : undefined,
+              publishedAt: shouldSaveDate ? nextPublishedAt : undefined,
             });
           } catch (error) {
             if (isMissingConvexFunctionError(error)) {
               previewTitleSaveDisabled = true;
               return;
             }
-            console.warn("[LibraryScreen] preview title save failed", error);
+            console.warn(
+              "[LibraryScreen] preview metadata save failed",
+              error,
+            );
           }
         }
       } catch (error) {
@@ -603,11 +755,14 @@ function MinimalLinkTitle({ item }) {
   }, [
     domain,
     getLinkPreview,
+    hasUsefulStoredTitle,
     itemId,
     linkType,
+    previewMode,
     shouldLoadPreview,
+    shouldRefreshArticleMetadata,
     storedTitle,
-    updateCustomTitle,
+    updatePreviewMetadata,
     url,
   ]);
 
@@ -617,7 +772,14 @@ function MinimalLinkTitle({ item }) {
         {previewTitle || fallbackTitle}
       </Text>
       {previewSubtitle ? (
-        <Text style={styles.minimalLinkPreviewDetail} numberOfLines={1}>
+        <Text
+          style={[
+            styles.minimalLinkPreviewDetail,
+            previewMode === "document" &&
+              styles.minimalLinkPreviewDetailDocument,
+          ]}
+          numberOfLines={previewMode === "document" ? 2 : 1}
+        >
           {previewSubtitle}
         </Text>
       ) : null}
@@ -641,6 +803,7 @@ export default function LibraryScreen({ navigation }) {
   const [clientId] = useState(getClientId);
   const [urlInput, setUrlInput] = useState("");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [folderFilter, setFolderFilter] = useState("all");
   const [newsView, setNewsView] = useState("articles");
   const [movingLink, setMovingLink] = useState(null);
@@ -670,8 +833,10 @@ export default function LibraryScreen({ navigation }) {
     [],
   );
   const [importMode, setImportMode] = useState("combine");
+  const [enrichNewsOnImport, setEnrichNewsOnImport] = useState(true);
   const [integrityBusy, setIntegrityBusy] = useState(false);
   const [integrityReport, setIntegrityReport] = useState(null);
+  const [integritySearch, setIntegritySearch] = useState("");
   const [libraryView, setLibraryView] = useState("cards");
 
   const folders = useQuery(api.computerLinks.listFolders) || [];
@@ -693,6 +858,12 @@ export default function LibraryScreen({ navigation }) {
       links: exportedLinks,
     };
   }, [exportStatus, exportedLinks, folders]);
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [search]);
   const selectedFolderId = !["all", "favorites", "unclassified"].includes(
     folderFilter,
   )
@@ -705,12 +876,14 @@ export default function LibraryScreen({ navigation }) {
   const isBooksFolder = selectedFolder?.name === "Libros";
   const isCatalogFolder = isNewsFolder || isBooksFolder;
   const isSourceCatalog = isCatalogFolder && newsView === "sources";
+  const isSourceCatalogCards = isSourceCatalog && libraryView === "cards";
+  const isSourceCatalogMinimal = isSourceCatalog && libraryView === "minimal";
   const cardColumns = Math.max(
     1,
     Math.min(6, Math.floor((screenWidth - 20) / 270)),
   );
   const links = useQuery(api.computerLinks.list, {
-    search: search.trim() || undefined,
+    search: debouncedSearch || undefined,
     folderId: selectedFolderId,
     onlyFavorites: folderFilter === "favorites" || undefined,
     onlyUnclassified: folderFilter === "unclassified" || undefined,
@@ -726,6 +899,14 @@ export default function LibraryScreen({ navigation }) {
       : undefined,
     limit: LIBRARY_VISIBLE_LINK_LIMIT,
   });
+  const filteredIntegrityCategoryCounts = useMemo(() => {
+    const counts = integrityReport?.categoryCounts || [];
+    const query = integritySearch.trim().toLowerCase();
+    if (!query) return counts;
+    return counts.filter(([category]) =>
+      String(category || "").toLowerCase().includes(query),
+    );
+  }, [integrityReport, integritySearch]);
 
   const ensureDefaultFolders = useMutation(
     api.computerLinks.ensureDefaultFolders,
@@ -739,6 +920,7 @@ export default function LibraryScreen({ navigation }) {
   const removeLink = useMutation(api.computerLinks.remove);
   const removeNewsSource = useMutation(api.computerLinks.removeNewsSource);
   const importBackup = useMutation(api.computerLinks.importBackup);
+  const getLinkPreview = useAction(api.linkPreviews.get);
   const ensureNewsSources = useMutation(api.computerLinks.ensureNewsSources);
   const normalizeAndDeduplicate = useMutation(
     api.computerLinks.normalizeAndDeduplicate,
@@ -1102,32 +1284,40 @@ export default function LibraryScreen({ navigation }) {
     const selectedData = importAll
       ? importReview.parsed.data
       : filterBackupByCategories(importReview.parsed.data, categoryKeys);
-    const links = Array.isArray(selectedData.links) ? selectedData.links : [];
-    const linkBatches = [];
-    for (let index = 0; index < links.length; index += IMPORT_BATCH_SIZE) {
-      linkBatches.push(links.slice(index, index + IMPORT_BATCH_SIZE));
-    }
-    if (linkBatches.length === 0) linkBatches.push([]);
 
     const executeImport = async () => {
       setImportReview(null);
       setSelectedImportCategoryKeys([]);
       setImportMode("combine");
+      setEnrichNewsOnImport(true);
       setBackupBusy(true);
       try {
+        const enriched = enrichNewsOnImport
+          ? await enrichImportedNewsMetadata(selectedData, getLinkPreview)
+          : { data: selectedData, summary: { checked: 0, updated: 0 } };
+        const importData = enriched.data;
+        const links = Array.isArray(importData.links) ? importData.links : [];
+        const linkBatches = [];
+        for (let index = 0; index < links.length; index += IMPORT_BATCH_SIZE) {
+          linkBatches.push(links.slice(index, index + IMPORT_BATCH_SIZE));
+        }
+        if (linkBatches.length === 0) linkBatches.push([]);
+
         const summary = {
           foldersCreated: 0,
           linksCreated: 0,
           linksUpdated: 0,
           foldersDeleted: 0,
           linksDeleted: 0,
+          newsMetadataChecked: enriched.summary.checked,
+          newsMetadataUpdated: enriched.summary.updated,
         };
         for (let index = 0; index < linkBatches.length; index += 1) {
           const importArgs = {
             clientId,
             backup: {
               ...importReview.parsed,
-              data: { ...selectedData, links: linkBatches[index] },
+              data: { ...importData, links: linkBatches[index] },
             },
             replaceExisting: importMode === "replace" && index === 0,
           };
@@ -1139,7 +1329,7 @@ export default function LibraryScreen({ navigation }) {
         }
         safeAlert(
           "Biblioteca restaurada",
-          `${importMode === "replace" ? "Reemplazo completado." : "Modo combinar completado."}\n\n${summary.linksDeleted ? `Enlaces eliminados: ${summary.linksDeleted}\n` : ""}${summary.foldersDeleted ? `Categorías eliminadas: ${summary.foldersDeleted}\n` : ""}Carpetas creadas: ${summary.foldersCreated}\nEnlaces creados: ${summary.linksCreated}\nEnlaces actualizados: ${summary.linksUpdated}`,
+          `${importMode === "replace" ? "Reemplazo completado." : "Modo combinar completado."}\n\n${summary.newsMetadataChecked ? `Noticias revisadas: ${summary.newsMetadataChecked}\nNoticias con título/fecha actualizados: ${summary.newsMetadataUpdated}\n` : ""}${summary.linksDeleted ? `Enlaces eliminados: ${summary.linksDeleted}\n` : ""}${summary.foldersDeleted ? `Categorías eliminadas: ${summary.foldersDeleted}\n` : ""}Carpetas creadas: ${summary.foldersCreated}\nEnlaces creados: ${summary.linksCreated}\nEnlaces actualizados: ${summary.linksUpdated}`,
         );
       } catch (error) {
         safeAlert(
@@ -1167,6 +1357,8 @@ export default function LibraryScreen({ navigation }) {
   }, [
     backupBusy,
     clientId,
+    enrichNewsOnImport,
+    getLinkPreview,
     importBackup,
     importMode,
     importReview,
@@ -1226,6 +1418,7 @@ export default function LibraryScreen({ navigation }) {
       });
       setSelectedImportCategoryKeys(categories.map((category) => category.key));
       setImportMode("combine");
+      setEnrichNewsOnImport(true);
     } catch (error) {
       if (String(error?.name || "") === "SyntaxError") {
         safeAlert(
@@ -1253,6 +1446,7 @@ export default function LibraryScreen({ navigation }) {
     setImportReview(null);
     setSelectedImportCategoryKeys([]);
     setImportMode("combine");
+    setEnrichNewsOnImport(true);
   }, [backupBusy]);
 
   const toggleImportCategory = useCallback((categoryKey) => {
@@ -1290,9 +1484,15 @@ export default function LibraryScreen({ navigation }) {
 
   const handleCheckIntegrity = useCallback(async () => {
     if (integrityBusy) return;
+    setIntegritySearch("");
     setIntegrityBusy(true);
     setBackupMode("integrity");
   }, [integrityBusy]);
+
+  const closeIntegrityReport = useCallback(() => {
+    setIntegrityReport(null);
+    setIntegritySearch("");
+  }, []);
 
   const topFolders = folders.filter((folder) => !folder.parentFolderId);
   const filters = [
@@ -1557,9 +1757,9 @@ export default function LibraryScreen({ navigation }) {
                 style={[styles.folderChip, active && styles.folderChipActive]}
               >
                 <Ionicons
-                  name={folder.icon || "folder-outline"}
+                  name={getFolderTabIcon(folder)}
                   size={15}
-                  color={active ? "#fff" : folder.color || "#475569"}
+                  color={active ? "#fff" : getFolderTabColor(folder)}
                 />
                 <Text
                   style={[styles.folderText, active && styles.folderTextActive]}
@@ -1790,11 +1990,11 @@ export default function LibraryScreen({ navigation }) {
           <FlatList
           key={
             isSourceCatalog
-              ? "source-catalog"
+              ? `source-catalog-${libraryView}`
               : `library-links-${libraryView}-${cardColumns}`
           }
           data={links || []}
-          horizontal={isSourceCatalog}
+          horizontal={isSourceCatalogCards}
           numColumns={
             isSourceCatalog || libraryView === "minimal" ? 1 : cardColumns
           }
@@ -1805,17 +2005,97 @@ export default function LibraryScreen({ navigation }) {
           }
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => String(item._id)}
-          style={[styles.list, isSourceCatalog && styles.sourceList]}
+          style={[
+            styles.list,
+            isSourceCatalog && styles.sourceList,
+            isSourceCatalogMinimal && styles.sourceListMinimal,
+          ]}
           initialNumToRender={libraryView === "minimal" ? 12 : 6}
           maxToRenderPerBatch={libraryView === "minimal" ? 12 : 6}
           windowSize={5}
           removeClippedSubviews
           contentContainerStyle={[
-            isSourceCatalog ? styles.sourceListContent : styles.listContent,
+            isSourceCatalogCards
+              ? styles.sourceListContent
+              : isSourceCatalogMinimal
+                ? styles.sourceMinimalContent
+                : styles.listContent,
             links?.length === 0 && styles.listEmpty,
           ]}
           renderItem={({ item }) => {
+            const folder = item.folderId
+              ? folderById.get(String(item.folderId))
+              : null;
             if (isSourceCatalog) {
+              if (libraryView === "minimal") {
+                return (
+                  <View style={styles.sourceMinimalRow}>
+                    <Pressable
+                      onPress={() => openSourceUrl(item.normalizedUrl)}
+                      style={styles.sourceMinimalMain}
+                    >
+                      <View style={styles.sourceMinimalIcon}>
+                        {isBooksFolder ? (
+                          <Ionicons
+                            name="storefront-outline"
+                            size={22}
+                            color="#7c3aed"
+                          />
+                        ) : (
+                          <DomainFavicon
+                            hostname={item.sourceDomain || item.hostname}
+                          />
+                        )}
+                      </View>
+                      <View style={styles.sourceMinimalText}>
+                        <Text
+                          style={styles.sourceMinimalTitle}
+                          numberOfLines={1}
+                        >
+                          {item.customTitle || item.hostname}
+                        </Text>
+                        <Text
+                          style={styles.sourceMinimalDomain}
+                          numberOfLines={1}
+                        >
+                          {item.sourceDomain || item.hostname}
+                        </Text>
+                        <Text style={styles.sourceMinimalUrl} numberOfLines={1}>
+                          {item.normalizedUrl}
+                        </Text>
+                      </View>
+                    </Pressable>
+                    <View style={styles.sourceMinimalActions}>
+                      <Pressable
+                        onPress={() => openSourceUrl(item.normalizedUrl)}
+                        style={styles.sourceMinimalButton}
+                      >
+                        <Ionicons
+                          name="open-outline"
+                          size={18}
+                          color="#2563eb"
+                        />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => openSourceEditor(item)}
+                        style={styles.sourceMinimalButton}
+                      >
+                        <Ionicons name="pencil" size={17} color="#475569" />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => confirmRemoveSource(item)}
+                        style={styles.sourceMinimalButton}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={18}
+                          color="#dc2626"
+                        />
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              }
               return (
                 <View style={styles.sourceTile}>
                   <Pressable
@@ -1875,7 +2155,10 @@ export default function LibraryScreen({ navigation }) {
             if (!isSourceCatalog && libraryView === "minimal") {
               return (
                 <Pressable
-                  style={styles.minimalLinkCard}
+                  style={[
+                    styles.minimalLinkCard,
+                    isInformaticaFolder(folder) && styles.minimalLinkCardDetailed,
+                  ]}
                   onPress={() => Linking.openURL(item.normalizedUrl)}
                 >
                   <DomainFavicon hostname={getLinkDomain(item)} />
@@ -1883,7 +2166,12 @@ export default function LibraryScreen({ navigation }) {
                     <Text style={styles.minimalLinkDomain} numberOfLines={1}>
                       {getLinkDomain(item)}
                     </Text>
-                    <MinimalLinkTitle item={item} />
+                    <MinimalLinkTitle
+                      item={item}
+                      previewMode={
+                        isInformaticaFolder(folder) ? "document" : "default"
+                      }
+                    />
                     {formatLinkDate(
                       item.publishedAt || item.createdAt || item.updatedAt,
                     ) ? (
@@ -1897,9 +2185,6 @@ export default function LibraryScreen({ navigation }) {
                 </Pressable>
               );
             }
-            const folder = item.folderId
-              ? folderById.get(String(item.folderId))
-              : null;
             return (
               <View style={styles.linkCard}>
                 <WebPreviewCard url={item.normalizedUrl} compact dense />
@@ -2013,7 +2298,7 @@ export default function LibraryScreen({ navigation }) {
           visible={Boolean(integrityReport)}
           transparent
           animationType="fade"
-          onRequestClose={() => setIntegrityReport(null)}
+          onRequestClose={closeIntegrityReport}
         >
           <View style={styles.modalBackdrop}>
             <View style={styles.modalCard}>
@@ -2052,22 +2337,52 @@ export default function LibraryScreen({ navigation }) {
                 </Text>
               )}
               <Text style={styles.fieldLabel}>Posts por categoría</Text>
+              <View style={styles.integritySearchRow}>
+                <Ionicons name="search-outline" size={16} color="#64748b" />
+                <TextInput
+                  value={integritySearch}
+                  onChangeText={setIntegritySearch}
+                  placeholder="Buscar categoría o dominio..."
+                  placeholderTextColor="#94a3b8"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={[
+                    styles.integritySearchInput,
+                    Platform.OS === "web" && styles.webInputNoOutline,
+                  ]}
+                />
+                {integritySearch ? (
+                  <Pressable
+                    onPress={() => setIntegritySearch("")}
+                    hitSlop={8}
+                    accessibilityLabel="Limpiar búsqueda de categorías"
+                  >
+                    <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                  </Pressable>
+                ) : null}
+              </View>
               <ScrollView style={styles.integrityCategoryList}>
-                {integrityReport?.categoryCounts?.map(([category, count]) => (
-                  <View key={category} style={styles.integrityCategoryRow}>
-                    <Text
-                      style={styles.integrityCategoryName}
-                      numberOfLines={1}
-                    >
-                      {category}
-                    </Text>
-                    <Text style={styles.integrityCategoryCount}>{count}</Text>
-                  </View>
-                ))}
+                {filteredIntegrityCategoryCounts.length ? (
+                  filteredIntegrityCategoryCounts.map(([category, count]) => (
+                    <View key={category} style={styles.integrityCategoryRow}>
+                      <Text
+                        style={styles.integrityCategoryName}
+                        numberOfLines={1}
+                      >
+                        {category}
+                      </Text>
+                      <Text style={styles.integrityCategoryCount}>{count}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.integrityEmptySearch}>
+                    No hay categorías que coincidan.
+                  </Text>
+                )}
               </ScrollView>
               <View style={styles.modalActions}>
                 <Pressable
-                  onPress={() => setIntegrityReport(null)}
+                  onPress={closeIntegrityReport}
                   style={styles.saveButton}
                 >
                   <Text style={styles.saveText}>Cerrar</Text>
@@ -2336,6 +2651,18 @@ export default function LibraryScreen({ navigation }) {
                     ? "Se eliminarán los datos actuales y se conservarán únicamente los elementos seleccionados."
                     : "Se combinarán los elementos seleccionados. Los datos actuales se conservarán y las URL repetidas se actualizarán."}
                 </Text>
+
+                <Text style={styles.fieldLabel}>Noticias</Text>
+                <View style={styles.importCategoryList}>
+                  <ImportCheckbox
+                    checked={enrichNewsOnImport}
+                    label="Actualizar título y fecha"
+                    detail="Lee metadatos HTML de cada noticia seleccionada antes de guardarla."
+                    icon="sparkles-outline"
+                    color="#dc2626"
+                    onPress={() => setEnrichNewsOnImport((value) => !value)}
+                  />
+                </View>
 
                 <Text style={styles.fieldLabel}>Modo de importación</Text>
                 <View style={styles.importModeList}>
@@ -2963,12 +3290,76 @@ const styles = StyleSheet.create({
   linkRow: { gap: 8 },
   listEmpty: { flexGrow: 1, justifyContent: "center" },
   sourceList: { flex: 1, backgroundColor: "#f1f5f9" },
+  sourceListMinimal: { backgroundColor: "#f8fafc" },
   sourceListContent: {
     alignItems: "flex-start",
     gap: 9,
     paddingHorizontal: 12,
     paddingTop: 12,
     paddingBottom: 16,
+  },
+  sourceMinimalContent: {
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 16,
+  },
+  sourceMinimalRow: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 62,
+    flexDirection: "row",
+    alignItems: "stretch",
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: "#dbe3ef",
+    backgroundColor: "#fff",
+  },
+  sourceMinimalMain: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 7,
+  },
+  sourceMinimalIcon: {
+    width: 42,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+    backgroundColor: "#fef2f2",
+  },
+  sourceMinimalText: { flex: 1, minWidth: 0, marginLeft: 8 },
+  sourceMinimalTitle: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "900",
+    color: "#1e293b",
+  },
+  sourceMinimalDomain: {
+    marginTop: 1,
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#dc2626",
+  },
+  sourceMinimalUrl: {
+    marginTop: 2,
+    fontSize: 10,
+    lineHeight: 13,
+    color: "#64748b",
+  },
+  sourceMinimalActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+  },
+  sourceMinimalButton: {
+    width: 34,
+    height: 62,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sourceTile: {
     width: 190,
@@ -3063,6 +3454,9 @@ const styles = StyleSheet.create({
     borderColor: "#dbe3ef",
     backgroundColor: "#fff",
   },
+  minimalLinkCardDetailed: {
+    alignItems: "flex-start",
+  },
   minimalLinkText: { flex: 1, minWidth: 0, marginLeft: 8 },
   minimalLinkDomain: {
     fontSize: 10,
@@ -3082,6 +3476,11 @@ const styles = StyleSheet.create({
     lineHeight: 13,
     fontWeight: "700",
     color: "#64748b",
+  },
+  minimalLinkPreviewDetailDocument: {
+    marginTop: 3,
+    lineHeight: 14,
+    fontWeight: "600",
   },
   minimalLinkDate: { marginTop: 2, fontSize: 10, color: "#64748b" },
   minimalNewsCard: {
@@ -3298,6 +3697,29 @@ const styles = StyleSheet.create({
     maxHeight: 180,
     borderWidth: 1,
     borderColor: "#e2e8f0",
+  },
+  integritySearchRow: {
+    minHeight: 38,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginBottom: 8,
+    paddingHorizontal: 9,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+  },
+  integritySearchInput: {
+    flex: 1,
+    minHeight: 36,
+    fontSize: 13,
+    color: "#111827",
+  },
+  integrityEmptySearch: {
+    padding: 12,
+    fontSize: 12,
+    color: "#64748b",
+    textAlign: "center",
   },
   integrityCategoryRow: {
     minHeight: 31,
