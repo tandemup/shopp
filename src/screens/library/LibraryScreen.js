@@ -33,6 +33,7 @@ import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 const CLIENT_ID_KEY = "shopp-chat-client-id";
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
+const CATALOG_SOURCES_IMPORT_KEY = "__catalog_sources__";
 const IMPORT_BATCH_SIZE = 1000;
 const IMPORT_PREVIEW_CONCURRENCY = 3;
 const LIBRARY_VISIBLE_LINK_LIMIT = 80;
@@ -475,6 +476,10 @@ function getBackupRootFolderKey(folderKey, folderByKey) {
   return folder?.key ? String(folder.key) : null;
 }
 
+function isCatalogSourceBackupLink(link) {
+  return ["newsSource", "bookStore"].includes(link?.linkType);
+}
+
 function buildImportCategoryOptions(data) {
   const backupFolders = Array.isArray(data?.folders) ? data.folders : [];
   const backupLinks = Array.isArray(data?.links) ? data.links : [];
@@ -501,7 +506,10 @@ function buildImportCategoryOptions(data) {
   );
   let unclassifiedCount = 0;
 
+  const catalogSourceCount = backupLinks.filter(isCatalogSourceBackupLink).length;
+
   backupLinks.forEach((link) => {
+    if (isCatalogSourceBackupLink(link)) return;
     const rootKey = getBackupRootFolderKey(link?.folderKey, folderByKey);
     if (rootKey && linkCounts.has(rootKey)) {
       linkCounts.set(rootKey, linkCounts.get(rootKey) + 1);
@@ -517,6 +525,17 @@ function buildImportCategoryOptions(data) {
     color: folder.color || "#475569",
     linkCount: linkCounts.get(String(folder.key)) || 0,
   }));
+
+  if (catalogSourceCount > 0) {
+    options.unshift({
+      key: CATALOG_SOURCES_IMPORT_KEY,
+      name: "Periódicos y tiendas de libros",
+      icon: "newspaper-outline",
+      color: "#dc2626",
+      linkCount: catalogSourceCount,
+      isCatalogSources: true,
+    });
+  }
 
   if (unclassifiedCount > 0) {
     options.push({
@@ -546,15 +565,35 @@ function filterBackupByCategories(data, selectedCategoryKeys) {
     return Boolean(rootKey && selectedKeys.has(rootKey));
   };
 
+  const includeCatalogSources = selectedKeys.has(CATALOG_SOURCES_IMPORT_KEY);
+  const selectedLinks = links.filter((link) => {
+    if (isCatalogSourceBackupLink(link)) return includeCatalogSources;
+    if (typeof link?.folderKey === "string" && link.folderKey.trim()) {
+      return isSelectedFolder(link.folderKey);
+    }
+    return selectedKeys.has(UNCLASSIFIED_IMPORT_KEY);
+  });
+  const requiredFolderKeys = new Set();
+  selectedLinks.forEach((link) => {
+    let folder = folderByKey.get(String(link?.folderKey || ""));
+    let remainingDepth = 20;
+    while (folder?.key && remainingDepth > 0) {
+      requiredFolderKeys.add(String(folder.key));
+      folder = folder.parentKey
+        ? folderByKey.get(String(folder.parentKey))
+        : null;
+      remainingDepth -= 1;
+    }
+  });
+
   return {
     ...data,
-    folders: folders.filter((folder) => isSelectedFolder(folder?.key)),
-    links: links.filter((link) => {
-      if (typeof link?.folderKey === "string" && link.folderKey.trim()) {
-        return isSelectedFolder(link.folderKey);
-      }
-      return selectedKeys.has(UNCLASSIFIED_IMPORT_KEY);
-    }),
+    folders: folders.filter(
+      (folder) =>
+        isSelectedFolder(folder?.key) ||
+        requiredFolderKeys.has(String(folder?.key || "")),
+    ),
+    links: selectedLinks,
   };
 }
 
@@ -899,6 +938,18 @@ export default function LibraryScreen({ navigation }) {
       : undefined,
     limit: LIBRARY_VISIBLE_LINK_LIMIT,
   });
+  const shownItemCount = Array.isArray(links) ? links.length : 0;
+  const shownItemLabel = isSourceCatalog
+    ? isBooksFolder
+      ? shownItemCount === 1
+        ? "tienda mostrada"
+        : "tiendas mostradas"
+      : shownItemCount === 1
+        ? "periódico mostrado"
+        : "periódicos mostrados"
+    : shownItemCount === 1
+      ? "enlace mostrado"
+      : "enlaces mostrados";
   const filteredIntegrityCategoryCounts = useMemo(() => {
     const counts = integrityReport?.categoryCounts || [];
     const query = integritySearch.trim().toLowerCase();
@@ -979,7 +1030,23 @@ export default function LibraryScreen({ navigation }) {
               cursor = sourceSyncResult?.continueCursor || null;
               if (!cursor) break;
             }
-            const normalizationResult = await normalizeAndDeduplicate({});
+            let normalizationCursor = null;
+            let normalizationResult = null;
+            let correctedPosts = 0;
+            while (true) {
+              normalizationResult = await normalizeAndDeduplicate({
+                batchSize: 80,
+                ...(normalizationCursor
+                  ? { cursor: normalizationCursor }
+                  : {}),
+              });
+              correctedPosts += Number(
+                normalizationResult?.correctedNewsPosts || 0,
+              );
+              if (normalizationResult?.isDone) break;
+              normalizationCursor = normalizationResult?.continueCursor || null;
+              if (!normalizationCursor) break;
+            }
             setIntegrityReport({
               ...before,
               addedSources: Number(
@@ -988,7 +1055,8 @@ export default function LibraryScreen({ navigation }) {
                   0,
               ),
               correctedPosts: Number(
-                normalizationResult?.correctedNewsPosts ||
+                correctedPosts ||
+                  normalizationResult?.correctedNewsPosts ||
                   normalizationResult?.updatedNewsPosts ||
                   normalizationResult?.corrected ||
                   normalizationResult?.updatedCount ||
@@ -1321,7 +1389,6 @@ export default function LibraryScreen({ navigation }) {
             },
             replaceExisting: importMode === "replace" && index === 0,
           };
-          if (!importAll) importArgs.categoryKeys = categoryKeys;
           const batchSummary = await importBackup(importArgs);
           Object.keys(summary).forEach((key) => {
             summary[key] += Number(batchSummary?.[key] || 0);
@@ -1437,6 +1504,12 @@ export default function LibraryScreen({ navigation }) {
   }, [backupBusy]);
 
   const importCategories = importReview?.categories || [];
+  const importCatalogSources = importCategories.find(
+    (category) => category.isCatalogSources,
+  );
+  const importFolderCategories = importCategories.filter(
+    (category) => !category.isCatalogSources,
+  );
   const allImportCategoriesSelected =
     importCategories.length === 0 ||
     selectedImportCategoryKeys.length === importCategories.length;
@@ -1458,6 +1531,12 @@ export default function LibraryScreen({ navigation }) {
   }, []);
 
   const exportCategories = exportReview?.categories || [];
+  const exportCatalogSources = exportCategories.find(
+    (category) => category.isCatalogSources,
+  );
+  const exportFolderCategories = exportCategories.filter(
+    (category) => !category.isCatalogSources,
+  );
   const allExportCategoriesSelected =
     exportCategories.length === 0 ||
     selectedExportCategoryKeys.length === exportCategories.length;
@@ -1987,7 +2066,14 @@ export default function LibraryScreen({ navigation }) {
           </View>
         ) : null}
 
-          <FlatList
+        <View style={styles.shownItemsBar}>
+          <Ionicons name="list-outline" size={15} color="#2563eb" />
+          <Text style={styles.shownItemsText}>
+            {shownItemCount} {shownItemLabel}
+          </Text>
+        </View>
+
+        <FlatList
           key={
             isSourceCatalog
               ? `source-catalog-${libraryView}`
@@ -2484,7 +2570,21 @@ export default function LibraryScreen({ navigation }) {
                     }
                     disabled={exportCategories.length === 0}
                   />
-                  {exportCategories.map((category) => (
+                  {exportCatalogSources ? (
+                    <ImportCheckbox
+                      checked={selectedExportCategoryKeys.includes(
+                        exportCatalogSources.key,
+                      )}
+                      label={exportCatalogSources.name}
+                      detail={`${exportCatalogSources.linkCount} periódicos o tiendas de libros`}
+                      icon={exportCatalogSources.icon}
+                      color={exportCatalogSources.color}
+                      onPress={() =>
+                        toggleExportCategory(exportCatalogSources.key)
+                      }
+                    />
+                  ) : null}
+                  {exportFolderCategories.map((category) => (
                     <ImportCheckbox
                       key={category.key}
                       checked={selectedExportCategoryKeys.includes(
@@ -2631,7 +2731,21 @@ export default function LibraryScreen({ navigation }) {
                     }
                     disabled={importCategories.length === 0}
                   />
-                  {importCategories.map((category) => (
+                  {importCatalogSources ? (
+                    <ImportCheckbox
+                      checked={selectedImportCategoryKeys.includes(
+                        importCatalogSources.key,
+                      )}
+                      label={importCatalogSources.name}
+                      detail={`${importCatalogSources.linkCount} periódicos o tiendas de libros`}
+                      icon={importCatalogSources.icon}
+                      color={importCatalogSources.color}
+                      onPress={() =>
+                        toggleImportCategory(importCatalogSources.key)
+                      }
+                    />
+                  ) : null}
+                  {importFolderCategories.map((category) => (
                     <ImportCheckbox
                       key={category.key}
                       checked={selectedImportCategoryKeys.includes(
@@ -3285,6 +3399,17 @@ const styles = StyleSheet.create({
   },
   displayModeText: { fontSize: 10, fontWeight: "800", color: "#475569" },
   displayModeTextActive: { color: "#fff" },
+  shownItemsBar: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    backgroundColor: "#f8fafc",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#dbe3ef",
+  },
+  shownItemsText: { fontSize: 11, fontWeight: "700", color: "#475569" },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 16 },
   linkRow: { gap: 8 },

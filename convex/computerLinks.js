@@ -360,87 +360,71 @@ export const syncFromChat = mutation({
 });
 
 export const normalizeAndDeduplicate = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const links = await ctx.db.query("computerLinks").collect();
-    const canonicalLinks = new Map();
+  args: {
+    cursor: v.optional(v.string()),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // Convex limita las lecturas por mutación. El botón de integridad repite
+    // esta función hasta que no quede ningún lote pendiente.
+    const batchSize = Math.max(1, Math.min(Math.floor(args.batchSize || 80), 120));
+    const page = await ctx.db.query("computerLinks").paginate({
+      numItems: batchSize,
+      cursor: args.cursor || null,
+    });
     let normalizedCount = 0;
     let duplicatesRemoved = 0;
+    let correctedNewsPosts = 0;
 
-    for (const link of links) {
+    for (const pagedLink of page.page) {
+      // Un enlace del mismo lote puede haberse eliminado al unificar un
+      // duplicado anterior. Se omite antes de volver a tocarlo.
+      const link = await ctx.db.get(pagedLink._id);
+      if (!link) continue;
       const normalized = normalizeLink(link.normalizedUrl || link.url);
       if (!normalized) continue;
 
-      const classifiedLinkType = classifyLinkType(
-        link.linkType,
+      const canonical = normalized.url;
+      const indexedMatches = await ctx.db
+        .query("computerLinks")
+        .withIndex("by_normalizedUrl", (q) => q.eq("normalizedUrl", canonical))
+        .collect();
+      const allCandidates = [
+        link,
+        ...indexedMatches.filter((item) => item._id !== link._id),
+      ];
+      // Un periódico o una tienda son registros de catálogo. Aunque su URL
+      // coincida con un enlace antiguo, se conservan siempre: no son un
+      // duplicado intercambiable de una noticia o un libro.
+      const hasCatalogSource = allCandidates.some((candidate) =>
+        ["newsSource", "bookStore"].includes(candidate.linkType),
+      );
+      const candidates = hasCatalogSource ? [link] : allCandidates;
+      const score = (candidate) =>
+        Number(candidate.favorite) * 4 +
+        Number(Boolean(candidate.notes)) * 2 +
+        Number(Boolean(candidate.hashtags?.length)) * 2 +
+        Number(Boolean(candidate.folderId));
+      const primary = candidates.reduce(
+        (best, candidate) => (score(candidate) > score(best) ? candidate : best),
+        candidates[0],
+      );
+      const primaryLinkType = classifyLinkType(
+        primary.linkType,
         normalized.hostname,
       );
-      const publishedAt =
-        classifiedLinkType === "newsArticle"
-          ? extractPublishedAtFromUrl(normalized.url)
+      const primaryPublishedAt =
+        primaryLinkType === "newsArticle"
+          ? extractPublishedAtFromUrl(canonical)
           : null;
 
-      const canonical = normalized.url;
-      const existing = canonicalLinks.get(canonical);
-      if (!existing) {
-        canonicalLinks.set(canonical, link);
-        if (
-          link.normalizedUrl !== canonical ||
-          link.url !== canonical ||
-          link.hostname !== normalized.hostname ||
-          link.linkType !== classifiedLinkType ||
-          (publishedAt && link.publishedAt !== publishedAt)
-        ) {
-          await ctx.db.patch(link._id, {
-            url: canonical,
-            normalizedUrl: canonical,
-            hostname: normalized.hostname,
-            linkType: classifiedLinkType,
-            sourceDomain:
-              classifiedLinkType === "newsArticle"
-                ? normalized.hostname
-                : link.sourceDomain,
-            publishedAt: publishedAt || link.publishedAt,
-            updatedAt: Date.now(),
-          });
-          normalizedCount += 1;
-        }
-        continue;
-      }
-
-      const existingHasFolder = Boolean(existing.folderId);
-      const duplicateHasFolder = Boolean(link.folderId);
-      const existingScore =
-        Number(existing.favorite) * 4 +
-        Number(Boolean(existing.notes)) * 2 +
-        Number(Boolean(existing.hashtags?.length)) * 2 +
-        Number(existingHasFolder);
-      const duplicateScore =
-        Number(link.favorite) * 4 +
-        Number(Boolean(link.notes)) * 2 +
-        Number(Boolean(link.hashtags?.length)) * 2 +
-        Number(duplicateHasFolder);
-      const primary = duplicateScore > existingScore ? link : existing;
-      const duplicate = primary._id === link._id ? existing : link;
-
-      if (primary._id === link._id) {
-        canonicalLinks.set(canonical, link);
-      }
       if (
         primary.normalizedUrl !== canonical ||
         primary.url !== canonical ||
         primary.hostname !== normalized.hostname ||
-        primary.linkType !==
-          classifyLinkType(primary.linkType, normalized.hostname)
+        primary.linkType !== primaryLinkType ||
+        (primaryPublishedAt && primary.publishedAt !== primaryPublishedAt)
       ) {
-        const primaryLinkType = classifyLinkType(
-          primary.linkType,
-          normalized.hostname,
-        );
-        const primaryPublishedAt =
-          primaryLinkType === "newsArticle"
-            ? extractPublishedAtFromUrl(canonical)
-            : null;
         await ctx.db.patch(primary._id, {
           url: canonical,
           normalizedUrl: canonical,
@@ -453,12 +437,23 @@ export const normalizeAndDeduplicate = mutation({
           publishedAt: primaryPublishedAt || primary.publishedAt,
           updatedAt: Date.now(),
         });
+        normalizedCount += 1;
+        if (primaryLinkType === "newsArticle") correctedNewsPosts += 1;
       }
-      await ctx.db.delete(duplicate._id);
-      duplicatesRemoved += 1;
+      for (const duplicate of candidates) {
+        if (duplicate._id === primary._id) continue;
+        await ctx.db.delete(duplicate._id);
+        duplicatesRemoved += 1;
+      }
     }
 
-    return { normalizedCount, duplicatesRemoved };
+    return {
+      normalizedCount,
+      correctedNewsPosts,
+      duplicatesRemoved,
+      continueCursor: page.continueCursor,
+      isDone: page.isDone,
+    };
   },
 });
 
@@ -893,11 +888,11 @@ export const ensureNewsSources = mutation({
       existingSources.map((link) => [String(link.normalizedUrl), link]),
     );
     const checkedDomains = new Set();
+    // Se recorren lotes de toda la colección para recuperar también noticias
+    // que una importación antigua dejó fuera de la carpeta Noticias.
     const page = await ctx.db
       .query("computerLinks")
-      .withIndex("by_folder_linkType_updatedAt", (q) =>
-        q.eq("folderId", newsFolder._id).eq("linkType", "newsArticle"),
-      )
+      .withIndex("by_updatedAt")
       .order("asc")
       .paginate({
         numItems: Math.min(Math.max(Number(args.batchSize) || 1000, 1), 2000),
@@ -907,6 +902,13 @@ export const ensureNewsSources = mutation({
     let created = 0;
     let processed = 0;
     for (const article of page.page) {
+      if (["newsSource", "bookStore"].includes(article.linkType)) continue;
+      if (
+        article.linkType !== "newsArticle" &&
+        article.folderId !== newsFolder._id
+      ) {
+        continue;
+      }
       processed += 1;
       const domain = normalizeNewsDomain(
         article.sourceDomain || article.hostname || article.url,
