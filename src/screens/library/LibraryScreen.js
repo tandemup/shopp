@@ -44,6 +44,18 @@ const PREVIEW_TITLE_CACHE = new Map();
 const PREVIEW_TITLE_REQUESTS = new Map();
 let previewTitleSaveDisabled = false;
 
+const LOCAL_TRACKING_QUERY_KEYS = new Set([
+  "_ga",
+  "_gl",
+  "fbclid",
+  "gclid",
+  "igshid",
+  "mc_cid",
+  "mc_eid",
+  "redir_esc",
+  "si",
+]);
+
 const NEWS_SORT_OPTIONS = [
   {
     id: "publishedDesc",
@@ -450,6 +462,273 @@ function buildLibraryIntegrityReport(links, folders) {
   };
 }
 
+function normalizeLocalBackupUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    if (!/^https?:$/.test(url.protocol) || !url.hostname) return null;
+    // Para enlaces web ordinarios http y https representan el mismo destino.
+    // Usamos https para que también se detecten las copias antiguas en http.
+    url.protocol = "https:";
+    url.hostname = url.hostname.replace(/^www\./i, "").toLowerCase();
+    url.hash = "";
+    for (const key of [...url.searchParams.keys()]) {
+      const normalizedKey = key.toLowerCase();
+      if (
+        normalizedKey.startsWith("utm_") ||
+        LOCAL_TRACKING_QUERY_KEYS.has(normalizedKey)
+      ) {
+        url.searchParams.delete(key);
+      }
+    }
+    if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
+    const params = [...url.searchParams.entries()].sort(
+      ([keyA, valueA], [keyB, valueB]) =>
+        keyA.localeCompare(keyB) || valueA.localeCompare(valueB),
+    );
+    url.search = new URLSearchParams(params).toString();
+    return { url: url.toString(), hostname: url.hostname };
+  } catch {
+    return null;
+  }
+}
+
+function isLocalDomainHomepage(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return (url.pathname === "" || url.pathname === "/") && !url.search;
+  } catch {
+    return false;
+  }
+}
+
+function localBackupRootFolderName(folderKey, folderByKey) {
+  let folder = folderByKey.get(String(folderKey || ""));
+  let safety = 20;
+  while (folder?.parentKey && safety > 0) {
+    folder = folderByKey.get(String(folder.parentKey));
+    safety -= 1;
+  }
+  return String(folder?.name || "").trim().toLowerCase();
+}
+
+function scoreLocalBackupLink(link) {
+  return (
+    Number(Boolean(link.favorite)) * 8 +
+    Number(Boolean(String(link.notes || "").trim())) * 4 +
+    Number(Array.isArray(link.hashtags) && link.hashtags.length > 0) * 3 +
+    Number(Boolean(String(link.customTitle || "").trim())) * 2 +
+    Number(Boolean(link.publishedAt)) +
+    Number(Boolean(link.folderKey))
+  );
+}
+
+function readableBackupFolderSegment(value) {
+  let decoded = String(value || "");
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // Las copias anteriores pueden contener una clave ya legible o una
+    // codificación incompleta. Conservamos el texto en vez de descartarlo.
+  }
+  return decoded
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\\/]+/g, " ")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_");
+}
+
+function readableBackupFolderKey(value) {
+  return String(value || "")
+    .split("/")
+    .map(readableBackupFolderSegment)
+    .filter(Boolean)
+    .join("/");
+}
+
+function repairBackupLocally(backup) {
+  const source = backup?.data;
+  if (
+    backup?.format !== "shopp-library-backup" ||
+    Number(backup?.version) !== 1 ||
+    !Array.isArray(source?.folders) ||
+    !Array.isArray(source?.links)
+  ) {
+    throw new Error("El fichero no es una copia de Biblioteca compatible.");
+  }
+
+  const folderKeyMap = new Map();
+  const folders = source.folders.map((folder) => {
+    const originalKey = String(folder?.key || "");
+    const key = readableBackupFolderKey(originalKey);
+    if (originalKey && key) folderKeyMap.set(originalKey, key);
+    return {
+      ...folder,
+      key: key || originalKey,
+      parentKey: folder?.parentKey
+        ? readableBackupFolderKey(folder.parentKey)
+        : null,
+    };
+  });
+  const folderByKey = new Map(
+    folders
+      .filter((folder) => folder?.key)
+      .map((folder) => [String(folder.key), folder]),
+  );
+  const newsFolder = folders.find(
+    (folder) => localBackupRootFolderName(folder?.key, folderByKey) === "noticias",
+  );
+  const newsFolderKey = newsFolder?.key || "Noticias";
+  const bookFolder = folders.find(
+    (folder) => localBackupRootFolderName(folder?.key, folderByKey) === "libros",
+  );
+  const bookFolderKey = bookFolder?.key || "Libros";
+  const linksByCanonicalUrl = new Map();
+  const summary = {
+    normalizedUrls: 0,
+    duplicatesRemoved: 0,
+    invalidUrls: 0,
+    typeCorrections: 0,
+    sourcesAdded: 0,
+  };
+
+  for (const originalLink of source.links) {
+    if (!originalLink || typeof originalLink.url !== "string") {
+      summary.invalidUrls += 1;
+      continue;
+    }
+    const normalized = normalizeLocalBackupUrl(
+      originalLink.normalizedUrl || originalLink.url,
+    );
+    if (!normalized) {
+      summary.invalidUrls += 1;
+      continue;
+    }
+    const link = { ...originalLink };
+    if (link.folderKey) {
+      const originalFolderKey = String(link.folderKey);
+      link.folderKey =
+        folderKeyMap.get(originalFolderKey) ||
+        readableBackupFolderKey(originalFolderKey) ||
+        originalFolderKey;
+    }
+    if (link.url !== normalized.url || link.normalizedUrl !== normalized.url) {
+      summary.normalizedUrls += 1;
+    }
+    link.url = normalized.url;
+    link.normalizedUrl = normalized.url;
+    link.hostname = normalized.hostname;
+
+    const rootFolderName = localBackupRootFolderName(link.folderKey, folderByKey);
+    let linkType = link.linkType || "general";
+    if (linkType === "newsArticle" && isLocalDomainHomepage(link.url)) {
+      linkType = "newsSource";
+    } else if (linkType === "general" && rootFolderName === "libros") {
+      linkType = "bookLink";
+    } else if (linkType === "newsSource" && /^books\.google\./i.test(link.hostname)) {
+      linkType = "bookStore";
+      link.folderKey = bookFolderKey;
+    } else if (
+      linkType === "newsSource" &&
+      /^(m\.)?youtube\.com$/i.test(link.hostname)
+    ) {
+      linkType = "general";
+    }
+    if (link.linkType !== linkType) summary.typeCorrections += 1;
+    link.linkType = linkType;
+    link.sourceDomain = ["newsSource", "newsArticle", "bookStore", "bookLink"].includes(linkType)
+      ? normalized.hostname
+      : undefined;
+
+    const bucket = linksByCanonicalUrl.get(normalized.url) || [];
+    bucket.push(link);
+    linksByCanonicalUrl.set(normalized.url, bucket);
+  }
+
+  const repairedLinks = [];
+  for (const candidates of linksByCanonicalUrl.values()) {
+    // Una fuente de catálogo y una noticia concreta no se intercambian. Para
+    // enlaces del mismo tipo conservamos el que contiene más metadatos.
+    const byType = new Map();
+    for (const candidate of candidates) {
+      const typeCandidates = byType.get(candidate.linkType) || [];
+      typeCandidates.push(candidate);
+      byType.set(candidate.linkType, typeCandidates);
+    }
+    for (const typeCandidates of byType.values()) {
+      const primary = typeCandidates.reduce((best, candidate) =>
+        scoreLocalBackupLink(candidate) > scoreLocalBackupLink(best)
+          ? candidate
+          : best,
+      );
+      repairedLinks.push(primary);
+      summary.duplicatesRemoved += typeCandidates.length - 1;
+    }
+  }
+
+  const knownSourceDomains = new Set(
+    repairedLinks
+      .filter((link) => link.linkType === "newsSource")
+      .map((link) => String(link.sourceDomain || link.hostname || "").toLowerCase())
+      .filter(Boolean),
+  );
+  const articleDomains = new Set(
+    repairedLinks
+      .filter((link) => link.linkType === "newsArticle")
+      .map((link) => String(link.sourceDomain || link.hostname || "").toLowerCase())
+      .filter(Boolean),
+  );
+  for (const domain of articleDomains) {
+    if (knownSourceDomains.has(domain)) continue;
+    const homepage = normalizeLocalBackupUrl(`https://${domain}/`);
+    if (!homepage) continue;
+    repairedLinks.push({
+      url: homepage.url,
+      normalizedUrl: homepage.url,
+      hostname: homepage.hostname,
+      sourceDomain: homepage.hostname,
+      linkType: "newsSource",
+      folderKey: newsFolderKey,
+      username: "Biblioteca",
+      favorite: false,
+      hashtags: [],
+      createdAt: Date.now(),
+    });
+    knownSourceDomains.add(domain);
+    summary.sourcesAdded += 1;
+  }
+
+  repairedLinks.sort((a, b) =>
+    String(a.normalizedUrl || a.url).localeCompare(String(b.normalizedUrl || b.url)),
+  );
+  const repairedBackup = {
+    ...backup,
+    exportedAt: new Date().toISOString(),
+    integrityRepair: {
+      createdAt: new Date().toISOString(),
+      mode: "local-json-only",
+      ...summary,
+    },
+    data: { folders, links: repairedLinks },
+  };
+  return {
+    repairedBackup,
+    summary,
+    before: buildLibraryIntegrityReport(source.links, source.folders),
+    after: buildLibraryIntegrityReport(repairedLinks, folders),
+  };
+}
+
+function localIntegrityFilename(fileName) {
+  const base = String(fileName || "shopp-biblioteca")
+    .replace(/\.json$/i, "")
+    .replace(/[^a-z0-9áéíóúüñ._-]+/gi, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `${base || "shopp-biblioteca"}-reparado.json`;
+}
+
 function getAddUrlErrorMessage(error) {
   const message = String(error?.message || "");
   if (/url|http|https|válida|invalid/i.test(message)) {
@@ -492,9 +771,8 @@ function buildBackupFolders(folders) {
       ? folderById.get(String(folder.parentFolderId))
       : null;
     const parentKey = parent ? folderKey(parent) : null;
-    const key = parentKey
-      ? `${parentKey}/${encodeURIComponent(folder.name)}`
-      : encodeURIComponent(folder.name);
+    const segment = readableBackupFolderSegment(folder.name);
+    const key = parentKey ? `${parentKey}/${segment}` : segment;
     keyCache.set(id, key);
     return key;
   };
@@ -1031,6 +1309,24 @@ export default function LibraryScreen({ navigation }) {
   });
   const links = libraryResult?.items;
   const shownItemCount = Array.isArray(links) ? links.length : 0;
+  const shownHashtags = useMemo(() => {
+    const counts = new Map();
+    (Array.isArray(links) ? links : []).forEach((link) => {
+      (Array.isArray(link?.hashtags) ? link.hashtags : []).forEach((tag) => {
+        const normalizedTag = String(tag || "")
+          .trim()
+          .replace(/^#+/, "")
+          .toLowerCase();
+        if (!normalizedTag) return;
+        counts.set(normalizedTag, (counts.get(normalizedTag) || 0) + 1);
+      });
+    });
+    return [...counts.entries()]
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((first, second) =>
+        second.count - first.count || first.tag.localeCompare(second.tag),
+      );
+  }, [links]);
   const displayedPostsDateRange = useMemo(
     () => getDisplayedPostsDateRange(links),
     [links],
@@ -1061,7 +1357,7 @@ export default function LibraryScreen({ navigation }) {
     ? Math.min(100, Math.round((Number(slowTask.current || 0) / slowTask.total) * 100))
     : 0;
   const filteredIntegrityCategoryCounts = useMemo(() => {
-    const counts = integrityReport?.categoryCounts || [];
+    const counts = integrityReport?.after?.categoryCounts || [];
     const query = integritySearch.trim().toLowerCase();
     if (!query) return counts;
     return counts.filter(([category]) =>
@@ -1082,10 +1378,6 @@ export default function LibraryScreen({ navigation }) {
   const removeNewsSource = useMutation(api.computerLinks.removeNewsSource);
   const importBackup = useMutation(api.computerLinks.importBackup);
   const getLinkPreview = useAction(api.linkPreviews.get);
-  const ensureNewsSources = useMutation(api.computerLinks.ensureNewsSources);
-  const normalizeAndDeduplicate = useMutation(
-    api.computerLinks.normalizeAndDeduplicate,
-  );
   useEffect(() => {
     if (!backupMode) return;
     if (exportStatus === "CanLoadMore") {
@@ -1134,99 +1426,13 @@ export default function LibraryScreen({ navigation }) {
         return;
       }
 
-      if (currentBackupMode === "integrity") {
-        (async () => {
-          try {
-            const before = buildLibraryIntegrityReport(
-              currentBackup.links,
-              currentBackup.folders,
-            );
-            let cursor = null;
-            let sourceSyncResult = null;
-            let processedSources = 0;
-            while (true) {
-              sourceSyncResult = await ensureNewsSources({
-                clientId,
-                batchSize: IMPORT_BATCH_SIZE,
-                ...(cursor ? { cursor } : {}),
-              });
-              processedSources += Number(sourceSyncResult?.processed || 0);
-              setSlowTask({
-                kind: "integrity",
-                title: "Comprobando integridad",
-                message: "Reconstruyendo periódicos y tiendas de libros…",
-                current: processedSources,
-                total: before.totalLinks,
-              });
-              if (sourceSyncResult?.isDone) break;
-              cursor = sourceSyncResult?.continueCursor || null;
-              if (!cursor) break;
-            }
-            let normalizationCursor = null;
-            let normalizationResult = null;
-            let correctedPosts = 0;
-            let normalizedBatches = 0;
-            while (true) {
-              normalizationResult = await normalizeAndDeduplicate({
-                batchSize: 80,
-                ...(normalizationCursor
-                  ? { cursor: normalizationCursor }
-                  : {}),
-              });
-              correctedPosts += Number(
-                normalizationResult?.correctedNewsPosts || 0,
-              );
-              normalizedBatches += 1;
-              setSlowTask({
-                kind: "integrity",
-                title: "Comprobando integridad",
-                message: `Normalizando enlaces (lote ${normalizedBatches})…`,
-              });
-              if (normalizationResult?.isDone) break;
-              normalizationCursor = normalizationResult?.continueCursor || null;
-              if (!normalizationCursor) break;
-            }
-            setIntegrityReport({
-              ...before,
-              addedSources: Number(
-                sourceSyncResult?.created ||
-                  sourceSyncResult?.createdSources ||
-                  0,
-              ),
-              correctedPosts: Number(
-                correctedPosts ||
-                  normalizationResult?.correctedNewsPosts ||
-                  normalizationResult?.updatedNewsPosts ||
-                  normalizationResult?.corrected ||
-                  normalizationResult?.updatedCount ||
-                  normalizationResult?.updated ||
-                  0,
-              ),
-              checkedAt: new Date().toISOString(),
-            });
-          } catch (error) {
-            safeAlert(
-              "No se pudo comprobar",
-              error?.message ||
-                "No se pudo revisar la integridad de la Biblioteca.",
-            );
-          } finally {
-            setIntegrityBusy(false);
-            setBackupBusy(false);
-            setSlowTask(null);
-          }
-        })();
-      }
     }
   }, [
     backupMode,
-    clientId,
-    ensureNewsSources,
     exportedLinks,
     exportStatus,
     libraryBackup,
     loadMoreExportedLinks,
-    normalizeAndDeduplicate,
   ]);
 
   useEffect(() => {
@@ -1759,12 +1965,82 @@ export default function LibraryScreen({ navigation }) {
     setBackupBusy(true);
     setSlowTask({
       kind: "integrity",
-      title: "Comprobando integridad",
-      message: "Leyendo los enlaces de Biblioteca…",
-      current: 0,
+      title: "Analizando copia local",
+      message: "Selecciona una exportación JSON de Biblioteca…",
     });
-    setBackupMode("integrity");
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/json", "text/json", "text/plain"],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled) return;
+      const asset = result.assets?.[0];
+      if (!asset?.uri) throw new Error("No se pudo leer el fichero seleccionado.");
+
+      setSlowTask({
+        kind: "integrity",
+        title: "Analizando copia local",
+        message: "Revisando URL, duplicados y fuentes…",
+      });
+      // Dejamos que se pinte el progreso antes de analizar un archivo grande.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const jsonText =
+        Platform.OS === "web" && asset.file
+          ? await asset.file.text()
+          : await FileSystem.readAsStringAsync(asset.uri, {
+              encoding: FileSystem.EncodingType.UTF8,
+            });
+      const repaired = repairBackupLocally(JSON.parse(jsonText));
+      setIntegrityReport({
+        ...repaired,
+        fileName: asset.name || "copia de Biblioteca",
+        repairedFileName: localIntegrityFilename(asset.name),
+        checkedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      safeAlert(
+        "No se pudo comprobar",
+        String(error?.name || "") === "SyntaxError"
+          ? "El fichero seleccionado no contiene JSON válido."
+          : error?.message || "Revisa la copia de seguridad.",
+      );
+    } finally {
+      setIntegrityBusy(false);
+      setBackupBusy(false);
+      setSlowTask(null);
+    }
   }, [integrityBusy]);
+
+  const downloadRepairedIntegrityBackup = useCallback(async () => {
+    if (!integrityReport?.repairedBackup || backupBusy) return;
+    setBackupBusy(true);
+    try {
+      const filename = integrityReport.repairedFileName || "shopp-biblioteca-reparado.json";
+      const json = JSON.stringify(integrityReport.repairedBackup, null, 2);
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(objectUrl);
+      } else {
+        const fileUri = `${FileSystem.documentDirectory}${filename}`;
+        await FileSystem.writeAsStringAsync(fileUri, json, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+        safeAlert("Copia reparada", `Se ha guardado ${filename} en el almacenamiento de Shopp.\n\n${fileUri}`);
+      }
+    } catch (error) {
+      safeAlert("No se pudo crear la copia", error?.message || "Inténtalo de nuevo.");
+    } finally {
+      setBackupBusy(false);
+    }
+  }, [backupBusy, integrityReport]);
 
   const closeIntegrityReport = useCallback(() => {
     setIntegrityReport(null);
@@ -1992,7 +2268,7 @@ export default function LibraryScreen({ navigation }) {
                     color="#047857"
                   />
                   <Text style={styles.integrityButtonText}>
-                    {integrityBusy ? "Comprobando…" : "Comprobar integridad"}
+                    {integrityBusy ? "Analizando…" : "Comprobar JSON local"}
                   </Text>
                 </Pressable>
               </View>
@@ -2046,6 +2322,37 @@ export default function LibraryScreen({ navigation }) {
                       Minimal
                     </Text>
                   </Pressable>
+                </View>
+                <View style={styles.toolsHashtagSection}>
+                  <Text style={styles.displayModeLabel}>
+                    Hashtags de los enlaces mostrados
+                  </Text>
+                  {shownHashtags.length ? (
+                    <ScrollView
+                      style={styles.toolsHashtagList}
+                      contentContainerStyle={styles.toolsHashtagListContent}
+                      nestedScrollEnabled
+                    >
+                      {shownHashtags.map(({ tag, count }) => (
+                        <Pressable
+                          key={tag}
+                          onPress={() => {
+                            setSearch(tag);
+                            setToolsModalVisible(false);
+                          }}
+                          style={styles.toolsHashtagChip}
+                          accessibilityLabel={`Filtrar por #${tag}, ${count} enlaces`}
+                        >
+                          <Text style={styles.toolsHashtagText}>#{tag}</Text>
+                          <Text style={styles.toolsHashtagCount}>{count}</Text>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  ) : (
+                    <Text style={styles.toolsHashtagEmpty}>
+                      No hay hashtags en los enlaces mostrados.
+                    </Text>
+                  )}
                 </View>
               </View>
             </View>
@@ -2642,35 +2949,94 @@ export default function LibraryScreen({ navigation }) {
             }
             if (!isSourceCatalog && libraryView === "minimal") {
               return (
-                <Pressable
+                <View
                   style={[
                     styles.minimalLinkCard,
                     isInformaticaFolder(folder) && styles.minimalLinkCardDetailed,
                   ]}
-                  onPress={() => Linking.openURL(item.normalizedUrl)}
                 >
-                  <DomainFavicon hostname={getLinkDomain(item)} />
-                  <View style={styles.minimalLinkText}>
-                    <Text style={styles.minimalLinkDomain} numberOfLines={1}>
-                      {getLinkDomain(item)}
-                    </Text>
-                    <MinimalLinkTitle
-                      item={item}
-                      previewMode={
-                        isInformaticaFolder(folder) ? "document" : "default"
-                      }
-                    />
-                    {formatLinkDate(
-                      item.publishedAt || item.createdAt || item.updatedAt,
-                    ) ? (
-                      <Text style={styles.minimalLinkDate}>
-                        {formatLinkDate(
-                          item.publishedAt || item.createdAt || item.updatedAt,
-                        )}
+                  <View style={styles.minimalLinkMain}>
+                  <Pressable
+                    style={styles.minimalLinkOpenArea}
+                    onPress={() => Linking.openURL(item.normalizedUrl)}
+                    accessibilityLabel={`Abrir ${item.customTitle || getLinkDomain(item)}`}
+                  >
+                    <DomainFavicon hostname={getLinkDomain(item)} />
+                    <View style={styles.minimalLinkText}>
+                      <Text style={styles.minimalLinkDomain} numberOfLines={1}>
+                        {getLinkDomain(item)}
                       </Text>
-                    ) : null}
+                      <MinimalLinkTitle
+                        item={item}
+                        previewMode={
+                          isInformaticaFolder(folder) ? "document" : "default"
+                        }
+                      />
+                      {formatLinkDate(
+                        item.publishedAt || item.createdAt || item.updatedAt,
+                      ) ? (
+                        <Text style={styles.minimalLinkDate}>
+                          {formatLinkDate(
+                            item.publishedAt || item.createdAt || item.updatedAt,
+                          )}
+                        </Text>
+                      ) : null}
+                      {item.notes ? (
+                        <Text style={styles.minimalLinkNotes} numberOfLines={2}>
+                          {item.notes}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                  {item.hashtags?.length ? (
+                    <View style={styles.minimalHashtagRow}>
+                      {item.hashtags.map((tag) => (
+                        <Pressable
+                          key={tag}
+                          onPress={() => setSearch(tag)}
+                          accessibilityLabel={`Buscar #${tag}`}
+                        >
+                          <Text style={styles.minimalHashtag}>#{tag}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
                   </View>
-                </Pressable>
+                  <View style={styles.minimalLinkActions}>
+                    <Pressable
+                      onPress={() => openMetadataEditor(item)}
+                      style={styles.minimalLinkButton}
+                      accessibilityLabel="Editar enlace"
+                    >
+                      <Ionicons name="create-outline" size={17} color="#475569" />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => toggleFavorite({ linkId: item._id })}
+                      style={styles.minimalLinkButton}
+                      accessibilityLabel={item.favorite ? "Quitar de favoritos" : "Añadir a favoritos"}
+                    >
+                      <Ionicons
+                        name={item.favorite ? "star" : "star-outline"}
+                        size={17}
+                        color={item.favorite ? "#eab308" : "#64748b"}
+                      />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setMovingLink(item)}
+                      style={styles.minimalLinkButton}
+                      accessibilityLabel="Mover enlace"
+                    >
+                      <Ionicons name="folder-open-outline" size={17} color="#2563eb" />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => removeLink({ linkId: item._id })}
+                      style={styles.minimalLinkButton}
+                      accessibilityLabel="Eliminar enlace"
+                    >
+                      <Ionicons name="trash-outline" size={17} color="#dc2626" />
+                    </Pressable>
+                  </View>
+                </View>
               );
             }
             return (
@@ -2790,41 +3156,48 @@ export default function LibraryScreen({ navigation }) {
         >
           <View style={styles.modalBackdrop}>
             <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Integridad de los enlaces</Text>
+              <Text style={styles.modalTitle}>Integridad local del JSON</Text>
+              <Text style={styles.integrityLocalHint}>
+                Se ha analizado {integrityReport?.fileName || "la copia"} sin leer ni modificar Convex.
+              </Text>
               <View style={styles.integritySummaryBox}>
                 <Text style={styles.integritySummaryText}>
-                  {integrityReport?.totalLinks || 0} enlaces ·{" "}
-                  {integrityReport?.newsPosts || 0} noticias ·{" "}
-                  {integrityReport?.newsSources || 0} news sources
+                  {integrityReport?.before?.totalLinks || 0} enlaces originales ·{" "}
+                  {integrityReport?.after?.totalLinks || 0} en la copia reparada
                 </Text>
                 <Text style={styles.integritySummaryText}>
-                  News sources añadidos: {integrityReport?.addedSources || 0}
+                  URL normalizadas: {integrityReport?.summary?.normalizedUrls || 0} · Duplicados eliminados: {integrityReport?.summary?.duplicatesRemoved || 0}
                 </Text>
                 <Text style={styles.integritySummaryText}>
-                  Posts corregidos: {integrityReport?.correctedPosts || 0}
+                  Tipos corregidos: {integrityReport?.summary?.typeCorrections || 0} · Periódicos añadidos: {integrityReport?.summary?.sourcesAdded || 0}
                 </Text>
               </View>
-              {integrityReport?.missingSourceDomains?.length ? (
+              {integrityReport?.before?.missingSourceDomains?.length ? (
                 <View style={styles.integrityWarningBox}>
                   <Text style={styles.integrityWarning}>
-                    Dominios que requerían news source antes de la reparación:{" "}
-                    {integrityReport.missingSourceDomains.length}
+                    Dominios que no tenían periódico antes de la reparación:{" "}
+                    {integrityReport.before.missingSourceDomains.length}
                   </Text>
                   <ScrollView
                     style={styles.integrityDomainList}
                     nestedScrollEnabled
                   >
                     <Text style={styles.integrityDomainText}>
-                      {integrityReport.missingSourceDomains.join(", ")}
+                      {integrityReport.before.missingSourceDomains.join(", ")}
                     </Text>
                   </ScrollView>
                 </View>
               ) : (
                 <Text style={styles.integrityOk}>
-                  Todos los dominios de noticias tenían news source.
+                  Todos los dominios de noticias ya tenían periódico.
                 </Text>
               )}
-              <Text style={styles.fieldLabel}>Posts por categoría</Text>
+              {integrityReport?.summary?.invalidUrls ? (
+                <Text style={styles.integrityWarningLegacy}>
+                  Enlaces descartados por URL no válida: {integrityReport.summary.invalidUrls}
+                </Text>
+              ) : null}
+              <Text style={styles.fieldLabel}>Enlaces reparados por categoría</Text>
               <View style={styles.integritySearchRow}>
                 <Ionicons name="search-outline" size={16} color="#64748b" />
                 <TextInput
@@ -2869,6 +3242,14 @@ export default function LibraryScreen({ navigation }) {
                 )}
               </ScrollView>
               <View style={styles.modalActions}>
+                <Pressable
+                  onPress={downloadRepairedIntegrityBackup}
+                  disabled={backupBusy}
+                  style={[styles.backupButton, styles.integrityDownloadButton, backupBusy && styles.buttonDisabled]}
+                >
+                  <Ionicons name="download-outline" size={17} color="#047857" />
+                  <Text style={styles.integrityButtonText}>Descargar JSON reparado</Text>
+                </Pressable>
                 <Pressable
                   onPress={closeIntegrityReport}
                   style={styles.saveButton}
@@ -3622,6 +4003,32 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#e2e8f0",
   },
+  toolsHashtagSection: {
+    gap: 6,
+    marginTop: 4,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#e2e8f0",
+  },
+  toolsHashtagList: { maxHeight: 94 },
+  toolsHashtagListContent: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  toolsHashtagChip: {
+    minHeight: 29,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+  toolsHashtagText: { fontSize: 11, fontWeight: "800", color: "#2563eb" },
+  toolsHashtagCount: { fontSize: 10, fontWeight: "900", color: "#64748b" },
+  toolsHashtagEmpty: { fontSize: 11, color: "#64748b" },
   backupButton: {
     minHeight: 36,
     flexDirection: "row",
@@ -3645,6 +4052,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     color: "#047857",
+  },
+  integrityDownloadButton: {
+    borderColor: "#a7f3d0",
+    backgroundColor: "#ecfdf5",
   },
   folderScroll: {
     flexGrow: 0,
@@ -4071,7 +4482,30 @@ const styles = StyleSheet.create({
   minimalLinkCardDetailed: {
     alignItems: "flex-start",
   },
+  minimalLinkMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  minimalLinkOpenArea: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+  },
   minimalLinkText: { flex: 1, minWidth: 0, marginLeft: 8 },
+  minimalLinkActions: {
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "center",
+    marginLeft: 5,
+  },
+  minimalLinkButton: {
+    width: 27,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   minimalLinkDomain: {
     fontSize: 10,
     fontWeight: "900",
@@ -4097,6 +4531,27 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   minimalLinkDate: { marginTop: 2, fontSize: 10, color: "#64748b" },
+  minimalLinkNotes: {
+    marginTop: 3,
+    fontSize: 11,
+    lineHeight: 15,
+    color: "#475569",
+  },
+  minimalHashtagRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: 4,
+  },
+  minimalHashtag: {
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 8,
+    backgroundColor: "#eff6ff",
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#2563eb",
+  },
   minimalNewsCard: {
     flex: 1,
     minWidth: 0,
@@ -4330,6 +4785,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#ecfdf5",
   },
   integritySummaryText: { fontSize: 12, color: "#065f46" },
+  integrityLocalHint: {
+    marginTop: -5,
+    marginBottom: 10,
+    fontSize: 11,
+    lineHeight: 16,
+    color: "#64748b",
+  },
   integrityOk: { marginTop: 10, fontSize: 12, color: "#047857" },
   integrityWarningBox: {
     marginTop: 10,
