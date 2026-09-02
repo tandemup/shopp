@@ -5,6 +5,7 @@ import React, {
   useState,
 } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Linking,
   Modal,
@@ -37,6 +38,7 @@ const CATALOG_SOURCES_IMPORT_KEY = "__catalog_sources__";
 const IMPORT_BATCH_SIZE = 1000;
 const IMPORT_PREVIEW_CONCURRENCY = 3;
 const LIBRARY_VISIBLE_LINK_LIMIT = 80;
+const LIBRARY_CATALOG_SOURCE_LIMIT = 600;
 const PREVIEW_TITLE_CACHE = new Map();
 const PREVIEW_TITLE_REQUESTS = new Map();
 let previewTitleSaveDisabled = false;
@@ -608,7 +610,7 @@ function isNewsBackupLink(link, folderByKey) {
   return normalizeLabel(rootFolder?.name) === "noticias";
 }
 
-async function enrichImportedNewsMetadata(data, getLinkPreview) {
+async function enrichImportedNewsMetadata(data, getLinkPreview, onProgress) {
   const folders = Array.isArray(data?.folders) ? data.folders : [];
   const links = Array.isArray(data?.links) ? data.links : [];
   const folderByKey = new Map(
@@ -623,6 +625,7 @@ async function enrichImportedNewsMetadata(data, getLinkPreview) {
     .filter(({ link }) => isValidHttpUrl(link.normalizedUrl || link.url || ""));
   let nextJobIndex = 0;
   let updated = 0;
+  let completed = 0;
 
   const worker = async () => {
     while (nextJobIndex < jobs.length) {
@@ -649,6 +652,11 @@ async function enrichImportedNewsMetadata(data, getLinkPreview) {
         updated += 1;
       } catch {
         // Si una web falla, conservamos el dato importado y seguimos.
+      } finally {
+        completed += 1;
+        if (completed === jobs.length || completed % 20 === 0) {
+          onProgress?.({ completed, total: jobs.length });
+        }
       }
     }
   };
@@ -877,6 +885,7 @@ export default function LibraryScreen({ navigation }) {
   const [integrityReport, setIntegrityReport] = useState(null);
   const [integritySearch, setIntegritySearch] = useState("");
   const [libraryView, setLibraryView] = useState("cards");
+  const [slowTask, setSlowTask] = useState(null);
 
   const folders = useQuery(api.computerLinks.listFolders) || [];
   const {
@@ -903,6 +912,17 @@ export default function LibraryScreen({ navigation }) {
     }, 300);
     return () => clearTimeout(timeoutId);
   }, [search]);
+  useEffect(() => {
+    if (Platform.OS !== "web" || !slowTask || typeof window === "undefined") {
+      return undefined;
+    }
+    const warnBeforeExit = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeExit);
+    return () => window.removeEventListener("beforeunload", warnBeforeExit);
+  }, [slowTask]);
   const selectedFolderId = !["all", "favorites", "unclassified"].includes(
     folderFilter,
   )
@@ -936,7 +956,9 @@ export default function LibraryScreen({ navigation }) {
           ? "bookLink"
           : "newsArticle"
       : undefined,
-    limit: LIBRARY_VISIBLE_LINK_LIMIT,
+    limit: isSourceCatalog
+      ? LIBRARY_CATALOG_SOURCE_LIMIT
+      : LIBRARY_VISIBLE_LINK_LIMIT,
   });
   const shownItemCount = Array.isArray(links) ? links.length : 0;
   const shownItemLabel = isSourceCatalog
@@ -950,6 +972,9 @@ export default function LibraryScreen({ navigation }) {
     : shownItemCount === 1
       ? "enlace mostrado"
       : "enlaces mostrados";
+  const slowTaskPercent = slowTask?.total
+    ? Math.min(100, Math.round((Number(slowTask.current || 0) / slowTask.total) * 100))
+    : 0;
   const filteredIntegrityCategoryCounts = useMemo(() => {
     const counts = integrityReport?.categoryCounts || [];
     const query = integritySearch.trim().toLowerCase();
@@ -979,6 +1004,18 @@ export default function LibraryScreen({ navigation }) {
   useEffect(() => {
     if (!backupMode) return;
     if (exportStatus === "CanLoadMore") {
+      const loadedLinkCount = Array.isArray(exportedLinks)
+        ? exportedLinks.length
+        : 0;
+      setSlowTask((current) =>
+        current?.kind === "prepare-export"
+          ? {
+              ...current,
+              message: `Leyendo ${loadedLinkCount} enlaces…`,
+              current: loadedLinkCount,
+            }
+          : current,
+      );
       loadMoreExportedLinks(IMPORT_BATCH_SIZE);
       return;
     }
@@ -1008,6 +1045,7 @@ export default function LibraryScreen({ navigation }) {
         );
         setExportNameVisible(true);
         setBackupBusy(false);
+        setSlowTask(null);
         return;
       }
 
@@ -1020,11 +1058,20 @@ export default function LibraryScreen({ navigation }) {
             );
             let cursor = null;
             let sourceSyncResult = null;
+            let processedSources = 0;
             while (true) {
               sourceSyncResult = await ensureNewsSources({
                 clientId,
                 batchSize: IMPORT_BATCH_SIZE,
                 ...(cursor ? { cursor } : {}),
+              });
+              processedSources += Number(sourceSyncResult?.processed || 0);
+              setSlowTask({
+                kind: "integrity",
+                title: "Comprobando integridad",
+                message: "Reconstruyendo periódicos y tiendas de libros…",
+                current: processedSources,
+                total: before.totalLinks,
               });
               if (sourceSyncResult?.isDone) break;
               cursor = sourceSyncResult?.continueCursor || null;
@@ -1033,6 +1080,7 @@ export default function LibraryScreen({ navigation }) {
             let normalizationCursor = null;
             let normalizationResult = null;
             let correctedPosts = 0;
+            let normalizedBatches = 0;
             while (true) {
               normalizationResult = await normalizeAndDeduplicate({
                 batchSize: 80,
@@ -1043,6 +1091,12 @@ export default function LibraryScreen({ navigation }) {
               correctedPosts += Number(
                 normalizationResult?.correctedNewsPosts || 0,
               );
+              normalizedBatches += 1;
+              setSlowTask({
+                kind: "integrity",
+                title: "Comprobando integridad",
+                message: `Normalizando enlaces (lote ${normalizedBatches})…`,
+              });
               if (normalizationResult?.isDone) break;
               normalizationCursor = normalizationResult?.continueCursor || null;
               if (!normalizationCursor) break;
@@ -1074,6 +1128,7 @@ export default function LibraryScreen({ navigation }) {
           } finally {
             setIntegrityBusy(false);
             setBackupBusy(false);
+            setSlowTask(null);
           }
         })();
       }
@@ -1082,6 +1137,7 @@ export default function LibraryScreen({ navigation }) {
     backupMode,
     clientId,
     ensureNewsSources,
+    exportedLinks,
     exportStatus,
     libraryBackup,
     loadMoreExportedLinks,
@@ -1292,6 +1348,13 @@ export default function LibraryScreen({ navigation }) {
     setExportReview(null);
     setSelectedExportCategoryKeys([]);
     setBackupBusy(true);
+    setSlowTask({
+      kind: "export",
+      title: "Exportando Biblioteca",
+      message: `Preparando ${selectedData.links.length} enlaces…`,
+      current: 0,
+      total: selectedData.links.length,
+    });
     try {
       const payload = {
         format: "shopp-library-backup",
@@ -1328,6 +1391,7 @@ export default function LibraryScreen({ navigation }) {
       safeAlert("No se pudo exportar", error?.message || "Inténtalo de nuevo.");
     } finally {
       setBackupBusy(false);
+      setSlowTask(null);
     }
   }, [backupBusy, exportFilename, exportReview, selectedExportCategoryKeys]);
 
@@ -1335,6 +1399,12 @@ export default function LibraryScreen({ navigation }) {
     if (backupBusy) return;
     setExportFilename(defaultBackupFilename());
     setBackupBusy(true);
+    setSlowTask({
+      kind: "prepare-export",
+      title: "Preparando exportación",
+      message: "Leyendo la Biblioteca…",
+      current: 0,
+    });
     setBackupMode("export");
   }, [backupBusy]);
 
@@ -1359,9 +1429,27 @@ export default function LibraryScreen({ navigation }) {
       setImportMode("combine");
       setEnrichNewsOnImport(true);
       setBackupBusy(true);
+      setSlowTask({
+        kind: "import",
+        title: "Importando Biblioteca",
+        message: "Preparando los enlaces seleccionados…",
+        current: 0,
+        total: Array.isArray(selectedData?.links) ? selectedData.links.length : 0,
+      });
       try {
         const enriched = enrichNewsOnImport
-          ? await enrichImportedNewsMetadata(selectedData, getLinkPreview)
+          ? await enrichImportedNewsMetadata(
+              selectedData,
+              getLinkPreview,
+              ({ completed, total }) =>
+                setSlowTask({
+                  kind: "import",
+                  title: "Importando Biblioteca",
+                  message: "Actualizando títulos y fechas de noticias…",
+                  current: completed,
+                  total,
+                }),
+            )
           : { data: selectedData, summary: { checked: 0, updated: 0 } };
         const importData = enriched.data;
         const links = Array.isArray(importData.links) ? importData.links : [];
@@ -1381,6 +1469,13 @@ export default function LibraryScreen({ navigation }) {
           newsMetadataUpdated: enriched.summary.updated,
         };
         for (let index = 0; index < linkBatches.length; index += 1) {
+          setSlowTask({
+            kind: "import",
+            title: "Importando Biblioteca",
+            message: `Guardando lote ${index + 1} de ${linkBatches.length}…`,
+            current: index * IMPORT_BATCH_SIZE,
+            total: links.length,
+          });
           const importArgs = {
             clientId,
             backup: {
@@ -1392,6 +1487,13 @@ export default function LibraryScreen({ navigation }) {
           const batchSummary = await importBackup(importArgs);
           Object.keys(summary).forEach((key) => {
             summary[key] += Number(batchSummary?.[key] || 0);
+          });
+          setSlowTask({
+            kind: "import",
+            title: "Importando Biblioteca",
+            message: `Guardando lote ${index + 1} de ${linkBatches.length}…`,
+            current: Math.min((index + 1) * IMPORT_BATCH_SIZE, links.length),
+            total: links.length,
           });
         }
         safeAlert(
@@ -1405,6 +1507,7 @@ export default function LibraryScreen({ navigation }) {
         );
       } finally {
         setBackupBusy(false);
+        setSlowTask(null);
       }
     };
 
@@ -1565,6 +1668,13 @@ export default function LibraryScreen({ navigation }) {
     if (integrityBusy) return;
     setIntegritySearch("");
     setIntegrityBusy(true);
+    setBackupBusy(true);
+    setSlowTask({
+      kind: "integrity",
+      title: "Comprobando integridad",
+      message: "Leyendo los enlaces de Biblioteca…",
+      current: 0,
+    });
     setBackupMode("integrity");
   }, [integrityBusy]);
 
@@ -1679,6 +1789,42 @@ export default function LibraryScreen({ navigation }) {
             </View>
           </View>
         ) : null}
+
+        <Modal
+          visible={Boolean(slowTask)}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {}}
+          statusBarTranslucent
+        >
+          <View style={styles.slowTaskBackdrop}>
+            <View style={styles.slowTaskCard}>
+              <ActivityIndicator size="large" color="#2563eb" />
+              <Text style={styles.slowTaskTitle}>{slowTask?.title}</Text>
+              <Text style={styles.slowTaskMessage}>{slowTask?.message}</Text>
+              {slowTask?.total ? (
+                <View style={styles.slowTaskProgressArea}>
+                  <View style={styles.slowTaskProgressTrack}>
+                    <View
+                      style={[
+                        styles.slowTaskProgressFill,
+                        { width: `${slowTaskPercent}%` },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.slowTaskProgressText}>
+                    {Number(slowTask.current || 0).toLocaleString("es-ES")} de{" "}
+                    {Number(slowTask.total).toLocaleString("es-ES")} ({slowTaskPercent}%)
+                  </Text>
+                </View>
+              ) : null}
+              <Text style={styles.slowTaskHint}>
+                Esta tarea no se puede cancelar. No cierres, recargues ni salgas
+                de la aplicación hasta que termine.
+              </Text>
+            </View>
+          </View>
+        </Modal>
 
         <Modal
           visible={toolsModalVisible}
@@ -3712,6 +3858,60 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 20,
     backgroundColor: "rgba(15, 23, 42, 0.55)",
+  },
+  slowTaskBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    backgroundColor: "rgba(15, 23, 42, 0.72)",
+  },
+  slowTaskCard: {
+    width: 340,
+    maxWidth: "100%",
+    alignItems: "center",
+    padding: 24,
+    borderRadius: 18,
+    backgroundColor: "#fff",
+  },
+  slowTaskTitle: {
+    marginTop: 16,
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#0f172a",
+    textAlign: "center",
+  },
+  slowTaskMessage: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#475569",
+    textAlign: "center",
+  },
+  slowTaskProgressArea: { width: "100%", marginTop: 18 },
+  slowTaskProgressTrack: {
+    height: 8,
+    overflow: "hidden",
+    borderRadius: 999,
+    backgroundColor: "#dbeafe",
+  },
+  slowTaskProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "#2563eb",
+  },
+  slowTaskProgressText: {
+    marginTop: 7,
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#475569",
+    textAlign: "center",
+  },
+  slowTaskHint: {
+    marginTop: 18,
+    fontSize: 11,
+    lineHeight: 16,
+    color: "#64748b",
+    textAlign: "center",
   },
   modalCard: {
     width: 380,

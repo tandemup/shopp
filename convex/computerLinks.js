@@ -41,7 +41,7 @@ const URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
 const TRAILING_PUNCTUATION = /[.,!?;:]+$/;
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
 const DEFAULT_VISIBLE_LINK_LIMIT = 80;
-const MAX_VISIBLE_LINK_LIMIT = 200;
+const MAX_VISIBLE_LINK_LIMIT = 600;
 const TRACKING_QUERY_KEYS = new Set([
   "fbclid",
   "gclid",
@@ -727,12 +727,25 @@ export const list = query({
     const selectedFolderIds = args.folderId
       ? [args.folderId, ...(childFolderIds || [])]
       : [];
+    const isCatalogSourceQuery =
+      Boolean(args.folderId) &&
+      ["newsSource", "bookStore"].includes(args.linkType);
     let links;
     if (includeAllNewsArticles) {
       const query = ctx.db
         .query("computerLinks")
         .withIndex("by_linkType_publishedAt", (q) =>
           q.eq("linkType", "newsArticle"),
+        )
+        .order("desc");
+      links = shouldSearch ? await query.collect() : await query.take(listLimit);
+    } else if (isCatalogSourceQuery) {
+      // Las fuentes tienen un índice propio. No se leen primero las noticias
+      // para descartarlas después, por lo que se pueden mostrar las 477.
+      const query = ctx.db
+        .query("computerLinks")
+        .withIndex("by_folder_linkType_updatedAt", (q) =>
+          q.eq("folderId", args.folderId).eq("linkType", args.linkType),
         )
         .order("desc");
       links = shouldSearch ? await query.collect() : await query.take(listLimit);
