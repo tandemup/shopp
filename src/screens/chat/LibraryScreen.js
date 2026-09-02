@@ -246,22 +246,6 @@ function formatLinkDate(value) {
   });
 }
 
-function getDisplayedPostsDateRange(links) {
-  const publishedDates = (Array.isArray(links) ? links : [])
-    .filter((link) => link?.linkType === "newsArticle")
-    .map((link) => Number(link?.publishedAt || 0))
-    .filter((timestamp) => Number.isFinite(timestamp) && timestamp > 0);
-
-  if (!publishedDates.length) return "";
-
-  const firstDate = formatLinkDate(Math.min(...publishedDates));
-  const lastDate = formatLinkDate(Math.max(...publishedDates));
-  if (!firstDate || !lastDate) return "";
-  return firstDate === lastDate
-    ? `Publicada: ${firstDate}`
-    : `Publicadas: ${firstDate} – ${lastDate}`;
-}
-
 function getNewsDisplayTitle(link) {
   const domain = getLinkDomain(link);
   const storedTitle = stripImportedDomainPrefix(
@@ -932,12 +916,10 @@ export default function LibraryScreen({ navigation }) {
   const [integrityBusy, setIntegrityBusy] = useState(false);
   const [integrityReport, setIntegrityReport] = useState(null);
   const [integritySearch, setIntegritySearch] = useState("");
-  const [libraryView, setLibraryView] = useState("minimal");
+  const [libraryView, setLibraryView] = useState("cards");
   const [newsSort, setNewsSort] = useState("publishedDesc");
   const [newsSortModalVisible, setNewsSortModalVisible] = useState(false);
   const [searchPage, setSearchPage] = useState(0);
-  const [browsePage, setBrowsePage] = useState(0);
-  const [browseCursors, setBrowseCursors] = useState([null]);
   const [slowTask, setSlowTask] = useState(null);
 
   const folders = useQuery(api.computerLinks.listFolders) || [];
@@ -967,8 +949,6 @@ export default function LibraryScreen({ navigation }) {
   }, [search]);
   useEffect(() => {
     setSearchPage(0);
-    setBrowsePage(0);
-    setBrowseCursors([null]);
   }, [debouncedSearch, folderFilter, newsView, newsSort]);
   useEffect(() => {
     if (Platform.OS !== "web" || !slowTask || typeof window === "undefined") {
@@ -996,7 +976,6 @@ export default function LibraryScreen({ navigation }) {
   const isSourceCatalogCards = isSourceCatalog && libraryView === "cards";
   const isSourceCatalogMinimal = isSourceCatalog && libraryView === "minimal";
   const isNewsArticleList = isNewsFolder && newsView === "articles";
-  const canSortCurrentList = isNewsArticleList || folderFilter === "all";
   const selectedNewsSort =
     NEWS_SORT_OPTIONS.find((option) => option.id === newsSort) ||
     NEWS_SORT_OPTIONS[0];
@@ -1019,10 +998,8 @@ export default function LibraryScreen({ navigation }) {
           ? "bookLink"
           : "newsArticle"
       : undefined,
-    newsSort: canSortCurrentList ? newsSort : undefined,
+    newsSort: isNewsArticleList ? newsSort : undefined,
     page: debouncedSearch ? searchPage : undefined,
-    cursor: debouncedSearch ? undefined : browseCursors[browsePage] || undefined,
-    paginate: !debouncedSearch || undefined,
     limit: isSourceCatalog
       ? LIBRARY_CATALOG_SOURCE_LIMIT
       : debouncedSearch
@@ -1031,21 +1008,11 @@ export default function LibraryScreen({ navigation }) {
   });
   const links = libraryResult?.items;
   const shownItemCount = Array.isArray(links) ? links.length : 0;
-  const displayedPostsDateRange = useMemo(
-    () => getDisplayedPostsDateRange(links),
-    [links],
-  );
   const isSearchingLibrary = Boolean(debouncedSearch);
   const searchTotal = Number(libraryResult?.total || 0);
   const searchTotalPages = Number(libraryResult?.totalPages || 1);
   const activeSearchPage = Number(libraryResult?.page || 0);
   const showSearchPagination = isSearchingLibrary && searchTotalPages > 1;
-  const browseHasNextPage = Boolean(libraryResult?.continueCursor);
-  const showBrowsePagination =
-    !isSearchingLibrary && (browsePage > 0 || browseHasNextPage);
-  const showPagination = showSearchPagination || showBrowsePagination;
-  const activePage = isSearchingLibrary ? activeSearchPage : browsePage;
-  const displayedTotalPages = isSearchingLibrary ? searchTotalPages : null;
   const shownItemLabel = isSourceCatalog
     ? isBooksFolder
       ? shownItemCount === 1
@@ -1271,12 +1238,9 @@ export default function LibraryScreen({ navigation }) {
       });
       setUrlInput("");
       if (result.existing) {
-        setFolderFilter("all");
-        setNewsView("articles");
-        setSearch(url);
         safeAlert(
           "Enlace recuperado",
-          "El enlace ya existía en la biblioteca. Se muestra ahora en los resultados.",
+          "El enlace ya existía en la biblioteca.",
         );
       }
     } catch (error) {
@@ -2067,9 +2031,7 @@ export default function LibraryScreen({ navigation }) {
                     size={19}
                     color="#dc2626"
                   />
-                  <Text style={styles.toolsModalTitle}>
-                    {isNewsArticleList ? "Ordenar noticias" : "Ordenar enlaces"}
-                  </Text>
+                  <Text style={styles.toolsModalTitle}>Ordenar noticias</Text>
                 </View>
                 <Pressable
                   onPress={() => setNewsSortModalVisible(false)}
@@ -2381,19 +2343,12 @@ export default function LibraryScreen({ navigation }) {
 
         <View style={styles.shownItemsBar}>
           <Ionicons name="list-outline" size={15} color="#2563eb" />
-          <View style={styles.shownItemsSummary}>
-            <Text style={styles.shownItemsText} numberOfLines={1}>
-              {isSearchingLibrary
-                ? `${shownItemCount} de ${searchTotal} coincidencias`
-                : `${shownItemCount} ${shownItemLabel}`}
-            </Text>
-            {displayedPostsDateRange ? (
-              <Text style={styles.shownItemsDateRange} numberOfLines={1}>
-                {displayedPostsDateRange}
-              </Text>
-            ) : null}
-          </View>
-          {canSortCurrentList ? (
+          <Text style={styles.shownItemsText}>
+            {isSearchingLibrary
+              ? `${shownItemCount} de ${searchTotal} coincidencias`
+              : `${shownItemCount} ${shownItemLabel}`}
+          </Text>
+          {isNewsArticleList ? (
             <Pressable
               onPress={() => setNewsSortModalVisible(true)}
               style={styles.newsSortTrigger}
@@ -2410,70 +2365,39 @@ export default function LibraryScreen({ navigation }) {
               </Text>
             </Pressable>
           ) : null}
-          {showPagination ? (
-            <View style={styles.searchPaginationInline}>
-              <Pressable
-                onPress={() => {
-                  if (isSearchingLibrary) {
-                    setSearchPage((page) => Math.max(0, page - 1));
-                  } else {
-                    setBrowsePage((page) => Math.max(0, page - 1));
-                  }
-                }}
-                disabled={activePage === 0}
-                style={[
-                  styles.searchPaginationInlineButton,
-                  activePage === 0 && styles.buttonDisabled,
-                ]}
-                accessibilityLabel="Página anterior"
-              >
-                <Ionicons name="chevron-back" size={17} color="#2563eb" />
-              </Pressable>
-              <Text style={styles.searchPaginationInlineText}>
-                {displayedTotalPages
-                  ? `${activePage + 1}/${displayedTotalPages}`
-                  : activePage + 1}
-              </Text>
-              <Pressable
-                onPress={() => {
-                  if (isSearchingLibrary) {
-                    setSearchPage((page) =>
-                      Math.min(searchTotalPages - 1, page + 1),
-                    );
-                    return;
-                  }
-                  const nextCursor = libraryResult?.continueCursor;
-                  if (!nextCursor) return;
-                  setBrowseCursors((current) => {
-                    const next = current.slice(0, browsePage + 1);
-                    next.push(nextCursor);
-                    return next;
-                  });
-                  setBrowsePage((page) => page + 1);
-                }}
-                disabled={
-                  isSearchingLibrary
-                    ? activeSearchPage >= searchTotalPages - 1
-                    : !browseHasNextPage
-                }
-                style={[
-                  styles.searchPaginationInlineButton,
-                  ((isSearchingLibrary &&
-                    activeSearchPage >= searchTotalPages - 1) ||
-                    (!isSearchingLibrary && !browseHasNextPage)) &&
-                    styles.buttonDisabled,
-                ]}
-                accessibilityLabel="Página siguiente"
-              >
-                <Ionicons
-                  name="chevron-forward"
-                  size={17}
-                  color="#2563eb"
-                />
-              </Pressable>
-            </View>
-          ) : null}
         </View>
+
+        {showSearchPagination ? (
+          <View style={styles.searchPaginationBar}>
+            <Pressable
+              onPress={() => setSearchPage((page) => Math.max(0, page - 1))}
+              disabled={activeSearchPage === 0}
+              style={[
+                styles.searchPaginationButton,
+                activeSearchPage === 0 && styles.buttonDisabled,
+              ]}
+            >
+              <Ionicons name="chevron-back" size={17} color="#2563eb" />
+              <Text style={styles.searchPaginationButtonText}>Anterior</Text>
+            </Pressable>
+            <Text style={styles.searchPaginationText}>
+              Página {activeSearchPage + 1} de {searchTotalPages}
+            </Text>
+            <Pressable
+              onPress={() =>
+                setSearchPage((page) => Math.min(searchTotalPages - 1, page + 1))
+              }
+              disabled={activeSearchPage >= searchTotalPages - 1}
+              style={[
+                styles.searchPaginationButton,
+                activeSearchPage >= searchTotalPages - 1 && styles.buttonDisabled,
+              ]}
+            >
+              <Text style={styles.searchPaginationButtonText}>Siguiente</Text>
+              <Ionicons name="chevron-forward" size={17} color="#2563eb" />
+            </Pressable>
+          </View>
+        ) : null}
 
         <FlatList
           key={
@@ -3844,7 +3768,7 @@ const styles = StyleSheet.create({
   displayModeText: { fontSize: 10, fontWeight: "800", color: "#475569" },
   displayModeTextActive: { color: "#fff" },
   shownItemsBar: {
-    minHeight: 34,
+    minHeight: 28,
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
@@ -3853,21 +3777,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#dbe3ef",
   },
-  shownItemsSummary: { flex: 1, minWidth: 0 },
   shownItemsText: {
-    minWidth: 0,
+    flex: 1,
     fontSize: 11,
     fontWeight: "700",
     color: "#475569",
   },
-  shownItemsDateRange: {
-    marginTop: 1,
-    fontSize: 9,
-    fontWeight: "700",
-    color: "#64748b",
-  },
   newsSortTrigger: {
-    maxWidth: 120,
+    maxWidth: 142,
     height: 24,
     flexDirection: "row",
     alignItems: "center",
@@ -3878,26 +3795,39 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff7f7",
   },
   newsSortTriggerText: { fontSize: 10, fontWeight: "900", color: "#b91c1c" },
-  searchPaginationInline: {
-    height: 24,
+  searchPaginationBar: {
+    minHeight: 42,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#dbe3ef",
+    backgroundColor: "#fff",
+  },
+  searchPaginationButton: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 8,
     borderWidth: 1,
     borderColor: "#bfdbfe",
     backgroundColor: "#eff6ff",
   },
-  searchPaginationInlineButton: {
-    width: 24,
-    height: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  searchPaginationInlineText: {
-    minWidth: 30,
-    textAlign: "center",
+  searchPaginationButtonText: {
     fontSize: 10,
     fontWeight: "900",
     color: "#2563eb",
+  },
+  searchPaginationText: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#475569",
   },
   list: { flex: 1 },
   listContent: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 16 },

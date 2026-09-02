@@ -375,12 +375,13 @@ function ComputerLinkLibrary({ clientId, language }) {
     folderFilter !== "unclassified"
       ? folderFilter
       : undefined;
-  const links = useQuery(api.computerLinks.list, {
+  const libraryResult = useQuery(api.computerLinks.list, {
     search: search.trim() || undefined,
     folderId,
     onlyFavorites: folderFilter === "favorites" || undefined,
     onlyUnclassified: folderFilter === "unclassified" || undefined,
   });
+  const links = libraryResult?.items;
   const ensureDefaultFolders = useMutation(
     api.computerLinks.ensureDefaultFolders,
   );

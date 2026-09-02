@@ -344,9 +344,14 @@ export default defineSchema({
       "updatedAt",
     ])
     .index("by_folder_updatedAt", ["folderId", "updatedAt"])
+    .index("by_folder_createdAt", ["folderId", "createdAt"])
+    .index("by_folder_publishedAt", ["folderId", "publishedAt"])
     .index("by_linkType_createdAt", ["linkType", "createdAt"])
     .index("by_linkType_publishedAt", ["linkType", "publishedAt"])
     .index("by_linkType_updatedAt", ["linkType", "updatedAt"])
+    .index("by_linkType_sourceDomain", ["linkType", "sourceDomain"])
+    .index("by_createdAt", ["createdAt"])
+    .index("by_publishedAt", ["publishedAt"])
     .index("by_updatedAt", ["updatedAt"]),
 
   // Adjuntos temporales para comunicaciones privadas con la administración.

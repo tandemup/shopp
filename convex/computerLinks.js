@@ -153,13 +153,26 @@ function extractPublishedAtFromUrl(value) {
   );
 }
 
-function classifyLinkType(linkType, hostname) {
+async function classifyLinkType(ctx, linkType, hostname) {
   if (
     (linkType === "general" || linkType === undefined) &&
     NEWS_ARTICLE_DOMAINS.has(String(hostname || "").toLowerCase())
   ) {
     return "newsArticle";
   }
+
+  if (linkType === "general" || linkType === undefined) {
+    const knownNewsSource = await ctx.db
+      .query("computerLinks")
+      .withIndex("by_linkType_sourceDomain", (q) =>
+        q
+          .eq("linkType", "newsSource")
+          .eq("sourceDomain", String(hostname || "").toLowerCase()),
+      )
+      .first();
+    if (knownNewsSource) return "newsArticle";
+  }
+
   return linkType || "general";
 }
 
@@ -409,7 +422,8 @@ export const normalizeAndDeduplicate = mutation({
         (best, candidate) => (score(candidate) > score(best) ? candidate : best),
         candidates[0],
       );
-      const primaryLinkType = classifyLinkType(
+      const primaryLinkType = await classifyLinkType(
+        ctx,
         primary.linkType,
         normalized.hostname,
       );
@@ -606,7 +620,8 @@ export const addUrl = mutation({
       normalized = normalizeLink(sourceUrl.toString());
     }
     const requestedLinkType = args.linkType || "general";
-    const classifiedLinkType = classifyLinkType(
+    const classifiedLinkType = await classifyLinkType(
+      ctx,
       requestedLinkType,
       normalized.hostname,
     );
@@ -624,10 +639,14 @@ export const addUrl = mutation({
       )
       .first();
     if (existing) {
+      const isCatalogHomepage =
+        ["newsSource", "bookStore"].includes(existing.linkType) &&
+        isDomainHomepage(existing.normalizedUrl || existing.url);
       const linkType =
         requestedLinkType === "general" &&
         existing.linkType &&
-        existing.linkType !== "general"
+        existing.linkType !== "general" &&
+        isCatalogHomepage
           ? existing.linkType
           : classifiedLinkType;
       await ctx.db.patch(existing._id, {
@@ -697,6 +716,17 @@ export const list = query({
         v.literal("bookLink"),
       ),
     ),
+    newsSort: v.optional(
+      v.union(
+        v.literal("publishedDesc"),
+        v.literal("publishedAsc"),
+        v.literal("createdDesc"),
+        v.literal("createdAsc"),
+      ),
+    ),
+    page: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+    paginate: v.optional(v.boolean()),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -708,7 +738,9 @@ export const list = query({
       Math.max(Number(args.limit) || DEFAULT_VISIBLE_LINK_LIMIT, 1),
       MAX_VISIBLE_LINK_LIMIT,
     );
+    const requestedPage = Math.max(0, Math.floor(Number(args.page) || 0));
     const shouldSearch = normalizedSearch.length > 0;
+    const useCursorPagination = Boolean(args.paginate) && !shouldSearch;
     const selectedFolder = args.folderId ? await ctx.db.get(args.folderId) : null;
     const includeAllNewsArticles =
       args.linkType === "newsArticle" && selectedFolder?.name === "Noticias";
@@ -730,15 +762,37 @@ export const list = query({
     const isCatalogSourceQuery =
       Boolean(args.folderId) &&
       ["newsSource", "bookStore"].includes(args.linkType);
+    const newsSort = args.newsSort || "publishedDesc";
+    const hasExplicitSort = Boolean(args.newsSort);
     let links;
+    let continueCursor = null;
+    let isDone = true;
     if (includeAllNewsArticles) {
-      const query = ctx.db
-        .query("computerLinks")
-        .withIndex("by_linkType_publishedAt", (q) =>
-          q.eq("linkType", "newsArticle"),
-        )
-        .order("desc");
-      links = shouldSearch ? await query.collect() : await query.take(listLimit);
+      const isCreatedOrder = newsSort.startsWith("created");
+      const query = isCreatedOrder
+        ? ctx.db
+            .query("computerLinks")
+            .withIndex("by_linkType_createdAt", (q) =>
+              q.eq("linkType", "newsArticle"),
+            )
+            .order(newsSort === "createdAsc" ? "asc" : "desc")
+        : ctx.db
+            .query("computerLinks")
+            .withIndex("by_linkType_publishedAt", (q) =>
+              q.eq("linkType", "newsArticle"),
+            )
+            .order(newsSort === "publishedAsc" ? "asc" : "desc");
+      if (useCursorPagination) {
+        const pageResult = await query.paginate({
+          numItems: listLimit,
+          cursor: args.cursor || null,
+        });
+        links = pageResult.page;
+        continueCursor = pageResult.continueCursor;
+        isDone = pageResult.isDone;
+      } else {
+        links = shouldSearch ? await query.collect() : await query.take(listLimit);
+      }
     } else if (isCatalogSourceQuery) {
       // Las fuentes tienen un índice propio. No se leen primero las noticias
       // para descartarlas después, por lo que se pueden mostrar las 477.
@@ -748,26 +802,83 @@ export const list = query({
           q.eq("folderId", args.folderId).eq("linkType", args.linkType),
         )
         .order("desc");
-      links = shouldSearch ? await query.collect() : await query.take(listLimit);
+      if (useCursorPagination) {
+        const pageResult = await query.paginate({
+          numItems: listLimit,
+          cursor: args.cursor || null,
+        });
+        links = pageResult.page;
+        continueCursor = pageResult.continueCursor;
+        isDone = pageResult.isDone;
+      } else {
+        links = shouldSearch ? await query.collect() : await query.take(listLimit);
+      }
     } else if (!args.folderId) {
-      const query = ctx.db
-        .query("computerLinks")
-        .withIndex("by_updatedAt")
-        .order("desc");
-      links = shouldSearch ? await query.collect() : await query.take(listLimit);
+      const query = hasExplicitSort
+        ? newsSort.startsWith("created")
+          ? ctx.db
+              .query("computerLinks")
+              .withIndex("by_createdAt")
+              .order(newsSort === "createdAsc" ? "asc" : "desc")
+          : ctx.db
+              .query("computerLinks")
+              .withIndex("by_publishedAt")
+              .order(newsSort === "publishedAsc" ? "asc" : "desc")
+        : ctx.db.query("computerLinks").withIndex("by_updatedAt").order("desc");
+      if (useCursorPagination) {
+        const pageResult = await query.paginate({
+          numItems: listLimit,
+          cursor: args.cursor || null,
+        });
+        links = pageResult.page;
+        continueCursor = pageResult.continueCursor;
+        isDone = pageResult.isDone;
+      } else {
+        links = shouldSearch ? await query.collect() : await query.take(listLimit);
+      }
     } else {
-      const linkPages = await Promise.all(
-        selectedFolderIds.map((folderId) => {
-          const query = ctx.db
-            .query("computerLinks")
-            .withIndex("by_folder_updatedAt", (q) => q.eq("folderId", folderId))
-            .order("desc");
-          return shouldSearch ? query.collect() : query.take(listLimit);
-        }),
-      );
-      links = linkPages.flat();
+      if (useCursorPagination && selectedFolderIds.length === 1) {
+        const pageQuery = hasExplicitSort
+          ? newsSort.startsWith("created")
+            ? ctx.db
+                .query("computerLinks")
+                .withIndex("by_folder_createdAt", (q) =>
+                  q.eq("folderId", args.folderId),
+                )
+                .order(newsSort === "createdAsc" ? "asc" : "desc")
+            : ctx.db
+                .query("computerLinks")
+                .withIndex("by_folder_publishedAt", (q) =>
+                  q.eq("folderId", args.folderId),
+                )
+                .order(newsSort === "publishedAsc" ? "asc" : "desc")
+          : ctx.db
+              .query("computerLinks")
+              .withIndex("by_folder_updatedAt", (q) =>
+                q.eq("folderId", args.folderId),
+              )
+              .order("desc");
+        const pageResult = await pageQuery.paginate({
+          numItems: listLimit,
+          cursor: args.cursor || null,
+        });
+        links = pageResult.page;
+        continueCursor = pageResult.continueCursor;
+        isDone = pageResult.isDone;
+      } else {
+        const linkPages = await Promise.all(
+          selectedFolderIds.map((folderId) => {
+            const query = ctx.db
+              .query("computerLinks")
+              .withIndex("by_folder_updatedAt", (q) => q.eq("folderId", folderId))
+              .order("desc");
+            return shouldSearch ? query.collect() : query.take(listLimit);
+          }),
+        );
+        links = linkPages.flat();
+      }
     }
-    return links.filter((link) => {
+    const matchingLinks = links.filter((link) => {
       if (link.status === "archived") return false;
       if (
         args.folderId &&
@@ -814,7 +925,21 @@ export const list = query({
         .some((value) =>
           normalizeSearchText(value).includes(normalizedSearch),
         );
-    }).slice(0, listLimit);
+    });
+    const total = matchingLinks.length;
+    const totalPages = Math.max(1, Math.ceil(total / listLimit));
+    const page = Math.min(requestedPage, totalPages - 1);
+    const start = useCursorPagination ? 0 : page * listLimit;
+
+    return {
+      items: matchingLinks.slice(start, start + listLimit),
+      page,
+      pageSize: listLimit,
+      total,
+      totalPages,
+      continueCursor: isDone ? null : continueCursor,
+      isDone,
+    };
   },
 });
 
