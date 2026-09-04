@@ -248,6 +248,17 @@ function QuickActions({
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.LIBRARY),
       },
       {
+        key: "browser",
+        label: "Navegador",
+        description: "Abre páginas dentro de Shopp",
+        icon: "globe-outline",
+        iconColor: COLORS.primary,
+        iconBackground: COLORS.primarySoft,
+        badgeLabel: "DEV",
+        onPress: () =>
+          navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.BROWSER),
+      },
+      {
         key: "playList",
         label: "Play List",
         description: "Crea y reproduce música de YouTube",
