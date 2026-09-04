@@ -21,6 +21,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
+import * as Clipboard from "expo-clipboard";
 import {
   useAction,
   useMutation,
@@ -2275,6 +2276,20 @@ export default function LibraryScreen({ navigation }) {
       await Linking.openURL(url);
     } catch (error) {
       safeAlert("No se pudo abrir", error?.message || "Revisa la dirección.");
+    }
+  }, []);
+
+  const copyLinkUrl = useCallback(async (url) => {
+    const value = String(url || "").trim();
+    if (!value) return;
+    try {
+      await Clipboard.setStringAsync(value);
+      safeAlert("URL copiada", "La dirección del post se ha copiado al portapapeles.");
+    } catch (error) {
+      safeAlert(
+        "No se pudo copiar",
+        error?.message || "No se pudo copiar la dirección al portapapeles.",
+      );
     }
   }, []);
 
@@ -5094,12 +5109,48 @@ export default function LibraryScreen({ navigation }) {
               <Text style={styles.linkActionsTitle} numberOfLines={2}>
                 {linkActions?.customTitle || linkActions?.hostname || "Enlace"}
               </Text>
+              {linkActions?.url || linkActions?.normalizedUrl ? (
+                <View style={styles.linkUrlBox}>
+                  <Text style={styles.linkUrlLabel}>URL original</Text>
+                  <Text style={styles.linkUrlText} selectable>
+                    {linkActions?.url || linkActions?.normalizedUrl}
+                  </Text>
+                  {linkActions?.normalizedUrl &&
+                  linkActions?.url &&
+                  linkActions.normalizedUrl !== linkActions.url ? (
+                    <>
+                      <Text style={[styles.linkUrlLabel, styles.linkNormalizedUrlLabel]}>
+                        URL normalizada
+                      </Text>
+                      <Text style={styles.linkUrlNormalizedText} selectable>
+                        {linkActions.normalizedUrl}
+                      </Text>
+                    </>
+                  ) : null}
+                  <View style={styles.linkUrlActions}>
+                    <Pressable
+                      onPress={() =>
+                        openSourceUrl(linkActions?.url || linkActions?.normalizedUrl)
+                      }
+                      style={styles.linkUrlActionButton}
+                    >
+                      <Ionicons name="open-outline" size={17} color="#2563eb" />
+                      <Text style={styles.linkUrlActionText}>Abrir</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() =>
+                        copyLinkUrl(linkActions?.url || linkActions?.normalizedUrl)
+                      }
+                      style={styles.linkUrlActionButton}
+                    >
+                      <Ionicons name="copy-outline" size={17} color="#2563eb" />
+                      <Text style={styles.linkUrlActionText}>Copiar URL</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
               {["newsSource", "bookStore"].includes(linkActions?.linkType) ? (
                 <>
-                  <Pressable onPress={() => { const link = linkActions; setLinkActions(null); openSourceUrl(link?.normalizedUrl || link?.url); }} style={styles.linkActionOption}>
-                    <Ionicons name="open-outline" size={20} color="#2563eb" />
-                    <Text style={styles.linkActionText}>Abrir</Text>
-                  </Pressable>
                   <Pressable onPress={() => { const link = linkActions; setLinkActions(null); openSourceEditor(link); }} style={styles.linkActionOption}>
                     <Ionicons name="create-outline" size={20} color="#475569" />
                     <Text style={styles.linkActionText}>{linkActions?.linkType === "bookStore" ? "Editar tienda" : "Editar periódico"}</Text>
@@ -5436,6 +5487,42 @@ const styles = StyleSheet.create({
   linkActionsModalCard: { maxWidth: 390 },
   linkActionsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   linkActionsTitle: { marginTop: 4, marginBottom: 12, fontSize: 12, color: "#64748b" },
+  linkUrlBox: {
+    marginBottom: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#dbeafe",
+    borderRadius: 10,
+    backgroundColor: "#f8fbff",
+  },
+  linkUrlLabel: {
+    marginBottom: 4,
+    fontSize: 10,
+    fontWeight: "900",
+    color: "#475569",
+    textTransform: "uppercase",
+  },
+  linkNormalizedUrlLabel: { marginTop: 9 },
+  linkUrlText: { fontSize: 11, lineHeight: 16, color: "#1d4ed8" },
+  linkUrlNormalizedText: { fontSize: 10, lineHeight: 15, color: "#64748b" },
+  linkUrlActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+    marginTop: 10,
+  },
+  linkUrlActionButton: {
+    minHeight: 34,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    borderRadius: 8,
+    backgroundColor: "#fff",
+  },
+  linkUrlActionText: { fontSize: 11, fontWeight: "800", color: "#2563eb" },
   linkActionOption: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: "#f8fafc", marginTop: 7 },
   linkActionOptionDanger: { backgroundColor: "#fff7f7" },
   linkActionText: { flex: 1, fontSize: 13, fontWeight: "800", color: "#334155" },

@@ -469,12 +469,9 @@ const styles = StyleSheet.create({
 
   card: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
     marginBottom: 14,
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
     shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowRadius: 10,
@@ -495,15 +492,14 @@ const styles = StyleSheet.create({
   mainPressable: {
     flexDirection: "row",
     alignItems: "center",
+    minHeight: 92,
   },
 
   imageWrapper: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
+    alignSelf: "stretch",
+    width: 92,
     overflow: "hidden",
     backgroundColor: "#F3F4F6",
-    marginRight: 14,
   },
 
   image: {
@@ -521,6 +517,8 @@ const styles = StyleSheet.create({
   infoContent: {
     flex: 1,
     justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
   },
 
   name: {
@@ -544,6 +542,7 @@ const styles = StyleSheet.create({
   actionsCol: {
     justifyContent: "center",
     marginLeft: 8,
+    paddingRight: 14,
   },
 
   emptyBlock: {
