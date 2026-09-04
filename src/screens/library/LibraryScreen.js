@@ -2,6 +2,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -35,11 +36,20 @@ import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 const CLIENT_ID_KEY = "shopp-chat-client-id";
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
 const CATALOG_SOURCES_IMPORT_KEY = "__catalog_sources__";
-const IMPORT_BATCH_SIZE = 1000;
+const IMPORT_BATCH_SIZE = 250;
+const IMPORT_WRITE_BATCH_SIZE = 25;
+const IMPORT_SOURCE_BATCH_SIZE = 25;
+const IMPORT_CLEAR_BATCH_SIZE = 25;
+const INTEGRITY_BATCH_SIZE = 100;
+const IMPORT_ENRICH_LIMIT = 800;
+const IMPORT_DB_NAME = "shopp-library-import-v1";
+const IMPORT_DB_STORE = "payloads";
 const IMPORT_PREVIEW_CONCURRENCY = 3;
 const LIBRARY_VISIBLE_LINK_LIMIT = 80;
 const LIBRARY_CATALOG_SOURCE_LIMIT = 600;
 const LIBRARY_SEARCH_PAGE_SIZE = 40;
+const HASHTAG_SCAN_PAGE_SIZE = 400;
+const HASHTAG_RESULT_PAGE_SIZE = 40;
 const PREVIEW_TITLE_CACHE = new Map();
 const PREVIEW_TITLE_REQUESTS = new Map();
 let previewTitleSaveDisabled = false;
@@ -55,6 +65,153 @@ const LOCAL_TRACKING_QUERY_KEYS = new Set([
   "redir_esc",
   "si",
 ]);
+
+let importDbPromise = null;
+
+function openImportDatabase() {
+  if (
+    Platform.OS !== "web" ||
+    typeof window === "undefined" ||
+    !window.indexedDB
+  ) {
+    return Promise.resolve(null);
+  }
+  if (importDbPromise) return importDbPromise;
+  importDbPromise = new Promise((resolve, reject) => {
+    const request = window.indexedDB.open(IMPORT_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(IMPORT_DB_STORE)) {
+        db.createObjectStore(IMPORT_DB_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("IndexedDB no disponible."));
+  });
+  return importDbPromise;
+}
+
+async function saveImportPayload(jobId, payload) {
+  const key = String(jobId || "");
+  if (!key) throw new Error("La importación no tiene identificador.");
+  if (Platform.OS === "web") {
+    const db = await openImportDatabase();
+    if (!db) throw new Error("El navegador no permite guardar el estado de la importación.");
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(IMPORT_DB_STORE, "readwrite");
+      tx.objectStore(IMPORT_DB_STORE).put(payload, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("No se pudo guardar la importación."));
+      tx.onabort = () => reject(tx.error || new Error("No se pudo guardar la importación."));
+    });
+    return;
+  }
+  if (!FileSystem.documentDirectory) {
+    throw new Error("No hay almacenamiento persistente disponible.");
+  }
+  const fileUri = `${FileSystem.documentDirectory}library-import-${encodeURIComponent(key)}.json`;
+  await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(payload), {
+    encoding: FileSystem.EncodingType.UTF8,
+  });
+}
+
+async function loadImportPayload(jobId) {
+  const key = String(jobId || "");
+  if (!key) return null;
+  if (Platform.OS === "web") {
+    const db = await openImportDatabase();
+    if (!db) return null;
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(IMPORT_DB_STORE, "readonly");
+      const request = tx.objectStore(IMPORT_DB_STORE).get(key);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error("No se pudo leer la importación."));
+    });
+  }
+  if (!FileSystem.documentDirectory) return null;
+  const fileUri = `${FileSystem.documentDirectory}library-import-${encodeURIComponent(key)}.json`;
+  const info = await FileSystem.getInfoAsync(fileUri);
+  if (!info.exists) return null;
+  const json = await FileSystem.readAsStringAsync(fileUri, {
+    encoding: FileSystem.EncodingType.UTF8,
+  });
+  return JSON.parse(json);
+}
+
+async function deleteImportPayload(jobId) {
+  const key = String(jobId || "");
+  if (!key) return;
+  if (Platform.OS === "web") {
+    const db = await openImportDatabase();
+    if (!db) return;
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(IMPORT_DB_STORE, "readwrite");
+      tx.objectStore(IMPORT_DB_STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("No se pudo limpiar la importación."));
+      tx.onabort = () => reject(tx.error || new Error("No se pudo limpiar la importación."));
+    });
+    return;
+  }
+  if (!FileSystem.documentDirectory) return;
+  const fileUri = `${FileSystem.documentDirectory}library-import-${encodeURIComponent(key)}.json`;
+  const info = await FileSystem.getInfoAsync(fileUri);
+  if (info.exists) await FileSystem.deleteAsync(fileUri, { idempotent: true });
+}
+
+function collectImportNewsDomains(data) {
+  return Array.from(
+    new Set(
+      (Array.isArray(data?.links) ? data.links : [])
+        .filter((link) => link?.linkType === "newsArticle")
+        .map((link) =>
+          String(
+            link?.sourceDomain ||
+              link?.hostname ||
+              getHostnameFromUrl(link?.normalizedUrl || link?.url || ""),
+          )
+            .replace(/^www\./i, "")
+            .trim()
+            .toLowerCase(),
+        )
+        .filter(Boolean),
+    ),
+  ).sort();
+}
+
+async function retryImportStep(operation, attempts = 3) {
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts - 1) break;
+      const delayMs = Math.min(4000, 1000 * 2 ** attempt);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError || new Error("No se pudo completar el lote de importación.");
+}
+
+function buildImportFingerprint(fileName, data, importMode) {
+  const links = Array.isArray(data?.links) ? data.links : [];
+  const at = (index) => {
+    const link = links[index];
+    return String(link?.normalizedUrl || link?.url || "").slice(0, 180);
+  };
+  const middleIndex = links.length ? Math.floor(links.length / 2) : 0;
+  return [
+    String(fileName || "Biblioteca.json"),
+    String(importMode || "combine"),
+    links.length,
+    at(0),
+    at(middleIndex),
+    at(Math.max(0, links.length - 1)),
+  ]
+    .join("|")
+    .slice(0, 500);
+}
 
 const NEWS_SORT_OPTIONS = [
   {
@@ -333,12 +490,15 @@ function getPreviewTitleCandidate(preview, domain, previewMode = "default") {
   const isYouTube =
     ["youtube.com", "youtu.be"].includes(String(domain || "").toLowerCase()) ||
       String(preview?.siteName || "").toLowerCase() === "youtube";
-  const title = stripImportedDomainPrefix(
+
+  // Para noticias, el título debe proceder de <title>, Open Graph o JSON-LD.
+  // La descripción suele ser un texto genérico del periódico (por ejemplo,
+  // "Siga la actualidad política...") y no debe sustituir al titular.
+  const rawTitle =
     isYouTube || previewMode === "document"
       ? metadataTitle || description
-      : description || metadataTitle,
-    domain,
-  );
+      : metadataTitle;
+  const title = stripImportedDomainPrefix(rawTitle, domain);
   if (!title || title.toLowerCase() === domain) return "";
   return sentenceCaseTitle(title).slice(0, 240);
 }
@@ -1000,6 +1160,120 @@ async function enrichImportedNewsMetadata(data, getLinkPreview, onProgress) {
   };
 }
 
+function getHistoricalNewsCreatedAt(item) {
+  const rawValue =
+    item?._created_at?.$date ??
+    item?._created_at ??
+    item?.postDate?.$date ??
+    item?.postDate ??
+    null;
+
+  if (rawValue === null || rawValue === undefined || rawValue === "") {
+    return undefined;
+  }
+  if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
+    return rawValue;
+  }
+
+  const timestamp = Date.parse(String(rawValue));
+  return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
+function getHistoricalNewsDomain(url) {
+  try {
+    return new URL(String(url || ""))
+      .hostname.replace(/^www\./i, "")
+      .trim()
+      .toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function cleanHistoricalNewsTitle(value, domain) {
+  const rawTitle = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!rawTitle) return "";
+
+  const cleaned = stripImportedDomainPrefix(rawTitle, domain);
+  if (cleaned !== rawTitle) return cleaned;
+
+  const [firstToken, ...rest] = rawTitle.split(" ");
+  const compactDomain = String(domain || "")
+    .replace(/^www\./i, "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
+  const compactFirstToken = String(firstToken || "")
+    .replace(/^#/, "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
+
+  if (
+    compactDomain &&
+    [compactDomain, `www${compactDomain}`].includes(compactFirstToken)
+  ) {
+    return rest.join(" ").trim();
+  }
+
+  return rawTitle;
+}
+
+function buildHistoricalNewsBackup(items) {
+  const newsFolder = {
+    key: "Noticias",
+    name: "Noticias",
+    parentKey: null,
+    icon: "newspaper-outline",
+    color: "#dc2626",
+    order: 0,
+  };
+
+  const links = (Array.isArray(items) ? items : [])
+    .filter(
+      (item) =>
+        item && typeof item.url === "string" && isValidHttpUrl(item.url),
+    )
+    .map((item) => {
+      const domain = getHistoricalNewsDomain(item.url);
+      const createdAt = getHistoricalNewsCreatedAt(item);
+      const customTitle = cleanHistoricalNewsTitle(item.title, domain);
+      const notes = String(item.comments ?? item.comment ?? "")
+        .trim()
+        .slice(0, 1000);
+      const hashtags = Array.isArray(item.hashtags)
+        ? item.hashtags
+            .map((tag) => String(tag || "").trim())
+            .filter(Boolean)
+        : [];
+
+      return {
+        url: item.url,
+        username: "Biblioteca",
+        folderKey: "Noticias",
+        linkType: "newsArticle",
+        sourceDomain: domain || undefined,
+        customTitle: customTitle || undefined,
+        notes: notes || undefined,
+        hashtags,
+        favorite: false,
+        ...(createdAt ? { createdAt } : {}),
+      };
+    });
+
+  return {
+    format: "shopp-library-backup",
+    version: 1,
+    source: "legacy-news-array",
+    importedAt: new Date().toISOString(),
+    app: "Shopp",
+    data: {
+      folders: [newsFolder],
+      links,
+    },
+  };
+}
+
 function ImportCheckbox({
   checked,
   label,
@@ -1171,15 +1445,82 @@ function getClientId() {
   return `library-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function HashtagCatalogLoader({ onLoaded }) {
+  const {
+    results,
+    status,
+    loadMore,
+  } = usePaginatedQuery(
+    api.computerLinks.listHashtagPage,
+    {},
+    { initialNumItems: HASHTAG_SCAN_PAGE_SIZE },
+  );
+
+  const stats = useMemo(() => {
+    const counts = new Map();
+    (Array.isArray(results) ? results : []).forEach((entry) => {
+      const linkId = entry?._id;
+      const hashtags = Array.isArray(entry?.hashtags)
+        ? entry.hashtags
+        : Array.isArray(entry)
+          ? entry
+          : [];
+      hashtags.forEach((tag) => {
+        const normalizedTag = String(tag || "")
+          .trim()
+          .replace(/^#+/, "")
+          .toLowerCase();
+        if (!normalizedTag) return;
+        const current = counts.get(normalizedTag) || { count: 0, ids: [] };
+        current.count += 1;
+        if (linkId) current.ids.push(linkId);
+        counts.set(normalizedTag, current);
+      });
+    });
+    return [...counts.entries()]
+      .map(([tag, value]) => ({ tag, count: value.count, ids: value.ids }))
+      .sort(
+        (first, second) =>
+          second.count - first.count || first.tag.localeCompare(second.tag),
+      );
+  }, [results]);
+
+  useEffect(() => {
+    if (status === "CanLoadMore") {
+      loadMore(HASHTAG_SCAN_PAGE_SIZE);
+    }
+  }, [loadMore, status]);
+
+  useEffect(() => {
+    if (status === "Exhausted") {
+      onLoaded(stats);
+    }
+  }, [onLoaded, stats, status]);
+
+  return (
+    <View style={styles.hashtagCatalogLoading}>
+      <ActivityIndicator size="small" color="#2563eb" />
+      <Text style={styles.hashtagCatalogLoadingTitle}>
+        Cargando hashtags de noticias…
+      </Text>
+      <Text style={styles.hashtagCatalogLoadingText}>
+        {Number(results?.length || 0).toLocaleString("es-ES")} enlaces analizados
+      </Text>
+    </View>
+  );
+}
+
 export default function LibraryScreen({ navigation }) {
   const { width: screenWidth } = useWindowDimensions();
   const [clientId] = useState(getClientId);
   const [urlInput, setUrlInput] = useState("");
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [submittedSearch, setSubmittedSearch] = useState("");
+  const [pendingSearchTerm, setPendingSearchTerm] = useState(null);
   const [folderFilter, setFolderFilter] = useState("all");
   const [newsView, setNewsView] = useState("articles");
   const [movingLink, setMovingLink] = useState(null);
+  const [linkActions, setLinkActions] = useState(null);
   const [editingLink, setEditingLink] = useState(null);
   const [notesInput, setNotesInput] = useState("");
   const [hashtagsInput, setHashtagsInput] = useState("");
@@ -1193,6 +1534,10 @@ export default function LibraryScreen({ navigation }) {
   const [saving, setSaving] = useState(false);
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [toolsModalVisible, setToolsModalVisible] = useState(false);
+  const [hashtagModalVisible, setHashtagModalVisible] = useState(false);
+  const [globalHashtags, setGlobalHashtags] = useState(null);
+  const [hashtagSearch, setHashtagSearch] = useState("");
+  const [selectedHashtagFilter, setSelectedHashtagFilter] = useState(null);
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupMode, setBackupMode] = useState(null);
   const [exportNameVisible, setExportNameVisible] = useState(false);
@@ -1217,8 +1562,13 @@ export default function LibraryScreen({ navigation }) {
   const [browsePage, setBrowsePage] = useState(0);
   const [browseCursors, setBrowseCursors] = useState([null]);
   const [slowTask, setSlowTask] = useState(null);
+  const [resumeImportModalVisible, setResumeImportModalVisible] = useState(false);
+  const importPauseRequestedRef = useRef(false);
 
   const folders = useQuery(api.computerLinks.listFolders) || [];
+  const activeImportJob = useQuery(api.computerLinks.getActiveLibraryImportJob, {
+    clientId,
+  });
   const {
     results: exportedLinks,
     status: exportStatus,
@@ -1238,16 +1588,10 @@ export default function LibraryScreen({ navigation }) {
     };
   }, [exportStatus, exportedLinks, folders]);
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      setDebouncedSearch(search.trim());
-    }, 300);
-    return () => clearTimeout(timeoutId);
-  }, [search]);
-  useEffect(() => {
     setSearchPage(0);
     setBrowsePage(0);
     setBrowseCursors([null]);
-  }, [debouncedSearch, folderFilter, newsView, newsSort]);
+  }, [submittedSearch, selectedHashtagFilter, folderFilter, newsView, newsSort]);
   useEffect(() => {
     if (Platform.OS !== "web" || !slowTask || typeof window === "undefined") {
       return undefined;
@@ -1259,6 +1603,10 @@ export default function LibraryScreen({ navigation }) {
     window.addEventListener("beforeunload", warnBeforeExit);
     return () => window.removeEventListener("beforeunload", warnBeforeExit);
   }, [slowTask]);
+  useEffect(() => {
+    if (!activeImportJob || backupBusy || slowTask) return;
+    setResumeImportModalVisible(true);
+  }, [activeImportJob?._id, activeImportJob?.status, backupBusy, slowTask]);
   const selectedFolderId = !["all", "favorites", "unclassified"].includes(
     folderFilter,
   )
@@ -1282,56 +1630,92 @@ export default function LibraryScreen({ navigation }) {
     1,
     Math.min(6, Math.floor((screenWidth - 20) / 270)),
   );
-  const libraryResult = useQuery(api.computerLinks.list, {
-    search: debouncedSearch || undefined,
-    folderId: selectedFolderId,
-    onlyFavorites: folderFilter === "favorites" || undefined,
-    onlyUnclassified: folderFilter === "unclassified" || undefined,
-    excludeNewsSources: folderFilter === "all" || undefined,
-    linkType: isCatalogFolder
-      ? newsView === "sources"
-        ? isBooksFolder
-          ? "bookStore"
-          : "newsSource"
-        : isBooksFolder
-          ? "bookLink"
-          : "newsArticle"
-      : undefined,
-    newsSort: canSortCurrentList ? newsSort : undefined,
-    page: debouncedSearch ? searchPage : undefined,
-    cursor: debouncedSearch ? undefined : browseCursors[browsePage] || undefined,
-    paginate: !debouncedSearch || undefined,
-    limit: isSourceCatalog
-      ? LIBRARY_CATALOG_SOURCE_LIMIT
-      : debouncedSearch
-        ? LIBRARY_SEARCH_PAGE_SIZE
-        : LIBRARY_VISIBLE_LINK_LIMIT,
-  });
+  const textLibraryResult = useQuery(
+    api.computerLinks.list,
+    selectedHashtagFilter
+      ? "skip"
+      : {
+          search: submittedSearch || undefined,
+          folderId: selectedFolderId,
+          onlyFavorites: folderFilter === "favorites" || undefined,
+          onlyUnclassified: folderFilter === "unclassified" || undefined,
+          excludeNewsSources: folderFilter === "all" || undefined,
+          linkType: isCatalogFolder
+            ? newsView === "sources"
+              ? isBooksFolder
+                ? "bookStore"
+                : "newsSource"
+              : isBooksFolder
+                ? "bookLink"
+                : "newsArticle"
+            : undefined,
+          newsSort: canSortCurrentList ? newsSort : undefined,
+          page: submittedSearch ? searchPage : undefined,
+          cursor: submittedSearch
+            ? undefined
+            : browseCursors[browsePage] || undefined,
+          paginate: !submittedSearch || undefined,
+          limit: isSourceCatalog
+            ? LIBRARY_CATALOG_SOURCE_LIMIT
+            : submittedSearch
+              ? LIBRARY_SEARCH_PAGE_SIZE
+              : LIBRARY_VISIBLE_LINK_LIMIT,
+        },
+  );
+
+  const selectedHashtagIds = Array.isArray(selectedHashtagFilter?.ids)
+    ? selectedHashtagFilter.ids
+    : [];
+  const selectedHashtagTotal = selectedHashtagIds.length;
+  const selectedHashtagTotalPages = Math.max(
+    1,
+    Math.ceil(selectedHashtagTotal / HASHTAG_RESULT_PAGE_SIZE),
+  );
+  const selectedHashtagPage = Math.min(
+    searchPage,
+    selectedHashtagTotalPages - 1,
+  );
+  const selectedHashtagPageIds = selectedHashtagIds.slice(
+    selectedHashtagPage * HASHTAG_RESULT_PAGE_SIZE,
+    (selectedHashtagPage + 1) * HASHTAG_RESULT_PAGE_SIZE,
+  );
+  const selectedHashtagLinks = useQuery(
+    api.computerLinks.getLinksByIds,
+    selectedHashtagFilter
+      ? { ids: selectedHashtagPageIds }
+      : "skip",
+  );
+  const libraryResult = selectedHashtagFilter
+    ? {
+        items: selectedHashtagLinks || [],
+        page: selectedHashtagPage,
+        pageSize: HASHTAG_RESULT_PAGE_SIZE,
+        total: selectedHashtagTotal,
+        totalPages: selectedHashtagTotalPages,
+        continueCursor: null,
+        isDone: true,
+      }
+    : textLibraryResult;
+  useEffect(() => {
+    if (!pendingSearchTerm || pendingSearchTerm !== submittedSearch) return;
+    if (libraryResult !== undefined) setPendingSearchTerm(null);
+  }, [libraryResult, pendingSearchTerm, submittedSearch]);
   const links = libraryResult?.items;
   const shownItemCount = Array.isArray(links) ? links.length : 0;
-  const shownHashtags = useMemo(() => {
-    const counts = new Map();
-    (Array.isArray(links) ? links : []).forEach((link) => {
-      (Array.isArray(link?.hashtags) ? link.hashtags : []).forEach((tag) => {
-        const normalizedTag = String(tag || "")
-          .trim()
-          .replace(/^#+/, "")
-          .toLowerCase();
-        if (!normalizedTag) return;
-        counts.set(normalizedTag, (counts.get(normalizedTag) || 0) + 1);
-      });
-    });
-    return [...counts.entries()]
-      .map(([tag, count]) => ({ tag, count }))
-      .sort((first, second) =>
-        second.count - first.count || first.tag.localeCompare(second.tag),
-      );
-  }, [links]);
+  const filteredGlobalHashtags = useMemo(() => {
+    const query = String(hashtagSearch || "")
+      .trim()
+      .replace(/^#+/, "")
+      .toLowerCase();
+    const values = Array.isArray(globalHashtags) ? globalHashtags : [];
+    if (!query) return values;
+    return values.filter(({ tag }) => String(tag || "").includes(query));
+  }, [globalHashtags, hashtagSearch]);
   const displayedPostsDateRange = useMemo(
     () => getDisplayedPostsDateRange(links),
     [links],
   );
-  const isSearchingLibrary = Boolean(debouncedSearch);
+  const isSearchingLibrary = Boolean(submittedSearch || selectedHashtagFilter);
   const searchTotal = Number(libraryResult?.total || 0);
   const searchTotalPages = Number(libraryResult?.totalPages || 1);
   const activeSearchPage = Number(libraryResult?.page || 0);
@@ -1356,14 +1740,100 @@ export default function LibraryScreen({ navigation }) {
   const slowTaskPercent = slowTask?.total
     ? Math.min(100, Math.round((Number(slowTask.current || 0) / slowTask.total) * 100))
     : 0;
+  const resumeImportTotal = activeImportJob
+    ? Number(activeImportJob.totalLinks || 0) +
+      Number(activeImportJob.totalSources || 0)
+    : 0;
+  const resumeImportCurrent = activeImportJob
+    ? Number(activeImportJob.processedLinks || 0) +
+      Number(activeImportJob.processedSources || 0)
+    : 0;
+  const resumeImportPercent = resumeImportTotal
+    ? Math.min(
+        100,
+        Math.round((resumeImportCurrent / resumeImportTotal) * 100),
+      )
+    : 0;
   const filteredIntegrityCategoryCounts = useMemo(() => {
-    const counts = integrityReport?.after?.categoryCounts || [];
+    const counts =
+      integrityReport?.kind === "library"
+        ? integrityReport?.categoryCounts || []
+        : integrityReport?.after?.categoryCounts || [];
     const query = integritySearch.trim().toLowerCase();
     if (!query) return counts;
     return counts.filter(([category]) =>
       String(category || "").toLowerCase().includes(query),
     );
   }, [integrityReport, integritySearch]);
+
+  const startSearch = useCallback(
+    (value = search) => {
+      const nextSearch = String(value || "").trim();
+      setSearch(nextSearch);
+      setSelectedHashtagFilter(null);
+      if (!nextSearch) {
+        setSubmittedSearch("");
+        setPendingSearchTerm(null);
+        return;
+      }
+      if (nextSearch === submittedSearch) return;
+      setPendingSearchTerm(nextSearch);
+      setSubmittedSearch(nextSearch);
+    },
+    [search, submittedSearch],
+  );
+
+  const selectHashtag = useCallback((entry) => {
+    const tag = String(entry?.tag || "")
+      .trim()
+      .replace(/^#+/, "")
+      .toLowerCase();
+    const ids = Array.isArray(entry?.ids) ? entry.ids : [];
+    if (!tag) return;
+    setHashtagModalVisible(false);
+    setFolderFilter("all");
+    setNewsView("articles");
+    setNewsSort("publishedDesc");
+    setSearch(`#${tag}`);
+    setSubmittedSearch("");
+    setPendingSearchTerm(null);
+    setSearchPage(0);
+    setSelectedHashtagFilter({ tag, ids });
+  }, []);
+
+  const clearSearch = useCallback(() => {
+    setSearch("");
+    setSubmittedSearch("");
+    setSelectedHashtagFilter(null);
+    setPendingSearchTerm(null);
+  }, []);
+
+  const leaveHashtagMode = useCallback(() => {
+    setSelectedHashtagFilter(null);
+    setSearch("");
+    setSubmittedSearch("");
+    setPendingSearchTerm(null);
+    setSearchPage(0);
+  }, []);
+
+  const selectLibraryFilter = useCallback((id) => {
+    leaveHashtagMode();
+    setFolderFilter(String(id));
+  }, [leaveHashtagMode]);
+
+  const selectNewsView = useCallback((view) => {
+    leaveHashtagMode();
+    setNewsView(view);
+  }, [leaveHashtagMode]);
+
+  const showNewsArticles = useCallback(() => {
+    leaveHashtagMode();
+    const newsFolder = folders.find(
+      (folder) => !folder.parentFolderId && folder.name === "Noticias",
+    );
+    setFolderFilter(newsFolder ? String(newsFolder._id) : "all");
+    setNewsView("articles");
+  }, [folders, leaveHashtagMode]);
 
   const ensureDefaultFolders = useMutation(
     api.computerLinks.ensureDefaultFolders,
@@ -1377,7 +1847,38 @@ export default function LibraryScreen({ navigation }) {
   const removeLink = useMutation(api.computerLinks.remove);
   const removeNewsSource = useMutation(api.computerLinks.removeNewsSource);
   const importBackup = useMutation(api.computerLinks.importBackup);
+  const importLibraryJobBatch = useMutation(
+    api.computerLinks.importLibraryJobBatch,
+  );
+  const clearLibraryForImportBatch = useMutation(
+    api.computerLinks.clearLibraryForImportBatch,
+  );
+  const ensureNewsSources = useMutation(api.computerLinks.ensureNewsSources);
+  const ensureNewsSourcesForDomains = useMutation(
+    api.computerLinks.ensureNewsSourcesForDomains,
+  );
+  const beginLibraryImportJob = useMutation(
+    api.computerLinks.beginLibraryImportJob,
+  );
+  const updateLibraryImportJobProgress = useMutation(
+    api.computerLinks.updateLibraryImportJobProgress,
+  );
+  const completeLibraryImportJob = useMutation(
+    api.computerLinks.completeLibraryImportJob,
+  );
+  const cancelLibraryImportJob = useMutation(
+    api.computerLinks.cancelLibraryImportJob,
+  );
+  const normalizeAndDeduplicate = useMutation(
+    api.computerLinks.normalizeAndDeduplicate,
+  );
+  const extractTitleHashtagsBatch = useMutation(
+    api.computerLinks.extractTitleHashtagsBatch,
+  );
   const getLinkPreview = useAction(api.linkPreviews.get);
+  const refreshPreviewMetadata = useMutation(
+    api.computerLinks.updatePreviewMetadata,
+  );
   useEffect(() => {
     if (!backupMode) return;
     if (exportStatus === "CanLoadMore") {
@@ -1426,20 +1927,147 @@ export default function LibraryScreen({ navigation }) {
         return;
       }
 
+      if (currentBackupMode === "integrity") {
+        (async () => {
+          try {
+            const before = buildLibraryIntegrityReport(
+              currentBackup.links,
+              currentBackup.folders,
+            );
+            let cursor = null;
+            let sourceSyncResult = null;
+            let processedSources = 0;
+            let createdSources = 0;
+            while (true) {
+              sourceSyncResult = await ensureNewsSources({
+                clientId,
+                batchSize: INTEGRITY_BATCH_SIZE,
+                ...(cursor ? { cursor } : {}),
+              });
+              processedSources += Number(sourceSyncResult?.processed || 0);
+              createdSources += Number(
+                sourceSyncResult?.created || sourceSyncResult?.createdSources || 0,
+              );
+              setSlowTask({
+                kind: "integrity",
+                title: "Comprobando integridad",
+                message: "Reconstruyendo periódicos y tiendas de libros…",
+                current: Math.min(processedSources, before.totalLinks),
+                total: before.totalLinks,
+              });
+              if (sourceSyncResult?.isDone) break;
+              cursor = sourceSyncResult?.continueCursor || null;
+              if (!cursor) break;
+            }
+
+            let normalizationCursor = null;
+            let normalizationResult = null;
+            let correctedPosts = 0;
+            let duplicatesRemoved = 0;
+            let normalizedCount = 0;
+            let normalizedBatches = 0;
+            while (true) {
+              normalizationResult = await normalizeAndDeduplicate({
+                batchSize: 80,
+                ...(normalizationCursor
+                  ? { cursor: normalizationCursor }
+                  : {}),
+              });
+              correctedPosts += Number(
+                normalizationResult?.correctedNewsPosts || 0,
+              );
+              duplicatesRemoved += Number(
+                normalizationResult?.duplicatesRemoved || 0,
+              );
+              normalizedCount += Number(
+                normalizationResult?.normalizedCount || 0,
+              );
+              normalizedBatches += 1;
+              setSlowTask({
+                kind: "integrity",
+                title: "Comprobando integridad",
+                message: `Normalizando enlaces (lote ${normalizedBatches})…`,
+              });
+              if (normalizationResult?.isDone) break;
+              normalizationCursor =
+                normalizationResult?.continueCursor || null;
+              if (!normalizationCursor) break;
+            }
+
+            let hashtagCursor = null;
+            let hashtagProcessed = 0;
+            let hashtagUpdated = 0;
+            let titleHashtagsAdded = 0;
+            let hashtagBatches = 0;
+            while (true) {
+              const hashtagResult = await extractTitleHashtagsBatch({
+                batchSize: INTEGRITY_BATCH_SIZE,
+                ...(hashtagCursor ? { cursor: hashtagCursor } : {}),
+              });
+              hashtagProcessed += Number(hashtagResult?.processed || 0);
+              hashtagUpdated += Number(hashtagResult?.updated || 0);
+              titleHashtagsAdded += Number(hashtagResult?.hashtagsAdded || 0);
+              hashtagBatches += 1;
+              setSlowTask({
+                kind: "integrity",
+                title: "Comprobando integridad",
+                message: `Extrayendo hashtags de títulos (lote ${hashtagBatches})…`,
+                current: Math.min(hashtagProcessed, before.newsPosts || before.totalLinks),
+                total: before.newsPosts || before.totalLinks,
+              });
+              if (hashtagResult?.isDone) break;
+              hashtagCursor = hashtagResult?.continueCursor || null;
+              if (!hashtagCursor) break;
+            }
+
+            // La lista global puede haber cambiado durante la reparación.
+            setGlobalHashtags(null);
+
+            setIntegrityReport({
+              kind: "library",
+              ...before,
+              addedSources: createdSources,
+              correctedPosts,
+              duplicatesRemoved,
+              normalizedCount,
+              hashtagUpdated,
+              titleHashtagsAdded,
+              checkedAt: new Date().toISOString(),
+            });
+          } catch (error) {
+            safeAlert(
+              "No se pudo comprobar",
+              error?.message ||
+                "No se pudo revisar la integridad de la Biblioteca.",
+            );
+          } finally {
+            setIntegrityBusy(false);
+            setBackupBusy(false);
+            setSlowTask(null);
+          }
+        })();
+      }
     }
   }, [
     backupMode,
+    clientId,
+    ensureNewsSources,
     exportedLinks,
     exportStatus,
     libraryBackup,
     loadMoreExportedLinks,
+    normalizeAndDeduplicate,
+    extractTitleHashtagsBatch,
   ]);
 
   useEffect(() => {
+    // Esperar a conocer si existe una importación activa. Durante un reemplazo
+    // no debemos recrear carpetas mientras la fase de limpieza está en curso.
+    if (activeImportJob === undefined || activeImportJob) return;
     ensureDefaultFolders({ clientId }).catch((error) =>
       console.warn("[LibraryScreen] folder setup failed", error),
     );
-  }, [clientId, ensureDefaultFolders]);
+  }, [activeImportJob, clientId, ensureDefaultFolders]);
 
   const folderById = useMemo(
     () => new Map(folders.map((folder) => [String(folder._id), folder])),
@@ -1476,13 +2104,51 @@ export default function LibraryScreen({ navigation }) {
           : "general",
       });
       setUrlInput("");
+
+      // Una URL pegada explícitamente es una buena oportunidad para refrescar
+      // título/fecha, incluso si el enlace ya existía con metadatos antiguos.
+      // Nunca guardamos un título de fallback ni usamos la descripción como título.
+      if (result?.linkId && (result.existing || isCatalogFolder)) {
+        try {
+          const preview = await getLinkPreview({ url });
+          const parsedDomain = (() => {
+            try {
+              return new URL(url).hostname.replace(/^www\./i, "").toLowerCase();
+            } catch {
+              return "";
+            }
+          })();
+          const freshTitle = getPreviewTitleCandidate(
+            preview,
+            parsedDomain,
+            "default",
+          );
+          const freshPublishedAt = Number(preview?.publishedAt || 0) || null;
+          if (freshTitle || freshPublishedAt) {
+            await refreshPreviewMetadata({
+              linkId: result.linkId,
+              customTitle: freshTitle || undefined,
+              publishedAt: freshPublishedAt || undefined,
+            });
+          }
+        } catch (previewError) {
+          console.warn(
+            "[LibraryScreen] explicit URL metadata refresh failed",
+            previewError,
+          );
+        }
+      }
+
       if (result.existing) {
+        setSelectedHashtagFilter(null);
         setFolderFilter("all");
         setNewsView("articles");
+        setSearchPage(0);
         setSearch(url);
+        setSubmittedSearch(url);
         safeAlert(
           "Enlace recuperado",
-          "El enlace ya existía en la biblioteca. Se muestra ahora en los resultados.",
+          "El enlace ya existía en la biblioteca. Se ha intentado actualizar su título y fecha antes de mostrarlo.",
         );
       }
     } catch (error) {
@@ -1493,9 +2159,11 @@ export default function LibraryScreen({ navigation }) {
   }, [
     addUrl,
     clientId,
+    getLinkPreview,
     isCatalogFolder,
     isBooksFolder,
     newsView,
+    refreshPreviewMetadata,
     saving,
     selectedFolderId,
     urlInput,
@@ -1508,13 +2176,14 @@ export default function LibraryScreen({ navigation }) {
       const result = await createFolder({ name: folderName.trim(), clientId });
       setFolderName("");
       setCreatingFolder(false);
+      leaveHashtagMode();
       setFolderFilter(String(result.folderId));
     } catch (error) {
       safeAlert("No se pudo crear", error?.message || "Revisa el nombre.");
     } finally {
       setSaving(false);
     }
-  }, [clientId, createFolder, folderName, saving]);
+  }, [clientId, createFolder, folderName, leaveHashtagMode, saving]);
 
   const handleMove = useCallback(
     async (folder) => {
@@ -1531,6 +2200,38 @@ export default function LibraryScreen({ navigation }) {
     },
     [moveToFolder, movingLink],
   );
+
+  const confirmRemoveLink = useCallback(
+    (link) => {
+      if (!link?._id) return;
+      safeAlert(
+        "Eliminar enlace",
+        "Este enlace se eliminará de la Biblioteca.",
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Eliminar",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await removeLink({ linkId: link._id });
+              } catch (error) {
+                safeAlert(
+                  "No se pudo eliminar",
+                  error?.message || "Inténtalo de nuevo.",
+                );
+              }
+            },
+          },
+        ],
+      );
+    },
+    [removeLink],
+  );
+
+  const openLinkActions = useCallback((link) => {
+    setLinkActions(link);
+  }, []);
 
   const openMetadataEditor = useCallback((link) => {
     setEditingLink(link);
@@ -1702,8 +2403,325 @@ export default function LibraryScreen({ navigation }) {
     setBackupMode("export");
   }, [backupBusy]);
 
+  const runResumableImport = useCallback(
+    async (job, payload) => {
+      if (!job?._id || !payload?.data) {
+        safeAlert(
+          "No se puede continuar",
+          "No se encontró la información necesaria para reanudar esta importación.",
+        );
+        return;
+      }
+
+      const links = Array.isArray(payload.data.links) ? payload.data.links : [];
+      const sourceDomains = Array.isArray(payload.sourceDomains)
+        ? payload.sourceDomains
+        : collectImportNewsDomains(payload.data);
+      const totalLinks = links.length;
+      const totalSources = sourceDomains.length;
+      let currentJob = job;
+
+      setResumeImportModalVisible(false);
+      setBackupBusy(true);
+      importPauseRequestedRef.current = false;
+
+      try {
+        currentJob = await retryImportStep(() =>
+          updateLibraryImportJobProgress({
+            clientId,
+            jobId: job._id,
+            status: "running",
+            phase:
+              Number(job.processedLinks || 0) >= totalLinks ? "sources" : "links",
+          }),
+        );
+
+        if (payload.importMode === "replace" && !currentJob?.replacePrepared) {
+          while (!currentJob?.replacePrepared) {
+            setSlowTask({
+              kind: "import",
+              title: "Preparando reemplazo",
+              message: `Eliminando Biblioteca actual por lotes… ${Number(
+                currentJob?.linksDeleted || 0,
+              ).toLocaleString("es-ES")} enlaces y ${Number(
+                currentJob?.foldersDeleted || 0,
+              ).toLocaleString("es-ES")} carpetas eliminados.`,
+              canPause: true,
+            });
+
+            const clearResult = await retryImportStep(() =>
+              clearLibraryForImportBatch({
+                clientId,
+                jobId: job._id,
+                batchSize: IMPORT_CLEAR_BATCH_SIZE,
+              }),
+            );
+            currentJob = clearResult?.job || currentJob;
+
+            if (importPauseRequestedRef.current && !clearResult?.done) {
+              await updateLibraryImportJobProgress({
+                clientId,
+                jobId: job._id,
+                status: "paused",
+                phase: "links",
+              });
+              setResumeImportModalVisible(true);
+              return;
+            }
+
+            if (clearResult?.done || currentJob?.replacePrepared) break;
+          }
+        }
+
+        let processedLinks = Math.min(
+          totalLinks,
+          Math.max(0, Number(currentJob?.processedLinks || 0)),
+        );
+        const totalBatches = Math.max(
+          1,
+          Math.ceil(totalLinks / IMPORT_WRITE_BATCH_SIZE),
+        );
+
+        while (processedLinks < totalLinks) {
+          const start = processedLinks;
+          const end = Math.min(start + IMPORT_WRITE_BATCH_SIZE, totalLinks);
+          const batchNumber = Math.floor(start / IMPORT_WRITE_BATCH_SIZE) + 1;
+          setSlowTask({
+            kind: "import",
+            title: "Importando Biblioteca",
+            message: `Guardando lote ${batchNumber} de ${totalBatches}…`,
+            current: start,
+            total: totalLinks,
+            canPause: true,
+          });
+
+          const batchResult = await retryImportStep(() =>
+            importLibraryJobBatch({
+              clientId,
+              jobId: job._id,
+              expectedStart: start,
+              links: links.slice(start, end),
+              folders: Array.isArray(payload.data?.folders)
+                ? payload.data.folders
+                : [],
+              historicalMerge:
+                payload.backupMeta?.source === "legacy-news-array" &&
+                payload.importMode !== "replace",
+            }),
+          );
+
+          currentJob = batchResult?.job || currentJob;
+          processedLinks = Math.min(
+            totalLinks,
+            Math.max(end, Number(currentJob?.processedLinks || end)),
+          );
+
+          setSlowTask({
+            kind: "import",
+            title: "Importando Biblioteca",
+            message: `Lote ${batchNumber} de ${totalBatches} guardado`,
+            current: processedLinks,
+            total: totalLinks,
+            canPause: true,
+          });
+
+          if (importPauseRequestedRef.current) {
+            await updateLibraryImportJobProgress({
+              clientId,
+              jobId: job._id,
+              status: "paused",
+              phase: "links",
+              processedLinks,
+            });
+            setResumeImportModalVisible(true);
+            return;
+          }
+        }
+
+        currentJob = await retryImportStep(() =>
+          updateLibraryImportJobProgress({
+            clientId,
+            jobId: job._id,
+            status: "running",
+            phase: "sources",
+            processedLinks: totalLinks,
+          }),
+        );
+
+        let processedSources = Math.min(
+          totalSources,
+          Math.max(0, Number(currentJob?.processedSources || 0)),
+        );
+        const totalSourceBatches = Math.max(
+          1,
+          Math.ceil(totalSources / IMPORT_SOURCE_BATCH_SIZE),
+        );
+
+        while (processedSources < totalSources) {
+          const start = processedSources;
+          const end = Math.min(
+            start + IMPORT_SOURCE_BATCH_SIZE,
+            totalSources,
+          );
+          const batchNumber =
+            Math.floor(start / IMPORT_SOURCE_BATCH_SIZE) + 1;
+          setSlowTask({
+            kind: "import",
+            title: "Importando Biblioteca",
+            message: `Comprobando periódicos ${batchNumber} de ${totalSourceBatches}…`,
+            current: start,
+            total: totalSources,
+            canPause: true,
+          });
+
+          const sourceSummary = await retryImportStep(() =>
+            ensureNewsSourcesForDomains({
+              clientId,
+              domains: sourceDomains.slice(start, end),
+            }),
+          );
+
+          currentJob = await retryImportStep(() =>
+            updateLibraryImportJobProgress({
+              clientId,
+              jobId: job._id,
+              status: "running",
+              phase: "sources",
+              processedSources: end,
+              newsSourcesCreated: Number(sourceSummary?.created || 0),
+            }),
+          );
+          processedSources = end;
+
+          if (importPauseRequestedRef.current) {
+            await updateLibraryImportJobProgress({
+              clientId,
+              jobId: job._id,
+              status: "paused",
+              phase: "sources",
+              processedSources,
+            });
+            setResumeImportModalVisible(true);
+            return;
+          }
+        }
+
+        const finalJob = await retryImportStep(() =>
+          completeLibraryImportJob({
+            clientId,
+            jobId: job._id,
+          }),
+        );
+        await deleteImportPayload(job._id).catch((error) =>
+          console.warn("[LibraryScreen] import payload cleanup failed", error),
+        );
+        setResumeImportModalVisible(false);
+
+        safeAlert(
+          "Biblioteca restaurada",
+          `${payload.importMode === "replace" ? "Reemplazo completado." : "Modo combinar completado."}\n\n${Number(finalJob?.newsMetadataChecked || 0) ? `Noticias revisadas: ${Number(finalJob.newsMetadataChecked)}\nNoticias con título/fecha actualizados: ${Number(finalJob.newsMetadataUpdated || 0)}\n` : ""}${Number(finalJob?.linksDeleted || 0) ? `Enlaces eliminados: ${Number(finalJob.linksDeleted)}\n` : ""}${Number(finalJob?.foldersDeleted || 0) ? `Categorías eliminadas: ${Number(finalJob.foldersDeleted)}\n` : ""}Carpetas creadas: ${Number(finalJob?.foldersCreated || 0)}\nEnlaces creados: ${Number(finalJob?.linksCreated || 0)}\nEnlaces actualizados: ${Number(finalJob?.linksUpdated || 0)}${Number(finalJob?.newsSourcesCreated || 0) ? `\nPeriódicos añadidos: ${Number(finalJob.newsSourcesCreated)}` : ""}`,
+        );
+      } catch (error) {
+        console.warn("[LibraryScreen] resumable import interrupted", error);
+        try {
+          await updateLibraryImportJobProgress({
+            clientId,
+            jobId: job._id,
+            status: "interrupted",
+            lastError:
+              error?.message || "La conexión se interrumpió durante la importación.",
+          });
+        } catch (checkpointError) {
+          console.warn(
+            "[LibraryScreen] import checkpoint update failed",
+            checkpointError,
+          );
+        }
+        setResumeImportModalVisible(true);
+      } finally {
+        importPauseRequestedRef.current = false;
+        setBackupBusy(false);
+        setSlowTask(null);
+      }
+    },
+    [
+      clientId,
+      completeLibraryImportJob,
+      clearLibraryForImportBatch,
+      ensureNewsSourcesForDomains,
+      importLibraryJobBatch,
+      updateLibraryImportJobProgress,
+    ],
+  );
+
+  const handleResumeStoredImport = useCallback(async () => {
+    if (!activeImportJob || backupBusy) return;
+    try {
+      const payload = await loadImportPayload(activeImportJob._id);
+      if (!payload) {
+        throw new Error(
+          "No se encuentra la copia local del JSON. Vuelve a seleccionar el archivo original para iniciar una nueva importación.",
+        );
+      }
+      await runResumableImport(activeImportJob, payload);
+    } catch (error) {
+      safeAlert(
+        "No se puede continuar",
+        error?.message || "No se pudo recuperar la importación pendiente.",
+      );
+    }
+  }, [activeImportJob, backupBusy, runResumableImport]);
+
+  const handleDiscardStoredImport = useCallback(() => {
+    if (!activeImportJob || backupBusy) return;
+    safeAlert(
+      "Descartar importación",
+      "Se eliminará el punto de reanudación. Los enlaces que ya se hayan guardado permanecerán en Biblioteca.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Descartar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await cancelLibraryImportJob({
+                clientId,
+                jobId: activeImportJob._id,
+              });
+              await deleteImportPayload(activeImportJob._id).catch(() => {});
+              setResumeImportModalVisible(false);
+            } catch (error) {
+              safeAlert(
+                "No se pudo descartar",
+                error?.message || "Inténtalo de nuevo.",
+              );
+            }
+          },
+        },
+      ],
+    );
+  }, [activeImportJob, backupBusy, cancelLibraryImportJob, clientId]);
+
+  const handlePauseImport = useCallback(() => {
+    if (slowTask?.kind !== "import" || !slowTask?.canPause) return;
+    importPauseRequestedRef.current = true;
+    setSlowTask((current) =>
+      current?.kind === "import"
+        ? {
+            ...current,
+            message: "Pausando al terminar el lote actual…",
+            canPause: false,
+          }
+        : current,
+    );
+  }, [slowTask]);
+
   const handleImportSelected = useCallback(async () => {
     if (!importReview || backupBusy) return;
+    if (activeImportJob) {
+      setResumeImportModalVisible(true);
+      return;
+    }
 
     const categoryKeys = selectedImportCategoryKeys;
     if (importReview.categories.length > 0 && categoryKeys.length === 0) {
@@ -1716,6 +2734,8 @@ export default function LibraryScreen({ navigation }) {
     const selectedData = importAll
       ? importReview.parsed.data
       : filterBackupByCategories(importReview.parsed.data, categoryKeys);
+    const selectedImportMode = importMode;
+    const selectedFileName = importReview.fileName || "Biblioteca.json";
 
     const executeImport = async () => {
       setImportReview(null);
@@ -1725,90 +2745,118 @@ export default function LibraryScreen({ navigation }) {
       setBackupBusy(true);
       setSlowTask({
         kind: "import",
-        title: "Importando Biblioteca",
+        title: "Preparando importación",
         message: "Preparando los enlaces seleccionados…",
         current: 0,
         total: Array.isArray(selectedData?.links) ? selectedData.links.length : 0,
       });
+
+      let job = null;
+      let payloadSaved = false;
       try {
-        const enriched = enrichNewsOnImport
+        const selectedLinks = Array.isArray(selectedData?.links)
+          ? selectedData.links
+          : [];
+        const shouldEnrich =
+          enrichNewsOnImport && selectedLinks.length <= IMPORT_ENRICH_LIMIT;
+        const enriched = shouldEnrich
           ? await enrichImportedNewsMetadata(
               selectedData,
               getLinkPreview,
               ({ completed, total }) =>
                 setSlowTask({
                   kind: "import",
-                  title: "Importando Biblioteca",
+                  title: "Preparando importación",
                   message: "Actualizando títulos y fechas de noticias…",
                   current: completed,
                   total,
                 }),
             )
           : { data: selectedData, summary: { checked: 0, updated: 0 } };
-        const importData = enriched.data;
-        const links = Array.isArray(importData.links) ? importData.links : [];
-        const linkBatches = [];
-        for (let index = 0; index < links.length; index += IMPORT_BATCH_SIZE) {
-          linkBatches.push(links.slice(index, index + IMPORT_BATCH_SIZE));
-        }
-        if (linkBatches.length === 0) linkBatches.push([]);
 
-        const summary = {
-          foldersCreated: 0,
-          linksCreated: 0,
-          linksUpdated: 0,
-          foldersDeleted: 0,
-          linksDeleted: 0,
-          newsMetadataChecked: enriched.summary.checked,
-          newsMetadataUpdated: enriched.summary.updated,
+        const importData = enriched.data;
+        const links = Array.isArray(importData?.links) ? importData.links : [];
+        const sourceDomains = collectImportNewsDomains(importData);
+        const fingerprint = buildImportFingerprint(
+          selectedFileName,
+          importData,
+          selectedImportMode,
+        );
+        const backupMeta = { ...importReview.parsed };
+        delete backupMeta.data;
+
+        if (enrichNewsOnImport && !shouldEnrich && links.length > 0) {
+          setSlowTask({
+            kind: "import",
+            title: "Preparando importación",
+            message: `Importación grande: se omite la consulta web de ${links.length.toLocaleString("es-ES")} noticias para acelerar y estabilizar el proceso.`,
+            current: 0,
+            total: links.length,
+          });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+
+        job = await beginLibraryImportJob({
+          clientId,
+          fileName: selectedFileName,
+          fingerprint,
+          importMode: selectedImportMode,
+          totalLinks: links.length,
+          totalSources: sourceDomains.length,
+          newsMetadataChecked: Number(enriched.summary?.checked || 0),
+          newsMetadataUpdated: Number(enriched.summary?.updated || 0),
+        });
+
+        const payload = {
+          version: 1,
+          fileName: selectedFileName,
+          importMode: selectedImportMode,
+          backupMeta,
+          data: importData,
+          sourceDomains,
+          savedAt: new Date().toISOString(),
         };
-        for (let index = 0; index < linkBatches.length; index += 1) {
-          setSlowTask({
-            kind: "import",
-            title: "Importando Biblioteca",
-            message: `Guardando lote ${index + 1} de ${linkBatches.length}…`,
-            current: index * IMPORT_BATCH_SIZE,
-            total: links.length,
-          });
-          const importArgs = {
+        setSlowTask({
+          kind: "import",
+          title: "Preparando importación",
+          message: "Guardando un punto de reanudación local…",
+          current: 0,
+          total: links.length,
+        });
+        await saveImportPayload(job._id, payload);
+        payloadSaved = true;
+
+        setBackupBusy(false);
+        setSlowTask(null);
+        await runResumableImport(job, payload);
+      } catch (error) {
+        if (job?._id && !payloadSaved) {
+          await cancelLibraryImportJob({
             clientId,
-            backup: {
-              ...importReview.parsed,
-              data: { ...importData, links: linkBatches[index] },
-            },
-            replaceExisting: importMode === "replace" && index === 0,
-          };
-          const batchSummary = await importBackup(importArgs);
-          Object.keys(summary).forEach((key) => {
-            summary[key] += Number(batchSummary?.[key] || 0);
-          });
-          setSlowTask({
-            kind: "import",
-            title: "Importando Biblioteca",
-            message: `Guardando lote ${index + 1} de ${linkBatches.length}…`,
-            current: Math.min((index + 1) * IMPORT_BATCH_SIZE, links.length),
-            total: links.length,
-          });
+            jobId: job._id,
+          }).catch(() => {});
+        } else if (job?._id) {
+          await updateLibraryImportJobProgress({
+            clientId,
+            jobId: job._id,
+            status: "interrupted",
+            lastError: error?.message || "No se pudo iniciar la importación.",
+          }).catch(() => {});
+          setResumeImportModalVisible(true);
         }
         safeAlert(
-          "Biblioteca restaurada",
-          `${importMode === "replace" ? "Reemplazo completado." : "Modo combinar completado."}\n\n${summary.newsMetadataChecked ? `Noticias revisadas: ${summary.newsMetadataChecked}\nNoticias con título/fecha actualizados: ${summary.newsMetadataUpdated}\n` : ""}${summary.linksDeleted ? `Enlaces eliminados: ${summary.linksDeleted}\n` : ""}${summary.foldersDeleted ? `Categorías eliminadas: ${summary.foldersDeleted}\n` : ""}Carpetas creadas: ${summary.foldersCreated}\nEnlaces creados: ${summary.linksCreated}\nEnlaces actualizados: ${summary.linksUpdated}`,
+          "No se pudo iniciar la importación",
+          error?.message || "No se pudo preparar la Biblioteca.",
         );
-      } catch (error) {
-        safeAlert(
-          "No se pudo importar",
-          error?.message || "No se pudo modificar la Biblioteca.",
-        );
-      } finally {
         setBackupBusy(false);
         setSlowTask(null);
       }
     };
 
-    if (importMode === "replace") {
+    if (selectedImportMode === "replace") {
       safeAlert(
         "Reemplazar Biblioteca",
-        `Se eliminarán todas las categorías y enlaces actuales y se conservarán únicamente los seleccionados del fichero ${importReview.fileName}. Esta acción no se puede deshacer.`,
+        `Se eliminarán todas las categorías y enlaces actuales y se conservarán únicamente los seleccionados del fichero ${selectedFileName}. La importación podrá reanudarse si se interrumpe, pero esta acción reemplaza los datos actuales.`,
         [
           { text: "Cancelar", style: "cancel" },
           { text: "Reemplazar", style: "destructive", onPress: executeImport },
@@ -1819,18 +2867,26 @@ export default function LibraryScreen({ navigation }) {
 
     await executeImport();
   }, [
+    activeImportJob,
     backupBusy,
+    beginLibraryImportJob,
+    cancelLibraryImportJob,
     clientId,
     enrichNewsOnImport,
     getLinkPreview,
-    importBackup,
     importMode,
     importReview,
+    runResumableImport,
     selectedImportCategoryKeys,
+    updateLibraryImportJobProgress,
   ]);
 
   const handleImportBackup = useCallback(async () => {
     if (backupBusy) return;
+    if (activeImportJob) {
+      setResumeImportModalVisible(true);
+      return;
+    }
     setBackupBusy(true);
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -1852,9 +2908,15 @@ export default function LibraryScreen({ navigation }) {
         });
       }
 
-      const parsed = JSON.parse(jsonText);
+      const rawParsed = JSON.parse(jsonText);
+      const isHistoricalNewsArray = Array.isArray(rawParsed);
+      const parsed = isHistoricalNewsArray
+        ? buildHistoricalNewsBackup(rawParsed)
+        : rawParsed;
       if (parsed?.format !== "shopp-library-backup" || parsed?.version !== 1) {
-        throw new Error("El fichero no es una copia de Biblioteca compatible.");
+        throw new Error(
+          "El fichero no es una copia de Biblioteca ni un array histórico de noticias compatible.",
+        );
       }
       if (
         !parsed?.data ||
@@ -1879,10 +2941,15 @@ export default function LibraryScreen({ navigation }) {
         linkCount,
         sourceCount,
         savedLinkCount,
+        isHistoricalNewsArray,
+        originalItemCount: isHistoricalNewsArray ? rawParsed.length : linkCount,
+        skippedHistoricalCount: isHistoricalNewsArray
+          ? Math.max(0, rawParsed.length - linkCount)
+          : 0,
       });
       setSelectedImportCategoryKeys(categories.map((category) => category.key));
       setImportMode("combine");
-      setEnrichNewsOnImport(true);
+      setEnrichNewsOnImport(!isHistoricalNewsArray);
     } catch (error) {
       if (String(error?.name || "") === "SyntaxError") {
         safeAlert(
@@ -1898,7 +2965,7 @@ export default function LibraryScreen({ navigation }) {
     } finally {
       setBackupBusy(false);
     }
-  }, [backupBusy]);
+  }, [activeImportJob, backupBusy]);
 
   const importCategories = importReview?.categories || [];
   const importCatalogSources = importCategories.find(
@@ -1910,6 +2977,13 @@ export default function LibraryScreen({ navigation }) {
   const allImportCategoriesSelected =
     importCategories.length === 0 ||
     selectedImportCategoryKeys.length === importCategories.length;
+  const selectedImportLinkCount = allImportCategoriesSelected
+    ? importReview?.linkCount || 0
+    : importCategories
+        .filter((category) => selectedImportCategoryKeys.includes(category.key))
+        .reduce((total, category) => total + Number(category.linkCount || 0), 0);
+  const importMetadataEnrichmentDisabled =
+    selectedImportLinkCount > IMPORT_ENRICH_LIMIT;
 
   const closeImportReview = useCallback(() => {
     if (backupBusy) return;
@@ -1958,7 +3032,22 @@ export default function LibraryScreen({ navigation }) {
     );
   }, []);
 
-  const handleCheckIntegrity = useCallback(async () => {
+  const handleCheckIntegrity = useCallback(() => {
+    if (integrityBusy || backupBusy) return;
+    setIntegritySearch("");
+    setIntegrityReport(null);
+    setIntegrityBusy(true);
+    setBackupBusy(true);
+    setSlowTask({
+      kind: "integrity",
+      title: "Comprobando integridad",
+      message: "Leyendo los enlaces actuales de Biblioteca…",
+      current: 0,
+    });
+    setBackupMode("integrity");
+  }, [backupBusy, integrityBusy]);
+
+  const handleCheckLocalJson = useCallback(async () => {
     if (integrityBusy) return;
     setIntegritySearch("");
     setIntegrityBusy(true);
@@ -1993,6 +3082,7 @@ export default function LibraryScreen({ navigation }) {
             });
       const repaired = repairBackupLocally(JSON.parse(jsonText));
       setIntegrityReport({
+        kind: "local",
         ...repaired,
         fileName: asset.name || "copia de Biblioteca",
         repairedFileName: localIntegrityFilename(asset.name),
@@ -2141,18 +3231,54 @@ export default function LibraryScreen({ navigation }) {
                   Platform.OS === "web" && styles.webInputNoOutline,
                 ]}
                 autoCorrect={false}
+                returnKeyType="search"
+                onSubmitEditing={() => startSearch()}
               />
               {search ? (
                 <Pressable
-                  onPress={() => setSearch("")}
+                  onPress={clearSearch}
                   style={styles.iconButton}
+                  accessibilityLabel="Borrar búsqueda"
                 >
                   <Ionicons name="close-circle" size={20} color="#94a3b8" />
                 </Pressable>
               ) : null}
+              <Pressable
+                onPress={() => startSearch()}
+                disabled={!search.trim() || Boolean(pendingSearchTerm)}
+                style={[
+                  styles.searchSubmitButton,
+                  (!search.trim() || pendingSearchTerm) && styles.buttonDisabled,
+                ]}
+                accessibilityLabel="Iniciar búsqueda"
+              >
+                <Ionicons name="search" size={18} color="#fff" />
+                <Text style={styles.searchSubmitText}>Buscar</Text>
+              </Pressable>
             </View>
           </View>
         ) : null}
+
+        <Modal
+          visible={Boolean(pendingSearchTerm)}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {}}
+          statusBarTranslucent
+        >
+          <View style={styles.searchLoadingBackdrop}>
+            <View style={styles.searchLoadingCard}>
+              <ActivityIndicator size="large" color="#2563eb" />
+              <Text style={styles.searchLoadingTitle}>Buscando enlaces</Text>
+              <Text style={styles.searchLoadingText} numberOfLines={2}>
+                {pendingSearchTerm}
+              </Text>
+              <Text style={styles.searchLoadingHint}>
+                Espera mientras se cargan los resultados.
+              </Text>
+            </View>
+          </View>
+        </Modal>
 
         <Modal
           visible={Boolean(slowTask)}
@@ -2182,10 +3308,89 @@ export default function LibraryScreen({ navigation }) {
                   </Text>
                 </View>
               ) : null}
-              <Text style={styles.slowTaskHint}>
-                Esta tarea no se puede cancelar. No cierres, recargues ni salgas
-                de la aplicación hasta que termine.
+              {slowTask?.kind === "import" ? (
+                <>
+                  <Text style={styles.slowTaskHint}>
+                    El progreso se guarda después de cada lote. Si la conexión se
+                    interrumpe podrás continuar desde el último punto confirmado.
+                  </Text>
+                  {slowTask?.canPause ? (
+                    <Pressable
+                      onPress={handlePauseImport}
+                      style={[styles.cancelButton, { marginTop: 14, alignSelf: "stretch" }]}
+                    >
+                      <Text style={styles.cancelText}>Pausar después de este lote</Text>
+                    </Pressable>
+                  ) : null}
+                </>
+              ) : (
+                <Text style={styles.slowTaskHint}>
+                  Esta tarea no se puede cancelar. No cierres, recargues ni salgas
+                  de la aplicación hasta que termine.
+                </Text>
+              )}
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={Boolean(activeImportJob) && resumeImportModalVisible && !backupBusy}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setResumeImportModalVisible(false)}
+          statusBarTranslucent
+        >
+          <View style={styles.slowTaskBackdrop}>
+            <View style={styles.slowTaskCard}>
+              <Ionicons name="cloud-offline-outline" size={34} color="#2563eb" />
+              <Text style={styles.slowTaskTitle}>Importación pendiente</Text>
+              <Text style={styles.slowTaskMessage} numberOfLines={2}>
+                {activeImportJob?.fileName || "Biblioteca.json"}
               </Text>
+              {resumeImportTotal ? (
+                <View style={styles.slowTaskProgressArea}>
+                  <View style={styles.slowTaskProgressTrack}>
+                    <View
+                      style={[
+                        styles.slowTaskProgressFill,
+                        { width: `${resumeImportPercent}%` },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.slowTaskProgressText}>
+                    {resumeImportCurrent.toLocaleString("es-ES")} de{" "}
+                    {resumeImportTotal.toLocaleString("es-ES")} ({resumeImportPercent}%)
+                  </Text>
+                </View>
+              ) : null}
+              <Text style={styles.slowTaskHint}>
+                {activeImportJob?.phase === "sources"
+                  ? `Enlaces guardados. Quedan ${Math.max(0, Number(activeImportJob?.totalSources || 0) - Number(activeImportJob?.processedSources || 0)).toLocaleString("es-ES")} dominios por comprobar.`
+                  : `Se continuará desde el enlace ${Math.min(Number(activeImportJob?.processedLinks || 0) + 1, Number(activeImportJob?.totalLinks || 0)).toLocaleString("es-ES")}.`}
+                {activeImportJob?.lastError
+                  ? `\n\nÚltimo error: ${activeImportJob.lastError}`
+                  : ""}
+              </Text>
+              <View style={[styles.modalActions, { alignSelf: "stretch" }]}>
+                <Pressable
+                  onPress={handleDiscardStoredImport}
+                  style={styles.cancelButton}
+                >
+                  <Text style={styles.cancelText}>Descartar</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setResumeImportModalVisible(false)}
+                  style={styles.cancelButton}
+                >
+                  <Text style={styles.cancelText}>Cerrar</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleResumeStoredImport}
+                  style={styles.saveButton}
+                >
+                  <Text style={styles.saveText}>Continuar</Text>
+                </Pressable>
+              </View>
             </View>
           </View>
         </Modal>
@@ -2249,6 +3454,25 @@ export default function LibraryScreen({ navigation }) {
                   <Ionicons name="download-outline" size={17} color="#2563eb" />
                   <Text style={styles.backupButtonText}>Importar JSON</Text>
                 </Pressable>
+                {activeImportJob ? (
+                  <Pressable
+                    onPress={() => {
+                      setToolsModalVisible(false);
+                      setResumeImportModalVisible(true);
+                    }}
+                    disabled={backupBusy}
+                    style={[
+                      styles.backupButton,
+                      styles.toolsModalActionButton,
+                      backupBusy && styles.buttonDisabled,
+                    ]}
+                  >
+                    <Ionicons name="refresh-circle-outline" size={17} color="#2563eb" />
+                    <Text style={styles.backupButtonText}>
+                      Continuar importación
+                    </Text>
+                  </Pressable>
+                ) : null}
                 <Pressable
                   onPress={() => {
                     setToolsModalVisible(false);
@@ -2268,8 +3492,27 @@ export default function LibraryScreen({ navigation }) {
                     color="#047857"
                   />
                   <Text style={styles.integrityButtonText}>
-                    {integrityBusy ? "Analizando…" : "Comprobar JSON local"}
+                    {integrityBusy ? "Comprobando…" : "Comprobar integridad"}
                   </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    setToolsModalVisible(false);
+                    handleCheckLocalJson();
+                  }}
+                  disabled={integrityBusy || backupBusy}
+                  style={[
+                    styles.backupButton,
+                    styles.toolsModalActionButton,
+                    (integrityBusy || backupBusy) && styles.buttonDisabled,
+                  ]}
+                >
+                  <Ionicons
+                    name="document-text-outline"
+                    size={17}
+                    color="#2563eb"
+                  />
+                  <Text style={styles.backupButtonText}>Comprobar JSON local</Text>
                 </Pressable>
               </View>
 
@@ -2324,37 +3567,127 @@ export default function LibraryScreen({ navigation }) {
                   </Pressable>
                 </View>
                 <View style={styles.toolsHashtagSection}>
-                  <Text style={styles.displayModeLabel}>
-                    Hashtags de los enlaces mostrados
-                  </Text>
-                  {shownHashtags.length ? (
-                    <ScrollView
-                      style={styles.toolsHashtagList}
-                      contentContainerStyle={styles.toolsHashtagListContent}
-                      nestedScrollEnabled
-                    >
-                      {shownHashtags.map(({ tag, count }) => (
-                        <Pressable
-                          key={tag}
-                          onPress={() => {
-                            setSearch(tag);
-                            setToolsModalVisible(false);
-                          }}
-                          style={styles.toolsHashtagChip}
-                          accessibilityLabel={`Filtrar por #${tag}, ${count} enlaces`}
-                        >
-                          <Text style={styles.toolsHashtagText}>#{tag}</Text>
-                          <Text style={styles.toolsHashtagCount}>{count}</Text>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  ) : (
-                    <Text style={styles.toolsHashtagEmpty}>
-                      No hay hashtags en los enlaces mostrados.
+                  <Text style={styles.displayModeLabel}>Hashtags</Text>
+                  <Pressable
+                    onPress={() => {
+                      setToolsModalVisible(false);
+                      setHashtagModalVisible(true);
+                    }}
+                    style={[styles.backupButton, styles.toolsModalActionButton]}
+                    accessibilityLabel="Mostrar todos los hashtags de noticias"
+                  >
+                    <Ionicons name="pricetags-outline" size={17} color="#2563eb" />
+                    <Text style={styles.backupButtonText}>
+                      Hashtags de noticias
+                      {Array.isArray(globalHashtags)
+                        ? ` (${globalHashtags.length})`
+                        : ""}
                     </Text>
-                  )}
+                  </Pressable>
+                  <Text style={styles.toolsHashtagEmpty}>
+                    Lista global, independiente de la carpeta o filtro actual.
+                  </Text>
                 </View>
               </View>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={hashtagModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setHashtagModalVisible(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalCard, styles.hashtagCatalogModalCard]}>
+              <View style={styles.hashtagCatalogHeader}>
+                <View style={styles.hashtagCatalogTitleRow}>
+                  <Ionicons name="pricetags-outline" size={20} color="#2563eb" />
+                  <Text style={styles.hashtagCatalogTitle}>Hashtags de noticias</Text>
+                </View>
+                <Pressable
+                  onPress={() => setHashtagModalVisible(false)}
+                  style={styles.iconButton}
+                  accessibilityLabel="Cerrar hashtags"
+                >
+                  <Ionicons name="close" size={22} color="#475569" />
+                </Pressable>
+              </View>
+
+              <Text style={styles.hashtagCatalogSubtitle}>
+                Los hashtags se guardan sin # y se muestran con el símbolo en pantalla.
+              </Text>
+
+              {Array.isArray(globalHashtags) ? (
+                <>
+                  <View style={styles.hashtagCatalogSearchRow}>
+                    <Ionicons name="search-outline" size={18} color="#64748b" />
+                    <TextInput
+                      value={hashtagSearch}
+                      onChangeText={setHashtagSearch}
+                      placeholder="Buscar hashtag…"
+                      placeholderTextColor="#94a3b8"
+                      style={[
+                        styles.hashtagCatalogSearchInput,
+                        Platform.OS === "web" && styles.webInputNoOutline,
+                      ]}
+                      autoCorrect={false}
+                    />
+                    {hashtagSearch ? (
+                      <Pressable
+                        onPress={() => setHashtagSearch("")}
+                        accessibilityLabel="Limpiar búsqueda de hashtags"
+                      >
+                        <Ionicons name="close-circle" size={19} color="#94a3b8" />
+                      </Pressable>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.hashtagCatalogSummaryRow}>
+                    <Text style={styles.hashtagCatalogSummary}>
+                      {globalHashtags.length} hashtags distintos
+                    </Text>
+                    <Pressable
+                      onPress={() => {
+                        setGlobalHashtags(null);
+                        setHashtagSearch("");
+                      }}
+                      accessibilityLabel="Actualizar lista de hashtags"
+                    >
+                      <Text style={styles.hashtagCatalogRefresh}>Actualizar</Text>
+                    </Pressable>
+                  </View>
+
+                  <ScrollView
+                    style={styles.hashtagCatalogList}
+                    contentContainerStyle={styles.hashtagCatalogListContent}
+                    nestedScrollEnabled
+                  >
+                    {filteredGlobalHashtags.map((entry) => {
+                      const { tag, count } = entry;
+                      return (
+                      <Pressable
+                        key={tag}
+                        onPress={() => selectHashtag(entry)}
+                        style={styles.toolsHashtagChip}
+                        accessibilityLabel={`Filtrar por #${tag}, ${count} noticias`}
+                      >
+                        <Text style={styles.toolsHashtagText}>#{tag}</Text>
+                        <Text style={styles.toolsHashtagCount}>{count}</Text>
+                      </Pressable>
+                      );
+                    })}
+                    {!filteredGlobalHashtags.length ? (
+                      <Text style={styles.toolsHashtagEmpty}>
+                        No hay hashtags que coincidan con la búsqueda.
+                      </Text>
+                    ) : null}
+                  </ScrollView>
+                </>
+              ) : (
+                <HashtagCatalogLoader onLoaded={setGlobalHashtags} />
+              )}
             </View>
           </View>
         </Modal>
@@ -2450,9 +3783,7 @@ export default function LibraryScreen({ navigation }) {
             return (
               <Pressable
                 key={id}
-                onPress={() => {
-                  setFolderFilter(id);
-                }}
+                onPress={() => selectLibraryFilter(id)}
                 style={[styles.folderChip, active && styles.folderChipActive]}
               >
                 <Ionicons
@@ -2481,6 +3812,28 @@ export default function LibraryScreen({ navigation }) {
             </Pressable>
           ) : null}
         </ScrollView>
+
+        {selectedHashtagFilter ? (
+          <View style={styles.activeHashtagFilterBar}>
+            <View style={styles.activeHashtagFilterInfo}>
+              <Ionicons name="pricetag-outline" size={15} color="#1d4ed8" />
+              <Text style={styles.activeHashtagFilterText}>
+                Filtro exacto: #{selectedHashtagFilter.tag}
+              </Text>
+              <Text style={styles.activeHashtagFilterCount}>
+                {selectedHashtagTotal.toLocaleString("es-ES")}
+              </Text>
+            </View>
+            <Pressable
+              onPress={showNewsArticles}
+              style={styles.activeHashtagFilterClear}
+              accessibilityLabel={`Quitar filtro #${selectedHashtagFilter.tag} y mostrar noticias`}
+            >
+              <Ionicons name="close" size={17} color="#1d4ed8" />
+              <Text style={styles.activeHashtagFilterClearText}>Mostrar noticias</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {creatingFolder ? (
           <View style={styles.folderEditor}>
@@ -2637,7 +3990,7 @@ export default function LibraryScreen({ navigation }) {
           <View style={styles.newsTabs}>
             <Pressable
               onPress={() => {
-                setNewsView("sources");
+                selectNewsView("sources");
                 setCreatingFolder(false);
                 setEditingFolder(null);
               }}
@@ -2663,7 +4016,7 @@ export default function LibraryScreen({ navigation }) {
               </Text>
             </Pressable>
             <Pressable
-              onPress={() => setNewsView("articles")}
+              onPress={() => selectNewsView("articles")}
               style={[
                 styles.newsTab,
                 newsView === "articles" && styles.newsTabActive,
@@ -2862,30 +4215,11 @@ export default function LibraryScreen({ navigation }) {
                     </Pressable>
                     <View style={styles.sourceMinimalActions}>
                       <Pressable
-                        onPress={() => openSourceUrl(item.normalizedUrl)}
+                        onPress={() => openLinkActions(item)}
                         style={styles.sourceMinimalButton}
+                        accessibilityLabel="Opciones"
                       >
-                        <Ionicons
-                          name="open-outline"
-                          size={18}
-                          color="#2563eb"
-                        />
-                      </Pressable>
-                      <Pressable
-                        onPress={() => openSourceEditor(item)}
-                        style={styles.sourceMinimalButton}
-                      >
-                        <Ionicons name="pencil" size={17} color="#475569" />
-                      </Pressable>
-                      <Pressable
-                        onPress={() => confirmRemoveSource(item)}
-                        style={styles.sourceMinimalButton}
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={18}
-                          color="#dc2626"
-                        />
+                        <Ionicons name="ellipsis-horizontal" size={20} color="#475569" />
                       </Pressable>
                     </View>
                   </View>
@@ -2922,26 +4256,11 @@ export default function LibraryScreen({ navigation }) {
                   </Pressable>
                   <View style={styles.sourceTileActions}>
                     <Pressable
-                      onPress={() => openSourceUrl(item.normalizedUrl)}
+                      onPress={() => openLinkActions(item)}
                       style={styles.sourceTileButton}
+                      accessibilityLabel="Opciones"
                     >
-                      <Ionicons name="open-outline" size={18} color="#2563eb" />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => openSourceEditor(item)}
-                      style={styles.sourceTileButton}
-                    >
-                      <Ionicons name="pencil" size={17} color="#475569" />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => confirmRemoveSource(item)}
-                      style={styles.sourceTileButton}
-                    >
-                      <Ionicons
-                        name="trash-outline"
-                        size={18}
-                        color="#dc2626"
-                      />
+                      <Ionicons name="ellipsis-horizontal" size={20} color="#475569" />
                     </Pressable>
                   </View>
                 </View>
@@ -2993,7 +4312,7 @@ export default function LibraryScreen({ navigation }) {
                       {item.hashtags.map((tag) => (
                         <Pressable
                           key={tag}
-                          onPress={() => setSearch(tag)}
+                          onPress={() => startSearch(tag)}
                           accessibilityLabel={`Buscar #${tag}`}
                         >
                           <Text style={styles.minimalHashtag}>#{tag}</Text>
@@ -3003,13 +4322,6 @@ export default function LibraryScreen({ navigation }) {
                   ) : null}
                   </View>
                   <View style={styles.minimalLinkActions}>
-                    <Pressable
-                      onPress={() => openMetadataEditor(item)}
-                      style={styles.minimalLinkButton}
-                      accessibilityLabel="Editar enlace"
-                    >
-                      <Ionicons name="create-outline" size={17} color="#475569" />
-                    </Pressable>
                     <Pressable
                       onPress={() => toggleFavorite({ linkId: item._id })}
                       style={styles.minimalLinkButton}
@@ -3022,18 +4334,11 @@ export default function LibraryScreen({ navigation }) {
                       />
                     </Pressable>
                     <Pressable
-                      onPress={() => setMovingLink(item)}
+                      onPress={() => openLinkActions(item)}
                       style={styles.minimalLinkButton}
-                      accessibilityLabel="Mover enlace"
+                      accessibilityLabel="Más opciones"
                     >
-                      <Ionicons name="folder-open-outline" size={17} color="#2563eb" />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => removeLink({ linkId: item._id })}
-                      style={styles.minimalLinkButton}
-                      accessibilityLabel="Eliminar enlace"
-                    >
-                      <Ionicons name="trash-outline" size={17} color="#dc2626" />
+                      <Ionicons name="ellipsis-horizontal" size={19} color="#475569" />
                     </Pressable>
                   </View>
                 </View>
@@ -3056,7 +4361,7 @@ export default function LibraryScreen({ navigation }) {
                 item.hashtags?.length ? (
                   <View style={styles.hashtagRow}>
                     {item.hashtags.map((tag) => (
-                      <Pressable key={tag} onPress={() => setSearch(tag)}>
+                      <Pressable key={tag} onPress={() => startSearch(tag)}>
                         <Text style={styles.hashtag}>#{tag}</Text>
                       </Pressable>
                     ))}
@@ -3085,22 +4390,9 @@ export default function LibraryScreen({ navigation }) {
                   </View>
                   <View style={styles.cardActionButtons}>
                     <Pressable
-                      onPress={() =>
-                        ["newsSource", "bookStore"].includes(item.linkType)
-                          ? openSourceEditor(item)
-                          : openMetadataEditor(item)
-                      }
-                      style={styles.iconButton}
-                    >
-                      <Ionicons
-                        name="create-outline"
-                        size={18}
-                        color="#475569"
-                      />
-                    </Pressable>
-                    <Pressable
                       onPress={() => toggleFavorite({ linkId: item._id })}
                       style={styles.iconButton}
+                      accessibilityLabel={item.favorite ? "Quitar de favoritos" : "Añadir a favoritos"}
                     >
                       <Ionicons
                         name={item.favorite ? "star" : "star-outline"}
@@ -3109,24 +4401,11 @@ export default function LibraryScreen({ navigation }) {
                       />
                     </Pressable>
                     <Pressable
-                      onPress={() => setMovingLink(item)}
+                      onPress={() => openLinkActions(item)}
                       style={styles.iconButton}
+                      accessibilityLabel="Más opciones"
                     >
-                      <Ionicons
-                        name="folder-open-outline"
-                        size={18}
-                        color="#2563eb"
-                      />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => removeLink({ linkId: item._id })}
-                      style={styles.iconButton}
-                    >
-                      <Ionicons
-                        name="trash-outline"
-                        size={18}
-                        color="#dc2626"
-                      />
+                      <Ionicons name="ellipsis-horizontal" size={19} color="#475569" />
                     </Pressable>
                   </View>
                 </View>
@@ -3149,7 +4428,7 @@ export default function LibraryScreen({ navigation }) {
         />
 
         <Modal
-          visible={Boolean(integrityReport)}
+          visible={integrityReport?.kind === "local"}
           transparent
           animationType="fade"
           onRequestClose={closeIntegrityReport}
@@ -3262,6 +4541,112 @@ export default function LibraryScreen({ navigation }) {
         </Modal>
 
         <Modal
+          visible={integrityReport?.kind === "library"}
+          transparent
+          animationType="fade"
+          onRequestClose={closeIntegrityReport}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Integridad de los enlaces</Text>
+              <View style={styles.integritySummaryBox}>
+                <Text style={styles.integritySummaryText}>
+                  {integrityReport?.totalLinks || 0} enlaces ·{" "}
+                  {integrityReport?.newsPosts || 0} noticias ·{" "}
+                  {integrityReport?.newsSources || 0} periódicos
+                </Text>
+                <Text style={styles.integritySummaryText}>
+                  Periódicos añadidos: {integrityReport?.addedSources || 0}
+                </Text>
+                <Text style={styles.integritySummaryText}>
+                  Posts corregidos: {integrityReport?.correctedPosts || 0}
+                </Text>
+                <Text style={styles.integritySummaryText}>
+                  URL normalizadas: {integrityReport?.normalizedCount || 0} ·{" "}
+                  Duplicados eliminados: {integrityReport?.duplicatesRemoved || 0}
+                </Text>
+                <Text style={styles.integritySummaryText}>
+                  Hashtags añadidos desde títulos: {integrityReport?.titleHashtagsAdded || 0} ·{" "}
+                  Noticias actualizadas: {integrityReport?.hashtagUpdated || 0}
+                </Text>
+              </View>
+              {integrityReport?.missingSourceDomains?.length ? (
+                <View style={styles.integrityWarningBox}>
+                  <Text style={styles.integrityWarning}>
+                    Dominios que requerían periódico antes de la reparación:{" "}
+                    {integrityReport.missingSourceDomains.length}
+                  </Text>
+                  <ScrollView
+                    style={styles.integrityDomainList}
+                    nestedScrollEnabled
+                  >
+                    <Text style={styles.integrityDomainText}>
+                      {integrityReport.missingSourceDomains.join(", ")}
+                    </Text>
+                  </ScrollView>
+                </View>
+              ) : (
+                <Text style={styles.integrityOk}>
+                  Todos los dominios de noticias tenían periódico.
+                </Text>
+              )}
+              <Text style={styles.fieldLabel}>Posts por categoría</Text>
+              <View style={styles.integritySearchRow}>
+                <Ionicons name="search-outline" size={16} color="#64748b" />
+                <TextInput
+                  value={integritySearch}
+                  onChangeText={setIntegritySearch}
+                  placeholder="Buscar categoría o dominio..."
+                  placeholderTextColor="#94a3b8"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={[
+                    styles.integritySearchInput,
+                    Platform.OS === "web" && styles.webInputNoOutline,
+                  ]}
+                />
+                {integritySearch ? (
+                  <Pressable
+                    onPress={() => setIntegritySearch("")}
+                    hitSlop={8}
+                    accessibilityLabel="Limpiar búsqueda de categorías"
+                  >
+                    <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                  </Pressable>
+                ) : null}
+              </View>
+              <ScrollView style={styles.integrityCategoryList}>
+                {filteredIntegrityCategoryCounts.length ? (
+                  filteredIntegrityCategoryCounts.map(([category, count]) => (
+                    <View key={category} style={styles.integrityCategoryRow}>
+                      <Text
+                        style={styles.integrityCategoryName}
+                        numberOfLines={1}
+                      >
+                        {category}
+                      </Text>
+                      <Text style={styles.integrityCategoryCount}>{count}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.integrityEmptySearch}>
+                    No hay categorías que coincidan.
+                  </Text>
+                )}
+              </ScrollView>
+              <View style={styles.modalActions}>
+                <Pressable
+                  onPress={closeIntegrityReport}
+                  style={styles.saveButton}
+                >
+                  <Text style={styles.saveText}>Cerrar</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
           visible={exportNameVisible}
           transparent
           animationType="fade"
@@ -3293,6 +4678,16 @@ export default function LibraryScreen({ navigation }) {
                 <Text style={styles.fieldHelp}>
                   Si omites la extensión, se añadirá automáticamente .json.
                 </Text>
+
+                {importReview?.isHistoricalNewsArray ? (
+                  <Text style={styles.fieldHelp}>
+                    Formato histórico detectado: se importará como Noticias,
+                    usando comments como comentario y conservando hashtags.
+                    {importReview.skippedHistoricalCount
+                      ? ` ${importReview.skippedHistoricalCount} elementos sin URL válida se omitirán.`
+                      : ""}
+                  </Text>
+                ) : null}
 
                 <Text style={styles.fieldLabel}>Informe del contenido</Text>
                 <View style={styles.importSummaryBox}>
@@ -3552,11 +4947,18 @@ export default function LibraryScreen({ navigation }) {
                 <Text style={styles.fieldLabel}>Noticias</Text>
                 <View style={styles.importCategoryList}>
                   <ImportCheckbox
-                    checked={enrichNewsOnImport}
+                    checked={
+                      enrichNewsOnImport && !importMetadataEnrichmentDisabled
+                    }
                     label="Actualizar título y fecha"
-                    detail="Lee metadatos HTML de cada noticia seleccionada antes de guardarla."
+                    detail={
+                      importMetadataEnrichmentDisabled
+                        ? `Desactivado para importaciones de más de ${IMPORT_ENRICH_LIMIT.toLocaleString("es-ES")} enlaces. Evita miles de consultas web y hace la importación mucho más estable.`
+                        : "Lee metadatos HTML de cada noticia seleccionada antes de guardarla."
+                    }
                     icon="sparkles-outline"
                     color="#dc2626"
+                    disabled={importMetadataEnrichmentDisabled}
                     onPress={() => setEnrichNewsOnImport((value) => !value)}
                   />
                 </View>
@@ -3661,6 +5063,68 @@ export default function LibraryScreen({ navigation }) {
                   </Text>
                 </Pressable>
               </View>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={Boolean(linkActions)}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setLinkActions(null)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalCard, styles.linkActionsModalCard]}>
+              <View style={styles.linkActionsHeader}>
+                <Text style={styles.modalTitle}>
+                  {["newsSource", "bookStore"].includes(linkActions?.linkType)
+                    ? linkActions?.linkType === "bookStore"
+                      ? "Opciones de la tienda"
+                      : "Opciones del periódico"
+                    : "Opciones del enlace"}
+                </Text>
+                <Pressable
+                  onPress={() => setLinkActions(null)}
+                  style={styles.toolsModalClose}
+                  accessibilityLabel="Cerrar opciones"
+                >
+                  <Ionicons name="close" size={21} color="#475569" />
+                </Pressable>
+              </View>
+              <Text style={styles.linkActionsTitle} numberOfLines={2}>
+                {linkActions?.customTitle || linkActions?.hostname || "Enlace"}
+              </Text>
+              {["newsSource", "bookStore"].includes(linkActions?.linkType) ? (
+                <>
+                  <Pressable onPress={() => { const link = linkActions; setLinkActions(null); openSourceUrl(link?.normalizedUrl || link?.url); }} style={styles.linkActionOption}>
+                    <Ionicons name="open-outline" size={20} color="#2563eb" />
+                    <Text style={styles.linkActionText}>Abrir</Text>
+                  </Pressable>
+                  <Pressable onPress={() => { const link = linkActions; setLinkActions(null); openSourceEditor(link); }} style={styles.linkActionOption}>
+                    <Ionicons name="create-outline" size={20} color="#475569" />
+                    <Text style={styles.linkActionText}>{linkActions?.linkType === "bookStore" ? "Editar tienda" : "Editar periódico"}</Text>
+                  </Pressable>
+                  <Pressable onPress={() => { const link = linkActions; setLinkActions(null); confirmRemoveSource(link); }} style={[styles.linkActionOption, styles.linkActionOptionDanger]}>
+                    <Ionicons name="trash-outline" size={20} color="#dc2626" />
+                    <Text style={styles.linkActionDangerText}>Eliminar</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Pressable onPress={() => { const link = linkActions; setLinkActions(null); openMetadataEditor(link); }} style={styles.linkActionOption}>
+                    <Ionicons name="create-outline" size={20} color="#475569" />
+                    <Text style={styles.linkActionText}>Editar comentario y hashtags</Text>
+                  </Pressable>
+                  <Pressable onPress={() => { const link = linkActions; setLinkActions(null); setMovingLink(link); }} style={styles.linkActionOption}>
+                    <Ionicons name="folder-open-outline" size={20} color="#2563eb" />
+                    <Text style={styles.linkActionText}>Mover a categoría</Text>
+                  </Pressable>
+                  <Pressable onPress={() => { const link = linkActions; setLinkActions(null); confirmRemoveLink(link); }} style={[styles.linkActionOption, styles.linkActionOptionDanger]}>
+                    <Ionicons name="trash-outline" size={20} color="#dc2626" />
+                    <Text style={styles.linkActionDangerText}>Eliminar enlace</Text>
+                  </Pressable>
+                </>
+              )}
             </View>
           </View>
         </Modal>
@@ -3918,6 +5382,36 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, minHeight: 42, fontSize: 14, color: "#111827" },
   webInputNoOutline: { outlineStyle: "none", outlineWidth: 0 },
+  searchSubmitButton: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    borderRadius: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#2563eb",
+  },
+  searchSubmitText: { color: "#fff", fontSize: 12, fontWeight: "900" },
+  searchLoadingBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15,23,42,0.58)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+  searchLoadingCard: {
+    width: "100%",
+    maxWidth: 390,
+    paddingHorizontal: 22,
+    paddingVertical: 24,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    alignItems: "center",
+  },
+  searchLoadingTitle: { marginTop: 14, fontSize: 17, fontWeight: "900", color: "#0f172a" },
+  searchLoadingText: { marginTop: 7, fontSize: 13, textAlign: "center", color: "#475569" },
+  searchLoadingHint: { marginTop: 8, fontSize: 11, textAlign: "center", color: "#64748b" },
   toolsModalCard: {
     width: 430,
     maxHeight: "82%",
@@ -3939,6 +5433,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   toolsModalTitle: { fontSize: 17, fontWeight: "900", color: "#111827" },
+  linkActionsModalCard: { maxWidth: 390 },
+  linkActionsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  linkActionsTitle: { marginTop: 4, marginBottom: 12, fontSize: 12, color: "#64748b" },
+  linkActionOption: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: "#f8fafc", marginTop: 7 },
+  linkActionOptionDanger: { backgroundColor: "#fff7f7" },
+  linkActionText: { flex: 1, fontSize: 13, fontWeight: "800", color: "#334155" },
+  linkActionDangerText: { flex: 1, fontSize: 13, fontWeight: "800", color: "#dc2626" },
   toolsModalClose: {
     width: 48,
     height: 48,
@@ -4029,6 +5530,99 @@ const styles = StyleSheet.create({
   toolsHashtagText: { fontSize: 11, fontWeight: "800", color: "#2563eb" },
   toolsHashtagCount: { fontSize: 10, fontWeight: "900", color: "#64748b" },
   toolsHashtagEmpty: { fontSize: 11, color: "#64748b" },
+  hashtagCatalogModalCard: {
+    width: 520,
+    maxHeight: "84%",
+    padding: 0,
+  },
+  hashtagCatalogHeader: {
+    minHeight: 54,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e2e8f0",
+  },
+  hashtagCatalogTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  hashtagCatalogTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#111827",
+  },
+  hashtagCatalogSubtitle: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    fontSize: 11,
+    lineHeight: 16,
+    color: "#64748b",
+  },
+  hashtagCatalogSearchRow: {
+    minHeight: 42,
+    marginHorizontal: 16,
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+  },
+  hashtagCatalogSearchInput: {
+    flex: 1,
+    minHeight: 38,
+    fontSize: 13,
+    color: "#111827",
+  },
+  hashtagCatalogSummaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 10,
+  },
+  hashtagCatalogSummary: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#475569",
+  },
+  hashtagCatalogRefresh: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: "#2563eb",
+  },
+  hashtagCatalogList: {
+    marginTop: 8,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  hashtagCatalogListContent: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+    paddingBottom: 8,
+  },
+  hashtagCatalogLoading: {
+    minHeight: 150,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    padding: 24,
+  },
+  hashtagCatalogLoadingTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#334155",
+  },
+  hashtagCatalogLoadingText: {
+    fontSize: 11,
+    color: "#64748b",
+  },
   backupButton: {
     minHeight: 36,
     flexDirection: "row",
@@ -4254,6 +5848,51 @@ const styles = StyleSheet.create({
   },
   displayModeText: { fontSize: 10, fontWeight: "800", color: "#475569" },
   displayModeTextActive: { color: "#fff" },
+  activeHashtagFilterBar: {
+    marginHorizontal: 10,
+    marginTop: 6,
+    marginBottom: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  activeHashtagFilterInfo: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  activeHashtagFilterText: {
+    flexShrink: 1,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1e40af",
+  },
+  activeHashtagFilterCount: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+  activeHashtagFilterClear: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+  },
+  activeHashtagFilterClearText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#1d4ed8",
+  },
   shownItemsBar: {
     minHeight: 34,
     flexDirection: "row",

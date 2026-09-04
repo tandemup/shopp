@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "type": "shopp-youtube-playlist",
+  "title": "Mozart Piano Concerto Num 3 - Daniel Barenboim",
+  "exportedAt": "2026-08-25T16:18:17.456Z",
+  "tracks": [
+    {
+      "kind": "single",
+      "title": "I. Allegro maestoso",
+      "url": "https://www.youtube.com/watch?v=tusva68An-4"
+    },
+    {
+      "kind": "single",
+      "title": "II. Andante",
+      "url": "https://www.youtube.com/watch?v=aqeCITP4oUw"
+    },
+    {
+      "kind": "single",
+      "title": "III. Presto",
+      "url": "https://www.youtube.com/watch?v=k80KJ-PcUjs"
+    }
+  ]
+}

@@ -490,6 +490,22 @@ async function getProviderPreviewOrFallback(url, reason) {
   return fallbackPreview(url, reason);
 }
 
+function redirectedArticleToHomepage(originalUrl, finalUrl) {
+  try {
+    const original = new URL(originalUrl);
+    const final = new URL(finalUrl);
+    const originalHost = original.hostname.replace(/^www\./i, "").toLowerCase();
+    const finalHost = final.hostname.replace(/^www\./i, "").toLowerCase();
+    const originalPath = original.pathname.replace(/\/+/g, "/");
+    const finalPath = final.pathname.replace(/\/+/g, "/");
+    const originalLooksLikeArticle = originalPath !== "/" && originalPath.length > 1;
+    const finalLooksLikeHomepage = finalPath === "/" || finalPath === "";
+    return originalHost === finalHost && originalLooksLikeArticle && finalLooksLikeHomepage;
+  } catch {
+    return false;
+  }
+}
+
 async function fetchWithValidatedRedirects(initialUrl) {
   let currentUrl = initialUrl;
   for (
@@ -554,6 +570,16 @@ export const get = action({
       const metadataUrl = getMetadataFetchUrl(normalizedUrl);
       const { response, finalUrl } =
         await fetchWithValidatedRedirects(metadataUrl);
+
+      // Algunos periódicos redirigen las peticiones de servidor a la portada
+      // por cookies/consentimiento/anti-bot. No debemos aceptar entonces el
+      // título de la home como título del artículo solicitado.
+      if (redirectedArticleToHomepage(normalizedUrl, finalUrl)) {
+        return await getProviderPreviewOrFallback(
+          normalizedUrl,
+          "redirected_to_homepage",
+        );
+      }
       if (!response.ok) {
         return await getProviderPreviewOrFallback(
           normalizedUrl,
@@ -585,10 +611,10 @@ export const get = action({
       );
       const siteName = metadata.get("og:site_name") || hostname;
       const rawTitle =
-        metadata.get("og:title") ||
-        metadata.get("twitter:title") ||
         article?.headline ||
         article?.name ||
+        metadata.get("og:title") ||
+        metadata.get("twitter:title") ||
         decodeHtml(titleTag) ||
         hostname;
 

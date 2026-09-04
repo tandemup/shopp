@@ -51,6 +51,12 @@ const TRACKING_QUERY_KEYS = new Set([
   "si",
 ]);
 const NEWS_ARTICLE_DOMAINS = new Set(["elcomercio.es"]);
+const ACTIVE_LIBRARY_IMPORT_STATUSES = new Set([
+  "ready",
+  "running",
+  "paused",
+  "interrupted",
+]);
 
 function cleanClientId(value) {
   return String(value || "")
@@ -63,6 +69,66 @@ function normalizeSearchText(value) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+}
+
+function normalizeHashtagValue(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^#+/, "")
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .slice(0, 40);
+}
+
+function compactDomainTag(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function extractTitleHashtags(title, sourceDomain) {
+  const text = String(title || "");
+  if (!text.includes("#")) return [];
+
+  const domainTag = compactDomainTag(sourceDomain);
+  const tags = [];
+  const seen = new Set();
+  const hashtagRegex = /#([\p{L}\p{N}_-]+)/gu;
+
+  for (const match of text.matchAll(hashtagRegex)) {
+    const tag = normalizeHashtagValue(match[1]);
+    if (!tag) continue;
+
+    // Las antiguas importaciones usaban #elpaiscom, #nytimescom, etc. como
+    // referencia al periódico. No las convertimos en hashtags temáticos.
+    const compactTag = compactDomainTag(tag);
+    if (domainTag && (compactTag === domainTag || compactTag === `www${domainTag}`)) {
+      continue;
+    }
+
+    if (!seen.has(tag)) {
+      seen.add(tag);
+      tags.push(tag);
+    }
+  }
+  return tags;
+}
+
+function mergeHashtagValues(...groups) {
+  const result = [];
+  const seen = new Set();
+  for (const group of groups) {
+    for (const raw of Array.isArray(group) ? group : []) {
+      const tag = normalizeHashtagValue(raw);
+      if (!tag || seen.has(tag)) continue;
+      seen.add(tag);
+      result.push(tag);
+      if (result.length >= 20) return result;
+    }
+  }
+  return result;
 }
 
 async function getOwnerId(ctx, clientId) {
@@ -276,22 +342,25 @@ export const ensureDefaultFolders = mutation({
       .first();
     let migratedBooks = 0;
 
+    // Migración antigua de fichas de libros. Antes se hacía un collect() de
+    // TODA computerLinks cada vez que se abría Biblioteca. Con miles de enlaces
+    // eso genera un I/O enorme. Se procesa únicamente un lote pequeño e indexado.
     if (booksFolder) {
-      const legacyBookLinks = await ctx.db.query("computerLinks").collect();
+      const legacyBookLinks = await ctx.db
+        .query("computerLinks")
+        .withIndex("by_folder_linkType_updatedAt", (q) =>
+          q.eq("folderId", booksFolder._id).eq("linkType", "general"),
+        )
+        .take(50);
 
       for (const link of legacyBookLinks) {
-        if (
-          String(link.folderId || "") === String(booksFolder._id) &&
-          (link.linkType === "general" || link.linkType === undefined)
-        ) {
-          await ctx.db.patch(link._id, {
-            linkType: "bookLink",
-            sourceDomain: link.sourceDomain || link.hostname,
-            status: "reviewed",
-            updatedAt: now,
-          });
-          migratedBooks += 1;
-        }
+        await ctx.db.patch(link._id, {
+          linkType: "bookLink",
+          sourceDomain: link.sourceDomain || link.hostname,
+          status: "reviewed",
+          updatedAt: now,
+        });
+        migratedBooks += 1;
       }
     }
 
@@ -388,12 +457,13 @@ export const normalizeAndDeduplicate = mutation({
     let normalizedCount = 0;
     let duplicatesRemoved = 0;
     let correctedNewsPosts = 0;
+    const deletedIds = new Set();
 
     for (const pagedLink of page.page) {
-      // Un enlace del mismo lote puede haberse eliminado al unificar un
-      // duplicado anterior. Se omite antes de volver a tocarlo.
-      const link = await ctx.db.get(pagedLink._id);
-      if (!link) continue;
+      // Evita un db.get adicional por cada fila. Si un duplicado del mismo
+      // lote ya se eliminó, se controla localmente.
+      if (deletedIds.has(String(pagedLink._id))) continue;
+      const link = pagedLink;
       const normalized = normalizeLink(link.normalizedUrl || link.url);
       if (!normalized) continue;
 
@@ -457,6 +527,7 @@ export const normalizeAndDeduplicate = mutation({
       for (const duplicate of candidates) {
         if (duplicate._id === primary._id) continue;
         await ctx.db.delete(duplicate._id);
+        deletedIds.add(String(duplicate._id));
         duplicatesRemoved += 1;
       }
     }
@@ -943,6 +1014,102 @@ export const list = query({
   },
 });
 
+// Copia a `hashtags` los #hashtags presentes en el título de cada noticia.
+// Se ejecuta por lotes desde Comprobar integridad para no exceder los límites
+// de lectura/escritura de Convex. Los valores se guardan sin el símbolo #.
+export const extractTitleHashtagsBatch = mutation({
+  args: {
+    cursor: v.optional(v.string()),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const batchSize = Math.max(1, Math.min(Math.floor(args.batchSize || 100), 150));
+    const page = await ctx.db
+      .query("computerLinks")
+      .withIndex("by_linkType_updatedAt", (q) => q.eq("linkType", "newsArticle"))
+      .order("desc")
+      .paginate({
+        numItems: batchSize,
+        cursor: args.cursor || null,
+      });
+
+    let updated = 0;
+    let hashtagsAdded = 0;
+    let newsWithTitleHashtags = 0;
+
+    for (const link of page.page) {
+      const titleTags = extractTitleHashtags(
+        link.customTitle,
+        link.sourceDomain || link.hostname,
+      );
+      if (!titleTags.length) continue;
+      newsWithTitleHashtags += 1;
+
+      const previous = mergeHashtagValues(link.hashtags);
+      const merged = mergeHashtagValues(previous, titleTags);
+      const previousSet = new Set(previous);
+      const added = merged.filter((tag) => !previousSet.has(tag)).length;
+      if (!added) continue;
+
+      await ctx.db.patch(link._id, {
+        hashtags: merged,
+        updatedAt: Date.now(),
+      });
+      updated += 1;
+      hashtagsAdded += added;
+    }
+
+    return {
+      processed: page.page.length,
+      updated,
+      hashtagsAdded,
+      newsWithTitleHashtags,
+      continueCursor: page.isDone ? null : page.continueCursor,
+      isDone: page.isDone,
+    };
+  },
+});
+
+export const listHashtagPage = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const pageResult = await ctx.db
+      .query("computerLinks")
+      .withIndex("by_linkType_publishedAt", (q) =>
+        q.eq("linkType", "newsArticle"),
+      )
+      .order("desc")
+      .filter((q) => q.neq(q.field("status"), "archived"))
+      .paginate(args.paginationOpts);
+
+    // Devolvemos solo los hashtags para que el catálogo global no transfiera
+    // miles de objetos completos al navegador. La paginación mantiene cada
+    // ejecución muy por debajo del límite de lecturas de Convex.
+    return {
+      ...pageResult,
+      page: pageResult.page.map((link) => ({
+        _id: link._id,
+        hashtags: Array.isArray(link.hashtags) ? link.hashtags : [],
+      })),
+    };
+  },
+});
+
+export const getLinksByIds = query({
+  args: { ids: v.array(v.id("computerLinks")) },
+  handler: async (ctx, args) => {
+    // Los ids proceden del catálogo global de hashtags, que ya recorrió las
+    // noticias de forma paginada. Aquí solo leemos los posts exactos del
+    // hashtag seleccionado, evitando una búsqueda textual sobre toda la tabla.
+    const ids = args.ids.slice(0, 100);
+    const links = await Promise.all(ids.map((id) => ctx.db.get(id)));
+    return links.filter(
+      (link) =>
+        link && link.status !== "archived" && link.linkType === "newsArticle",
+    );
+  },
+});
+
 export const exportBackup = query({
   args: { paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
@@ -1016,29 +1183,22 @@ export const ensureNewsSources = mutation({
       return { isDone: true, continueCursor: null, processed: 0, created: 0 };
     }
 
-    const existingSources = await ctx.db
-      .query("computerLinks")
-      .withIndex("by_folder_linkType_updatedAt", (q) =>
-        q.eq("folderId", newsFolder._id).eq("linkType", "newsSource"),
-      )
-      .collect();
-    const sourceByUrl = new Map(
-      existingSources.map((link) => [String(link.normalizedUrl), link]),
-    );
-    const checkedDomains = new Set();
-    // Se recorren lotes de toda la colección para recuperar también noticias
-    // que una importación antigua dejó fuera de la carpeta Noticias.
+    // Lotes deliberadamente pequeños. Cada dominio se comprueba mediante
+    // índices selectivos; nunca se vuelve a cargar el catálogo completo de
+    // periódicos en cada iteración.
     const page = await ctx.db
       .query("computerLinks")
-      .withIndex("by_updatedAt")
+      .withIndex("by_createdAt")
       .order("asc")
       .paginate({
-        numItems: Math.min(Math.max(Number(args.batchSize) || 1000, 1), 2000),
+        numItems: Math.min(Math.max(Number(args.batchSize) || 100, 1), 120),
         cursor: args.cursor ?? null,
       });
 
+    const checkedDomains = new Set();
     let created = 0;
     let processed = 0;
+
     for (const article of page.page) {
       if (["newsSource", "bookStore"].includes(article.linkType)) continue;
       if (
@@ -1047,6 +1207,7 @@ export const ensureNewsSources = mutation({
       ) {
         continue;
       }
+
       processed += 1;
       const domain = normalizeNewsDomain(
         article.sourceDomain || article.hostname || article.url,
@@ -1054,33 +1215,37 @@ export const ensureNewsSources = mutation({
       if (!domain || checkedDomains.has(domain)) continue;
       checkedDomains.add(domain);
 
-      const homepage = normalizeLink(`https://${domain}/`);
-      if (!homepage || sourceByUrl.has(homepage.url)) continue;
+      const existingSource = await ctx.db
+        .query("computerLinks")
+        .withIndex("by_linkType_sourceDomain", (q) =>
+          q.eq("linkType", "newsSource").eq("sourceDomain", domain),
+        )
+        .first();
+      if (existingSource) continue;
 
-      const candidates = await ctx.db
+      const homepage = normalizeLink(`https://${domain}/`);
+      if (!homepage) continue;
+
+      const existingHomepage = await ctx.db
         .query("computerLinks")
         .withIndex("by_normalizedUrl", (q) =>
           q.eq("normalizedUrl", homepage.url),
         )
-        .collect();
-      const existing = candidates.find(
-        (link) => link.folderId === newsFolder._id,
-      );
+        .first();
 
-      if (existing) {
-        await ctx.db.patch(existing._id, {
+      if (existingHomepage) {
+        await ctx.db.patch(existingHomepage._id, {
           folderId: newsFolder._id,
           linkType: "newsSource",
           sourceDomain: domain,
           status: "reviewed",
           updatedAt: Date.now(),
         });
-        sourceByUrl.set(homepage.url, { ...existing, linkType: "newsSource" });
         continue;
       }
 
       const now = Date.now();
-      const sourceId = await ctx.db.insert("computerLinks", {
+      await ctx.db.insert("computerLinks", {
         url: homepage.url,
         normalizedUrl: homepage.url,
         hostname: homepage.hostname,
@@ -1094,7 +1259,6 @@ export const ensureNewsSources = mutation({
         createdAt: now,
         updatedAt: now,
       });
-      sourceByUrl.set(homepage.url, { _id: sourceId });
       created += 1;
     }
 
@@ -1103,6 +1267,643 @@ export const ensureNewsSources = mutation({
       continueCursor: page.isDone ? null : page.continueCursor,
       processed,
       created,
+    };
+  },
+});
+
+export const getActiveLibraryImportJob = query({
+  args: { clientId: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    if (!ownerId) return null;
+    const recentJobs = await ctx.db
+      .query("libraryImportJobs")
+      .withIndex("by_owner_updatedAt", (q) => q.eq("ownerId", ownerId))
+      .order("desc")
+      .take(20);
+    return (
+      recentJobs.find((job) => ACTIVE_LIBRARY_IMPORT_STATUSES.has(job.status)) ||
+      null
+    );
+  },
+});
+
+export const beginLibraryImportJob = mutation({
+  args: {
+    clientId: v.optional(v.string()),
+    fileName: v.string(),
+    fingerprint: v.string(),
+    importMode: v.union(v.literal("combine"), v.literal("replace")),
+    totalLinks: v.number(),
+    totalSources: v.number(),
+    newsMetadataChecked: v.optional(v.number()),
+    newsMetadataUpdated: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    if (!ownerId) throw new Error("No se pudo identificar este dispositivo.");
+
+    const recentJobs = await ctx.db
+      .query("libraryImportJobs")
+      .withIndex("by_owner_updatedAt", (q) => q.eq("ownerId", ownerId))
+      .order("desc")
+      .take(20);
+    const active = recentJobs.find((job) =>
+      ACTIVE_LIBRARY_IMPORT_STATUSES.has(job.status),
+    );
+
+    if (active) {
+      if (
+        active.fingerprint === String(args.fingerprint || "").slice(0, 500) &&
+        active.importMode === args.importMode &&
+        Number(active.totalLinks) === Math.max(0, Number(args.totalLinks) || 0)
+      ) {
+        return active;
+      }
+      throw new Error(
+        "Ya existe una importación pendiente. Continúala o descártala antes de iniciar otra.",
+      );
+    }
+
+    const now = Date.now();
+    const jobId = await ctx.db.insert("libraryImportJobs", {
+      ownerId,
+      clientId: cleanClientId(args.clientId) || undefined,
+      fileName: String(args.fileName || "Biblioteca.json").trim().slice(0, 240),
+      fingerprint: String(args.fingerprint || "").trim().slice(0, 500),
+      importMode: args.importMode,
+      status: "ready",
+      phase: "links",
+      replacePrepared: args.importMode !== "replace",
+      totalLinks: Math.max(0, Number(args.totalLinks) || 0),
+      processedLinks: 0,
+      totalSources: Math.max(0, Number(args.totalSources) || 0),
+      processedSources: 0,
+      foldersCreated: 0,
+      linksCreated: 0,
+      linksUpdated: 0,
+      foldersDeleted: 0,
+      linksDeleted: 0,
+      newsSourcesCreated: 0,
+      newsMetadataChecked: Math.max(
+        0,
+        Number(args.newsMetadataChecked) || 0,
+      ),
+      newsMetadataUpdated: Math.max(
+        0,
+        Number(args.newsMetadataUpdated) || 0,
+      ),
+      createdAt: now,
+      updatedAt: now,
+    });
+    return await ctx.db.get(jobId);
+  },
+});
+
+export const updateLibraryImportJobProgress = mutation({
+  args: {
+    clientId: v.optional(v.string()),
+    jobId: v.id("libraryImportJobs"),
+    status: v.optional(
+      v.union(
+        v.literal("ready"),
+        v.literal("running"),
+        v.literal("paused"),
+        v.literal("interrupted"),
+      ),
+    ),
+    phase: v.optional(v.union(v.literal("links"), v.literal("sources"))),
+    processedLinks: v.optional(v.number()),
+    processedSources: v.optional(v.number()),
+    foldersCreated: v.optional(v.number()),
+    linksCreated: v.optional(v.number()),
+    linksUpdated: v.optional(v.number()),
+    foldersDeleted: v.optional(v.number()),
+    linksDeleted: v.optional(v.number()),
+    newsSourcesCreated: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    if (!ownerId) throw new Error("No se pudo identificar este dispositivo.");
+    const job = await ctx.db.get(args.jobId);
+    if (!job || job.ownerId !== ownerId) {
+      throw new Error("La importación pendiente ya no existe.");
+    }
+    if (["done", "cancelled"].includes(job.status)) return job;
+
+    const patch = { updatedAt: Date.now() };
+    if (args.status) patch.status = args.status;
+    if (args.phase) patch.phase = args.phase;
+    if (Number.isFinite(args.processedLinks)) {
+      patch.processedLinks = Math.min(
+        job.totalLinks,
+        Math.max(job.processedLinks, Number(args.processedLinks)),
+      );
+    }
+    if (Number.isFinite(args.processedSources)) {
+      patch.processedSources = Math.min(
+        job.totalSources,
+        Math.max(job.processedSources, Number(args.processedSources)),
+      );
+    }
+    for (const field of [
+      "foldersCreated",
+      "linksCreated",
+      "linksUpdated",
+      "foldersDeleted",
+      "linksDeleted",
+      "newsSourcesCreated",
+    ]) {
+      if (Number.isFinite(args[field])) {
+        patch[field] = Number(job[field] || 0) + Number(args[field]);
+      }
+    }
+    if (typeof args.lastError === "string") {
+      const lastError = args.lastError.trim().slice(0, 1000);
+      if (lastError) patch.lastError = lastError;
+    }
+    await ctx.db.patch(job._id, patch);
+    return await ctx.db.get(job._id);
+  },
+});
+
+export const completeLibraryImportJob = mutation({
+  args: {
+    clientId: v.optional(v.string()),
+    jobId: v.id("libraryImportJobs"),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    if (!ownerId) throw new Error("No se pudo identificar este dispositivo.");
+    const job = await ctx.db.get(args.jobId);
+    if (!job || job.ownerId !== ownerId) {
+      throw new Error("La importación pendiente ya no existe.");
+    }
+    const now = Date.now();
+    await ctx.db.patch(job._id, {
+      status: "done",
+      phase: "done",
+      processedLinks: job.totalLinks,
+      processedSources: job.totalSources,
+      updatedAt: now,
+      completedAt: now,
+    });
+    return await ctx.db.get(job._id);
+  },
+});
+
+export const cancelLibraryImportJob = mutation({
+  args: {
+    clientId: v.optional(v.string()),
+    jobId: v.id("libraryImportJobs"),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    if (!ownerId) throw new Error("No se pudo identificar este dispositivo.");
+    const job = await ctx.db.get(args.jobId);
+    if (!job || job.ownerId !== ownerId) return { cancelled: false };
+    await ctx.db.patch(job._id, {
+      status: "cancelled",
+      updatedAt: Date.now(),
+      completedAt: Date.now(),
+    });
+    return { cancelled: true };
+  },
+});
+
+export const clearLibraryForImportBatch = mutation({
+  args: {
+    clientId: v.optional(v.string()),
+    jobId: v.id("libraryImportJobs"),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    if (!ownerId) throw new Error("No se pudo identificar este dispositivo.");
+
+    const job = await ctx.db.get(args.jobId);
+    if (!job || job.ownerId !== ownerId) {
+      throw new Error("La importación pendiente ya no existe.");
+    }
+    if (job.importMode !== "replace") {
+      return { done: true, deletedLinks: 0, deletedFolders: 0, job };
+    }
+    if (job.replacePrepared) {
+      return { done: true, deletedLinks: 0, deletedFolders: 0, job };
+    }
+
+    const batchSize = Math.min(Math.max(Number(args.batchSize) || 100, 20), 150);
+    const links = await ctx.db.query("computerLinks").take(batchSize);
+    if (links.length > 0) {
+      for (const link of links) await ctx.db.delete(link._id);
+      await ctx.db.patch(job._id, {
+        status: "running",
+        linksDeleted: Number(job.linksDeleted || 0) + links.length,
+        updatedAt: Date.now(),
+      });
+      const updatedJob = await ctx.db.get(job._id);
+      return {
+        done: false,
+        stage: "links",
+        deletedLinks: links.length,
+        deletedFolders: 0,
+        job: updatedJob,
+      };
+    }
+
+    const folders = await ctx.db.query("computerLinkFolders").take(batchSize);
+    if (folders.length > 0) {
+      for (const folder of folders) await ctx.db.delete(folder._id);
+      await ctx.db.patch(job._id, {
+        status: "running",
+        foldersDeleted: Number(job.foldersDeleted || 0) + folders.length,
+        updatedAt: Date.now(),
+      });
+      const updatedJob = await ctx.db.get(job._id);
+      return {
+        done: false,
+        stage: "folders",
+        deletedLinks: 0,
+        deletedFolders: folders.length,
+        job: updatedJob,
+      };
+    }
+
+    await ctx.db.patch(job._id, {
+      status: "running",
+      replacePrepared: true,
+      updatedAt: Date.now(),
+    });
+    return {
+      done: true,
+      stage: "done",
+      deletedLinks: 0,
+      deletedFolders: 0,
+      job: await ctx.db.get(job._id),
+    };
+  },
+});
+
+export const ensureNewsSourcesForDomains = mutation({
+  args: {
+    clientId: v.optional(v.string()),
+    domains: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    if (!ownerId) throw new Error("No se pudo identificar este dispositivo.");
+
+    const newsFolder = await ctx.db
+      .query("computerLinkFolders")
+      .withIndex("by_name", (q) => q.eq("name", "Noticias"))
+      .first();
+    if (!newsFolder) return { processed: 0, created: 0 };
+
+    const domains = Array.from(
+      new Set(
+        args.domains
+          .map((domain) => normalizeNewsDomain(domain))
+          .filter(Boolean),
+      ),
+    ).slice(0, 100);
+
+    let created = 0;
+    for (const domain of domains) {
+      const existingSource = await ctx.db
+        .query("computerLinks")
+        .withIndex("by_linkType_sourceDomain", (q) =>
+          q.eq("linkType", "newsSource").eq("sourceDomain", domain),
+        )
+        .first();
+      if (existingSource) continue;
+
+      const homepage = normalizeLink(`https://${domain}/`);
+      if (!homepage) continue;
+
+      const existingHomepage = await ctx.db
+        .query("computerLinks")
+        .withIndex("by_normalizedUrl", (q) =>
+          q.eq("normalizedUrl", homepage.url),
+        )
+        .first();
+
+      if (existingHomepage) {
+        await ctx.db.patch(existingHomepage._id, {
+          folderId: newsFolder._id,
+          linkType: "newsSource",
+          sourceDomain: domain,
+          status: "reviewed",
+          updatedAt: Date.now(),
+        });
+        continue;
+      }
+
+      const now = Date.now();
+      await ctx.db.insert("computerLinks", {
+        url: homepage.url,
+        normalizedUrl: homepage.url,
+        hostname: homepage.hostname,
+        username: "Biblioteca",
+        createdBy: ownerId,
+        folderId: newsFolder._id,
+        linkType: "newsSource",
+        sourceDomain: domain,
+        favorite: false,
+        status: "reviewed",
+        createdAt: now,
+        updatedAt: now,
+      });
+      created += 1;
+    }
+
+    return { processed: domains.length, created };
+  },
+});
+
+// Importación reanudable por lotes pequeños.
+// A diferencia de importBackup, esta mutation actualiza el checkpoint del job
+// en la misma transacción. En modo Reemplazar, una vez vaciada la Biblioteca,
+// inserta directamente y evita una consulta de existencia por cada noticia.
+export const importLibraryJobBatch = mutation({
+  args: {
+    clientId: v.optional(v.string()),
+    jobId: v.id("libraryImportJobs"),
+    expectedStart: v.number(),
+    links: v.array(v.any()),
+    folders: v.array(v.any()),
+    historicalMerge: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    if (!ownerId) throw new Error("No se pudo identificar este dispositivo.");
+
+    const job = await ctx.db.get(args.jobId);
+    if (!job || job.ownerId !== ownerId) {
+      throw new Error("La importación pendiente ya no existe.");
+    }
+    if (["done", "cancelled"].includes(job.status)) {
+      return { alreadyProcessed: true, job };
+    }
+    if (job.importMode === "replace" && !job.replacePrepared) {
+      throw new Error("La Biblioteca todavía no terminó de vaciarse.");
+    }
+
+    const expectedStart = Math.max(0, Number(args.expectedStart) || 0);
+    const currentStart = Math.max(0, Number(job.processedLinks) || 0);
+
+    // Si el navegador no recibió la respuesta de un lote ya confirmado y lo
+    // reintenta, devolvemos el checkpoint actual sin volver a escribir nada.
+    if (currentStart > expectedStart) {
+      return { alreadyProcessed: true, job };
+    }
+    if (currentStart !== expectedStart) {
+      throw new Error(
+        `Checkpoint inesperado: servidor=${currentStart}, cliente=${expectedStart}.`,
+      );
+    }
+
+    // Mantener este límite bajo evita acercarse a los límites transaccionales
+    // de Convex incluso con una tabla que tiene muchos índices secundarios.
+    const inputLinks = Array.isArray(args.links) ? args.links.slice(0, 25) : [];
+    const now = Date.now();
+
+    const backupFolders = (Array.isArray(args.folders) ? args.folders : [])
+      .filter(
+        (folder) =>
+          folder &&
+          typeof folder.key === "string" &&
+          typeof folder.name === "string" &&
+          folder.key.trim() &&
+          folder.name.trim(),
+      )
+      .sort(
+        (a, b) =>
+          a.key.split("/").length - b.key.split("/").length ||
+          String(a.key).localeCompare(String(b.key)),
+      );
+
+    const backupFolderByKey = new Map(
+      backupFolders.map((folder) => [String(folder.key), folder]),
+    );
+    const folderIdByKey = new Map();
+    let foldersCreated = 0;
+
+    for (const item of backupFolders) {
+      const key = String(item.key).trim().slice(0, 300);
+      const name = String(item.name).trim().slice(0, 50);
+      const parentKey = item.parentKey
+        ? String(item.parentKey).trim().slice(0, 300)
+        : null;
+      const parentFolderId = parentKey
+        ? folderIdByKey.get(parentKey)
+        : undefined;
+      if (parentKey && !parentFolderId) continue;
+
+      const candidates = await ctx.db
+        .query("computerLinkFolders")
+        .withIndex("by_name", (q) => q.eq("name", name))
+        .take(20);
+      let existingFolder = candidates.find(
+        (folder) =>
+          String(folder.parentFolderId || "") === String(parentFolderId || ""),
+      );
+
+      if (!existingFolder) {
+        const folderId = await ctx.db.insert("computerLinkFolders", {
+          name,
+          parentFolderId,
+          icon:
+            typeof item.icon === "string" && item.icon.trim()
+              ? item.icon.trim().slice(0, 80)
+              : "folder-outline",
+          color:
+            typeof item.color === "string" && item.color.trim()
+              ? item.color.trim().slice(0, 30)
+              : "#2563eb",
+          order: Number.isFinite(Number(item.order)) ? Number(item.order) : 0,
+          createdBy: ownerId,
+          createdAt: now,
+        });
+        existingFolder = await ctx.db.get(folderId);
+        foldersCreated += 1;
+      }
+      if (existingFolder) folderIdByKey.set(key, existingFolder._id);
+    }
+
+    const getBackupRootFolderName = (folderKey) => {
+      let folder = backupFolderByKey.get(String(folderKey || ""));
+      let remainingDepth = 20;
+      while (folder?.parentKey && remainingDepth > 0) {
+        folder = backupFolderByKey.get(String(folder.parentKey));
+        remainingDepth -= 1;
+      }
+      return String(folder?.name || "").trim().toLowerCase();
+    };
+
+    const replaceMode = job.importMode === "replace";
+    const preserveHistoricalMerge = Boolean(args.historicalMerge) && !replaceMode;
+    const existingByNormalizedUrl = new Map();
+    let linksCreated = 0;
+    let linksUpdated = 0;
+
+    for (const item of inputLinks) {
+      if (!item || typeof item.url !== "string") continue;
+      const normalized = normalizeLink(item.normalizedUrl || item.url);
+      if (!normalized) continue;
+
+      const folderId = item.folderKey
+        ? folderIdByKey.get(String(item.folderKey))
+        : undefined;
+      let linkType = [
+        "general",
+        "newsSource",
+        "newsArticle",
+        "bookStore",
+        "bookLink",
+      ].includes(item.linkType)
+        ? item.linkType
+        : "general";
+
+      if (
+        linkType === "general" &&
+        getBackupRootFolderName(item.folderKey) === "libros"
+      ) {
+        linkType = "bookLink";
+      }
+      if (linkType === "newsArticle" && isDomainHomepage(normalized.url)) {
+        linkType = "newsSource";
+      }
+
+      const customTitle = String(item.customTitle || "")
+        .trim()
+        .slice(0, 240);
+      const hashtags = mergeHashtagValues(
+        item.hashtags,
+        linkType === "newsArticle"
+          ? extractTitleHashtags(customTitle, item.sourceDomain || normalized.hostname)
+          : [],
+      );
+      const notes = String(item.notes || item.comments || "")
+        .trim()
+        .slice(0, 1000);
+      const sourceDomain = String(item.sourceDomain || normalized.hostname)
+        .trim()
+        .slice(0, 160);
+      const username = String(item.username || "Biblioteca")
+        .trim()
+        .slice(0, 40);
+      const createdAt = Number(item.createdAt);
+      const importedPublishedAt = Number(item.publishedAt);
+      const publishedAt =
+        linkType === "newsArticle"
+          ? Number.isFinite(importedPublishedAt) && importedPublishedAt > 0
+            ? importedPublishedAt
+            : extractPublishedAtFromUrl(normalized.url) || undefined
+          : undefined;
+
+      let existing = existingByNormalizedUrl.get(normalized.url);
+      if (existing === undefined) {
+        if (replaceMode) {
+          // En un reemplazo ya vacío no hay nada que buscar. Solo consultamos
+          // si la misma URL ya apareció dentro de este mismo lote.
+          existing = null;
+        } else {
+          existing = await ctx.db
+            .query("computerLinks")
+            .withIndex("by_normalizedUrl", (q) =>
+              q.eq("normalizedUrl", normalized.url),
+            )
+            .first();
+        }
+        existingByNormalizedUrl.set(normalized.url, existing || null);
+      }
+
+      const existingHashtags = Array.isArray(existing?.hashtags)
+        ? existing.hashtags
+        : [];
+      const mergedHistoricalHashtags = preserveHistoricalMerge
+        ? mergeHashtagValues(existingHashtags, hashtags)
+        : hashtags;
+
+      const patch = {
+        url: normalized.url,
+        normalizedUrl: normalized.url,
+        hostname: normalized.hostname,
+        username,
+        folderId,
+        linkType,
+        sourceDomain: [
+          "newsSource",
+          "newsArticle",
+          "bookStore",
+          "bookLink",
+        ].includes(linkType)
+          ? sourceDomain
+          : undefined,
+        publishedAt:
+          (preserveHistoricalMerge && existing?.publishedAt) ||
+          publishedAt ||
+          (linkType === "newsArticle" ? existing?.publishedAt : undefined),
+        customTitle: preserveHistoricalMerge
+          ? existing?.customTitle || customTitle || undefined
+          : customTitle || undefined,
+        favorite: preserveHistoricalMerge
+          ? Boolean(existing?.favorite || item.favorite)
+          : Boolean(item.favorite),
+        status: folderId ? "reviewed" : "pending",
+        notes: ["newsSource", "bookStore"].includes(linkType)
+          ? undefined
+          : preserveHistoricalMerge
+            ? existing?.notes || notes || undefined
+            : notes || undefined,
+        hashtags: ["newsSource", "bookStore"].includes(linkType)
+          ? undefined
+          : mergedHistoricalHashtags.length
+            ? mergedHistoricalHashtags
+            : preserveHistoricalMerge
+              ? existing?.hashtags
+              : undefined,
+        updatedAt: now,
+      };
+
+      if (existing) {
+        await ctx.db.patch(existing._id, patch);
+        existingByNormalizedUrl.set(normalized.url, { ...existing, ...patch });
+        linksUpdated += 1;
+      } else {
+        const linkId = await ctx.db.insert("computerLinks", {
+          ...patch,
+          createdBy: ownerId,
+          createdAt:
+            Number.isFinite(createdAt) && createdAt > 0 ? createdAt : now,
+        });
+        existingByNormalizedUrl.set(normalized.url, { ...patch, _id: linkId });
+        linksCreated += 1;
+      }
+    }
+
+    const nextProcessed = Math.min(
+      Number(job.totalLinks) || 0,
+      expectedStart + inputLinks.length,
+    );
+    await ctx.db.patch(job._id, {
+      status: "running",
+      phase: "links",
+      processedLinks: nextProcessed,
+      foldersCreated: Number(job.foldersCreated || 0) + foldersCreated,
+      linksCreated: Number(job.linksCreated || 0) + linksCreated,
+      linksUpdated: Number(job.linksUpdated || 0) + linksUpdated,
+      updatedAt: Date.now(),
+    });
+
+    return {
+      alreadyProcessed: false,
+      processed: inputLinks.length,
+      foldersCreated,
+      linksCreated,
+      linksUpdated,
+      job: await ctx.db.get(job._id),
     };
   },
 });
@@ -1127,6 +1928,9 @@ export const importBackup = mutation({
       throw new Error("La copia de Biblioteca no es compatible.");
     }
 
+    const preserveHistoricalMerge =
+      backup?.source === "legacy-news-array" && args.replaceExisting !== true;
+
     const ownerId = await getOwnerId(ctx, args.clientId);
     if (!ownerId) throw new Error("No se pudo identificar este dispositivo.");
     const now = Date.now();
@@ -1139,21 +1943,9 @@ export const importBackup = mutation({
     const existingByNormalizedUrl = new Map();
 
     if (args.replaceExisting === true) {
-      while (true) {
-        const existingLinks = await ctx.db.query("computerLinks").take(1000);
-        if (existingLinks.length === 0) break;
-        for (const link of existingLinks) {
-          await ctx.db.delete(link._id);
-          linksDeleted += 1;
-        }
-      }
-      const existingFolders = await ctx.db
-        .query("computerLinkFolders")
-        .collect();
-      for (const folder of existingFolders) {
-        await ctx.db.delete(folder._id);
-        foldersDeleted += 1;
-      }
+      throw new Error(
+        "El modo Reemplazar debe limpiar la Biblioteca por lotes antes de importar.",
+      );
     }
     const selectedCategoryKeys = Array.isArray(args.categoryKeys)
       ? new Set(
@@ -1295,26 +2087,18 @@ export const importBackup = mutation({
       if (linkType === "newsArticle" && isDomainHomepage(normalized.url)) {
         linkType = "newsSource";
       }
-      const hashtags = Array.from(
-        new Set(
-          (Array.isArray(item.hashtags) ? item.hashtags : [])
-            .map((tag) =>
-              String(tag || "")
-                .trim()
-                .replace(/^#+/, "")
-                .toLowerCase()
-                .replace(/\s+/g, "-"),
-            )
-            .filter(Boolean)
-            .map((tag) => tag.slice(0, 40)),
-        ),
-      ).slice(0, 20);
-      const notes = String(item.notes || "")
-        .trim()
-        .slice(0, 1000);
       const customTitle = String(item.customTitle || "")
         .trim()
         .slice(0, 240);
+      const hashtags = mergeHashtagValues(
+        item.hashtags,
+        linkType === "newsArticle"
+          ? extractTitleHashtags(customTitle, item.sourceDomain || normalized.hostname)
+          : [],
+      );
+      const notes = String(item.notes || item.comments || "")
+        .trim()
+        .slice(0, 1000);
       const sourceDomain = String(item.sourceDomain || normalized.hostname)
         .trim()
         .slice(0, 160);
@@ -1343,6 +2127,13 @@ export const importBackup = mutation({
         existingByNormalizedUrl.set(normalized.url, existing || null);
       }
 
+      const existingHashtags = Array.isArray(existing?.hashtags)
+        ? existing.hashtags
+        : [];
+      const mergedHistoricalHashtags = preserveHistoricalMerge
+        ? mergeHashtagValues(existingHashtags, hashtags)
+        : hashtags;
+
       const patch = {
         url: normalized.url,
         normalizedUrl: normalized.url,
@@ -1359,18 +2150,28 @@ export const importBackup = mutation({
           ? sourceDomain
           : undefined,
         publishedAt:
+          (preserveHistoricalMerge && existing?.publishedAt) ||
           publishedAt ||
           (linkType === "newsArticle" ? existing?.publishedAt : undefined),
-        customTitle: customTitle || undefined,
-        favorite: Boolean(item.favorite),
+        customTitle: preserveHistoricalMerge
+          ? existing?.customTitle || customTitle || undefined
+          : customTitle || undefined,
+        favorite: preserveHistoricalMerge
+          ? Boolean(existing?.favorite || item.favorite)
+          : Boolean(item.favorite),
         status: folderId ? "reviewed" : "pending",
         notes: ["newsSource", "bookStore"].includes(linkType)
           ? undefined
-          : notes || undefined,
-        hashtags:
-          ["newsSource", "bookStore"].includes(linkType) || !hashtags.length
-            ? undefined
-            : hashtags,
+          : preserveHistoricalMerge
+            ? existing?.notes || notes || undefined
+            : notes || undefined,
+        hashtags: ["newsSource", "bookStore"].includes(linkType)
+          ? undefined
+          : mergedHistoricalHashtags.length
+            ? mergedHistoricalHashtags
+            : preserveHistoricalMerge
+              ? existing?.hashtags
+              : undefined,
         updatedAt: now,
       };
 
@@ -1431,20 +2232,12 @@ export const updateMetadata = mutation({
     const notes = String(args.notes || "")
       .trim()
       .slice(0, 1000);
-    const hashtags = Array.from(
-      new Set(
-        (args.hashtags || [])
-          .map((tag) =>
-            String(tag || "")
-              .trim()
-              .replace(/^#+/, "")
-              .toLowerCase()
-              .replace(/\s+/g, "-"),
-          )
-          .filter(Boolean)
-          .map((tag) => tag.slice(0, 40)),
-      ),
-    ).slice(0, 20);
+    const hashtags = mergeHashtagValues(
+      args.hashtags,
+      link.linkType === "newsArticle"
+        ? extractTitleHashtags(link.customTitle, link.sourceDomain || link.hostname)
+        : [],
+    );
 
     await ctx.db.patch(args.linkId, {
       notes: notes || undefined,
@@ -1472,11 +2265,22 @@ export const updateCustomTitle = mutation({
       .trim()
       .slice(0, 240);
 
+    const hashtags =
+      link.linkType === "newsArticle"
+        ? mergeHashtagValues(
+            link.hashtags,
+            extractTitleHashtags(customTitle, link.sourceDomain || link.hostname),
+          )
+        : Array.isArray(link.hashtags)
+          ? link.hashtags
+          : [];
+
     await ctx.db.patch(args.linkId, {
       customTitle: customTitle || undefined,
+      hashtags: hashtags.length ? hashtags : undefined,
       updatedAt: Date.now(),
     });
-    return { customTitle };
+    return { customTitle, hashtags };
   },
 });
 
@@ -1502,6 +2306,13 @@ export const updatePreviewMetadata = mutation({
 
     if (customTitle) {
       patch.customTitle = customTitle;
+      if (link.linkType === "newsArticle") {
+        const hashtags = mergeHashtagValues(
+          link.hashtags,
+          extractTitleHashtags(customTitle, link.sourceDomain || link.hostname),
+        );
+        patch.hashtags = hashtags.length ? hashtags : undefined;
+      }
     }
     if (Number.isFinite(publishedAt) && publishedAt > 0) {
       patch.publishedAt = publishedAt;
