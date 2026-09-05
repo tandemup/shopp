@@ -22,7 +22,6 @@ import EnglishTutorScreen from "@/src/screens/chat/EnglishTutorScreen";
 import LibraryScreen from "@/src/screens/library/LibraryScreen";
 import PlayListScreen from "@/src/screens/playlist/PlayListScreen";
 import ShoppLiveScreen from "@/src/screens/live/ShoppLiveScreen";
-import BrowserScreen from "@/src/screens/browser/BrowserScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -82,14 +81,14 @@ export default function ShoppingStack() {
         options={{ title: "Play List" }}
       />
       <Stack.Screen
+        name={ROUTES.TUTORIALS}
+        component={PlayListScreen}
+        options={{ title: "Tutoriales" }}
+      />
+      <Stack.Screen
         name={ROUTES.SHOPP_LIVE}
         component={ShoppLiveScreen}
         options={{ title: "Shopp Live" }}
-      />
-      <Stack.Screen
-        name={ROUTES.BROWSER}
-        component={BrowserScreen}
-        options={{ title: "Navegador", headerShown: false }}
       />
       <Stack.Screen name={ROUTES.MENU} component={MenuScreen} />
     </Stack.Navigator>

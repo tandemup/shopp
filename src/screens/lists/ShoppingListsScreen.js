@@ -248,17 +248,6 @@ function QuickActions({
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.LIBRARY),
       },
       {
-        key: "browser",
-        label: "Navegador",
-        description: "Abre páginas dentro de Shopp",
-        icon: "globe-outline",
-        iconColor: COLORS.primary,
-        iconBackground: COLORS.primarySoft,
-        badgeLabel: "DEV",
-        onPress: () =>
-          navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.BROWSER),
-      },
-      {
         key: "playList",
         label: "Play List",
         description: "Crea y reproduce música de YouTube",
@@ -267,6 +256,16 @@ function QuickActions({
         iconBackground: COLORS.redSoft,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.PLAY_LIST),
+      },
+      {
+        key: "tutorials",
+        label: "Tutoriales",
+        description: "Guarda y reproduce tutoriales de YouTube",
+        icon: "school-outline",
+        iconColor: COLORS.primary,
+        iconBackground: COLORS.primarySoft,
+        onPress: () =>
+          navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.TUTORIALS),
       },
       {
         key: "shoppLive",

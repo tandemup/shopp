@@ -30,17 +30,17 @@ async function getOwnerId(ctx, clientId) {
   return `client:${cleanId}`;
 }
 
-function normalizePlaylist(titleValue, trackValues) {
+function normalizeTutorial(titleValue, trackValues) {
   const title = String(titleValue || "")
     .trim()
     .slice(0, 120);
-  if (!title) throw new Error("Escribe el nombre de la playlist.");
+  if (!title) throw new Error("Escribe el nombre del tutorial.");
   if (
     !Array.isArray(trackValues) ||
     trackValues.length < 1 ||
     trackValues.length > 20
   ) {
-    throw new Error("La playlist debe contener entre 1 y 20 elementos.");
+    throw new Error("El tutorial debe contener entre 1 y 20 vídeos o series.");
   }
   const seen = new Set();
   const tracks = trackValues.map((track, index) => {
@@ -52,26 +52,11 @@ function normalizePlaylist(titleValue, trackValues) {
       (kind === "single" && !VIDEO_ID.test(videoId)) ||
       (kind === "album" && !PLAYLIST_ID.test(playlistId))
     ) {
-      throw new Error(
-        `El ${kind === "album" ? "álbum" : "vídeo"} ${index + 1} no es válido.`,
-      );
+      throw new Error(`El vídeo o serie ${index + 1} no es válido.`);
     }
     if (seen.has(`${kind}:${mediaId}`))
       throw new Error(`El elemento ${index + 1} está repetido.`);
     seen.add(`${kind}:${mediaId}`);
-    if (
-      track.lyricsStorageId &&
-      !String(track.lyricsFileName || "")
-        .toLowerCase()
-        .endsWith(".lrc")
-    ) {
-      throw new Error(`Las letras del elemento ${index + 1} deben ser .lrc.`);
-    }
-    if ((track.lyricsSize || 0) > 512 * 1024) {
-      throw new Error(
-        `El archivo LRC del elemento ${index + 1} supera 512 KB.`,
-      );
-    }
     return {
       kind,
       videoId: videoId || undefined,
@@ -84,7 +69,7 @@ function normalizePlaylist(titleValue, trackValues) {
         String(track.title || "")
           .trim()
           .slice(0, 120) ||
-        `${kind === "album" ? "Álbum" : "Single"} ${index + 1}`,
+        `${kind === "album" ? "Serie" : "Vídeo"} ${index + 1}`,
       lyricsStorageId: track.lyricsStorageId,
       lyricsFileName: track.lyricsFileName?.slice(0, 160),
       lyricsMimeType: track.lyricsMimeType,
@@ -94,18 +79,13 @@ function normalizePlaylist(titleValue, trackValues) {
   return { title, tracks };
 }
 
-async function decoratePlaylist(ctx, playlist) {
-  return {
-    ...playlist,
-    tracks: await Promise.all(
-      playlist.tracks.map(async (track) => ({
-        ...track,
-        lyricsUri: track.lyricsStorageId
-          ? await ctx.storage.getUrl(track.lyricsStorageId)
-          : undefined,
-      })),
-    ),
-  };
+async function getTutorials(ctx, clientId) {
+  const ownerId = await getOwnerId(ctx, clientId);
+  return await ctx.db
+    .query("youtubeTutorials")
+    .withIndex("by_owner_updatedAt", (q) => q.eq("ownerId", ownerId))
+    .order("desc")
+    .collect();
 }
 
 export const generateUploadUrl = mutation({
@@ -115,15 +95,7 @@ export const generateUploadUrl = mutation({
 
 export const listMine = query({
   args: { clientId: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const ownerId = await getOwnerId(ctx, args.clientId);
-    const items = await ctx.db
-      .query("youtubePlaylists")
-      .withIndex("by_owner_updatedAt", (q) => q.eq("ownerId", ownerId))
-      .order("desc")
-      .collect();
-    return await Promise.all(items.map((item) => decoratePlaylist(ctx, item)));
-  },
+  handler: async (ctx, args) => await getTutorials(ctx, args.clientId),
 });
 
 export const create = mutation({
@@ -134,11 +106,11 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const ownerId = await getOwnerId(ctx, args.clientId);
-    const playlist = normalizePlaylist(args.title, args.tracks);
+    const tutorial = normalizeTutorial(args.title, args.tracks);
     const now = Date.now();
-    return await ctx.db.insert("youtubePlaylists", {
+    return await ctx.db.insert("youtubeTutorials", {
       ownerId,
-      ...playlist,
+      ...tutorial,
       createdAt: now,
       updatedAt: now,
     });
@@ -147,7 +119,7 @@ export const create = mutation({
 
 export const update = mutation({
   args: {
-    playlistId: v.id("youtubePlaylists"),
+    playlistId: v.id("youtubeTutorials"),
     clientId: v.optional(v.string()),
     title: v.string(),
     tracks: v.array(trackValidator),
@@ -156,46 +128,24 @@ export const update = mutation({
     const ownerId = await getOwnerId(ctx, args.clientId);
     const current = await ctx.db.get(args.playlistId);
     if (!current || current.ownerId !== ownerId)
-      throw new Error("No puedes editar esta playlist.");
-    const playlist = normalizePlaylist(args.title, args.tracks);
-    const nextIds = new Set(
-      playlist.tracks.map((track) => track.lyricsStorageId).filter(Boolean),
-    );
-    await ctx.db.patch(args.playlistId, { ...playlist, updatedAt: Date.now() });
-    for (const oldTrack of current.tracks) {
-      if (oldTrack.lyricsStorageId && !nextIds.has(oldTrack.lyricsStorageId)) {
-        try {
-          await ctx.storage.delete(oldTrack.lyricsStorageId);
-        } catch (error) {
-          console.warn(
-            "[playlists.update] No se pudo borrar un LRC anterior",
-            error,
-          );
-        }
-      }
-    }
+      throw new Error("No puedes editar este tutorial.");
+    await ctx.db.patch(args.playlistId, {
+      ...normalizeTutorial(args.title, args.tracks),
+      updatedAt: Date.now(),
+    });
   },
 });
 
 export const remove = mutation({
   args: {
-    playlistId: v.id("youtubePlaylists"),
+    playlistId: v.id("youtubeTutorials"),
     clientId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const ownerId = await getOwnerId(ctx, args.clientId);
     const current = await ctx.db.get(args.playlistId);
     if (!current || current.ownerId !== ownerId)
-      throw new Error("No puedes borrar esta playlist.");
+      throw new Error("No puedes borrar este tutorial.");
     await ctx.db.delete(args.playlistId);
-    for (const track of current.tracks) {
-      if (track.lyricsStorageId) {
-        try {
-          await ctx.storage.delete(track.lyricsStorageId);
-        } catch (error) {
-          console.warn("[playlists.remove] No se pudo borrar un LRC", error);
-        }
-      }
-    }
   },
 });

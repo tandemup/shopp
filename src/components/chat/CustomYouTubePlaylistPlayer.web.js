@@ -170,6 +170,7 @@ export default function CustomYouTubePlaylistPlayer({
   onDelete,
   onEdit,
   onReorder,
+  isTutorial = false,
 }) {
   const { width } = useWindowDimensions();
   const desktop = width >= 900;
@@ -291,7 +292,7 @@ export default function CustomYouTubePlaylistPlayer({
             {playlist.title}
           </Text>
           <Text style={styles.count}>
-            {tracks.length} elementos · Singles y álbumes
+            {tracks.length} elementos{isTutorial ? "" : " · Singles y álbumes"}
           </Text>
         </View>
       </Pressable>

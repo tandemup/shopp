@@ -37,6 +37,7 @@ import type * as shoppingImport from "../shoppingImport.js";
 import type * as storeFavorites from "../storeFavorites.js";
 import type * as stores from "../stores.js";
 import type * as temporaryProductImages from "../temporaryProductImages.js";
+import type * as tutorials from "../tutorials.js";
 import type * as userScanHistory from "../userScanHistory.js";
 import type * as users from "../users.js";
 
@@ -76,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   storeFavorites: typeof storeFavorites;
   stores: typeof stores;
   temporaryProductImages: typeof temporaryProductImages;
+  tutorials: typeof tutorials;
   userScanHistory: typeof userScanHistory;
   users: typeof users;
 }>;

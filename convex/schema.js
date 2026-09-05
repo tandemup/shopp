@@ -183,6 +183,26 @@ export default defineSchema({
     updatedAt: v.float64(),
   }).index("by_owner_updatedAt", ["ownerId", "updatedAt"]),
 
+  youtubeTutorials: defineTable({
+    ownerId: v.string(),
+    title: v.string(),
+    tracks: v.array(
+      v.object({
+        kind: v.union(v.literal("single"), v.literal("album")),
+        videoId: v.optional(v.string()),
+        playlistId: v.optional(v.string()),
+        url: v.string(),
+        title: v.string(),
+        lyricsStorageId: v.optional(v.id("_storage")),
+        lyricsFileName: v.optional(v.string()),
+        lyricsMimeType: v.optional(v.string()),
+        lyricsSize: v.optional(v.float64()),
+      }),
+    ),
+    createdAt: v.float64(),
+    updatedAt: v.float64(),
+  }).index("by_owner_updatedAt", ["ownerId", "updatedAt"]),
+
   chatMessages: defineTable({
     userId: v.optional(v.string()),
 
@@ -344,56 +364,10 @@ export default defineSchema({
       "updatedAt",
     ])
     .index("by_folder_updatedAt", ["folderId", "updatedAt"])
-    .index("by_folder_createdAt", ["folderId", "createdAt"])
-    .index("by_folder_publishedAt", ["folderId", "publishedAt"])
     .index("by_linkType_createdAt", ["linkType", "createdAt"])
     .index("by_linkType_publishedAt", ["linkType", "publishedAt"])
     .index("by_linkType_updatedAt", ["linkType", "updatedAt"])
-    .index("by_linkType_sourceDomain", ["linkType", "sourceDomain"])
-    .index("by_createdAt", ["createdAt"])
-    .index("by_publishedAt", ["publishedAt"])
     .index("by_updatedAt", ["updatedAt"]),
-
-  libraryImportJobs: defineTable({
-    ownerId: v.string(),
-    clientId: v.optional(v.string()),
-    fileName: v.string(),
-    fingerprint: v.string(),
-    importMode: v.union(v.literal("combine"), v.literal("replace")),
-    status: v.union(
-      v.literal("ready"),
-      v.literal("running"),
-      v.literal("paused"),
-      v.literal("interrupted"),
-      v.literal("done"),
-      v.literal("cancelled"),
-    ),
-    phase: v.union(
-      v.literal("links"),
-      v.literal("sources"),
-      v.literal("done"),
-    ),
-    // Opcional para que los jobs creados por versiones anteriores sigan siendo válidos.
-    replacePrepared: v.optional(v.boolean()),
-    totalLinks: v.float64(),
-    processedLinks: v.float64(),
-    totalSources: v.float64(),
-    processedSources: v.float64(),
-    foldersCreated: v.float64(),
-    linksCreated: v.float64(),
-    linksUpdated: v.float64(),
-    foldersDeleted: v.float64(),
-    linksDeleted: v.float64(),
-    newsSourcesCreated: v.float64(),
-    newsMetadataChecked: v.float64(),
-    newsMetadataUpdated: v.float64(),
-    lastError: v.optional(v.string()),
-    createdAt: v.float64(),
-    updatedAt: v.float64(),
-    completedAt: v.optional(v.float64()),
-  })
-    .index("by_owner_updatedAt", ["ownerId", "updatedAt"])
-    .index("by_owner_fingerprint", ["ownerId", "fingerprint"]),
 
   // Adjuntos temporales para comunicaciones privadas con la administración.
   // Se eliminan del almacenamiento después de enviar el correo, incluso si

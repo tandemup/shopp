@@ -15,8 +15,8 @@ export const ROUTES = {
   ENGLISH_TUTOR: "English Tutor",
   LIBRARY: "Library",
   PLAY_LIST: "Play List",
+  TUTORIALS: "Tutoriales",
   SHOPP_LIVE: "Shopp Live",
-  BROWSER: "Browser",
 
   // Stores stack
   STORES_HOME: "Stores Home",
