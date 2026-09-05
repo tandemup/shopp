@@ -25,6 +25,13 @@ import { parseYouTubeUrl } from "@/src/services/urlSafety";
 import { ROUTES } from "@/src/navigation/ROUTES";
 
 const CLIENT_ID_KEY = "shopp-playlist-client-id";
+const normalizeSearchText = (value) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
 const initialTracks = (tutorials = false) => {
   const first = {
     kind: "single",
@@ -204,6 +211,25 @@ export default function PlayListScreen() {
   const [deletingId, setDeletingId] = useState(null);
   const [importing, setImporting] = useState(false);
   const [draggingIndex, setDraggingIndex] = useState(null);
+  const [searchText, setSearchText] = useState("");
+  const searchTerms = useMemo(
+    () => normalizeSearchText(searchText).split(/\s+/).filter(Boolean),
+    [searchText],
+  );
+  const filteredPlaylists = useMemo(() => {
+    const items = playlists ?? [];
+    if (!searchTerms.length) return items;
+    return items.filter((item) => {
+      const text = normalizeSearchText(
+        [item.title, ...(item.tracks ?? []).map((track) => track.title)].join(" "),
+      );
+      return searchTerms.every((term) => text.includes(term));
+    });
+  }, [playlists, searchTerms]);
+
+  useEffect(() => {
+    setSearchText("");
+  }, [isTutorials]);
 
   useEffect(() => {
     if (Platform.OS === "web" || clientId) return;
@@ -339,13 +365,28 @@ export default function PlayListScreen() {
     [isTutorials],
   );
   const removeTrack = useCallback(
-    (index) =>
-      setTracks((current) =>
-        current.length <= minimumTracks
-          ? current
-          : current.filter((_, i) => i !== index),
-      ),
-    [minimumTracks],
+    (index) => {
+      const track = tracks[index];
+      if (!track || saving || tracks.length <= minimumTracks) return;
+      const trackTitle = track.title?.trim() || `${isTutorials ? "Vídeo" : "Elemento"} ${index + 1}`;
+      safeAlert(
+        isTutorials ? "Quitar vídeo del tutorial" : "Quitar elemento de la playlist",
+        `¿Quieres quitar «${trackTitle}»? El cambio se aplicará cuando guardes.`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Borrar",
+            style: "destructive",
+            onPress: () => setTracks((current) =>
+              current.length <= minimumTracks
+                ? current
+                : current.filter((item) => item !== track),
+            ),
+          },
+        ],
+      );
+    },
+    [isTutorials, minimumTracks, saving, tracks],
   );
   const moveTrack = useCallback((index, direction) => {
     setTracks((current) => {
@@ -450,7 +491,7 @@ export default function PlayListScreen() {
     (item) =>
       safeConfirm(
         `Borrar ${collectionLabel}`,
-        `¿Quieres borrar «${item.title}»?`,
+        `¿Quieres borrar «${item.title}» y todos sus elementos? Esta acción no se puede deshacer.`,
         async () => {
           setDeletingId(item._id);
           try {
@@ -590,6 +631,47 @@ export default function PlayListScreen() {
     playlists,
   ]);
 
+  const searchHeader = (
+      <View style={styles.searchSection}>
+        <View style={styles.searchBar}>
+          <View style={styles.searchIcon}>
+            <Ionicons name="search-outline" size={21} color="#64748b" />
+          </View>
+          <TextInput
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholder={isTutorials ? "Buscar tutoriales…" : "Buscar playlists…"}
+            placeholderTextColor="#888"
+            accessibilityLabel={isTutorials ? "Buscar tutoriales" : "Buscar playlists"}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            style={styles.searchInput}
+          />
+          {searchText.length > 0 ? (
+            <Pressable
+              onPress={() => setSearchText("")}
+              accessibilityRole="button"
+              accessibilityLabel="Limpiar búsqueda"
+              style={styles.clearSearchButton}
+            >
+              <Ionicons name="close-circle" size={21} color="#64748b" />
+            </Pressable>
+          ) : <View style={styles.searchIcon} />}
+        </View>
+        <Text style={styles.searchHint}>
+          Busca en el título de la lista y de sus elementos.
+        </Text>
+        {playlists !== undefined ? (
+          <Text style={styles.searchCount} accessibilityLiveRegion="polite">
+            {searchTerms.length
+              ? `${filteredPlaylists.length} ${filteredPlaylists.length === 1 ? "coincidencia" : "coincidencias"} de ${playlists.length}`
+              : `${playlists.length} ${isTutorials ? "tutoriales" : "playlists"}`}
+          </Text>
+        ) : null}
+      </View>
+  );
+
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
@@ -632,11 +714,13 @@ export default function PlayListScreen() {
         </View>
       ) : (
         <FlatList
-          data={playlists}
+          data={filteredPlaylists}
+          ListHeaderComponent={searchHeader}
+          keyboardShouldPersistTaps="handled"
           keyExtractor={(item) => item._id}
           contentContainerStyle={[
             styles.list,
-            !playlists.length && styles.emptyList,
+            !filteredPlaylists.length && styles.emptyList,
           ]}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
           renderItem={({ item }) => (
@@ -662,7 +746,22 @@ export default function PlayListScreen() {
               </Pressable>
             </View>
           )}
-          ListEmptyComponent={
+          ListEmptyComponent={searchTerms.length ? (
+            <View style={styles.empty}>
+              <Ionicons name="search-outline" size={46} color="#64748b" />
+              <Text style={styles.emptyTitle}>No hay coincidencias</Text>
+              <Text style={styles.emptyText}>
+                Prueba con otras palabras o limpia la búsqueda para ver todas las listas.
+              </Text>
+              <Pressable
+                onPress={() => setSearchText("")}
+                accessibilityRole="button"
+                style={styles.emptyButton}
+              >
+                <Text style={styles.emptyButtonText}>Limpiar búsqueda</Text>
+              </Pressable>
+            </View>
+          ) : (
             <View style={styles.empty}>
               <Ionicons name="logo-youtube" size={46} color="#dc2626" />
               <Text style={styles.emptyTitle}>
@@ -681,7 +780,7 @@ export default function PlayListScreen() {
                 </Text>
               </Pressable>
             </View>
-          }
+          )}
         />
       )}
       <Modal
@@ -1035,6 +1134,44 @@ const styles = StyleSheet.create({
   },
   newButtonText: { fontWeight: "800", color: "#fff" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  searchSection: {
+    width: 440,
+    maxWidth: "100%",
+    alignSelf: "center",
+    paddingBottom: 14,
+    gap: 6,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+  },
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 46,
+    paddingHorizontal: 10,
+    color: "#111827",
+    fontSize: 15,
+    textAlign: "left",
+    ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}),
+  },
+  searchIcon: {
+    width: 44,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  clearSearchButton: {
+    width: 44,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  searchHint: { fontSize: 12, color: "#64748b", textAlign: "center" },
+  searchCount: { fontSize: 12, fontWeight: "700", color: "#475569", textAlign: "center" },
   list: { width: "100%", maxWidth: 760, alignSelf: "center", padding: 14 },
   playerCard: { alignItems: "center" },
   exportButton: {
@@ -1051,7 +1188,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   exportButtonText: { fontSize: 12, fontWeight: "800", color: "#2563eb" },
-  emptyList: { flexGrow: 1, justifyContent: "center" },
+  emptyList: { flexGrow: 1 },
   empty: { alignItems: "center", padding: 24 },
   emptyTitle: {
     marginTop: 12,
