@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "type": "shopp-youtube-tutorial",
+  "title": "JavaScript Callbacks",
+  "exportedAt": "2026-09-05T16:16:18.723Z",
+  "tracks": [
+    {
+      "kind": "single",
+      "title": "Javascript callbacks",
+      "url": "https://www.youtube.com/watch?v=MlYxsopg1uA"
+    },
+    {
+      "kind": "single",
+      "title": "Upload file to S3",
+      "url": "https://www.youtube.com/watch?v=4SjaMG_JDCo"
+    },
+    {
+      "kind": "single",
+      "title": "ByteMonk",
+      "url": "https://www.youtube.com/watch?v=Kn_3uHaKz7Q"
+    }
+  ]
+}

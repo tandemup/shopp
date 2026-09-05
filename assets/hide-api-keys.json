@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "type": "shopp-youtube-tutorial",
+  "title": "Hide API keys",
+  "exportedAt": "2026-09-05T16:16:12.736Z",
+  "tracks": [
+    {
+      "kind": "single",
+      "title": "Vídeo 1",
+      "url": "https://www.youtube.com/watch?v=FcwfjMebjTU"
+    },
+    {
+      "kind": "single",
+      "title": "Vídeo 2",
+      "url": "https://www.youtube.com/watch?v=uk9pviyvrtg"
+    },
+    {
+      "kind": "single",
+      "title": "Vídeo 3",
+      "url": "https://www.youtube.com/watch?v=m2Dr4L_Ab14"
+    },
+    {
+      "kind": "single",
+      "title": "Vídeo 4",
+      "url": "https://www.youtube.com/watch?v=ZGymN8aFsv4"
+    },
+    {
+      "kind": "single",
+      "title": "Vídeo 5",
+      "url": "https://www.youtube.com/watch?v=qgpsIBLvrGY"
+    },
+    {
+      "kind": "single",
+      "title": "Vídeo 6",
+      "url": "https://www.youtube.com/watch?v=7oJgdyMS4rQ"
+    },
+    {
+      "kind": "single",
+      "title": "Vídeo 7",
+      "url": "https://www.youtube.com/watch?v=xOQxkkw_GF0"
+    }
+  ]
+}

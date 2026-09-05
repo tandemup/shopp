@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "type": "shopp-youtube-tutorial",
+  "title": "WebRTC",
+  "exportedAt": "2026-09-05T16:16:13.990Z",
+  "tracks": [
+    {
+      "kind": "single",
+      "title": "Create a React webRTC Video Chat Application Using Simple Peer",
+      "url": "https://www.youtube.com/watch?v=BpN6ZwFjbCY"
+    },
+    {
+      "kind": "single",
+      "title": "React Group Video Chat | simple-peer webRTC",
+      "url": "https://www.youtube.com/watch?v=R1sfHPwEH7A"
+    },
+    {
+      "kind": "single",
+      "title": "Video Chat App Using Native WebRTC API From Scratch",
+      "url": "https://www.youtube.com/watch?v=JhyY8LdAQHU"
+    },
+    {
+      "kind": "single",
+      "title": "WebRTC Screen Sharing Tutorial",
+      "url": "https://www.youtube.com/watch?v=X8QHHB7DA90"
+    },
+    {
+      "kind": "single",
+      "title": "ByteMonk",
+      "url": "https://www.youtube.com/watch?v=Kn_3uHaKz7Q"
+    }
+  ]
+}

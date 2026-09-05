@@ -1,0 +1,214 @@
+{
+  "version": 1,
+  "type": "shopp-youtube-tutorials",
+  "exportedAt": "2026-09-05T16:15:58.507Z",
+  "playlists": [
+    {
+      "version": 1,
+      "type": "shopp-youtube-tutorial",
+      "title": "Test",
+      "exportedAt": "2026-09-05T16:15:58.507Z",
+      "tracks": [
+        {
+          "kind": "single",
+          "title": "Vídeo 1",
+          "url": "https://www.youtube.com/watch?v=b7DJEAJZsG0"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 2",
+          "url": "https://www.youtube.com/watch?v=sGB64WDt22g"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 3",
+          "url": "https://www.youtube.com/watch?v=oEiuULJUSHU"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 4",
+          "url": "https://www.youtube.com/watch?v=dDev7iCknfc"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 5",
+          "url": "https://www.youtube.com/watch?v=JzSmM5M9G2w"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 6",
+          "url": "https://www.youtube.com/watch?v=FU34dHqSqwA"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 7",
+          "url": "https://www.youtube.com/watch?v=XKvxluAsPS4"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 8",
+          "url": "https://www.youtube.com/watch?v=dayqTbfaAjk"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 9",
+          "url": "https://www.youtube.com/watch?v=lRgPk8H4zQg"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 10",
+          "url": "https://www.youtube.com/watch?v=ZYzPMR6Bw3M"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 11",
+          "url": "https://www.youtube.com/watch?v=jH7PnyqZaqY"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 12",
+          "url": "https://www.youtube.com/watch?v=lpFcNQpH81Q"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 13",
+          "url": "https://www.youtube.com/watch?v=d5fMOEodxc4"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 14",
+          "url": "https://www.youtube.com/watch?v=ds1k2cmtqdI"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 15",
+          "url": "https://www.youtube.com/watch?v=yNyR_A73eTI"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 16",
+          "url": "https://www.youtube.com/watch?v=OlLEyrOHiM8"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 17",
+          "url": "https://www.youtube.com/watch?v=W4EwfEU8CGA"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 18",
+          "url": "https://www.youtube.com/watch?v=WCGBMEuSghU"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 19",
+          "url": "https://www.youtube.com/watch?v=z_qmpklj89s"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 20",
+          "url": "https://www.youtube.com/watch?v=KR61bXsPlLU"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "type": "shopp-youtube-tutorial",
+      "title": "Hide API keys",
+      "exportedAt": "2026-09-05T16:15:58.507Z",
+      "tracks": [
+        {
+          "kind": "single",
+          "title": "Vídeo 1",
+          "url": "https://www.youtube.com/watch?v=FcwfjMebjTU"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 2",
+          "url": "https://www.youtube.com/watch?v=uk9pviyvrtg"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 3",
+          "url": "https://www.youtube.com/watch?v=m2Dr4L_Ab14"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 4",
+          "url": "https://www.youtube.com/watch?v=ZGymN8aFsv4"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 5",
+          "url": "https://www.youtube.com/watch?v=qgpsIBLvrGY"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 6",
+          "url": "https://www.youtube.com/watch?v=7oJgdyMS4rQ"
+        },
+        {
+          "kind": "single",
+          "title": "Vídeo 7",
+          "url": "https://www.youtube.com/watch?v=xOQxkkw_GF0"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "type": "shopp-youtube-tutorial",
+      "title": "WebRTC",
+      "exportedAt": "2026-09-05T16:15:58.507Z",
+      "tracks": [
+        {
+          "kind": "single",
+          "title": "Create a React webRTC Video Chat Application Using Simple Peer",
+          "url": "https://www.youtube.com/watch?v=BpN6ZwFjbCY"
+        },
+        {
+          "kind": "single",
+          "title": "React Group Video Chat | simple-peer webRTC",
+          "url": "https://www.youtube.com/watch?v=R1sfHPwEH7A"
+        },
+        {
+          "kind": "single",
+          "title": "Video Chat App Using Native WebRTC API From Scratch",
+          "url": "https://www.youtube.com/watch?v=JhyY8LdAQHU"
+        },
+        {
+          "kind": "single",
+          "title": "WebRTC Screen Sharing Tutorial",
+          "url": "https://www.youtube.com/watch?v=X8QHHB7DA90"
+        },
+        {
+          "kind": "single",
+          "title": "ByteMonk",
+          "url": "https://www.youtube.com/watch?v=Kn_3uHaKz7Q"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "type": "shopp-youtube-tutorial",
+      "title": "JavaScript Callbacks",
+      "exportedAt": "2026-09-05T16:15:58.507Z",
+      "tracks": [
+        {
+          "kind": "single",
+          "title": "Javascript callbacks",
+          "url": "https://www.youtube.com/watch?v=MlYxsopg1uA"
+        },
+        {
+          "kind": "single",
+          "title": "Upload file to S3",
+          "url": "https://www.youtube.com/watch?v=4SjaMG_JDCo"
+        },
+        {
+          "kind": "single",
+          "title": "ByteMonk",
+          "url": "https://www.youtube.com/watch?v=Kn_3uHaKz7Q"
+        }
+      ]
+    }
+  ]
+}
