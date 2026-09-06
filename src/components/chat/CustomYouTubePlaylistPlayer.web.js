@@ -39,79 +39,49 @@ function parseLrc(text) {
   return lines.sort((a, b) => a.time - b.time);
 }
 
-function DraggableTrack({
-  track,
-  index,
-  active,
-  dragging,
-  onDragStart,
-  onDrop,
-  onSelect,
-}) {
+function TrackRow({ track, index, active, onSelect }) {
   return (
-    <div
-      draggable="true"
-      onDragStart={(event) => {
-        event.dataTransfer.setData("text/plain", String(index));
-        event.dataTransfer.effectAllowed = "move";
-        onDragStart(index);
-      }}
-      onDragEnter={(event) => event.preventDefault()}
-      onDragOver={(event) => {
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
-      }}
-      onDrop={(event) => {
-        event.preventDefault();
-        onDrop(index);
-      }}
-      onDragEnd={() => onDragStart(null)}
-      style={{ cursor: dragging ? "grabbing" : "grab", userSelect: "none" }}
+    <Pressable
+      onPress={() => onSelect(index)}
+      style={[
+        styles.track,
+        active && styles.trackActive,
+      ]}
     >
-      <Pressable
-        onPress={() => onSelect(index)}
-        style={[
-          styles.track,
-          active && styles.trackActive,
-          dragging && styles.trackDragging,
-        ]}
-      >
-        {track.videoId ? (
-          <Image
-            source={{
-              uri: `https://i.ytimg.com/vi/${track.videoId}/mqdefault.jpg`,
-            }}
-            style={styles.trackImage}
-          />
-        ) : (
-          <View style={styles.trackImageFallback}>
-            <Ionicons name="albums" size={24} color="#fff" />
-          </View>
-        )}
-        <View style={styles.trackText}>
-          <Text style={styles.trackNumber}>
-            {track.kind === "album" ? "Álbum" : "Single"} {index + 1}
-          </Text>
-          <Text
-            style={[styles.trackTitle, active && styles.trackTitleActive]}
-            numberOfLines={2}
-          >
-            {track.title}
-          </Text>
-          {track.lyricsFileName ? (
-            <Text style={styles.trackLyrics} numberOfLines={1}>
-              Letras · {track.lyricsFileName}
-            </Text>
-          ) : null}
-        </View>
-        <Ionicons name="reorder-three-outline" size={22} color="#64748b" />
-        <Ionicons
-          name={active ? "volume-high" : "play-circle-outline"}
-          size={23}
-          color={active ? "#dc2626" : "#64748b"}
+      {track.videoId ? (
+        <Image
+          source={{
+            uri: `https://i.ytimg.com/vi/${track.videoId}/mqdefault.jpg`,
+          }}
+          style={styles.trackImage}
         />
-      </Pressable>
-    </div>
+      ) : (
+        <View style={styles.trackImageFallback}>
+          <Ionicons name="albums" size={24} color="#fff" />
+        </View>
+      )}
+      <View style={styles.trackText}>
+        <Text style={styles.trackNumber}>
+          {track.kind === "album" ? "Álbum" : "Single"} {index + 1}
+        </Text>
+        <Text
+          style={[styles.trackTitle, active && styles.trackTitleActive]}
+          numberOfLines={2}
+        >
+          {track.title}
+        </Text>
+        {track.lyricsFileName ? (
+          <Text style={styles.trackLyrics} numberOfLines={1}>
+            Letras · {track.lyricsFileName}
+          </Text>
+        ) : null}
+      </View>
+      <Ionicons
+        name={active ? "volume-high" : "play-circle-outline"}
+        size={23}
+        color={active ? "#dc2626" : "#64748b"}
+      />
+    </Pressable>
   );
 }
 
@@ -169,7 +139,6 @@ export default function CustomYouTubePlaylistPlayer({
   deleting,
   onDelete,
   onEdit,
-  onReorder,
   isTutorial = false,
 }) {
   const { width } = useWindowDimensions();
@@ -182,21 +151,10 @@ export default function CustomYouTubePlaylistPlayer({
   const [expanded, setExpanded] = useState(false);
   const [lyricsLines, setLyricsLines] = useState([]);
   const [currentTime, setCurrentTime] = useState(0);
-  const [draggingIndex, setDraggingIndex] = useState(null);
   const activeTrack = tracks[activeIndex] || tracks[0];
   useEffect(() => {
     setTracks(playlistTracks);
   }, [playlist?.tracks]);
-  const reorderTracks = (targetIndex) => {
-    if (draggingIndex === null || draggingIndex === targetIndex) return;
-    const next = [...tracks];
-    const [moved] = next.splice(draggingIndex, 1);
-    next.splice(targetIndex, 0, moved);
-    setTracks(next);
-    setDraggingIndex(null);
-    setActiveIndex(next.findIndex((track) => track === activeTrack));
-    onReorder?.(next);
-  };
   useEffect(() => {
     let cancelled = false;
     setLyricsLines([]);
@@ -334,14 +292,11 @@ export default function CustomYouTubePlaylistPlayer({
               {tracks.map((track, index) => {
                 const active = index === activeIndex;
                 return (
-                  <DraggableTrack
+                  <TrackRow
                     key={`${track.videoId || track.playlistId}-${index}`}
                     track={track}
                     index={index}
                     active={active}
-                    dragging={draggingIndex === index}
-                    onDragStart={setDraggingIndex}
-                    onDrop={reorderTracks}
                     onSelect={setActiveIndex}
                   />
                 );
@@ -355,17 +310,6 @@ export default function CustomYouTubePlaylistPlayer({
 }
 
 const styles = StyleSheet.create({
-  trackDragging: {
-    opacity: 0.55,
-    borderColor: "#2563eb",
-    borderStyle: "dashed",
-  },
-  dragInstruction: {
-    paddingBottom: 5,
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#2563eb",
-  },
   card: {
     width: 440,
     maxWidth: "100%",

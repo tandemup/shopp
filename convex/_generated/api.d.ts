@@ -22,6 +22,7 @@ import type * as fireAlarm from "../fireAlarm.js";
 import type * as http from "../http.js";
 import type * as items from "../items.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_tutorialItems from "../lib/tutorialItems.js";
 import type * as linkPreviews from "../linkPreviews.js";
 import type * as live from "../live.js";
 import type * as migrations from "../migrations.js";
@@ -62,6 +63,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   items: typeof items;
   "lib/auth": typeof lib_auth;
+  "lib/tutorialItems": typeof lib_tutorialItems;
   linkPreviews: typeof linkPreviews;
   live: typeof live;
   migrations: typeof migrations;

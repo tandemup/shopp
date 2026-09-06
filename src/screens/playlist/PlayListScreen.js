@@ -24,6 +24,10 @@ import { safeAlert, safeConfirm } from "@/src/components/ui/alert/safeAlert";
 import { parseYouTubeUrl } from "@/src/services/urlSafety";
 import { ROUTES } from "@/src/navigation/ROUTES";
 
+import TutorialTransferScreen from "./TutorialTransferScreen";
+import EditorVideoPreview from "./EditorVideoPreview";
+import { MAX_TUTORIAL_ITEMS } from "@/convex/lib/tutorialItems";
+
 const CLIENT_ID_KEY = "shopp-playlist-client-id";
 const normalizeSearchText = (value) =>
   String(value ?? "")
@@ -135,6 +139,7 @@ function parseImportedPayload(
   collectionType = "shopp-youtube-playlist",
   collectionListType = "shopp-youtube-playlists",
   minimumTracks = 1,
+  maximumTracks = 20,
 ) {
   const candidates =
     value?.type === collectionListType && Array.isArray(value.playlists)
@@ -152,10 +157,10 @@ function parseImportedPayload(
     if (
       !Array.isArray(playlist.tracks) ||
       playlist.tracks.length < minimumTracks ||
-      playlist.tracks.length > 20
+      playlist.tracks.length > maximumTracks
     ) {
       throw new Error(
-        `«${playlist.title}» debe contener entre ${minimumTracks} y 20 elementos.`,
+        `«${playlist.title}» debe contener entre ${minimumTracks} y ${maximumTracks} elementos.`,
       );
     }
     const tracks = playlist.tracks.map((track, index) => {
@@ -191,6 +196,8 @@ export default function PlayListScreen() {
     ? "shopp-youtube-tutorials"
     : "shopp-youtube-playlists";
   const minimumTracks = 1;
+  const maximumTracks = isTutorials ? MAX_TUTORIAL_ITEMS : 20;
+  const [transferVisible, setTransferVisible] = useState(false);
   const exportItemType = isTutorials
     ? "shopp-youtube-tutorial"
     : "shopp-youtube-playlist";
@@ -204,6 +211,8 @@ export default function PlayListScreen() {
   const removePlaylist = useMutation(contentApi.remove);
   const generateUploadUrl = useMutation(contentApi.generateUploadUrl);
   const [editorVisible, setEditorVisible] = useState(false);
+  const [previewKey, setPreviewKey] = useState(null);
+  useEffect(() => { if (!editorVisible) setPreviewKey(null); }, [editorVisible]);
   const [editingId, setEditingId] = useState(null);
   const [title, setTitle] = useState("");
   const [tracks, setTracks] = useState(() => initialTracks(isTutorials));
@@ -252,6 +261,7 @@ export default function PlayListScreen() {
     () =>
       Boolean(title.trim()) &&
       tracks.length >= minimumTracks &&
+      tracks.length <= maximumTracks &&
       tracks.every((track) => {
         const parsed = parseYouTubeUrl(track.url.trim());
         return (
@@ -262,7 +272,7 @@ export default function PlayListScreen() {
         );
       }) &&
       !saving,
-    [minimumTracks, saving, title, tracks],
+    [minimumTracks, maximumTracks, saving, title, tracks],
   );
 
   const openNew = useCallback(() => {
@@ -350,7 +360,7 @@ export default function PlayListScreen() {
   const addTrack = useCallback(
     () =>
       setTracks((current) =>
-        current.length >= 20
+        current.length >= maximumTracks
           ? current
           : [
               ...current,
@@ -362,7 +372,7 @@ export default function PlayListScreen() {
               },
             ],
       ),
-    [isTutorials],
+    [isTutorials, maximumTracks],
   );
   const removeTrack = useCallback(
     (index) => {
@@ -589,6 +599,7 @@ export default function PlayListScreen() {
         exportItemType,
         exportType,
         minimumTracks,
+        maximumTracks,
       );
       const existingSignatures = new Set(
         (playlists || []).map(
@@ -628,6 +639,7 @@ export default function PlayListScreen() {
     exportItemType,
     exportType,
     minimumTracks,
+    maximumTracks,
     playlists,
   ]);
 
@@ -684,6 +696,12 @@ export default function PlayListScreen() {
           </Text>
         </View>
         <View style={styles.headerActions}>
+          {isTutorials ? (
+            <Pressable onPress={() => setTransferVisible(true)} style={styles.secondaryButton}>
+              <Ionicons name="copy-outline" size={21} color="#2563eb" />
+              <Text style={styles.secondaryButtonText}>Copiar entre listas</Text>
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={importJson}
             disabled={importing}
@@ -783,6 +801,10 @@ export default function PlayListScreen() {
           )}
         />
       )}
+      {isTutorials && transferVisible ? (
+        <TutorialTransferScreen tutorials={playlists} clientId={clientId}
+          onClose={() => setTransferVisible(false)} />
+      ) : null}
       <Modal
         visible={editorVisible}
         transparent
@@ -1000,6 +1022,17 @@ export default function PlayListScreen() {
                     }
                     style={styles.trackInput}
                   />
+                  {isTutorials && editorVisible ? (
+                    <EditorVideoPreview
+                      track={track}
+                      active={previewKey === `${index}:${track.kind}:${track.url}`}
+                      disabled={saving}
+                      onToggle={() => {
+                        const key = `${index}:${track.kind}:${track.url}`;
+                        setPreviewKey((current) => current === key ? null : key);
+                      }}
+                    />
+                  ) : null}
                   {!isTutorials ? (
                     <View style={styles.lyricsRow}>
                       <Pressable
@@ -1036,7 +1069,7 @@ export default function PlayListScreen() {
                   ) : null}
                 </View>
               ))}
-              {tracks.length < 20 ? (
+              {tracks.length < maximumTracks ? (
                 <Pressable onPress={addTrack} style={styles.addButton}>
                   <Ionicons
                     name="add-circle-outline"
@@ -1047,6 +1080,9 @@ export default function PlayListScreen() {
                 </Pressable>
               ) : null}
             </ScrollView>
+            <Text style={styles.editorSubtitle}>
+              {tracks.length} / {maximumTracks} elementos
+            </Text>
             <View style={styles.actions}>
               <Pressable
                 onPress={() => setEditorVisible(false)}

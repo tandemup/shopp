@@ -2,6 +2,8 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
+import { MAX_TUTORIAL_ITEMS, mergeTutorialItems, tutorialItemKey } from "./lib/tutorialItems";
+
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const PLAYLIST_ID = /^[A-Za-z0-9_-]{10,80}$/;
 const trackValidator = v.object({
@@ -38,9 +40,9 @@ function normalizeTutorial(titleValue, trackValues) {
   if (
     !Array.isArray(trackValues) ||
     trackValues.length < 1 ||
-    trackValues.length > 20
+    trackValues.length > MAX_TUTORIAL_ITEMS
   ) {
-    throw new Error("El tutorial debe contener entre 1 y 20 vídeos o series.");
+    throw new Error(`El tutorial debe contener entre 1 y ${MAX_TUTORIAL_ITEMS} vídeos o series.`);
   }
   const seen = new Set();
   const tracks = trackValues.map((track, index) => {
@@ -147,5 +149,48 @@ export const remove = mutation({
     if (!current || current.ownerId !== ownerId)
       throw new Error("No puedes borrar este tutorial.");
     await ctx.db.delete(args.playlistId);
+  },
+});
+
+// Read both lists and append in one transaction, preserving concurrent changes.
+export const copyItems = mutation({
+  args: {
+    clientId: v.optional(v.string()),
+    sourceId: v.id("youtubeTutorials"),
+    destinationId: v.id("youtubeTutorials"),
+    itemKeys: v.array(v.string()),
+    mode: v.optional(v.union(v.literal("copy"), v.literal("cut"))),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    if (args.sourceId === args.destinationId)
+      throw new Error("Elige dos listas diferentes.");
+    const source = await ctx.db.get(args.sourceId);
+    const destination = await ctx.db.get(args.destinationId);
+    if (!source || !destination || source.ownerId !== ownerId || destination.ownerId !== ownerId)
+      throw new Error("No puedes copiar entre estas listas. Comprueba que ambas siguen disponibles.");
+    const result = mergeTutorialItems(source.tracks, destination.tracks, args.itemKeys);
+    const cutting = args.mode === "cut";
+    const selected = new Set(args.itemKeys);
+    const remaining = cutting ? source.tracks.filter((track) => !selected.has(tutorialItemKey(track))) : source.tracks;
+    if (cutting && remaining.length < 1)
+      throw new Error("La lista de origen debe conservar al menos un elemento. Reduce la selección o usa Copiar.");
+    // Validate both resulting lists before writing. Convex commits both patches
+    // atomically, so a failed paste never removes the originals.
+    const destinationUpdate = result.copied > 0 ? normalizeTutorial(destination.title, result.tracks) : null;
+    const sourceUpdate = cutting ? normalizeTutorial(source.title, remaining) : null;
+    const now = Date.now();
+    if (destinationUpdate) {
+      await ctx.db.patch(args.destinationId, {
+        ...destinationUpdate,
+        updatedAt: now,
+      });
+    }
+    if (sourceUpdate) {
+      await ctx.db.patch(args.sourceId, { ...sourceUpdate, updatedAt: now });
+    }
+    return { copied: result.copied, skipped: result.skipped, total: result.tracks.length,
+      moved: cutting ? source.tracks.length - remaining.length : 0 };
+
   },
 });
