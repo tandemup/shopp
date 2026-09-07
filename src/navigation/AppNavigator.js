@@ -6,6 +6,7 @@ import { Authenticated, AuthLoading, Unauthenticated } from "convex/react";
 
 import AuthStack from "@/src/navigation/AuthStack";
 import MainTabs from "@/src/navigation/MainTabs";
+import PlaybackProvider from "@/src/components/playback/PlaybackProvider";
 
 export default function AppNavigator() {
   return (
@@ -22,7 +23,9 @@ export default function AppNavigator() {
       </Unauthenticated>
 
       <Authenticated>
-        <MainTabs />
+        <PlaybackProvider>
+          <MainTabs />
+        </PlaybackProvider>
       </Authenticated>
     </>
   );
