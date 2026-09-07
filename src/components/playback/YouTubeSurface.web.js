@@ -86,13 +86,25 @@ export default forwardRef(function YouTubeSurface({ track, initialTime = 0, onSt
     const requestPlay = async (select) => {
       if (!ready || disposed) return;
       const ticket = ++action;
+      const startPlayback = () => {
+        if (typeof select === "number") player.playVideoAt(select);
+        else if (player.getPlayerState() !== 1) player.playVideo();
+        player.unMute();
+      };
+      // This surface normally already owns the single global playback
+      // session. Start synchronously so Chrome keeps the user activation
+      // associated with the Play button and permits unmuted playback.
+      if (exclusivePlayback.owns(id)) {
+        granted = true;
+        startPlayback();
+        emit({ state: 1 });
+        return;
+      }
       try {
         const allowed = await exclusivePlayback.claim(id);
         if (!allowed || ticket !== action || disposed) return;
         granted = true;
-        if (typeof select === "number") player.playVideoAt(select);
-        else if (player.getPlayerState() !== 1) player.playVideo();
-        player.unMute();
+        startPlayback();
       } catch {
         if (!disposed) { suspend().catch(() => {}); emit({ error: "No se pudo pausar el otro reproductor. Inténtalo de nuevo." }); }
       }

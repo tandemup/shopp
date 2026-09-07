@@ -324,7 +324,11 @@ export default function PlayListScreen() {
     async (index) => {
       try {
         const result = await DocumentPicker.getDocumentAsync({
-          type: ["text/plain", "application/octet-stream"],
+          // .lrc does not have a consistently registered MIME type. In
+          // particular, iOS/iPadOS can disable valid LRC files when the picker
+          // is restricted to text/plain. Allow selection here and validate the
+          // extension and size below instead.
+          type: "*/*",
           copyToCacheDirectory: true,
           multiple: false,
         });
@@ -344,7 +348,7 @@ export default function PlayListScreen() {
         updateTrack(index, "lyrics", {
           uri: asset.uri,
           fileName,
-          mimeType: asset.mimeType || "text/plain",
+          mimeType: "text/plain",
           size: asset.size || 0,
         });
       } catch (error) {
