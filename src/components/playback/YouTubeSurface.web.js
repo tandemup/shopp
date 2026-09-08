@@ -33,7 +33,13 @@ function loadApi() {
 }
 
 // Only this component owns an iframe. Resizing/minimizing does not recreate it.
-export default forwardRef(function YouTubeSurface({ track, initialTime = 0, onStatus }, ref) {
+export default forwardRef(function YouTubeSurface({
+  track,
+  initialTime = 0,
+  initialPlaylistIndex = 0,
+  autoPlay = false,
+  onStatus,
+}, ref) {
   const host = useRef(null);
   const commands = useRef({});
   const statusCallback = useRef(onStatus);
@@ -119,8 +125,20 @@ export default forwardRef(function YouTubeSurface({ track, initialTime = 0, onSt
       if (disposed) return;
       player = new YT.Player(node, {
         width: "100%", height: "100%", videoId: track.videoId || undefined,
-        playerVars: { autoplay: 0, playsinline: 1, rel: 0, origin: window.location.origin,
-          ...(track.kind === "album" ? { listType: "playlist", list: track.playlistId } : {}) },
+        playerVars: {
+          autoplay: 0,
+          playsinline: 1,
+          rel: 0,
+          origin: window.location.origin,
+          ...(initialTime > 0 ? { start: Math.floor(initialTime) } : {}),
+          ...(track.kind === "album"
+            ? {
+                listType: "playlist",
+                list: track.playlistId,
+                index: Math.max(0, initialPlaylistIndex),
+              }
+            : {}),
+        },
         events: {
           onReady: () => {
             if (disposed) return;
@@ -129,7 +147,7 @@ export default forwardRef(function YouTubeSurface({ track, initialTime = 0, onSt
             if (initialTime > 0) player.seekTo(initialTime, true);
             emit();
             timer = setInterval(() => emit(), 500);
-            if (exclusivePlayback.owns(id)) requestPlay();
+            if (autoPlay && exclusivePlayback.owns(id)) requestPlay();
           },
           onStateChange: ({ data }) => {
             if (disposed || !ready) return;
@@ -154,6 +172,13 @@ export default forwardRef(function YouTubeSurface({ track, initialTime = 0, onSt
       try { player?.destroy(); } catch {}
       container.replaceChildren();
     };
-  }, [track.videoId, track.playlistId, track.kind, initialTime]);
+  }, [
+    track.videoId,
+    track.playlistId,
+    track.kind,
+    initialTime,
+    initialPlaylistIndex,
+    autoPlay,
+  ]);
   return <div ref={host} style={{ width: "100%", height: "100%", background: "#000" }} />;
 });

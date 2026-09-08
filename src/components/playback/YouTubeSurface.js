@@ -6,12 +6,30 @@ import { buildNativeYouTubeHtml } from "./nativeYouTubeHtml";
 import { youtubeError } from "./youtubeUtils";
 
 let nextSession = 0;
-export default forwardRef(function YouTubeSurface({ track, initialTime = 0, onStatus }, ref) {
+export default forwardRef(function YouTubeSurface({
+  track,
+  initialTime = 0,
+  initialPlaylistIndex = 0,
+  autoPlay = false,
+  onStatus,
+}, ref) {
   const web = useRef(null);
   const pending = useRef(new Map());
   const id = useRef(Symbol("youtube-native")).current;
   const session = useMemo(() => `shopp-${++nextSession}`, [track.videoId, track.playlistId, track.kind]);
-  const source = useMemo(() => ({ html: buildNativeYouTubeHtml(track, session, initialTime), baseUrl: "https://www.youtube.com" }), [session, initialTime]);
+  const source = useMemo(
+    () => ({
+      html: buildNativeYouTubeHtml(
+        track,
+        session,
+        initialTime,
+        initialPlaylistIndex,
+        autoPlay,
+      ),
+      baseUrl: "https://www.youtube.com",
+    }),
+    [session, initialTime, initialPlaylistIndex, autoPlay],
+  );
   const alive = useRef(false);
   const requestNumber = useRef(0);
   const command = (name, value, requestId) => web.current?.injectJavaScript(

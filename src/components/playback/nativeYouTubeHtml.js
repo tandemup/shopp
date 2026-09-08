@@ -1,6 +1,20 @@
 // The bridge embeds only validated IDs, never titles, URLs, or lyric text.
-export function buildNativeYouTubeHtml(track, session, initialTime = 0) {
-  const config = JSON.stringify({ session, videoId: track.videoId, playlistId: track.playlistId, kind: track.kind, initialTime }).replace(/</g, "\\u003c");
+export function buildNativeYouTubeHtml(
+  track,
+  session,
+  initialTime = 0,
+  initialPlaylistIndex = 0,
+  autoPlay = false,
+) {
+  const config = JSON.stringify({
+    session,
+    videoId: track.videoId,
+    playlistId: track.playlistId,
+    kind: track.kind,
+    initialTime,
+    initialPlaylistIndex,
+    autoPlay,
+  }).replace(/</g, "\\u003c");
   return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body,#player{margin:0;width:100%;height:100%;background:#000;overflow:hidden}</style></head><body><div id="player"></div><script>
 var config=${config}, player, ready=false, authorized=false, revision=0;
 function send(data){ data.session=config.session; window.ReactNativeWebView.postMessage(JSON.stringify(data)); }
@@ -34,9 +48,10 @@ window.shoppCommand=function(command,value,requestId){
 };
 function onYouTubeIframeAPIReady(){
   var vars={autoplay:0,playsinline:1,rel:0};
-  if(config.kind==='album'){vars.listType='playlist';vars.list=config.playlistId;}
+  if(config.initialTime>0)vars.start=Math.floor(config.initialTime);
+  if(config.kind==='album'){vars.listType='playlist';vars.list=config.playlistId;vars.index=Math.max(0,config.initialPlaylistIndex||0);}
   player=new YT.Player('player',{width:'100%',height:'100%',videoId:config.videoId||undefined,playerVars:vars,events:{
-    onReady:function(){ready=true;player.mute();if(config.initialTime>0)player.seekTo(config.initialTime,true);status();setInterval(status,500);request(undefined,true);},
+    onReady:function(){ready=true;player.mute();if(config.initialTime>0)player.seekTo(config.initialTime,true);status();setInterval(status,500);if(config.autoPlay)request(undefined,true);},
     onStateChange:function(event){
       if(!ready)return;
       if(event.data===1&&!authorized){player.mute();request();}

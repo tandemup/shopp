@@ -173,6 +173,10 @@ export default defineSchema({
         playlistId: v.optional(v.string()),
         url: v.string(),
         title: v.string(),
+        // Compatibilidad con playlists guardadas durante la prueba de estos
+        // campos. La interfaz ya no los muestra ni crea valores nuevos.
+        albumName: v.optional(v.string()),
+        composer: v.optional(v.string()),
         lyricsStorageId: v.optional(v.id("_storage")),
         lyricsFileName: v.optional(v.string()),
         lyricsMimeType: v.optional(v.string()),
@@ -368,6 +372,46 @@ export default defineSchema({
     .index("by_linkType_publishedAt", ["linkType", "publishedAt"])
     .index("by_linkType_updatedAt", ["linkType", "updatedAt"])
     .index("by_updatedAt", ["updatedAt"]),
+
+  // Estado persistente de las importaciones grandes de Biblioteca.
+  // Permite pausar, reanudar y recuperar una importación por usuario.
+  libraryImportJobs: defineTable({
+    ownerId: v.string(),
+    clientId: v.optional(v.string()),
+    fileName: v.string(),
+    fingerprint: v.string(),
+    importMode: v.union(v.literal("combine"), v.literal("replace")),
+    status: v.union(
+      v.literal("ready"),
+      v.literal("running"),
+      v.literal("paused"),
+      v.literal("interrupted"),
+      v.literal("done"),
+      v.literal("cancelled"),
+    ),
+    phase: v.union(
+      v.literal("links"),
+      v.literal("sources"),
+      v.literal("done"),
+    ),
+    replacePrepared: v.boolean(),
+    totalLinks: v.float64(),
+    processedLinks: v.float64(),
+    totalSources: v.float64(),
+    processedSources: v.float64(),
+    foldersCreated: v.float64(),
+    linksCreated: v.float64(),
+    linksUpdated: v.float64(),
+    foldersDeleted: v.float64(),
+    linksDeleted: v.float64(),
+    newsSourcesCreated: v.float64(),
+    newsMetadataChecked: v.float64(),
+    newsMetadataUpdated: v.float64(),
+    lastError: v.optional(v.string()),
+    createdAt: v.float64(),
+    updatedAt: v.float64(),
+    completedAt: v.optional(v.float64()),
+  }).index("by_owner_updatedAt", ["ownerId", "updatedAt"]),
 
   // Adjuntos temporales para comunicaciones privadas con la administración.
   // Se eliminan del almacenamiento después de enviar el correo, incluso si
