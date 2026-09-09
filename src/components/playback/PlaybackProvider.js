@@ -6,6 +6,7 @@ import Slider from "@react-native-community/slider";
 import { I18nText as Text, tr } from "@/src/i18n";
 import YouTubeSurface from "./YouTubeSurface";
 import { formatTime, normalizeTrack, parseLrc } from "./youtubeUtils";
+import { getLocalLyrics } from "@/src/storage/lyricsStorage";
 
 const PlaybackContext = createContext(null);
 const EMPTY_STATUS = { state: -1, time: 0, duration: 0, ready: false, videoIds: [], playlistIndex: 0 };
@@ -38,16 +39,34 @@ function SecondSeekButton({ direction, onPress, disabled = false }) {
     />
   </Pressable>;
 }
-function SyncedLyricLine({ uri, time }) {
+function SyncedLyricLine({ track, uri, time }) {
   const [lines, setLines] = useState([]);
   useEffect(() => {
     let cancelled = false;
     setLines([]);
-    if (uri) fetch(uri).then((r) => r.ok ? r.text() : "").then((text) => {
-      if (!cancelled) setLines(parseLrc(text));
-    }).catch(() => {});
+    (async () => {
+      try {
+        const local = await getLocalLyrics(track);
+        if (cancelled) return;
+        if (local?.text != null) {
+          setLines(parseLrc(local.text));
+          return;
+        }
+        if (uri) {
+          const response = await fetch(uri);
+          const source = response.ok ? await response.text() : "";
+          if (!cancelled) setLines(parseLrc(source));
+        }
+      } catch {
+        if (!cancelled && uri) {
+          fetch(uri).then((r) => r.ok ? r.text() : "").then((source) => {
+            if (!cancelled) setLines(parseLrc(source));
+          }).catch(() => {});
+        }
+      }
+    })();
     return () => { cancelled = true; };
-  }, [uri]);
+  }, [track?.videoId, track?.playlistId, track?.url, uri]);
   if (!lines.length) return null;
   let index = -1;
   lines.forEach((line, i) => { if (line.time <= time + 0.08) index = i; });
@@ -56,6 +75,66 @@ function SyncedLyricLine({ uri, time }) {
   return <View style={styles.cardLyric}>
     <Ionicons name="musical-notes-outline" size={14} color="#dc2626" />
     <Text style={styles.cardLyricText} numberOfLines={2}>{text}</Text>
+  </View>;
+}
+
+function DesktopLyricsPanel({ track, uri, time, title }) {
+  const [lines, setLines] = useState([]);
+  const [hasSource, setHasSource] = useState(Boolean(uri));
+  const scrollRef = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    setLines([]);
+    setHasSource(Boolean(uri));
+    (async () => {
+      try {
+        const local = await getLocalLyrics(track);
+        if (cancelled) return;
+        if (local?.text != null) {
+          setHasSource(true);
+          setLines(parseLrc(local.text));
+          return;
+        }
+        if (uri) {
+          const response = await fetch(uri);
+          const source = response.ok ? await response.text() : "";
+          if (!cancelled) {
+            setHasSource(true);
+            setLines(parseLrc(source));
+          }
+        }
+      } catch {
+        if (!cancelled) setHasSource(Boolean(uri));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [track?.videoId, track?.playlistId, track?.url, uri]);
+  let activeIndex = -1;
+  lines.forEach((line, i) => { if (line.time <= time + 0.08) activeIndex = i; });
+  useEffect(() => {
+    if (activeIndex < 0) return;
+    scrollRef.current?.scrollTo?.({ y: Math.max(0, activeIndex * 34 - 150), animated: true });
+  }, [activeIndex]);
+  return <View style={styles.desktopLyricsPanel}>
+    <View style={styles.desktopLyricsHeader}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.desktopLyricsEyebrow}>LETRA</Text>
+        <Text style={styles.desktopLyricsTitle} numberOfLines={2}>{title || "Letra"}</Text>
+      </View>
+    </View>
+    {!hasSource ? <View style={styles.desktopLyricsEmpty}>
+      <Ionicons name="musical-notes-outline" size={28} color="#52525b" />
+      <Text style={styles.desktopLyricsEmptyTitle}>La letra no está disponible</Text>
+      <Text style={styles.desktopLyricsEmptyText}>No hay letra para esta canción.</Text>
+    </View> : !lines.length ? <View style={styles.desktopLyricsEmpty}>
+      <Text style={styles.desktopLyricsEmptyText}>Cargando letra…</Text>
+    </View> : <ScrollView ref={scrollRef} style={styles.desktopLyricsScroll}
+      contentContainerStyle={styles.desktopLyricsContent} showsVerticalScrollIndicator={false}>
+      {lines.map((line, i) => <Text key={`${line.time}:${i}`}
+        style={[styles.desktopLyricLine, i === activeIndex && styles.desktopLyricLineActive]}>
+        {line.text}
+      </Text>)}
+    </ScrollView>}
   </View>;
 }
 
@@ -146,7 +225,7 @@ export default function PlaybackProvider({ children }) {
   };
   const ids = status.videoIds || [];
   const albumIndex = status.playlistIndex || 0;
-  const desktop = expanded && width >= 760;
+  const desktop = expanded && width >= 960;
   const wideTransport = width >= 760;
   const miniWidth = Math.min(360, Math.max(200, width - 16));
   const bottom = Platform.OS === "web" ? "calc(78px + env(safe-area-inset-bottom, 0px))" : 70 + Math.max(insets.bottom, 10);
@@ -207,12 +286,12 @@ export default function PlaybackProvider({ children }) {
             setStatus(mergedStatus);
           }} />
         </View>
-        <View style={[styles.body, expanded && styles.expandedBody]}>
+        <View style={[styles.body, expanded && styles.expandedBody, desktop && styles.desktopBody]}>
           {expanded ? <ScrollView
-            style={styles.trackPane}
+            style={[styles.trackPane, desktop && styles.desktopTrackPane]}
             contentContainerStyle={[styles.trackList, desktop && styles.desktopTrackList]}
             scrollEnabled
-            showsVerticalScrollIndicator
+            showsVerticalScrollIndicator={false}
             alwaysBounceVertical
             bounces
             nestedScrollEnabled
@@ -272,7 +351,7 @@ export default function PlaybackProvider({ children }) {
                 </View>
                 <View style={[styles.activeTransport, wideTransport && styles.sideTransport]}>
                   <View style={[styles.transportTop, wideTransport && styles.wideTransport]}>
-                    <View style={styles.playbackButtons}>
+                    {desktop ? <View style={styles.playbackButtons}>
                       <SecondSeekButton direction={-1}
                         disabled={!active || !status.ready || !status.duration || status.time <= 0 || Boolean(status.error)}
                         onPress={() => seekBy(-1)} />
@@ -285,7 +364,7 @@ export default function PlaybackProvider({ children }) {
                       <SecondSeekButton direction={1}
                         disabled={!active || !status.ready || !status.duration || status.time >= status.duration || Boolean(status.error)}
                         onPress={() => seekBy(1)} />
-                    </View>
+                    </View> : null}
                     <View style={styles.timelineBlock}>
                       <View style={styles.timeLabels}>
                         <Text style={styles.progressTime}>{formatTime(elapsed)}</Text>
@@ -300,11 +379,12 @@ export default function PlaybackProvider({ children }) {
                         minimumTrackTintColor="#f9fafb" maximumTrackTintColor="#6b7280" thumbTintColor="#f9fafb" />
                     </View>
                   </View>
-                  {active && lyricsUri ? <SyncedLyricLine
+                  {!desktop && active ? <SyncedLyricLine
                     key={session.requestId}
+                    track={track}
                     uri={lyricsUri}
                     time={status.time}
-                  /> : <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.cardLyricSpacer} />}
+                  /> : !desktop ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.cardLyricSpacer} /> : null}
                 </View>
               </View>})}
             {track.kind === "album" && ids.length > 0 ? <View style={styles.albumVideos}>
@@ -316,6 +396,12 @@ export default function PlaybackProvider({ children }) {
               </Pressable>)}
             </View> : null}
           </ScrollView> : null}
+          {expanded && desktop ? <DesktopLyricsPanel
+            track={track}
+            uri={lyricsUri}
+            time={status.time}
+            title={currentTitle || track?.title}
+          /> : null}
         </View>
       </View> : null}
     </View>
@@ -333,6 +419,19 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.35 },
   body: { minHeight: 0, flexShrink: 1 },
   expandedBody: { flex: 1, backgroundColor: "#0b0b0c" },
+  desktopBody: { flexDirection: "row", width: "100%", maxWidth: 1320, alignSelf: "center", paddingHorizontal: 24, gap: 24 },
+  desktopTrackPane: { flex: 1.08, minWidth: 0 },
+  desktopLyricsPanel: { flex: 0.92, minWidth: 340, maxWidth: 560, borderLeftWidth: 1, borderLeftColor: "#29292d", paddingLeft: 24, paddingTop: 18, paddingBottom: 18 },
+  desktopLyricsHeader: { minHeight: 66, flexDirection: "row", alignItems: "center", paddingBottom: 12 },
+  desktopLyricsEyebrow: { fontSize: 9, letterSpacing: 1.2, fontWeight: "900", color: "#ef4444" },
+  desktopLyricsTitle: { marginTop: 4, fontSize: 20, lineHeight: 25, fontWeight: "900", color: "#f9fafb" },
+  desktopLyricsScroll: { flex: 1, minHeight: 0, ...Platform.select({ web: { scrollbarWidth: "none", msOverflowStyle: "none" } }) },
+  desktopLyricsContent: { paddingTop: 24, paddingRight: 20, paddingBottom: 240, gap: 16 },
+  desktopLyricLine: { fontSize: 18, lineHeight: 27, fontWeight: "650", color: "#71717a" },
+  desktopLyricLineActive: { fontSize: 22, lineHeight: 31, fontWeight: "900", color: "#f9fafb" },
+  desktopLyricsEmpty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 9, paddingHorizontal: 30 },
+  desktopLyricsEmptyTitle: { marginTop: 6, fontSize: 15, fontWeight: "800", color: "#d4d4d8", textAlign: "center" },
+  desktopLyricsEmptyText: { fontSize: 13, lineHeight: 19, color: "#71717a", textAlign: "center" },
   playerEngine: { position: "absolute", width: 320, height: 180, left: 0, top: 52, opacity: 0.001, zIndex: -1, overflow: "hidden" },
   media: { flexGrow: 0, flexShrink: 1, width: "100%", minWidth: 0 },
   mediaContent: { alignItems: "center", paddingBottom: 14 },
@@ -356,17 +455,19 @@ const styles = StyleSheet.create({
         touchAction: "pan-y",
         overscrollBehaviorY: "contain",
         WebkitOverflowScrolling: "touch",
+        scrollbarWidth: "none",
+        msOverflowStyle: "none",
       },
     }),
   },
-  trackList: { gap: 10, padding: 10, paddingBottom: 30, ...Platform.select({ web: { touchAction: "pan-y" } }) },
-  desktopTrackList: { width: "100%", maxWidth: 1040, alignSelf: "center", paddingHorizontal: 20, paddingTop: 18 },
+  trackList: { width: "100%", gap: 10, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 30, ...Platform.select({ web: { touchAction: "pan-y" } }) },
+  desktopTrackList: { width: "100%", maxWidth: 680, alignSelf: "center", paddingHorizontal: 0, paddingTop: 18 },
   queueHeader: { width: "100%", minHeight: 72, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 3, paddingBottom: 8 },
   queueHeading: { flex: 1, minWidth: 0 },
   queueEyebrow: { fontSize: 9, letterSpacing: 1.2, fontWeight: "900", color: "#ef4444" },
   queueTitle: { marginTop: 3, fontSize: 18, fontWeight: "900", color: "#f9fafb" },
   queueCount: { fontSize: 11, color: "#9ca3af" },
-  track: { width: "100%", padding: 12, gap: 8, borderWidth: 1, borderColor: "#303036", borderRadius: 12, backgroundColor: "#1a1a1e", overflow: "hidden", ...Platform.select({ web: { touchAction: "pan-y" } }) },
+  track: { width: "100%", maxWidth: 520, alignSelf: "center", padding: 12, gap: 8, borderWidth: 1, borderColor: "#303036", borderRadius: 12, backgroundColor: "#1a1a1e", overflow: "hidden", ...Platform.select({ web: { touchAction: "pan-y" } }) },
   mobileCardHeader: { width: "100%", flexDirection: "row", alignItems: "center", gap: 12 },
   desktopCardHeader: { alignItems: "flex-start" },
   mobileArtworkButton: { width: 82, height: 82, flexShrink: 0 },
@@ -376,7 +477,7 @@ const styles = StyleSheet.create({
   desktopCardTop: { flexDirection: "row", alignItems: "center" },
   trackMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 9, ...Platform.select({ web: { touchAction: "pan-y" } }) },
   activeTrackMain: { flex: 0, width: 118 },
-  wideTrackMain: { width: 150 },
+  wideTrackMain: { width: 150, height: 150 },
   trackControls: { width: "100%", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingTop: 2 },
   desktopTrackControls: { width: "auto", flexShrink: 0, paddingTop: 0 },
   trackPlayButton: { width: 44, height: 38, borderRadius: 19, borderWidth: 1, borderColor: "#52525b", backgroundColor: "#27272a", alignItems: "center", justifyContent: "center" },
@@ -384,16 +485,16 @@ const styles = StyleSheet.create({
   activeTransport: { width: "100%", minHeight: 0, gap: 7, paddingHorizontal: 2, paddingTop: 4, paddingBottom: 2, borderRadius: 0, backgroundColor: "transparent", justifyContent: "center" },
   sideTransport: { position: "absolute", width: "auto", left: 174, right: 12, top: 46, height: 112, minHeight: 0, justifyContent: "space-between" },
   transportTop: { width: "100%", gap: 6, paddingTop: 2 },
-  wideTransport: { flexDirection: "row", alignItems: "center", gap: 14 },
-  playbackButtons: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 2 },
-  trackNavButton: { width: 42, height: 42, alignItems: "center", justifyContent: "center", ...Platform.select({ web: { touchAction: "pan-y" } }) },
-  transportPlayButton: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "#ef4444", ...Platform.select({ web: { touchAction: "pan-y" } }) },
+  wideTransport: { flexDirection: "row", alignItems: "center", gap: 8 },
+  playbackButtons: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 2, marginTop: 2, flexShrink: 0 },
+  trackNavButton: { width: 30, height: 34, alignItems: "center", justifyContent: "center", ...Platform.select({ web: { touchAction: "pan-y" } }) },
+  transportPlayButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "#ef4444", ...Platform.select({ web: { touchAction: "pan-y" } }) },
   inactiveTransportPlayButton: { backgroundColor: "#3f3f46" },
   transportPauseButton: { backgroundColor: "#dc2626" },
   cardHeadingRow: { width: "100%", minHeight: 32, flexDirection: "row", alignItems: "center", gap: 8 },
   cardHeadingTitle: { flex: 1, minWidth: 0, fontSize: 18, lineHeight: 22, fontWeight: "900", color: "#f9fafb" },
   youtubeButton: { width: 40, height: 32, alignItems: "center", justifyContent: "center", ...Platform.select({ web: { touchAction: "pan-y" } }) },
-  timelineBlock: { flex: 1, minWidth: 0, gap: 1 },
+  timelineBlock: { flex: 1, minWidth: 180, gap: 1 },
   timeLabels: { width: "100%", flexDirection: "row", alignItems: "center", gap: 8 },
   transportTitle: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: "800", color: "#f3f4f6", textAlign: "center" },
   progressTime: { width: 43, fontSize: 12, fontWeight: "800", color: "#f3f4f6", fontVariant: ["tabular-nums"], textAlign: "center" },
@@ -409,8 +510,8 @@ const styles = StyleSheet.create({
   meta: { fontSize: 10, color: "#9ca3af", marginVertical: 3 },
   albumVideos: { gap: 7, paddingTop: 10 },
   cardSlider: { width: "100%", height: 24, ...Platform.select({ web: { touchAction: "pan-x" } }) },
-  cardLyric: { width: "100%", minHeight: 38, paddingHorizontal: 10, paddingVertical: 7, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: "rgba(255,255,255,0.025)", borderRadius: 8 },
-  cardLyricSpacer: { width: "100%", height: 4 },
+  cardLyric: { width: "100%", minHeight: 38, paddingHorizontal: 10, paddingVertical: 7, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: "rgba(255,255,255,0.025)", borderRadius: 8, marginTop: 4 },
+  cardLyricSpacer: { width: "100%", height: 38, marginTop: 4 },
   cardLyricText: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 20, fontWeight: "700", color: "#fecaca", textAlign: "left" },
   message: { width: "100%", padding: 10, gap: 8 },
   errorActions: { flexDirection: "row", alignItems: "center", gap: 18 },

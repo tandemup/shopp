@@ -9,6 +9,7 @@ import {
   ScrollView,
   Share,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -27,6 +28,7 @@ import { ROUTES } from "@/src/navigation/ROUTES";
 import TutorialTransferScreen from "./TutorialTransferScreen";
 import EditorVideoPreview from "./EditorVideoPreview";
 import { MAX_TUTORIAL_ITEMS } from "@/convex/lib/tutorialItems";
+import { getLocalLyrics, saveLocalLyrics, removeLocalLyrics } from "@/src/storage/lyricsStorage";
 
 const CLIENT_ID_KEY = "shopp-playlist-client-id";
 const normalizeSearchText = (value) =>
@@ -253,6 +255,13 @@ export default function PlayListScreen() {
   const removePlaylist = useMutation(contentApi.remove);
   const generateUploadUrl = useMutation(contentApi.generateUploadUrl);
   const [editorVisible, setEditorVisible] = useState(false);
+  const { width } = useWindowDimensions();
+  const canEditLyricsLocally = Platform.OS === "web" && width >= 960 && !isTutorials;
+  const [lyricsEditorIndex, setLyricsEditorIndex] = useState(null);
+  const [lyricsDraft, setLyricsDraft] = useState("");
+  const [lyricsFileName, setLyricsFileName] = useState("lyrics.lrc");
+  const [lyricsEditorVisible, setLyricsEditorVisible] = useState(false);
+  const [lyricsEditorLoading, setLyricsEditorLoading] = useState(false);
   const [previewKey, setPreviewKey] = useState(null);
   useEffect(() => {
     if (!editorVisible) setPreviewKey(null);
@@ -352,7 +361,7 @@ export default function PlayListScreen() {
   }, [isTutorials]);
 
   const openEdit = useCallback(
-    (item) => {
+    async (item) => {
       setEditingId(item._id);
       setTitle(item.title || "");
       setClassicalDetails({
@@ -363,27 +372,48 @@ export default function PlayListScreen() {
         period: item.period || "",
         year: item.year || "",
       });
-      setTracks(
-        item.tracks.map((track, index) => ({
-          kind: track.kind === "album" ? "album" : "single",
-          title:
-            track.title || `${isTutorials ? "Vídeo" : "Elemento"} ${index + 1}`,
-          url:
-            track.url ||
-            (track.playlistId
-              ? `https://www.youtube.com/playlist?list=${track.playlistId}`
-              : `https://www.youtube.com/watch?v=${track.videoId || ""}`),
-          lyrics: track.lyricsStorageId
-            ? {
-                existing: true,
-                storageId: track.lyricsStorageId,
-                fileName: track.lyricsFileName || "lyrics.lrc",
-                mimeType: track.lyricsMimeType || "text/plain",
-                size: track.lyricsSize || 0,
-              }
-            : null,
-        })),
-      );
+      const baseTracks = item.tracks.map((track, index) => ({
+        kind: track.kind === "album" ? "album" : "single",
+        title:
+          track.title || `${isTutorials ? "Vídeo" : "Elemento"} ${index + 1}`,
+        url:
+          track.url ||
+          (track.playlistId
+            ? `https://www.youtube.com/playlist?list=${track.playlistId}`
+            : `https://www.youtube.com/watch?v=${track.videoId || ""}`),
+        lyrics: track.lyricsStorageId
+          ? {
+              existing: true,
+              storageId: track.lyricsStorageId,
+              fileName: track.lyricsFileName || "lyrics.lrc",
+              mimeType: track.lyricsMimeType || "text/plain",
+              size: track.lyricsSize || 0,
+              sourceUri: track.lyricsUrl || track.lyricsUri || null,
+            }
+          : null,
+        localLyrics: null,
+      }));
+      if (Platform.OS === "web" && !isTutorials) {
+        const hydrated = await Promise.all(
+          baseTracks.map(async (track) => {
+            try {
+              const parsed = parseYouTubeUrl(track.url.trim());
+              const local = await getLocalLyrics({
+                kind: track.kind,
+                videoId: parsed.videoId,
+                playlistId: parsed.playlistId,
+                url: track.url,
+              });
+              return local ? { ...track, localLyrics: local } : track;
+            } catch {
+              return track;
+            }
+          }),
+        );
+        setTracks(hydrated);
+      } else {
+        setTracks(baseTracks);
+      }
       setEditorVisible(true);
     },
     [isTutorials],
@@ -437,6 +467,127 @@ export default function PlayListScreen() {
     },
     [updateTrack],
   );
+
+  const openLocalLyricsEditor = useCallback(
+    async (index) => {
+      const editorTrack = tracks[index];
+      if (!editorTrack) return;
+      const parsed = parseYouTubeUrl(editorTrack.url.trim());
+      if (
+        !parsed.isValid ||
+        (editorTrack.kind === "album" ? !parsed.playlistId : !parsed.videoId)
+      ) {
+        safeAlert("Enlace de YouTube requerido", "Introduce primero un enlace válido para esta canción.");
+        return;
+      }
+      setLyricsEditorIndex(index);
+      setLyricsEditorVisible(true);
+      setLyricsEditorLoading(true);
+      try {
+        const identity = {
+          kind: editorTrack.kind,
+          videoId: parsed.videoId,
+          playlistId: parsed.playlistId,
+          url: editorTrack.url,
+        };
+        const local = await getLocalLyrics(identity);
+        if (local?.text != null) {
+          setLyricsDraft(local.text);
+          setLyricsFileName(local.fileName || "lyrics.lrc");
+          return;
+        }
+        const sourceUri = editorTrack.lyrics?.uri || editorTrack.lyrics?.sourceUri;
+        if (sourceUri) {
+          const response = await fetch(sourceUri);
+          const sourceText = response.ok ? await response.text() : "";
+          setLyricsDraft(sourceText);
+          setLyricsFileName(editorTrack.lyrics?.fileName || "lyrics.lrc");
+        } else {
+          setLyricsDraft("");
+          setLyricsFileName(editorTrack.lyrics?.fileName || "lyrics.lrc");
+        }
+      } catch (error) {
+        safeAlert("No se pudo abrir la letra", error?.message || "Inténtalo de nuevo.");
+      } finally {
+        setLyricsEditorLoading(false);
+      }
+    },
+    [tracks],
+  );
+
+  const importLyricsIntoEditor = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset?.uri) return;
+      const fileName = asset.name || "lyrics.lrc";
+      if (!fileName.toLowerCase().endsWith(".lrc")) {
+        safeAlert("Formato no válido", "Selecciona un fichero con extensión .lrc.");
+        return;
+      }
+      if ((asset.size || 0) > 512 * 1024) {
+        safeAlert("Fichero demasiado grande", "El fichero LRC no puede superar 512 KB.");
+        return;
+      }
+      const response = await fetch(asset.uri);
+      setLyricsDraft(await response.text());
+      setLyricsFileName(fileName);
+    } catch (error) {
+      safeAlert("No se pudo importar la letra", error?.message || "Inténtalo de nuevo.");
+    }
+  }, []);
+
+  const saveLyricsEditor = useCallback(async () => {
+    if (lyricsEditorIndex == null) return;
+    const editorTrack = tracks[lyricsEditorIndex];
+    if (!editorTrack) return;
+    const parsed = parseYouTubeUrl(editorTrack.url.trim());
+    if (!parsed.isValid) return;
+    try {
+      const identity = {
+        kind: editorTrack.kind,
+        videoId: parsed.videoId,
+        playlistId: parsed.playlistId,
+        url: editorTrack.url,
+      };
+      const record = await saveLocalLyrics(identity, lyricsDraft, {
+        fileName: lyricsFileName || "lyrics.lrc",
+      });
+      setTracks((current) =>
+        current.map((item, index) =>
+          index === lyricsEditorIndex ? { ...item, localLyrics: record } : item,
+        ),
+      );
+      setLyricsEditorVisible(false);
+    } catch (error) {
+      safeAlert("No se pudo guardar la letra", error?.message || "Inténtalo de nuevo.");
+    }
+  }, [lyricsDraft, lyricsEditorIndex, lyricsFileName, tracks]);
+
+  const removeLocalLyricsFromEditor = useCallback(async () => {
+    if (lyricsEditorIndex == null) return;
+    const editorTrack = tracks[lyricsEditorIndex];
+    if (!editorTrack) return;
+    const parsed = parseYouTubeUrl(editorTrack.url.trim());
+    if (!parsed.isValid) return;
+    await removeLocalLyrics({
+      kind: editorTrack.kind,
+      videoId: parsed.videoId,
+      playlistId: parsed.playlistId,
+      url: editorTrack.url,
+    });
+    setTracks((current) =>
+      current.map((item, index) =>
+        index === lyricsEditorIndex ? { ...item, localLyrics: null } : item,
+      ),
+    );
+    setLyricsDraft("");
+    setLyricsEditorVisible(false);
+  }, [lyricsEditorIndex, tracks]);
 
   const addTrack = useCallback(
     () =>
@@ -1261,24 +1412,42 @@ export default function PlayListScreen() {
                   {!isTutorials ? (
                     <View style={styles.lyricsRow}>
                       <Pressable
-                        onPress={() => pickLyrics(index)}
+                        onPress={() =>
+                          canEditLyricsLocally
+                            ? openLocalLyricsEditor(index)
+                            : pickLyrics(index)
+                        }
                         style={styles.lyricsButton}
                       >
                         <Ionicons
-                          name="document-text-outline"
+                          name={track.localLyrics ? "create-outline" : "document-text-outline"}
                           size={20}
                           color="#2563eb"
                         />
                         <View style={{ flex: 1 }}>
                           <Text style={styles.lyricsTitle} numberOfLines={1}>
-                            {track.lyrics?.fileName || "Añadir letras .lrc"}
+                            {track.localLyrics?.fileName ||
+                              track.lyrics?.fileName ||
+                              (canEditLyricsLocally ? "Editar letra local" : "Añadir letras .lrc")}
                           </Text>
                           <Text style={styles.lyricsHint}>
-                            Opcional · máximo 512 KB
+                            {track.localLyrics
+                              ? "Guardada en IndexedDB · privada en este navegador"
+                              : canEditLyricsLocally
+                                ? "Crear, pegar o importar .lrc · guardado local"
+                                : "Opcional · máximo 512 KB"}
                           </Text>
                         </View>
                       </Pressable>
-                      {track.lyrics ? (
+                      {canEditLyricsLocally ? (
+                        <Pressable
+                          onPress={() => openLocalLyricsEditor(index)}
+                          style={styles.removeLyrics}
+                          accessibilityLabel="Editar letra"
+                        >
+                          <Ionicons name="pencil-outline" size={20} color="#2563eb" />
+                        </Pressable>
+                      ) : track.lyrics ? (
                         <Pressable
                           onPress={() => updateTrack(index, "lyrics", null)}
                           style={styles.removeLyrics}
@@ -1328,6 +1497,59 @@ export default function PlayListScreen() {
                     {editingId ? "Guardar cambios" : `Crear ${collectionLabel}`}
                   </Text>
                 )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={lyricsEditorVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLyricsEditorVisible(false)}
+      >
+        <View style={styles.backdrop}>
+          <View style={styles.lyricsEditorCard}>
+            <View style={styles.editorHeader}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.editorTitle}>Editar letra .lrc</Text>
+                <Text style={styles.editorSubtitle} numberOfLines={1}>
+                  {lyricsEditorIndex != null ? tracks[lyricsEditorIndex]?.title : ""}
+                </Text>
+              </View>
+              <Pressable onPress={() => setLyricsEditorVisible(false)} style={styles.closeButton}>
+                <Ionicons name="close" size={24} color="#475569" />
+              </Pressable>
+            </View>
+            <TextInput
+              value={lyricsFileName}
+              onChangeText={setLyricsFileName}
+              placeholder="lyrics.lrc"
+              style={styles.trackInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TextInput
+              value={lyricsDraft}
+              onChangeText={setLyricsDraft}
+              multiline
+              textAlignVertical="top"
+              editable={!lyricsEditorLoading}
+              placeholder={"[00:00.00]Primera línea\n[00:05.20]Segunda línea"}
+              style={styles.lyricsTextArea}
+            />
+            <View style={styles.lyricsEditorActions}>
+              <Pressable onPress={importLyricsIntoEditor} style={styles.lyricsSecondaryButton}>
+                <Ionicons name="folder-open-outline" size={18} color="#2563eb" />
+                <Text style={styles.lyricsSecondaryText}>Importar .lrc</Text>
+              </Pressable>
+              <Pressable onPress={removeLocalLyricsFromEditor} style={styles.lyricsSecondaryButton}>
+                <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                <Text style={[styles.lyricsSecondaryText, { color: "#dc2626" }]}>Borrar local</Text>
+              </Pressable>
+              <Pressable onPress={saveLyricsEditor} style={styles.lyricsSaveButton}>
+                <Ionicons name="save-outline" size={18} color="#fff" />
+                <Text style={styles.lyricsSaveText}>Guardar</Text>
               </Pressable>
             </View>
           </View>
@@ -1604,6 +1826,59 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  lyricsEditorCard: {
+    width: 760,
+    maxWidth: "94%",
+    maxHeight: "88%",
+    padding: 18,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+  },
+  lyricsTextArea: {
+    minHeight: 360,
+    maxHeight: 520,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#0f172a",
+    color: "#f8fafc",
+    fontSize: 14,
+    lineHeight: 21,
+    fontFamily: Platform.OS === "web" ? "monospace" : undefined,
+  },
+  lyricsEditorActions: {
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  lyricsSecondaryButton: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+  },
+  lyricsSecondaryText: { fontSize: 12, fontWeight: "800", color: "#2563eb" },
+  lyricsSaveButton: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 18,
+    backgroundColor: "#dc2626",
+  },
+  lyricsSaveText: { fontSize: 12, fontWeight: "900", color: "#fff" },
   addButton: {
     minHeight: 44,
     flexDirection: "row",
