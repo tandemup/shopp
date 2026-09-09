@@ -276,6 +276,7 @@ export default function PlayListScreen() {
     period: "",
     year: "",
   });
+  const [classicalDetailsExpanded, setClassicalDetailsExpanded] = useState(true);
   const [tracks, setTracks] = useState(() => initialTracks(isTutorials));
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -357,6 +358,7 @@ export default function PlayListScreen() {
       year: "",
     });
     setTracks(initialTracks(isTutorials));
+    setClassicalDetailsExpanded(true);
     setEditorVisible(true);
   }, [isTutorials]);
 
@@ -372,6 +374,7 @@ export default function PlayListScreen() {
         period: item.period || "",
         year: item.year || "",
       });
+      setClassicalDetailsExpanded(false);
       const baseTracks = item.tracks.map((track, index) => ({
         kind: track.kind === "album" ? "album" : "single",
         title:
@@ -1199,54 +1202,98 @@ export default function PlayListScreen() {
                 </View>
               </View>
             </View>
-            <Text style={styles.label}>
-              {isTutorials
-                ? "Nombre del curso o colección"
-                : isClassical
-                  ? "Nombre de la obra o colección"
-                  : "Nombre del concierto o playlist"}
-            </Text>
-            <TextInput
-              value={title}
-              onChangeText={setTitle}
-              maxLength={120}
-              placeholder={
-                isTutorials
-                  ? "React Native · Curso de iniciación"
-                  : isClassical
-                    ? "Concierto para piano n.º 5"
-                    : "Mozart · Concierto para piano · Daniel Barenboim"
-              }
-              style={styles.titleInput}
-            />
             {isClassical ? (
-              <View style={styles.classicalDetails}>
-                {[
-                  ["composer", "Compositor", "Ludwig van Beethoven"],
-                  ["performer", "Intérprete", "Daniel Barenboim"],
-                  ["conductor", "Director", "Nombre del director"],
-                  ["orchestra", "Orquesta", "Nombre de la orquesta"],
-                  ["period", "Periodo", "Clasicismo"],
-                  ["year", "Año", "1809"],
-                ].map(([field, label, placeholder]) => (
-                  <View key={field} style={styles.classicalField}>
-                    <Text style={styles.label}>{label}</Text>
-                    <TextInput
-                      value={classicalDetails[field]}
-                      onChangeText={(value) =>
-                        setClassicalDetails((current) => ({
-                          ...current,
-                          [field]: value,
-                        }))
-                      }
-                      maxLength={field === "year" ? 20 : 120}
-                      placeholder={placeholder}
-                      style={styles.trackInput}
-                    />
+              <View style={styles.classicalSection}>
+                <Pressable
+                  onPress={() => setClassicalDetailsExpanded((value) => !value)}
+                  style={styles.classicalSectionHeader}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    classicalDetailsExpanded
+                      ? "Ocultar datos de la colección"
+                      : "Mostrar datos de la colección"
+                  }
+                >
+                  <View style={styles.classicalSectionHeaderText}>
+                    <Text style={styles.classicalSectionTitle}>Datos de la colección</Text>
+                    {!classicalDetailsExpanded ? (
+                      <Text style={styles.classicalSectionSummary} numberOfLines={1}>
+                        {[
+                          title,
+                          classicalDetails.composer,
+                          classicalDetails.performer,
+                          classicalDetails.period,
+                          classicalDetails.year,
+                        ].filter(Boolean).join(" · ") || "Sin datos"}
+                      </Text>
+                    ) : null}
                   </View>
-                ))}
+                  <Ionicons
+                    name={classicalDetailsExpanded ? "chevron-up" : "chevron-down"}
+                    size={20}
+                    color="#2563eb"
+                  />
+                </Pressable>
+
+                {classicalDetailsExpanded ? (
+                  <View style={styles.classicalSectionBody}>
+                    <Text style={styles.label}>Nombre de la obra o colección</Text>
+                    <TextInput
+                      value={title}
+                      onChangeText={setTitle}
+                      maxLength={120}
+                      placeholder="Concierto para piano n.º 5"
+                      style={styles.titleInput}
+                    />
+                    <View style={styles.classicalDetails}>
+                      {[
+                        ["composer", "Compositor", "Ludwig van Beethoven"],
+                        ["performer", "Intérprete", "Daniel Barenboim"],
+                        ["conductor", "Director", "Nombre del director"],
+                        ["orchestra", "Orquesta", "Nombre de la orquesta"],
+                        ["period", "Periodo", "Clasicismo"],
+                        ["year", "Año", "1809"],
+                      ].map(([field, label, placeholder]) => (
+                        <View key={field} style={styles.classicalField}>
+                          <Text style={styles.label}>{label}</Text>
+                          <TextInput
+                            value={classicalDetails[field]}
+                            onChangeText={(value) =>
+                              setClassicalDetails((current) => ({
+                                ...current,
+                                [field]: value,
+                              }))
+                            }
+                            maxLength={field === "year" ? 20 : 120}
+                            placeholder={placeholder}
+                            style={styles.compactClassicalInput}
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
               </View>
-            ) : null}
+            ) : (
+              <>
+                <Text style={styles.label}>
+                  {isTutorials
+                    ? "Nombre del curso o colección"
+                    : "Nombre del concierto o playlist"}
+                </Text>
+                <TextInput
+                  value={title}
+                  onChangeText={setTitle}
+                  maxLength={120}
+                  placeholder={
+                    isTutorials
+                      ? "React Native · Curso de iniciación"
+                      : "Mozart · Concierto para piano · Daniel Barenboim"
+                  }
+                  style={styles.titleInput}
+                />
+              </>
+            )}
             <ScrollView
               style={styles.tracksScroll}
               keyboardShouldPersistTaps="handled"
@@ -1715,7 +1762,7 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 750,
     maxHeight: "92%",
-    padding: 18,
+    padding: 14,
     backgroundColor: "#fff",
   },
   editorHeader: {
@@ -1762,7 +1809,44 @@ const styles = StyleSheet.create({
     borderColor: "#cbd5e1",
     color: "#111827",
   },
-  tracksScroll: { marginTop: 12 },
+  classicalSection: {
+    marginTop: 2,
+    borderWidth: 1,
+    borderColor: "#dbe2ea",
+    backgroundColor: "#f8fafc",
+  },
+  classicalSectionHeader: {
+    minHeight: 50,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "#f8fafc",
+  },
+  classicalSectionHeaderText: { flex: 1, minWidth: 0 },
+  classicalSectionTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
+  classicalSectionSummary: {
+    marginTop: 3,
+    fontSize: 11,
+    color: "#64748b",
+  },
+  classicalSectionBody: {
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+  },
+  compactClassicalInput: {
+    minHeight: 40,
+    marginTop: 0,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+    color: "#111827",
+  },
+  tracksScroll: { marginTop: 10, flexShrink: 1, minHeight: 220 },
   trackEditor: {
     marginBottom: 10,
     padding: 12,
