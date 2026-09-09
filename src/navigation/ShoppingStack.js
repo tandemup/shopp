@@ -81,6 +81,11 @@ export default function ShoppingStack() {
         options={{ title: "Play List" }}
       />
       <Stack.Screen
+        name={ROUTES.CLASSICAL_MUSIC}
+        component={PlayListScreen}
+        options={{ title: "Música clásica" }}
+      />
+      <Stack.Screen
         name={ROUTES.TUTORIALS}
         component={PlayListScreen}
         options={{ title: "Tutoriales" }}

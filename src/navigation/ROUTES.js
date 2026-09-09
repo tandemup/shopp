@@ -15,6 +15,7 @@ export const ROUTES = {
   ENGLISH_TUTOR: "English Tutor",
   LIBRARY: "Library",
   PLAY_LIST: "Play List",
+  CLASSICAL_MUSIC: "Música clásica",
   TUTORIALS: "Tutoriales",
   SHOPP_LIVE: "Shopp Live",
 

@@ -165,7 +165,16 @@ export default defineSchema({
 
   youtubePlaylists: defineTable({
     ownerId: v.string(),
+    collectionType: v.optional(
+      v.union(v.literal("playlist"), v.literal("classical")),
+    ),
     title: v.string(),
+    composer: v.optional(v.string()),
+    performer: v.optional(v.string()),
+    conductor: v.optional(v.string()),
+    orchestra: v.optional(v.string()),
+    period: v.optional(v.string()),
+    year: v.optional(v.string()),
     tracks: v.array(
       v.object({
         kind: v.optional(v.union(v.literal("single"), v.literal("album"))),
@@ -389,11 +398,7 @@ export default defineSchema({
       v.literal("done"),
       v.literal("cancelled"),
     ),
-    phase: v.union(
-      v.literal("links"),
-      v.literal("sources"),
-      v.literal("done"),
-    ),
+    phase: v.union(v.literal("links"), v.literal("sources"), v.literal("done")),
     replacePrepared: v.boolean(),
     totalLinks: v.float64(),
     processedLinks: v.float64(),

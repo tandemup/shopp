@@ -147,7 +147,7 @@ export default function PlaybackProvider({ children }) {
   const ids = status.videoIds || [];
   const albumIndex = status.playlistIndex || 0;
   const desktop = expanded && width >= 760;
-  const wideTransport = width >= 760;
+  const wideTransport = width >= 560;
   const miniWidth = Math.min(360, Math.max(200, width - 16));
   const bottom = Platform.OS === "web" ? "calc(78px + env(safe-area-inset-bottom, 0px))" : 70 + Math.max(insets.bottom, 10);
   const playing = status.state === 1 || status.state === 3;
@@ -246,31 +246,26 @@ export default function PlaybackProvider({ children }) {
               const imageId = active && status.videoId ? status.videoId : item.videoId;
               const cardTitle = active ? currentTitle || item.title : item.title;
               return <View key={index} style={[styles.track, active && styles.activeTrack]}>
-                <View style={[styles.mobileCardHeader, wideTransport && styles.desktopCardHeader]}>
+                <View style={[styles.cardTop, (desktop || wideTransport) && styles.desktopCardTop]}>
                   <Pressable onPress={() => select(index)} accessibilityRole="button"
                     accessibilityLabel={tr(itemPlaying ? `Pausar ${item.title}` : `Reproducir ${item.title}`)}
-                    accessibilityState={{ selected: active }}
-                    style={[styles.mobileArtworkButton, wideTransport && styles.wideTrackMain]}>
-                    {imageId ? <Image
-                      source={{ uri: `https://i.ytimg.com/vi/${imageId}/mqdefault.jpg` }}
-                      style={[styles.mobileThumbnail, wideTransport && styles.wideThumbnail]}
-                    /> : <View style={[styles.mobileThumbnail, wideTransport && styles.wideThumbnail, styles.fallback]}>
-                      <Ionicons name="albums-outline" size={26} color="#dc2626" />
-                    </View>}
-                  </Pressable>
-                  <View style={styles.mobileHeadingContent}>
-                    <Text style={styles.cardHeadingTitle} numberOfLines={2}>{cardTitle}</Text>
-                  </View>
-                  <Pressable
-                    accessibilityRole="link"
-                    accessibilityLabel={tr(`Abrir ${cardTitle} en YouTube`)}
-                    onPress={() => openTrackExternal(item, active)}
-                    style={styles.youtubeButton}
-                  >
-                    <Ionicons name="logo-youtube" size={27} color="#ff0000" />
+                    accessibilityState={{ selected: active }} style={[styles.trackMain, styles.activeTrackMain, wideTransport && styles.wideTrackMain]}>
+                  {imageId ? <Image source={{ uri: `https://i.ytimg.com/vi/${imageId}/mqdefault.jpg` }} style={[styles.thumbnail, styles.activeThumbnail, wideTransport && styles.wideThumbnail]} />
+                    : <View style={[styles.thumbnail, styles.activeThumbnail, wideTransport && styles.wideThumbnail, styles.fallback]}><Ionicons name="albums-outline" size={26} color="#dc2626" /></View>}
                   </Pressable>
                 </View>
                 <View style={[styles.activeTransport, wideTransport && styles.sideTransport]}>
+                  <View style={styles.cardHeadingRow}>
+                    <Text style={styles.cardHeadingTitle} numberOfLines={1}>{cardTitle}</Text>
+                    <Pressable
+                      accessibilityRole="link"
+                      accessibilityLabel={tr(`Abrir ${cardTitle} en YouTube`)}
+                      onPress={() => openTrackExternal(item, active)}
+                      style={styles.youtubeButton}
+                    >
+                      <Ionicons name="logo-youtube" size={24} color="#ff0000" />
+                    </Pressable>
+                  </View>
                   <View style={[styles.transportTop, wideTransport && styles.wideTransport]}>
                     <View style={styles.playbackButtons}>
                       <SecondSeekButton direction={-1}
@@ -366,12 +361,7 @@ const styles = StyleSheet.create({
   queueEyebrow: { fontSize: 9, letterSpacing: 1.2, fontWeight: "900", color: "#ef4444" },
   queueTitle: { marginTop: 3, fontSize: 18, fontWeight: "900", color: "#f9fafb" },
   queueCount: { fontSize: 11, color: "#9ca3af" },
-  track: { width: "100%", padding: 12, gap: 8, borderWidth: 1, borderColor: "#303036", borderRadius: 12, backgroundColor: "#1a1a1e", overflow: "hidden", ...Platform.select({ web: { touchAction: "pan-y" } }) },
-  mobileCardHeader: { width: "100%", flexDirection: "row", alignItems: "center", gap: 12 },
-  desktopCardHeader: { alignItems: "flex-start" },
-  mobileArtworkButton: { width: 82, height: 82, flexShrink: 0 },
-  mobileThumbnail: { width: 82, height: 82, borderRadius: 7, backgroundColor: "#27272a" },
-  mobileHeadingContent: { flex: 1, minWidth: 0, justifyContent: "center" },
+  track: { width: "100%", padding: 10, gap: 8, borderWidth: 1, borderColor: "#303036", borderRadius: 8, backgroundColor: "#1a1a1e", ...Platform.select({ web: { touchAction: "pan-y" } }) },
   cardTop: { width: "100%", gap: 10 },
   desktopCardTop: { flexDirection: "row", alignItems: "center" },
   trackMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 9, ...Platform.select({ web: { touchAction: "pan-y" } }) },
@@ -381,17 +371,17 @@ const styles = StyleSheet.create({
   desktopTrackControls: { width: "auto", flexShrink: 0, paddingTop: 0 },
   trackPlayButton: { width: 44, height: 38, borderRadius: 19, borderWidth: 1, borderColor: "#52525b", backgroundColor: "#27272a", alignItems: "center", justifyContent: "center" },
   activePlayButton: { borderColor: "#ef4444", backgroundColor: "#ef4444" },
-  activeTransport: { width: "100%", minHeight: 0, gap: 7, paddingHorizontal: 2, paddingTop: 4, paddingBottom: 2, borderRadius: 0, backgroundColor: "transparent", justifyContent: "center" },
-  sideTransport: { position: "absolute", width: "auto", left: 174, right: 12, top: 46, height: 112, minHeight: 0, justifyContent: "space-between" },
-  transportTop: { width: "100%", gap: 6, paddingTop: 2 },
+  activeTransport: { width: "100%", minHeight: 108, gap: 7, paddingHorizontal: 6, paddingVertical: 6, borderRadius: 0, backgroundColor: "transparent", justifyContent: "center" },
+  sideTransport: { position: "absolute", width: "auto", left: 170, right: 10, top: 10, height: 150, minHeight: 0, justifyContent: "space-between" },
+  transportTop: { width: "100%", gap: 7 },
   wideTransport: { flexDirection: "row", alignItems: "center", gap: 14 },
-  playbackButtons: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 2 },
+  playbackButtons: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3 },
   trackNavButton: { width: 42, height: 42, alignItems: "center", justifyContent: "center", ...Platform.select({ web: { touchAction: "pan-y" } }) },
-  transportPlayButton: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "#ef4444", ...Platform.select({ web: { touchAction: "pan-y" } }) },
+  transportPlayButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "#ef4444", ...Platform.select({ web: { touchAction: "pan-y" } }) },
   inactiveTransportPlayButton: { backgroundColor: "#3f3f46" },
   transportPauseButton: { backgroundColor: "#dc2626" },
   cardHeadingRow: { width: "100%", minHeight: 32, flexDirection: "row", alignItems: "center", gap: 8 },
-  cardHeadingTitle: { flex: 1, minWidth: 0, fontSize: 18, lineHeight: 22, fontWeight: "900", color: "#f9fafb" },
+  cardHeadingTitle: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 20, fontWeight: "900", color: "#f9fafb" },
   youtubeButton: { width: 40, height: 32, alignItems: "center", justifyContent: "center", ...Platform.select({ web: { touchAction: "pan-y" } }) },
   timelineBlock: { flex: 1, minWidth: 0, gap: 1 },
   timeLabels: { width: "100%", flexDirection: "row", alignItems: "center", gap: 8 },
@@ -409,9 +399,9 @@ const styles = StyleSheet.create({
   meta: { fontSize: 10, color: "#9ca3af", marginVertical: 3 },
   albumVideos: { gap: 7, paddingTop: 10 },
   cardSlider: { width: "100%", height: 24, ...Platform.select({ web: { touchAction: "pan-x" } }) },
-  cardLyric: { width: "100%", minHeight: 38, paddingHorizontal: 10, paddingVertical: 7, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: "rgba(255,255,255,0.025)", borderRadius: 8 },
-  cardLyricSpacer: { width: "100%", height: 4 },
-  cardLyricText: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 20, fontWeight: "700", color: "#fecaca", textAlign: "left" },
+  cardLyric: { width: "100%", minHeight: 34, paddingHorizontal: 9, paddingVertical: 5, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: "transparent", borderRadius: 0 },
+  cardLyricSpacer: { width: "100%", height: 34 },
+  cardLyricText: { flex: 1, minWidth: 0, fontSize: 13, lineHeight: 18, fontWeight: "700", color: "#fecaca", textAlign: "center" },
   message: { width: "100%", padding: 10, gap: 8 },
   errorActions: { flexDirection: "row", alignItems: "center", gap: 18 },
   error: { color: "#b91c1c", fontSize: 12 },

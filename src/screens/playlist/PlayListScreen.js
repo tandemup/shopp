@@ -93,6 +93,17 @@ function toExportedPlaylist(playlist, type = "shopp-youtube-playlist") {
     version: 1,
     type,
     title: playlist.title,
+    ...(playlist.collectionType === "classical"
+      ? {
+          collectionType: "classical",
+          composer: playlist.composer || "",
+          performer: playlist.performer || "",
+          conductor: playlist.conductor || "",
+          orchestra: playlist.orchestra || "",
+          period: playlist.period || "",
+          year: playlist.year || "",
+        }
+      : {}),
     exportedAt: new Date().toISOString(),
     tracks: playlist.tracks.map((track) => ({
       kind: track.kind === "album" ? "album" : "single",
@@ -181,30 +192,61 @@ function parseImportedPayload(
         title: String(track.title || "").trim() || `Elemento ${index + 1}`,
       };
     });
-    return { title: String(playlist.title).trim(), tracks };
+    return {
+      title: String(playlist.title).trim(),
+      tracks,
+      ...(collectionType === "shopp-youtube-classical-playlist"
+        ? {
+            collectionType: "classical",
+            composer: String(playlist.composer || "").trim(),
+            performer: String(playlist.performer || "").trim(),
+            conductor: String(playlist.conductor || "").trim(),
+            orchestra: String(playlist.orchestra || "").trim(),
+            period: String(playlist.period || "").trim(),
+            year: String(playlist.year || "").trim(),
+          }
+        : {}),
+    };
   });
 }
 
 export default function PlayListScreen() {
   const route = useRoute();
   const isTutorials = route.name === ROUTES.TUTORIALS;
+  const isClassical = route.name === ROUTES.CLASSICAL_MUSIC;
   const contentApi = isTutorials ? api.tutorials : api.playlists;
-  const collectionLabel = isTutorials ? "tutorial" : "playlist";
-  const collectionTitle = isTutorials ? "Mis tutoriales" : "Mis playlists";
+  const collectionLabel = isTutorials
+    ? "tutorial"
+    : isClassical
+      ? "colección clásica"
+      : "playlist";
+  const collectionTitle = isTutorials
+    ? "Mis tutoriales"
+    : isClassical
+      ? "Mi música clásica"
+      : "Mis playlists";
   const itemLabel = isTutorials ? "vídeo" : "elemento";
   const exportType = isTutorials
     ? "shopp-youtube-tutorials"
-    : "shopp-youtube-playlists";
+    : isClassical
+      ? "shopp-youtube-classical-playlists"
+      : "shopp-youtube-playlists";
   const minimumTracks = 1;
   const maximumTracks = isTutorials ? MAX_TUTORIAL_ITEMS : 20;
   const [transferVisible, setTransferVisible] = useState(false);
   const exportItemType = isTutorials
     ? "shopp-youtube-tutorial"
-    : "shopp-youtube-playlist";
+    : isClassical
+      ? "shopp-youtube-classical-playlist"
+      : "shopp-youtube-playlist";
   const [clientId, setClientId] = useState(getWebClientId);
   const playlists = useQuery(
     contentApi.listMine,
-    clientId ? { clientId } : "skip",
+    clientId
+      ? isTutorials
+        ? { clientId }
+        : { clientId, collectionType: isClassical ? "classical" : "playlist" }
+      : "skip",
   );
   const createPlaylist = useMutation(contentApi.create);
   const updatePlaylist = useMutation(contentApi.update);
@@ -212,9 +254,19 @@ export default function PlayListScreen() {
   const generateUploadUrl = useMutation(contentApi.generateUploadUrl);
   const [editorVisible, setEditorVisible] = useState(false);
   const [previewKey, setPreviewKey] = useState(null);
-  useEffect(() => { if (!editorVisible) setPreviewKey(null); }, [editorVisible]);
+  useEffect(() => {
+    if (!editorVisible) setPreviewKey(null);
+  }, [editorVisible]);
   const [editingId, setEditingId] = useState(null);
   const [title, setTitle] = useState("");
+  const [classicalDetails, setClassicalDetails] = useState({
+    composer: "",
+    performer: "",
+    conductor: "",
+    orchestra: "",
+    period: "",
+    year: "",
+  });
   const [tracks, setTracks] = useState(() => initialTracks(isTutorials));
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -230,7 +282,16 @@ export default function PlayListScreen() {
     if (!searchTerms.length) return items;
     return items.filter((item) => {
       const text = normalizeSearchText(
-        [item.title, ...(item.tracks ?? []).map((track) => track.title)].join(" "),
+        [
+          item.title,
+          item.composer,
+          item.performer,
+          item.conductor,
+          item.orchestra,
+          item.period,
+          item.year,
+          ...(item.tracks ?? []).map((track) => track.title),
+        ].join(" "),
       );
       return searchTerms.every((term) => text.includes(term));
     });
@@ -238,7 +299,7 @@ export default function PlayListScreen() {
 
   useEffect(() => {
     setSearchText("");
-  }, [isTutorials]);
+  }, [isClassical, isTutorials]);
 
   useEffect(() => {
     if (Platform.OS === "web" || clientId) return;
@@ -278,6 +339,14 @@ export default function PlayListScreen() {
   const openNew = useCallback(() => {
     setEditingId(null);
     setTitle("");
+    setClassicalDetails({
+      composer: "",
+      performer: "",
+      conductor: "",
+      orchestra: "",
+      period: "",
+      year: "",
+    });
     setTracks(initialTracks(isTutorials));
     setEditorVisible(true);
   }, [isTutorials]);
@@ -286,6 +355,14 @@ export default function PlayListScreen() {
     (item) => {
       setEditingId(item._id);
       setTitle(item.title || "");
+      setClassicalDetails({
+        composer: item.composer || "",
+        performer: item.performer || "",
+        conductor: item.conductor || "",
+        orchestra: item.orchestra || "",
+        period: item.period || "",
+        year: item.year || "",
+      });
       setTracks(
         item.tracks.map((track, index) => ({
           kind: track.kind === "album" ? "album" : "single",
@@ -370,32 +447,37 @@ export default function PlayListScreen() {
               ...current,
               {
                 kind: "single",
-                title: `${isTutorials ? "Vídeo" : "Single"} ${current.length + 1}`,
+                title: `${isTutorials ? "Vídeo" : isClassical ? "Obra" : "Single"} ${current.length + 1}`,
                 url: "",
                 lyrics: null,
               },
             ],
       ),
-    [isTutorials, maximumTracks],
+    [isClassical, isTutorials, maximumTracks],
   );
   const removeTrack = useCallback(
     (index) => {
       const track = tracks[index];
       if (!track || saving || tracks.length <= minimumTracks) return;
-      const trackTitle = track.title?.trim() || `${isTutorials ? "Vídeo" : "Elemento"} ${index + 1}`;
+      const trackTitle =
+        track.title?.trim() ||
+        `${isTutorials ? "Vídeo" : "Elemento"} ${index + 1}`;
       safeAlert(
-        isTutorials ? "Quitar vídeo del tutorial" : "Quitar elemento de la playlist",
+        isTutorials
+          ? "Quitar vídeo del tutorial"
+          : "Quitar elemento de la playlist",
         `¿Quieres quitar «${trackTitle}»? El cambio se aplicará cuando guardes.`,
         [
           { text: "Cancelar", style: "cancel" },
           {
             text: "Borrar",
             style: "destructive",
-            onPress: () => setTracks((current) =>
-              current.length <= minimumTracks
-                ? current
-                : current.filter((item) => item !== track),
-            ),
+            onPress: () =>
+              setTracks((current) =>
+                current.length <= minimumTracks
+                  ? current
+                  : current.filter((item) => item !== track),
+              ),
           },
         ],
       );
@@ -477,7 +559,17 @@ export default function PlayListScreen() {
           ...lyrics,
         });
       }
-      const args = { clientId, title: title.trim(), tracks: normalizedTracks };
+      const args = {
+        clientId,
+        title: title.trim(),
+        tracks: normalizedTracks,
+        ...(!isTutorials
+          ? {
+              collectionType: isClassical ? "classical" : "playlist",
+              ...(isClassical ? classicalDetails : {}),
+            }
+          : {}),
+      };
       if (editingId) await updatePlaylist({ playlistId: editingId, ...args });
       else await createPlaylist(args);
       setEditorVisible(false);
@@ -491,10 +583,13 @@ export default function PlayListScreen() {
     }
   }, [
     canSave,
+    classicalDetails,
     clientId,
     collectionLabel,
     createPlaylist,
     editingId,
+    isClassical,
+    isTutorials,
     title,
     tracks,
     updatePlaylist,
@@ -543,18 +638,21 @@ export default function PlayListScreen() {
 
   const exportAll = useCallback(async () => {
     try {
-      await saveJsonFile("shopp-playlists.json", {
-        version: 1,
-        type: exportType,
-        exportedAt: new Date().toISOString(),
-        playlists: (playlists || []).map((item) =>
-          toExportedPlaylist(item, exportItemType),
-        ),
-      });
+      await saveJsonFile(
+        isClassical ? "shopp-musica-clasica.json" : "shopp-playlists.json",
+        {
+          version: 1,
+          type: exportType,
+          exportedAt: new Date().toISOString(),
+          playlists: (playlists || []).map((item) =>
+            toExportedPlaylist(item, exportItemType),
+          ),
+        },
+      );
     } catch (error) {
       safeAlert("No se pudo exportar", error?.message || "Inténtalo de nuevo.");
     }
-  }, [exportItemType, exportType, playlists]);
+  }, [exportItemType, exportType, isClassical, playlists]);
   const reorderPlaylist = useCallback(
     async (item, nextTracks) => {
       try {
@@ -562,6 +660,21 @@ export default function PlayListScreen() {
           playlistId: item._id,
           clientId,
           title: item.title,
+          ...(!isTutorials
+            ? {
+                collectionType: isClassical ? "classical" : "playlist",
+                ...(isClassical
+                  ? {
+                      composer: item.composer,
+                      performer: item.performer,
+                      conductor: item.conductor,
+                      orchestra: item.orchestra,
+                      period: item.period,
+                      year: item.year,
+                    }
+                  : {}),
+              }
+            : {}),
           tracks: nextTracks.map((track) => ({
             kind: track.kind === "album" ? "album" : "single",
             videoId: track.videoId || undefined,
@@ -584,7 +697,7 @@ export default function PlayListScreen() {
         );
       }
     },
-    [clientId, updatePlaylist],
+    [clientId, isClassical, isTutorials, updatePlaylist],
   );
 
   const importJson = useCallback(async () => {
@@ -625,7 +738,7 @@ export default function PlayListScreen() {
       }
       safeAlert(
         "Importación terminada",
-        `${added} playlist${added === 1 ? "" : "s"} importada${added === 1 ? "" : "s"}.${skipped ? ` ${skipped} duplicada${skipped === 1 ? "" : "s"} omitida${skipped === 1 ? "" : "s"}.` : ""}`,
+        `${added} ${isClassical ? "colección" : "playlist"}${added === 1 ? "" : isClassical ? "es" : "s"} importada${added === 1 ? "" : "s"}.${skipped ? ` ${skipped} duplicada${skipped === 1 ? "" : "s"} omitida${skipped === 1 ? "" : "s"}.` : ""}`,
       );
     } catch (error) {
       safeAlert(
@@ -642,50 +755,67 @@ export default function PlayListScreen() {
     createPlaylist,
     exportItemType,
     exportType,
+    isClassical,
     minimumTracks,
     maximumTracks,
     playlists,
   ]);
 
   const searchHeader = (
-      <View style={styles.searchSection}>
-        <View style={styles.searchBar}>
-          <View style={styles.searchIcon}>
-            <Ionicons name="search-outline" size={21} color="#64748b" />
-          </View>
-          <TextInput
-            value={searchText}
-            onChangeText={setSearchText}
-            placeholder={isTutorials ? "Buscar tutoriales…" : "Buscar playlists…"}
-            placeholderTextColor="#888"
-            accessibilityLabel={isTutorials ? "Buscar tutoriales" : "Buscar playlists"}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            style={styles.searchInput}
-          />
-          {searchText.length > 0 ? (
-            <Pressable
-              onPress={() => setSearchText("")}
-              accessibilityRole="button"
-              accessibilityLabel="Limpiar búsqueda"
-              style={styles.clearSearchButton}
-            >
-              <Ionicons name="close-circle" size={21} color="#64748b" />
-            </Pressable>
-          ) : <View style={styles.searchIcon} />}
+    <View style={styles.searchSection}>
+      <View style={styles.searchBar}>
+        <View style={styles.searchIcon}>
+          <Ionicons name="search-outline" size={21} color="#64748b" />
         </View>
-        <Text style={styles.searchHint}>
-          Busca en el título de la lista y de sus elementos.
-        </Text>
-        {playlists !== undefined ? (
-          <Text style={styles.searchCount} accessibilityLiveRegion="polite">
-            {searchTerms.length
-              ? `${filteredPlaylists.length} ${filteredPlaylists.length === 1 ? "coincidencia" : "coincidencias"} de ${playlists.length}`
-              : `${playlists.length} ${isTutorials ? "tutoriales" : "playlists"}`}
-          </Text>
-        ) : null}
+        <TextInput
+          value={searchText}
+          onChangeText={setSearchText}
+          placeholder={
+            isTutorials
+              ? "Buscar tutoriales…"
+              : isClassical
+                ? "Buscar música clásica…"
+                : "Buscar playlists…"
+          }
+          placeholderTextColor="#888"
+          accessibilityLabel={
+            isTutorials
+              ? "Buscar tutoriales"
+              : isClassical
+                ? "Buscar música clásica"
+                : "Buscar playlists"
+          }
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          style={styles.searchInput}
+        />
+        {searchText.length > 0 ? (
+          <Pressable
+            onPress={() => setSearchText("")}
+            accessibilityRole="button"
+            accessibilityLabel="Limpiar búsqueda"
+            style={styles.clearSearchButton}
+          >
+            <Ionicons name="close-circle" size={21} color="#64748b" />
+          </Pressable>
+        ) : (
+          <View style={styles.searchIcon} />
+        )}
       </View>
+      <Text style={styles.searchHint}>
+        {isClassical
+          ? "Busca por obra, compositor, intérprete, director, orquesta o periodo."
+          : "Busca en el título de la lista y de sus elementos."}
+      </Text>
+      {playlists !== undefined ? (
+        <Text style={styles.searchCount} accessibilityLiveRegion="polite">
+          {searchTerms.length
+            ? `${filteredPlaylists.length} ${filteredPlaylists.length === 1 ? "coincidencia" : "coincidencias"} de ${playlists.length}`
+            : `${playlists.length} ${isTutorials ? "tutoriales" : isClassical ? "colecciones" : "playlists"}`}
+        </Text>
+      ) : null}
+    </View>
   );
 
   return (
@@ -696,14 +826,21 @@ export default function PlayListScreen() {
           <Text style={styles.subtitle}>
             {isTutorials
               ? "Organiza vídeos y series de YouTube para aprender a tu ritmo."
-              : "Combina canciones individuales y álbumes de YouTube."}
+              : isClassical
+                ? "Organiza obras, conciertos, intérpretes y grabaciones de YouTube."
+                : "Combina canciones individuales y álbumes de YouTube."}
           </Text>
         </View>
         <View style={styles.headerActions}>
           {isTutorials ? (
-            <Pressable onPress={() => setTransferVisible(true)} style={styles.secondaryButton}>
+            <Pressable
+              onPress={() => setTransferVisible(true)}
+              style={styles.secondaryButton}
+            >
               <Ionicons name="copy-outline" size={21} color="#2563eb" />
-              <Text style={styles.secondaryButtonText}>Copiar entre listas</Text>
+              <Text style={styles.secondaryButtonText}>
+                Copiar entre listas
+              </Text>
             </Pressable>
           ) : null}
           <Pressable
@@ -725,7 +862,11 @@ export default function PlayListScreen() {
           <Pressable onPress={openNew} style={styles.newButton}>
             <Ionicons name="add-circle-outline" size={20} color="#fff" />
             <Text style={styles.newButtonText}>
-              {isTutorials ? "Nuevo tutorial" : "Nueva playlist"}
+              {isTutorials
+                ? "Nuevo tutorial"
+                : isClassical
+                  ? "Nueva colección"
+                  : "Nueva playlist"}
             </Text>
           </Pressable>
         </View>
@@ -749,7 +890,15 @@ export default function PlayListScreen() {
             <View style={styles.playerCard}>
               <CustomYouTubePlaylistPlayer
                 playlist={item}
-                userName={isTutorials ? "Mis tutoriales" : "Mi playlist"}
+                userName={
+                  isTutorials
+                    ? "Mis tutoriales"
+                    : isClassical
+                      ? [item.composer, item.performer]
+                          .filter(Boolean)
+                          .join(" · ") || "Música clásica"
+                      : "Mi playlist"
+                }
                 isTutorial={isTutorials}
                 dateLabel={formatDate(item.updatedAt)}
                 canEdit
@@ -768,46 +917,60 @@ export default function PlayListScreen() {
               </Pressable>
             </View>
           )}
-          ListEmptyComponent={searchTerms.length ? (
-            <View style={styles.empty}>
-              <Ionicons name="search-outline" size={46} color="#64748b" />
-              <Text style={styles.emptyTitle}>No hay coincidencias</Text>
-              <Text style={styles.emptyText}>
-                Prueba con otras palabras o limpia la búsqueda para ver todas las listas.
-              </Text>
-              <Pressable
-                onPress={() => setSearchText("")}
-                accessibilityRole="button"
-                style={styles.emptyButton}
-              >
-                <Text style={styles.emptyButtonText}>Limpiar búsqueda</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <View style={styles.empty}>
-              <Ionicons name="logo-youtube" size={46} color="#dc2626" />
-              <Text style={styles.emptyTitle}>
-                {isTutorials
-                  ? "Todavía no hay tutoriales"
-                  : "Todavía no hay playlists"}
-              </Text>
-              <Text style={styles.emptyText}>
-                {isTutorials
-                  ? "Crea una colección con vídeos o series de YouTube."
-                  : "Crea una combinando singles o álbumes mediante sus enlaces de YouTube."}
-              </Text>
-              <Pressable onPress={openNew} style={styles.emptyButton}>
-                <Text style={styles.emptyButtonText}>
-                  {isTutorials ? "Nuevo tutorial" : "Nueva playlist"}
+          ListEmptyComponent={
+            searchTerms.length ? (
+              <View style={styles.empty}>
+                <Ionicons name="search-outline" size={46} color="#64748b" />
+                <Text style={styles.emptyTitle}>No hay coincidencias</Text>
+                <Text style={styles.emptyText}>
+                  Prueba con otras palabras o limpia la búsqueda para ver todas
+                  las listas.
                 </Text>
-              </Pressable>
-            </View>
-          )}
+                <Pressable
+                  onPress={() => setSearchText("")}
+                  accessibilityRole="button"
+                  style={styles.emptyButton}
+                >
+                  <Text style={styles.emptyButtonText}>Limpiar búsqueda</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.empty}>
+                <Ionicons name="logo-youtube" size={46} color="#dc2626" />
+                <Text style={styles.emptyTitle}>
+                  {isTutorials
+                    ? "Todavía no hay tutoriales"
+                    : isClassical
+                      ? "Todavía no hay música clásica"
+                      : "Todavía no hay playlists"}
+                </Text>
+                <Text style={styles.emptyText}>
+                  {isTutorials
+                    ? "Crea una colección con vídeos o series de YouTube."
+                    : isClassical
+                      ? "Crea una colección de obras o conciertos mediante sus enlaces de YouTube."
+                      : "Crea una combinando singles o álbumes mediante sus enlaces de YouTube."}
+                </Text>
+                <Pressable onPress={openNew} style={styles.emptyButton}>
+                  <Text style={styles.emptyButtonText}>
+                    {isTutorials
+                      ? "Nuevo tutorial"
+                      : isClassical
+                        ? "Nueva colección"
+                        : "Nueva playlist"}
+                  </Text>
+                </Pressable>
+              </View>
+            )
+          }
         />
       )}
       {isTutorials && transferVisible ? (
-        <TutorialTransferScreen tutorials={playlists} clientId={clientId}
-          onClose={() => setTransferVisible(false)} />
+        <TutorialTransferScreen
+          tutorials={playlists}
+          clientId={clientId}
+          onClose={() => setTransferVisible(false)}
+        />
       ) : null}
       <Modal
         visible={editorVisible}
@@ -827,7 +990,9 @@ export default function PlayListScreen() {
                 <Text style={styles.editorSubtitle}>
                   {isTutorials
                     ? "Añade vídeos y series mediante sus enlaces de YouTube."
-                    : "Añade singles o álbumes mediante sus enlaces de YouTube."}
+                    : isClassical
+                      ? "Añade obras o conciertos mediante sus enlaces de YouTube."
+                      : "Añade singles o álbumes mediante sus enlaces de YouTube."}
                 </Text>
               </View>
               <Pressable
@@ -848,12 +1013,14 @@ export default function PlayListScreen() {
                 />
                 <View style={styles.tutorialTypeHelpText}>
                   <Text style={styles.tutorialTypeHelpTitle}>
-                    {isTutorials ? "Vídeo" : "Single"}
+                    {isTutorials ? "Vídeo" : isClassical ? "Obra" : "Single"}
                   </Text>
                   <Text style={styles.tutorialTypeHelpDescription}>
                     {isTutorials
                       ? "Un único vídeo o capítulo de YouTube."
-                      : "Una canción o vídeo individual de YouTube."}
+                      : isClassical
+                        ? "Una obra, movimiento o interpretación individual."
+                        : "Una canción o vídeo individual de YouTube."}
                   </Text>
                 </View>
               </View>
@@ -865,12 +1032,18 @@ export default function PlayListScreen() {
                 />
                 <View style={styles.tutorialTypeHelpText}>
                   <Text style={styles.tutorialTypeHelpTitle}>
-                    {isTutorials ? "Serie" : "Álbum"}
+                    {isTutorials
+                      ? "Serie"
+                      : isClassical
+                        ? "Concierto"
+                        : "Álbum"}
                   </Text>
                   <Text style={styles.tutorialTypeHelpDescription}>
                     {isTutorials
                       ? "Una playlist de YouTube con varios capítulos."
-                      : "Una playlist de YouTube con varias canciones."}
+                      : isClassical
+                        ? "Una playlist con varios movimientos u obras."
+                        : "Una playlist de YouTube con varias canciones."}
                   </Text>
                 </View>
               </View>
@@ -878,7 +1051,9 @@ export default function PlayListScreen() {
             <Text style={styles.label}>
               {isTutorials
                 ? "Nombre del curso o colección"
-                : "Nombre del concierto o playlist"}
+                : isClassical
+                  ? "Nombre de la obra o colección"
+                  : "Nombre del concierto o playlist"}
             </Text>
             <TextInput
               value={title}
@@ -887,10 +1062,40 @@ export default function PlayListScreen() {
               placeholder={
                 isTutorials
                   ? "React Native · Curso de iniciación"
-                  : "Mozart · Concierto para piano · Daniel Barenboim"
+                  : isClassical
+                    ? "Concierto para piano n.º 5"
+                    : "Mozart · Concierto para piano · Daniel Barenboim"
               }
               style={styles.titleInput}
             />
+            {isClassical ? (
+              <View style={styles.classicalDetails}>
+                {[
+                  ["composer", "Compositor", "Ludwig van Beethoven"],
+                  ["performer", "Intérprete", "Daniel Barenboim"],
+                  ["conductor", "Director", "Nombre del director"],
+                  ["orchestra", "Orquesta", "Nombre de la orquesta"],
+                  ["period", "Periodo", "Clasicismo"],
+                  ["year", "Año", "1809"],
+                ].map(([field, label, placeholder]) => (
+                  <View key={field} style={styles.classicalField}>
+                    <Text style={styles.label}>{label}</Text>
+                    <TextInput
+                      value={classicalDetails[field]}
+                      onChangeText={(value) =>
+                        setClassicalDetails((current) => ({
+                          ...current,
+                          [field]: value,
+                        }))
+                      }
+                      maxLength={field === "year" ? 20 : 120}
+                      placeholder={placeholder}
+                      style={styles.trackInput}
+                    />
+                  </View>
+                ))}
+              </View>
+            ) : null}
             <ScrollView
               style={styles.tracksScroll}
               keyboardShouldPersistTaps="handled"
@@ -974,7 +1179,11 @@ export default function PlayListScreen() {
                           track.kind !== "album" && styles.kindTextActive,
                         ]}
                       >
-                        {isTutorials ? "Vídeo" : "Single"}
+                        {isTutorials
+                          ? "Vídeo"
+                          : isClassical
+                            ? "Obra"
+                            : "Single"}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -995,7 +1204,11 @@ export default function PlayListScreen() {
                           track.kind === "album" && styles.kindTextActive,
                         ]}
                       >
-                        {isTutorials ? "Serie" : "Álbum"}
+                        {isTutorials
+                          ? "Serie"
+                          : isClassical
+                            ? "Concierto"
+                            : "Álbum"}
                       </Text>
                     </Pressable>
                   </View>
@@ -1009,8 +1222,12 @@ export default function PlayListScreen() {
                           ? "Título de la serie"
                           : "Título del vídeo"
                         : track.kind === "album"
-                          ? "Título del álbum"
-                          : "I. Allegro"
+                          ? isClassical
+                            ? "Título del concierto o ciclo"
+                            : "Título del álbum"
+                          : isClassical
+                            ? "I. Allegro"
+                            : "Título del single"
                     }
                     style={styles.trackInput}
                   />
@@ -1029,11 +1246,15 @@ export default function PlayListScreen() {
                   {isTutorials && editorVisible ? (
                     <EditorVideoPreview
                       track={track}
-                      active={previewKey === `${index}:${track.kind}:${track.url}`}
+                      active={
+                        previewKey === `${index}:${track.kind}:${track.url}`
+                      }
                       disabled={saving}
                       onToggle={() => {
                         const key = `${index}:${track.kind}:${track.url}`;
-                        setPreviewKey((current) => current === key ? null : key);
+                        setPreviewKey((current) =>
+                          current === key ? null : key,
+                        );
                       }}
                     />
                   ) : null}
@@ -1117,6 +1338,13 @@ export default function PlayListScreen() {
 }
 
 const styles = StyleSheet.create({
+  classicalDetails: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 10,
+  },
+  classicalField: { flexGrow: 1, flexBasis: 210, minWidth: 180 },
   trackOrderActions: { flexDirection: "row", alignItems: "center", gap: 2 },
   trackEditorDragging: {
     opacity: 0.55,
@@ -1211,7 +1439,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   searchHint: { fontSize: 12, color: "#64748b", textAlign: "center" },
-  searchCount: { fontSize: 12, fontWeight: "700", color: "#475569", textAlign: "center" },
+  searchCount: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
+    textAlign: "center",
+  },
   list: { width: "100%", maxWidth: 760, alignSelf: "center", padding: 14 },
   playerCard: { alignItems: "center" },
   exportButton: {

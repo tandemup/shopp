@@ -258,6 +258,16 @@ function QuickActions({
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.PLAY_LIST),
       },
       {
+        key: "classicalMusic",
+        label: "Música clásica",
+        description: "Organiza obras, conciertos e intérpretes",
+        icon: "musical-notes-outline",
+        iconColor: COLORS.purple,
+        iconBackground: COLORS.purpleSoft,
+        onPress: () =>
+          navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.CLASSICAL_MUSIC),
+      },
+      {
         key: "tutorials",
         label: "Tutoriales",
         description: "Guarda y reproduce tutoriales de YouTube",

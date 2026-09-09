@@ -30,7 +30,14 @@ async function getOwnerId(ctx, clientId) {
   return `client:${cleanId}`;
 }
 
-function normalizePlaylist(titleValue, trackValues) {
+function cleanText(value, maximum = 120) {
+  const text = String(value || "")
+    .trim()
+    .slice(0, maximum);
+  return text || undefined;
+}
+
+function normalizePlaylist(titleValue, trackValues, details = {}) {
   const title = String(titleValue || "")
     .trim()
     .slice(0, 120);
@@ -91,7 +98,22 @@ function normalizePlaylist(titleValue, trackValues) {
       lyricsSize: track.lyricsSize,
     };
   });
-  return { title, tracks };
+  return {
+    title,
+    tracks,
+    collectionType:
+      details.collectionType === "classical" ? "classical" : "playlist",
+    ...(details.collectionType === "classical"
+      ? {
+          composer: cleanText(details.composer),
+          performer: cleanText(details.performer),
+          conductor: cleanText(details.conductor),
+          orchestra: cleanText(details.orchestra),
+          period: cleanText(details.period, 80),
+          year: cleanText(details.year, 20),
+        }
+      : {}),
+  };
 }
 
 async function decoratePlaylist(ctx, playlist) {
@@ -114,7 +136,12 @@ export const generateUploadUrl = mutation({
 });
 
 export const listMine = query({
-  args: { clientId: v.optional(v.string()) },
+  args: {
+    clientId: v.optional(v.string()),
+    collectionType: v.optional(
+      v.union(v.literal("playlist"), v.literal("classical")),
+    ),
+  },
   handler: async (ctx, args) => {
     const ownerId = await getOwnerId(ctx, args.clientId);
     const items = await ctx.db
@@ -122,19 +149,39 @@ export const listMine = query({
       .withIndex("by_owner_updatedAt", (q) => q.eq("ownerId", ownerId))
       .order("desc")
       .collect();
-    return await Promise.all(items.map((item) => decoratePlaylist(ctx, item)));
+    const expectedType =
+      args.collectionType === "classical" ? "classical" : "playlist";
+    const filtered = items.filter(
+      (item) => (item.collectionType || "playlist") === expectedType,
+    );
+    return await Promise.all(
+      filtered.map((item) => decoratePlaylist(ctx, item)),
+    );
   },
 });
+
+const detailArgs = {
+  collectionType: v.optional(
+    v.union(v.literal("playlist"), v.literal("classical")),
+  ),
+  composer: v.optional(v.string()),
+  performer: v.optional(v.string()),
+  conductor: v.optional(v.string()),
+  orchestra: v.optional(v.string()),
+  period: v.optional(v.string()),
+  year: v.optional(v.string()),
+};
 
 export const create = mutation({
   args: {
     clientId: v.optional(v.string()),
     title: v.string(),
     tracks: v.array(trackValidator),
+    ...detailArgs,
   },
   handler: async (ctx, args) => {
     const ownerId = await getOwnerId(ctx, args.clientId);
-    const playlist = normalizePlaylist(args.title, args.tracks);
+    const playlist = normalizePlaylist(args.title, args.tracks, args);
     const now = Date.now();
     return await ctx.db.insert("youtubePlaylists", {
       ownerId,
@@ -151,13 +198,14 @@ export const update = mutation({
     clientId: v.optional(v.string()),
     title: v.string(),
     tracks: v.array(trackValidator),
+    ...detailArgs,
   },
   handler: async (ctx, args) => {
     const ownerId = await getOwnerId(ctx, args.clientId);
     const current = await ctx.db.get(args.playlistId);
     if (!current || current.ownerId !== ownerId)
       throw new Error("No puedes editar esta playlist.");
-    const playlist = normalizePlaylist(args.title, args.tracks);
+    const playlist = normalizePlaylist(args.title, args.tracks, args);
     const nextIds = new Set(
       playlist.tracks.map((track) => track.lyricsStorageId).filter(Boolean),
     );
