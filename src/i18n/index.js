@@ -969,7 +969,133 @@ Object.assign(EN, {
   "Sin oferta": "No deal",
 });
 
+Object.assign(EN, {
+  "Mis playlists": "My playlists",
+  "Mis tutoriales": "My tutorials",
+  "Mi playlist": "My playlist",
+  "Organiza vídeos y series de YouTube para aprender a tu ritmo.":
+    "Organize YouTube videos and series to learn at your own pace.",
+  "Combina canciones individuales y álbumes de YouTube.":
+    "Combine individual songs and YouTube albums.",
+  "Copiar entre listas": "Copy between lists",
+  "Importando…": "Importing…",
+  Importar: "Import",
+  "Exportar todo": "Export all",
+  "Nuevo tutorial": "New tutorial",
+  "Nueva playlist": "New playlist",
+  "Exportar JSON": "Export JSON",
+  "Buscar tutoriales…": "Search tutorials…",
+  "Buscar playlists…": "Search playlists…",
+  "Busca en el título de la lista y de sus elementos.":
+    "Search list and item titles.",
+  coincidencia: "match",
+  coincidencias: "matches",
+  tutoriales: "tutorials",
+  playlists: "playlists",
+  pista: "track",
+  pistas: "tracks",
+  "No hay coincidencias": "No matches",
+  "No hay coincidencias.": "No matches.",
+  "Prueba con otras palabras o limpia la búsqueda para ver todas las listas.":
+    "Try different words or clear the search to view every list.",
+  "Limpiar búsqueda": "Clear search",
+  "Todavía no hay tutoriales": "No tutorials yet",
+  "Todavía no hay playlists": "No playlists yet",
+  "Crea una colección con vídeos o series de YouTube.":
+    "Create a collection containing YouTube videos or series.",
+  "Crea una combinando singles o álbumes mediante sus enlaces de YouTube.":
+    "Create one by combining singles or albums using their YouTube links.",
+  "Añade vídeos y series mediante sus enlaces de YouTube.":
+    "Add videos and series using their YouTube links.",
+  "Añade singles o álbumes mediante sus enlaces de YouTube.":
+    "Add singles or albums using their YouTube links.",
+  Vídeo: "Video",
+  Serie: "Series",
+  Single: "Single",
+  Álbum: "Album",
+  "Un único vídeo o capítulo de YouTube.": "One YouTube video or episode.",
+  "Una canción o vídeo individual de YouTube.":
+    "One individual YouTube song or video.",
+  "Una playlist de YouTube con varios capítulos.":
+    "A YouTube playlist containing several episodes.",
+  "Una playlist de YouTube con varias canciones.":
+    "A YouTube playlist containing several songs.",
+  "Nombre del curso o colección": "Course or collection name",
+  "Nombre del concierto o playlist": "Concert or playlist name",
+  "React Native · Curso de iniciación": "React Native · Beginner course",
+  "Título de la serie": "Series title",
+  "Título del vídeo": "Video title",
+  "Título del álbum": "Album title",
+  "Añadir letras .lrc": "Add .lrc lyrics",
+  "Opcional · máximo 512 KB": "Optional · maximum 512 KB",
+  "Añadir elemento": "Add item",
+  "Guardar cambios": "Save changes",
+  "Copiar y cortar entre tutoriales": "Copy and cut between tutorials",
+  "Selecciona elementos y pulsa Copiar o Cortar. Después, Pegar aquí en la otra lista. Cortar los quita del origen solo al completar el pegado.":
+    "Select items and press Copy or Cut. Then press Paste here in the other list. Cut removes them from the source only after pasting is complete.",
+  "Elegir tutorial": "Choose tutorial",
+  "Buscar elementos…": "Search items…",
+  Desmarcar: "Clear selection",
+  "Seleccionar visibles": "Select visible",
+  "Pegar aquí": "Paste here",
+  "Elige una lista de tutoriales.": "Choose a tutorial list.",
+  "Esta lista no tiene elementos.": "This list has no items.",
+  "Pendiente de mover": "Pending move",
+  Cortar: "Cut",
+  Copiar: "Copy",
+  "Cancelar corte": "Cancel cut",
+  "Lista izquierda": "Left list",
+  "Lista derecha": "Right list",
+  "Lista superior": "Top list",
+  "Lista inferior": "Bottom list",
+  "Necesitas al menos dos listas de tutoriales. Cierra esta pantalla y crea otra con «Nuevo tutorial».":
+    "You need at least two tutorial lists. Close this screen and create another with ‘New tutorial’.",
+  "Guardando elementos…": "Saving items…",
+  "En pausa": "Paused",
+  Reproduciendo: "Playing",
+  "Abrir en YouTube": "Open in YouTube",
+  Reintentar: "Retry",
+  "Previsualizar": "Preview",
+  "Cerrar previsualización": "Close preview",
+  "Previsualizar serie": "Preview series",
+  "Previsualizar vídeo": "Preview video",
+  "YouTube tarda en responder. Comprueba tu conexión y pulsa Reintentar.":
+    "YouTube is taking too long to respond. Check your connection and press Retry.",
+  "No se pudo pausar el otro reproductor. Inténtalo de nuevo.":
+    "The other player could not be paused. Try again.",
+  "Pulsa reproducir para iniciar el vídeo.": "Press play to start the video.",
+  "Este vídeo ya no está disponible.": "This video is no longer available.",
+  "Este vídeo solo permite reproducirse en YouTube.":
+    "This video can only be played on YouTube.",
+  "YouTube no ha podido verificar el origen del reproductor. Prueba a abrirlo en YouTube.":
+    "YouTube could not verify the player origin. Try opening it on YouTube.",
+  "No se pudo reproducir el vídeo. Puedes reintentarlo o abrirlo en YouTube.":
+    "The video could not be played. You can retry or open it on YouTube.",
+  "No se pudo abrir YouTube.": "YouTube could not be opened.",
+  "Retroceder 1 segundo": "Go back 1 second",
+  "Avanzar 1 segundo": "Go forward 1 second",
+  "Minimizar reproductor": "Minimize player",
+  "Ampliar reproductor": "Expand player",
+  "Detener y cerrar reproductor": "Stop and close player",
+});
+
 const DYNAMIC_EN = [
+  [/^Editar (tutorial|playlist)$/, (_, type) => `Edit ${type}`],
+  [/^Nuevo (tutorial|playlist)$/, (_, type) => `New ${type}`],
+  [/^Crear (tutorial|playlist)$/, (_, type) => `Create ${type}`],
+  [/^(\d+) pistas?$/, (_, count) => `${count} ${count === "1" ? "track" : "tracks"}`],
+  [/^(\d+) (tutoriales|playlists)$/, (_, count, type) => `${count} ${type === "tutoriales" ? "tutorials" : "playlists"}`],
+  [/^(\d+) coincidencias? de (\d+)$/, (_, shown, total) => `${shown} ${shown === "1" ? "match" : "matches"} out of ${total}`],
+  [/^(\d+) elementos · (\d+) seleccionados$/, (_, total, selected) => `${total} items · ${selected} selected`],
+  [/^(\d+) elementos · (.+)$/, (_, count, source) => `${count} items · ${source}`],
+  [/^Copiar \((\d+)\)$/, (_, count) => `Copy (${count})`],
+  [/^Cortar \((\d+)\)$/, (_, count) => `Cut (${count})`],
+  [/^(Serie|Vídeo) · Pendiente de mover$/, (_, type) => `${type === "Serie" ? "Series" : "Video"} · Pending move`],
+  [/^ELEMENTO (\d+)$/, (_, number) => `ITEM ${number}`],
+  [/^Reproducir (.+)$/, (_, title) => `Play ${title}`],
+  [/^Pausar (.+)$/, (_, title) => `Pause ${title}`],
+  [/^Abrir (.+) en YouTube$/, (_, title) => `Open ${title} in YouTube`],
+  [/^Posición de (.+)$/, (_, title) => `Position of ${title}`],
   [
     /^¿Seguro que quieres eliminar “?(.+?)”?\?$/,
     (_, name) => `Are you sure you want to delete ${name}?`,

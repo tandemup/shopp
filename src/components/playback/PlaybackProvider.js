@@ -3,7 +3,7 @@ import { BackHandler, Image, Linking, Platform, Pressable, ScrollView, StyleShee
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
-import { I18nText as Text } from "@/src/i18n";
+import { I18nText as Text, tr } from "@/src/i18n";
 import YouTubeSurface from "./YouTubeSurface";
 import { formatTime, normalizeTrack, parseLrc } from "./youtubeUtils";
 
@@ -25,7 +25,7 @@ function SecondSeekButton({ direction, onPress, disabled = false }) {
   const backward = direction < 0;
   return <Pressable
     accessibilityRole="button"
-    accessibilityLabel={backward ? "Retroceder 1 segundo" : "Avanzar 1 segundo"}
+    accessibilityLabel={tr(backward ? "Retroceder 1 segundo" : "Avanzar 1 segundo")}
     accessibilityState={{ disabled }}
     disabled={disabled}
     onPress={onPress}
@@ -178,16 +178,16 @@ export default function PlaybackProvider({ children }) {
       {children}
       {session ? <View accessibilityViewIsModal={expanded} style={[styles.player, expanded ? [styles.expanded, { paddingTop: insets.top, paddingBottom: insets.bottom }] : [styles.mini, { width: miniWidth, bottom, maxHeight: Math.max(220, height - 100 - insets.top - insets.bottom) }]]}>
         <View style={styles.header}>
-          <Pressable accessibilityRole="button" accessibilityLabel={expanded ? "Minimizar reproductor" : "Ampliar reproductor"}
+          <Pressable accessibilityRole="button" accessibilityLabel={tr(expanded ? "Minimizar reproductor" : "Ampliar reproductor")}
             onPress={() => setExpanded((value) => !value)} style={styles.heading}>
             <Text numberOfLines={1} style={styles.title}>{expanded ? session.title : currentTitle || session.title}</Text>
           </Pressable>
           {!expanded ? <IconButton name={playing ? "pause" : "play"}
-            label={playing ? `Pausar ${currentTitle || session.title}` : `Reproducir ${currentTitle || session.title}`}
+            label={tr(playing ? `Pausar ${currentTitle || session.title}` : `Reproducir ${currentTitle || session.title}`)}
             disabled={!status.ready || Boolean(status.error)}
             onPress={() => playing ? player.current?.pause() : player.current?.play()} /> : null}
-          <IconButton name={expanded ? "remove-outline" : "expand-outline"} label={expanded ? "Minimizar reproductor" : "Ampliar reproductor"} onPress={() => setExpanded((value) => !value)} />
-          <IconButton name="close-outline" label="Detener y cerrar reproductor" onPress={stop} />
+          <IconButton name={expanded ? "remove-outline" : "expand-outline"} label={tr(expanded ? "Minimizar reproductor" : "Ampliar reproductor")} onPress={() => setExpanded((value) => !value)} />
+          <IconButton name="close-outline" label={tr("Detener y cerrar reproductor")} onPress={stop} />
         </View>
         <View pointerEvents="none" style={styles.playerEngine}>
           <YouTubeSurface key={session.requestId} ref={player} track={track}
@@ -248,7 +248,7 @@ export default function PlaybackProvider({ children }) {
               return <View key={index} style={[styles.track, active && styles.activeTrack]}>
                 <View style={[styles.cardTop, (desktop || wideTransport) && styles.desktopCardTop]}>
                   <Pressable onPress={() => select(index)} accessibilityRole="button"
-                    accessibilityLabel={itemPlaying ? `Pausar ${item.title}` : `Reproducir ${item.title}`}
+                    accessibilityLabel={tr(itemPlaying ? `Pausar ${item.title}` : `Reproducir ${item.title}`)}
                     accessibilityState={{ selected: active }} style={[styles.trackMain, styles.activeTrackMain, wideTransport && styles.wideTrackMain]}>
                   {imageId ? <Image source={{ uri: `https://i.ytimg.com/vi/${imageId}/mqdefault.jpg` }} style={[styles.thumbnail, styles.activeThumbnail, wideTransport && styles.wideThumbnail]} />
                     : <View style={[styles.thumbnail, styles.activeThumbnail, wideTransport && styles.wideThumbnail, styles.fallback]}><Ionicons name="albums-outline" size={26} color="#dc2626" /></View>}
@@ -259,7 +259,7 @@ export default function PlaybackProvider({ children }) {
                     <Text style={styles.cardHeadingTitle} numberOfLines={1}>{cardTitle}</Text>
                     <Pressable
                       accessibilityRole="link"
-                      accessibilityLabel={`Abrir ${cardTitle} en YouTube`}
+                      accessibilityLabel={tr(`Abrir ${cardTitle} en YouTube`)}
                       onPress={() => openTrackExternal(item, active)}
                       style={styles.youtubeButton}
                     >
@@ -272,7 +272,7 @@ export default function PlaybackProvider({ children }) {
                         disabled={!active || !status.ready || !status.duration || status.time <= 0 || Boolean(status.error)}
                         onPress={() => seekBy(-1)} />
                       <Pressable accessibilityRole="button"
-                        accessibilityLabel={itemPlaying ? `Pausar ${item.title}` : `Reproducir ${item.title}`}
+                        accessibilityLabel={tr(itemPlaying ? `Pausar ${item.title}` : `Reproducir ${item.title}`)}
                         disabled={active && (!status.ready || Boolean(status.error))}
                         onPress={() => select(index)} style={[styles.transportPlayButton, !active && styles.inactiveTransportPlayButton, itemPlaying && styles.transportPauseButton]}>
                           <Ionicons name={itemPlaying ? "pause" : "play"} size={23} color="#fff" />
@@ -287,7 +287,7 @@ export default function PlaybackProvider({ children }) {
                         <Text style={styles.transportTitle} numberOfLines={1}>{itemPlaying ? "Reproduciendo" : "En pausa"}</Text>
                         <Text style={styles.progressTime}>{active && status.duration ? `−${formatTime(Math.max(0, status.duration - status.time))}` : "—:—"}</Text>
                       </View>
-                      <Slider style={styles.cardSlider} accessibilityLabel={`Posición de ${item.title}`}
+                      <Slider style={styles.cardSlider} accessibilityLabel={tr(`Posición de ${item.title}`)}
                         minimumValue={0} maximumValue={active ? Math.max(1, status.duration) : 1}
                         value={active ? Math.min(status.time, status.duration || 0) : 0}
                         disabled={!active || !status.ready || !status.duration}
