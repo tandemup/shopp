@@ -325,7 +325,10 @@ export default function PlaybackProvider({ children }) {
   const ids = status.videoIds || [];
   const albumIndex = status.playlistIndex || 0;
   const desktop = expanded && width >= 960;
-  const wideTransport = width >= 760;
+  // El reproductor compartido conserva controles compactos y de tamaño fijo.
+  // El ancho de la columna puede crecer con la ventana, pero las imágenes,
+  // tipografías e iconos no deben saltar a una escala desproporcionada.
+  const wideTransport = false;
   const miniWidth = Math.min(360, Math.max(200, width - 16));
   const bottom =
     Platform.OS === "web"
@@ -997,14 +1000,6 @@ export default function PlaybackProvider({ children }) {
                   ) : null}
                 </ScrollView>
               ) : null}
-              {expanded && desktop ? (
-                <DesktopLyricsPanel
-                  track={track}
-                  uri={lyricsUri}
-                  time={status.time}
-                  title={currentTitle || track?.title}
-                />
-              ) : null}
             </View>
           </View>
         ) : null}
@@ -1050,14 +1045,19 @@ const styles = StyleSheet.create({
   body: { minHeight: 0, flexShrink: 1 },
   expandedBody: { flex: 1, backgroundColor: "#0b0b0c" },
   desktopBody: {
-    flexDirection: "row",
     width: "100%",
     maxWidth: 1320,
     alignSelf: "center",
+    alignItems: "center",
     paddingHorizontal: 24,
-    gap: 24,
   },
-  desktopTrackPane: { flex: 1.08, minWidth: 0 },
+  desktopTrackPane: {
+    flex: 1,
+    width: "44%",
+    maxWidth: "44%",
+    minWidth: 440,
+    alignSelf: "center",
+  },
   desktopLyricsPanel: {
     flex: 0.92,
     minWidth: 340,

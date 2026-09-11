@@ -382,21 +382,9 @@ function ComputerLinkLibrary({ clientId, language }) {
     onlyUnclassified: folderFilter === "unclassified" || undefined,
   });
   const links = libraryResult?.items;
-  const ensureDefaultFolders = useMutation(
-    api.computerLinks.ensureDefaultFolders,
-  );
   const toggleFavorite = useMutation(api.computerLinks.toggleFavorite);
   const moveToFolder = useMutation(api.computerLinks.moveToFolder);
   const removeLink = useMutation(api.computerLinks.remove);
-
-  useEffect(() => {
-    // La importación histórica del chat no debe recorrer todos los mensajes
-    // cada vez que se abre esta vista. Los enlaces nuevos se guardan mediante
-    // las operaciones explícitas de Biblioteca.
-    ensureDefaultFolders({ clientId }).catch((error) =>
-      console.warn("[ComputerLinkLibrary] folder setup failed", error),
-    );
-  }, [clientId, ensureDefaultFolders]);
 
   const folderById = useMemo(
     () => new Map(folders.map((folder) => [String(folder._id), folder])),
@@ -630,10 +618,17 @@ export default function ChatScreen() {
   const editingIsYouTubeAlbum =
     editingAlbum?.youtubeMedia?.playlistId?.startsWith("OLAK5uy_") === true;
 
-  const messages = useQuery(api.chat.listMessages, {
-    room,
-    clientId: chatClientId,
-  });
+  // Al mostrar la Biblioteca integrada no necesitamos mantener también la
+  // suscripción reactiva al chat de esa sala.
+  const messages = useQuery(
+    api.chat.listMessages,
+    computerMode === "library"
+      ? "skip"
+      : {
+          room,
+          clientId: chatClientId,
+        },
+  );
   const sendMessage = useMutation(api.chat.sendMessage);
   const deleteMessage = useMutation(api.chat.deleteMessage);
   const updateYouTubeAlbum = useMutation(api.chat.updateYouTubeAlbum);

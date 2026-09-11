@@ -36,6 +36,7 @@ import CachedLinkImage from "@/src/components/chat/CachedLinkImage";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 const CLIENT_ID_KEY = "shopp-chat-client-id";
+const LIBRARY_SETUP_KEY = "shopp-library-setup-v2";
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
 const CATALOG_SOURCES_IMPORT_KEY = "__catalog_sources__";
 const IMPORT_BATCH_SIZE = 250;
@@ -48,7 +49,8 @@ const IMPORT_DB_NAME = "shopp-library-import-v1";
 const IMPORT_DB_STORE = "payloads";
 const IMPORT_PREVIEW_CONCURRENCY = 3;
 const LIBRARY_VISIBLE_LINK_LIMIT = 80;
-const LIBRARY_CATALOG_SOURCE_LIMIT = 600;
+// Mantener páginas pequeñas reduce el coste de cada reejecución reactiva.
+const LIBRARY_CATALOG_SOURCE_LIMIT = 50;
 const LIBRARY_SEARCH_PAGE_SIZE = 40;
 const HASHTAG_SCAN_PAGE_SIZE = 400;
 const HASHTAG_RESULT_PAGE_SIZE = 40;
@@ -1369,7 +1371,10 @@ function MinimalLinkTitle({ item, previewMode = "default" }) {
   const hasUsefulStoredTitle =
     storedTitle &&
     storedTitle.toLowerCase() !== String(domain || "").toLowerCase();
-  const shouldRefreshArticleMetadata = linkType === "newsArticle";
+  // Mostrar una card nunca debe iniciar una acción remota ni una escritura en
+  // Convex. Los metadatos se actualizan únicamente mediante acciones
+  // explícitas (alta, importación, integridad o botón de actualizar).
+  const shouldRefreshArticleMetadata = false;
   const shouldLoadPreview =
     isYouTubeLink(item) ||
     previewMode === "document" ||
@@ -2127,9 +2132,27 @@ export default function LibraryScreen({ navigation }) {
     // Esperar a conocer si existe una importación activa. Durante un reemplazo
     // no debemos recrear carpetas mientras la fase de limpieza está en curso.
     if (!isFocused || activeImportJob === undefined || activeImportJob) return;
-    ensureDefaultFolders({ clientId }).catch((error) =>
-      console.warn("[LibraryScreen] folder setup failed", error),
-    );
+    const setupDone =
+      Platform.OS === "web" &&
+      typeof window !== "undefined" &&
+      window.localStorage?.getItem(LIBRARY_SETUP_KEY) === "done";
+    if (setupDone) return;
+
+    ensureDefaultFolders({ clientId })
+      .then((result) => {
+        // Un lote completo de libros heredados indica que podría quedar otra
+        // tanda. En ese caso no marcamos aún la migración como terminada.
+        if (
+          Platform.OS === "web" &&
+          typeof window !== "undefined" &&
+          Number(result?.migratedBooks || 0) < 50
+        ) {
+          window.localStorage?.setItem(LIBRARY_SETUP_KEY, "done");
+        }
+      })
+      .catch((error) =>
+        console.warn("[LibraryScreen] folder setup failed", error),
+      );
   }, [activeImportJob, clientId, ensureDefaultFolders, isFocused]);
 
   const folderById = useMemo(
@@ -3747,7 +3770,7 @@ export default function LibraryScreen({ navigation }) {
                 pantalla.
               </Text>
 
-              {Array.isArray(globalHashtags) ? (
+              {hashtagModalVisible && Array.isArray(globalHashtags) ? (
                 <>
                   <View style={styles.hashtagCatalogSearchRow}>
                     <Ionicons name="search-outline" size={18} color="#64748b" />
@@ -3819,9 +3842,9 @@ export default function LibraryScreen({ navigation }) {
                     ) : null}
                   </ScrollView>
                 </>
-              ) : (
+              ) : hashtagModalVisible ? (
                 <HashtagCatalogLoader onLoaded={setGlobalHashtags} />
-              )}
+              ) : null}
             </View>
           </View>
         </Modal>
