@@ -87,7 +87,8 @@ function openImportDatabase() {
       }
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error("IndexedDB no disponible."));
+    request.onerror = () =>
+      reject(request.error || new Error("IndexedDB no disponible."));
   });
   return importDbPromise;
 }
@@ -97,13 +98,18 @@ async function saveImportPayload(jobId, payload) {
   if (!key) throw new Error("La importación no tiene identificador.");
   if (Platform.OS === "web") {
     const db = await openImportDatabase();
-    if (!db) throw new Error("El navegador no permite guardar el estado de la importación.");
+    if (!db)
+      throw new Error(
+        "El navegador no permite guardar el estado de la importación.",
+      );
     await new Promise((resolve, reject) => {
       const tx = db.transaction(IMPORT_DB_STORE, "readwrite");
       tx.objectStore(IMPORT_DB_STORE).put(payload, key);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error || new Error("No se pudo guardar la importación."));
-      tx.onabort = () => reject(tx.error || new Error("No se pudo guardar la importación."));
+      tx.onerror = () =>
+        reject(tx.error || new Error("No se pudo guardar la importación."));
+      tx.onabort = () =>
+        reject(tx.error || new Error("No se pudo guardar la importación."));
     });
     return;
   }
@@ -126,7 +132,8 @@ async function loadImportPayload(jobId) {
       const tx = db.transaction(IMPORT_DB_STORE, "readonly");
       const request = tx.objectStore(IMPORT_DB_STORE).get(key);
       request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error || new Error("No se pudo leer la importación."));
+      request.onerror = () =>
+        reject(request.error || new Error("No se pudo leer la importación."));
     });
   }
   if (!FileSystem.documentDirectory) return null;
@@ -149,8 +156,10 @@ async function deleteImportPayload(jobId) {
       const tx = db.transaction(IMPORT_DB_STORE, "readwrite");
       tx.objectStore(IMPORT_DB_STORE).delete(key);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error || new Error("No se pudo limpiar la importación."));
-      tx.onabort = () => reject(tx.error || new Error("No se pudo limpiar la importación."));
+      tx.onerror = () =>
+        reject(tx.error || new Error("No se pudo limpiar la importación."));
+      tx.onabort = () =>
+        reject(tx.error || new Error("No se pudo limpiar la importación."));
     });
     return;
   }
@@ -233,7 +242,8 @@ const NEWS_SORT_OPTIONS = [
     id: "createdDesc",
     label: "Fecha de incorporación: recientes",
     shortLabel: "Añadidas ↓",
-    description: "Ordena por el momento en que cada noticia se guardó en Biblioteca.",
+    description:
+      "Ordena por el momento en que cada noticia se guardó en Biblioteca.",
     icon: "download-outline",
   },
   {
@@ -312,8 +322,15 @@ function getHostnameFromUrl(value) {
 }
 
 function isYouTubeDomain(domain) {
-  return ["youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(
-    String(domain || "").replace(/^www\./i, "").toLowerCase(),
+  return [
+    "youtube.com",
+    "m.youtube.com",
+    "music.youtube.com",
+    "youtu.be",
+  ].includes(
+    String(domain || "")
+      .replace(/^www\./i, "")
+      .toLowerCase(),
   );
 }
 
@@ -395,10 +412,7 @@ function cleanSlugTitle(value) {
 function getUrlFallbackTitle(value) {
   try {
     const pathname = new URL(value || "").pathname;
-    const slug = decodeURIComponent(pathname)
-      .split("/")
-      .filter(Boolean)
-      .pop();
+    const slug = decodeURIComponent(pathname).split("/").filter(Boolean).pop();
     return cleanSlugTitle(slug);
   } catch {
     return "";
@@ -438,7 +452,10 @@ function getNewsDisplayTitle(link) {
     link?.title || link?.pageTitle || link?.previewTitle || link?.name || "",
     domain,
   );
-  const customTitle = stripImportedDomainPrefix(link?.customTitle || "", domain);
+  const customTitle = stripImportedDomainPrefix(
+    link?.customTitle || "",
+    domain,
+  );
   if (storedTitle && storedTitle.toLowerCase() !== domain) {
     return sentenceCaseTitle(storedTitle);
   }
@@ -490,7 +507,7 @@ function getPreviewTitleCandidate(preview, domain, previewMode = "default") {
     : String(preview?.title || "").trim();
   const isYouTube =
     ["youtube.com", "youtu.be"].includes(String(domain || "").toLowerCase()) ||
-      String(preview?.siteName || "").toLowerCase() === "youtube";
+    String(preview?.siteName || "").toLowerCase() === "youtube";
 
   // Para noticias, el título debe proceder de <title>, Open Graph o JSON-LD.
   // La descripción suele ser un texto genérico del periódico (por ejemplo,
@@ -641,7 +658,8 @@ function normalizeLocalBackupUrl(value) {
         url.searchParams.delete(key);
       }
     }
-    if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
+    if (url.pathname.length > 1)
+      url.pathname = url.pathname.replace(/\/+$/, "");
     const params = [...url.searchParams.entries()].sort(
       ([keyA, valueA], [keyB, valueB]) =>
         keyA.localeCompare(keyB) || valueA.localeCompare(valueB),
@@ -669,7 +687,9 @@ function localBackupRootFolderName(folderKey, folderByKey) {
     folder = folderByKey.get(String(folder.parentKey));
     safety -= 1;
   }
-  return String(folder?.name || "").trim().toLowerCase();
+  return String(folder?.name || "")
+    .trim()
+    .toLowerCase();
 }
 
 function scoreLocalBackupLink(link) {
@@ -738,11 +758,13 @@ function repairBackupLocally(backup) {
       .map((folder) => [String(folder.key), folder]),
   );
   const newsFolder = folders.find(
-    (folder) => localBackupRootFolderName(folder?.key, folderByKey) === "noticias",
+    (folder) =>
+      localBackupRootFolderName(folder?.key, folderByKey) === "noticias",
   );
   const newsFolderKey = newsFolder?.key || "Noticias";
   const bookFolder = folders.find(
-    (folder) => localBackupRootFolderName(folder?.key, folderByKey) === "libros",
+    (folder) =>
+      localBackupRootFolderName(folder?.key, folderByKey) === "libros",
   );
   const bookFolderKey = bookFolder?.key || "Libros";
   const linksByCanonicalUrl = new Map();
@@ -781,13 +803,19 @@ function repairBackupLocally(backup) {
     link.normalizedUrl = normalized.url;
     link.hostname = normalized.hostname;
 
-    const rootFolderName = localBackupRootFolderName(link.folderKey, folderByKey);
+    const rootFolderName = localBackupRootFolderName(
+      link.folderKey,
+      folderByKey,
+    );
     let linkType = link.linkType || "general";
     if (linkType === "newsArticle" && isLocalDomainHomepage(link.url)) {
       linkType = "newsSource";
     } else if (linkType === "general" && rootFolderName === "libros") {
       linkType = "bookLink";
-    } else if (linkType === "newsSource" && /^books\.google\./i.test(link.hostname)) {
+    } else if (
+      linkType === "newsSource" &&
+      /^books\.google\./i.test(link.hostname)
+    ) {
       linkType = "bookStore";
       link.folderKey = bookFolderKey;
     } else if (
@@ -798,7 +826,12 @@ function repairBackupLocally(backup) {
     }
     if (link.linkType !== linkType) summary.typeCorrections += 1;
     link.linkType = linkType;
-    link.sourceDomain = ["newsSource", "newsArticle", "bookStore", "bookLink"].includes(linkType)
+    link.sourceDomain = [
+      "newsSource",
+      "newsArticle",
+      "bookStore",
+      "bookLink",
+    ].includes(linkType)
       ? normalized.hostname
       : undefined;
 
@@ -831,13 +864,17 @@ function repairBackupLocally(backup) {
   const knownSourceDomains = new Set(
     repairedLinks
       .filter((link) => link.linkType === "newsSource")
-      .map((link) => String(link.sourceDomain || link.hostname || "").toLowerCase())
+      .map((link) =>
+        String(link.sourceDomain || link.hostname || "").toLowerCase(),
+      )
       .filter(Boolean),
   );
   const articleDomains = new Set(
     repairedLinks
       .filter((link) => link.linkType === "newsArticle")
-      .map((link) => String(link.sourceDomain || link.hostname || "").toLowerCase())
+      .map((link) =>
+        String(link.sourceDomain || link.hostname || "").toLowerCase(),
+      )
       .filter(Boolean),
   );
   for (const domain of articleDomains) {
@@ -861,7 +898,9 @@ function repairBackupLocally(backup) {
   }
 
   repairedLinks.sort((a, b) =>
-    String(a.normalizedUrl || a.url).localeCompare(String(b.normalizedUrl || b.url)),
+    String(a.normalizedUrl || a.url).localeCompare(
+      String(b.normalizedUrl || b.url),
+    ),
   );
   const repairedBackup = {
     ...backup,
@@ -995,7 +1034,9 @@ function buildImportCategoryOptions(data) {
   );
   let unclassifiedCount = 0;
 
-  const catalogSourceCount = backupLinks.filter(isCatalogSourceBackupLink).length;
+  const catalogSourceCount = backupLinks.filter(
+    isCatalogSourceBackupLink,
+  ).length;
 
   backupLinks.forEach((link) => {
     if (isCatalogSourceBackupLink(link)) return;
@@ -1182,8 +1223,8 @@ function getHistoricalNewsCreatedAt(item) {
 
 function getHistoricalNewsDomain(url) {
   try {
-    return new URL(String(url || ""))
-      .hostname.replace(/^www\./i, "")
+    return new URL(String(url || "")).hostname
+      .replace(/^www\./i, "")
       .trim()
       .toLowerCase();
   } catch {
@@ -1243,9 +1284,7 @@ function buildHistoricalNewsBackup(items) {
         .trim()
         .slice(0, 1000);
       const hashtags = Array.isArray(item.hashtags)
-        ? item.hashtags
-            .map((tag) => String(tag || "").trim())
-            .filter(Boolean)
+        ? item.hashtags.map((tag) => String(tag || "").trim()).filter(Boolean)
         : [];
 
       return {
@@ -1331,7 +1370,9 @@ function MinimalLinkTitle({ item, previewMode = "default" }) {
     storedTitle.toLowerCase() !== String(domain || "").toLowerCase();
   const shouldRefreshArticleMetadata = linkType === "newsArticle";
   const shouldLoadPreview =
-    isYouTubeLink(item) || previewMode === "document" || shouldRefreshArticleMetadata;
+    isYouTubeLink(item) ||
+    previewMode === "document" ||
+    shouldRefreshArticleMetadata;
 
   useEffect(() => {
     let cancelled = false;
@@ -1371,10 +1412,7 @@ function MinimalLinkTitle({ item, previewMode = "default" }) {
         const shouldSaveTitle = !hasUsefulStoredTitle && nextTitle;
         const shouldSaveDate =
           nextPublishedAt && Number(item?.publishedAt || 0) !== nextPublishedAt;
-        if (
-          (shouldSaveTitle || shouldSaveDate) &&
-          !previewTitleSaveDisabled
-        ) {
+        if ((shouldSaveTitle || shouldSaveDate) && !previewTitleSaveDisabled) {
           try {
             await updatePreviewMetadata({
               linkId: itemId,
@@ -1386,10 +1424,7 @@ function MinimalLinkTitle({ item, previewMode = "default" }) {
               previewTitleSaveDisabled = true;
               return;
             }
-            console.warn(
-              "[LibraryScreen] preview metadata save failed",
-              error,
-            );
+            console.warn("[LibraryScreen] preview metadata save failed", error);
           }
         }
       } catch (error) {
@@ -1447,11 +1482,7 @@ function getClientId() {
 }
 
 function HashtagCatalogLoader({ onLoaded }) {
-  const {
-    results,
-    status,
-    loadMore,
-  } = usePaginatedQuery(
+  const { results, status, loadMore } = usePaginatedQuery(
     api.computerLinks.listHashtagPage,
     {},
     { initialNumItems: HASHTAG_SCAN_PAGE_SIZE },
@@ -1505,7 +1536,8 @@ function HashtagCatalogLoader({ onLoaded }) {
         Cargando hashtags de noticias…
       </Text>
       <Text style={styles.hashtagCatalogLoadingText}>
-        {Number(results?.length || 0).toLocaleString("es-ES")} enlaces analizados
+        {Number(results?.length || 0).toLocaleString("es-ES")} enlaces
+        analizados
       </Text>
     </View>
   );
@@ -1563,13 +1595,17 @@ export default function LibraryScreen({ navigation }) {
   const [browsePage, setBrowsePage] = useState(0);
   const [browseCursors, setBrowseCursors] = useState([null]);
   const [slowTask, setSlowTask] = useState(null);
-  const [resumeImportModalVisible, setResumeImportModalVisible] = useState(false);
+  const [resumeImportModalVisible, setResumeImportModalVisible] =
+    useState(false);
   const importPauseRequestedRef = useRef(false);
 
   const folders = useQuery(api.computerLinks.listFolders) || [];
-  const activeImportJob = useQuery(api.computerLinks.getActiveLibraryImportJob, {
-    clientId,
-  });
+  const activeImportJob = useQuery(
+    api.computerLinks.getActiveLibraryImportJob,
+    {
+      clientId,
+    },
+  );
   const {
     results: exportedLinks,
     status: exportStatus,
@@ -1592,7 +1628,13 @@ export default function LibraryScreen({ navigation }) {
     setSearchPage(0);
     setBrowsePage(0);
     setBrowseCursors([null]);
-  }, [submittedSearch, selectedHashtagFilter, folderFilter, newsView, newsSort]);
+  }, [
+    submittedSearch,
+    selectedHashtagFilter,
+    folderFilter,
+    newsView,
+    newsSort,
+  ]);
   useEffect(() => {
     if (Platform.OS !== "web" || !slowTask || typeof window === "undefined") {
       return undefined;
@@ -1682,9 +1724,7 @@ export default function LibraryScreen({ navigation }) {
   );
   const selectedHashtagLinks = useQuery(
     api.computerLinks.getLinksByIds,
-    selectedHashtagFilter
-      ? { ids: selectedHashtagPageIds }
-      : "skip",
+    selectedHashtagFilter ? { ids: selectedHashtagPageIds } : "skip",
   );
   const libraryResult = selectedHashtagFilter
     ? {
@@ -1739,7 +1779,10 @@ export default function LibraryScreen({ navigation }) {
       ? "enlace mostrado"
       : "enlaces mostrados";
   const slowTaskPercent = slowTask?.total
-    ? Math.min(100, Math.round((Number(slowTask.current || 0) / slowTask.total) * 100))
+    ? Math.min(
+        100,
+        Math.round((Number(slowTask.current || 0) / slowTask.total) * 100),
+      )
     : 0;
   const resumeImportTotal = activeImportJob
     ? Number(activeImportJob.totalLinks || 0) +
@@ -1750,10 +1793,7 @@ export default function LibraryScreen({ navigation }) {
       Number(activeImportJob.processedSources || 0)
     : 0;
   const resumeImportPercent = resumeImportTotal
-    ? Math.min(
-        100,
-        Math.round((resumeImportCurrent / resumeImportTotal) * 100),
-      )
+    ? Math.min(100, Math.round((resumeImportCurrent / resumeImportTotal) * 100))
     : 0;
   const filteredIntegrityCategoryCounts = useMemo(() => {
     const counts =
@@ -1763,7 +1803,9 @@ export default function LibraryScreen({ navigation }) {
     const query = integritySearch.trim().toLowerCase();
     if (!query) return counts;
     return counts.filter(([category]) =>
-      String(category || "").toLowerCase().includes(query),
+      String(category || "")
+        .toLowerCase()
+        .includes(query),
     );
   }, [integrityReport, integritySearch]);
 
@@ -1817,15 +1859,21 @@ export default function LibraryScreen({ navigation }) {
     setSearchPage(0);
   }, []);
 
-  const selectLibraryFilter = useCallback((id) => {
-    leaveHashtagMode();
-    setFolderFilter(String(id));
-  }, [leaveHashtagMode]);
+  const selectLibraryFilter = useCallback(
+    (id) => {
+      leaveHashtagMode();
+      setFolderFilter(String(id));
+    },
+    [leaveHashtagMode],
+  );
 
-  const selectNewsView = useCallback((view) => {
-    leaveHashtagMode();
-    setNewsView(view);
-  }, [leaveHashtagMode]);
+  const selectNewsView = useCallback(
+    (view) => {
+      leaveHashtagMode();
+      setNewsView(view);
+    },
+    [leaveHashtagMode],
+  );
 
   const showNewsArticles = useCallback(() => {
     leaveHashtagMode();
@@ -1947,7 +1995,9 @@ export default function LibraryScreen({ navigation }) {
               });
               processedSources += Number(sourceSyncResult?.processed || 0);
               createdSources += Number(
-                sourceSyncResult?.created || sourceSyncResult?.createdSources || 0,
+                sourceSyncResult?.created ||
+                  sourceSyncResult?.createdSources ||
+                  0,
               );
               setSlowTask({
                 kind: "integrity",
@@ -1970,9 +2020,7 @@ export default function LibraryScreen({ navigation }) {
             while (true) {
               normalizationResult = await normalizeAndDeduplicate({
                 batchSize: 80,
-                ...(normalizationCursor
-                  ? { cursor: normalizationCursor }
-                  : {}),
+                ...(normalizationCursor ? { cursor: normalizationCursor } : {}),
               });
               correctedPosts += Number(
                 normalizationResult?.correctedNewsPosts || 0,
@@ -1990,8 +2038,7 @@ export default function LibraryScreen({ navigation }) {
                 message: `Normalizando enlaces (lote ${normalizedBatches})…`,
               });
               if (normalizationResult?.isDone) break;
-              normalizationCursor =
-                normalizationResult?.continueCursor || null;
+              normalizationCursor = normalizationResult?.continueCursor || null;
               if (!normalizationCursor) break;
             }
 
@@ -2013,7 +2060,10 @@ export default function LibraryScreen({ navigation }) {
                 kind: "integrity",
                 title: "Comprobando integridad",
                 message: `Extrayendo hashtags de títulos (lote ${hashtagBatches})…`,
-                current: Math.min(hashtagProcessed, before.newsPosts || before.totalLinks),
+                current: Math.min(
+                  hashtagProcessed,
+                  before.newsPosts || before.totalLinks,
+                ),
                 total: before.newsPosts || before.totalLinks,
               });
               if (hashtagResult?.isDone) break;
@@ -2284,7 +2334,10 @@ export default function LibraryScreen({ navigation }) {
     if (!value) return;
     try {
       await Clipboard.setStringAsync(value);
-      safeAlert("URL copiada", "La dirección del post se ha copiado al portapapeles.");
+      safeAlert(
+        "URL copiada",
+        "La dirección del post se ha copiado al portapapeles.",
+      );
     } catch (error) {
       safeAlert(
         "No se pudo copiar",
@@ -2447,7 +2500,9 @@ export default function LibraryScreen({ navigation }) {
             jobId: job._id,
             status: "running",
             phase:
-              Number(job.processedLinks || 0) >= totalLinks ? "sources" : "links",
+              Number(job.processedLinks || 0) >= totalLinks
+                ? "sources"
+                : "links",
           }),
         );
 
@@ -2574,12 +2629,8 @@ export default function LibraryScreen({ navigation }) {
 
         while (processedSources < totalSources) {
           const start = processedSources;
-          const end = Math.min(
-            start + IMPORT_SOURCE_BATCH_SIZE,
-            totalSources,
-          );
-          const batchNumber =
-            Math.floor(start / IMPORT_SOURCE_BATCH_SIZE) + 1;
+          const end = Math.min(start + IMPORT_SOURCE_BATCH_SIZE, totalSources);
+          const batchNumber = Math.floor(start / IMPORT_SOURCE_BATCH_SIZE) + 1;
           setSlowTask({
             kind: "import",
             title: "Importando Biblioteca",
@@ -2644,7 +2695,8 @@ export default function LibraryScreen({ navigation }) {
             jobId: job._id,
             status: "interrupted",
             lastError:
-              error?.message || "La conexión se interrumpió durante la importación.",
+              error?.message ||
+              "La conexión se interrumpió durante la importación.",
           });
         } catch (checkpointError) {
           console.warn(
@@ -2763,7 +2815,9 @@ export default function LibraryScreen({ navigation }) {
         title: "Preparando importación",
         message: "Preparando los enlaces seleccionados…",
         current: 0,
-        total: Array.isArray(selectedData?.links) ? selectedData.links.length : 0,
+        total: Array.isArray(selectedData?.links)
+          ? selectedData.links.length
+          : 0,
       });
 
       let job = null;
@@ -2996,7 +3050,10 @@ export default function LibraryScreen({ navigation }) {
     ? importReview?.linkCount || 0
     : importCategories
         .filter((category) => selectedImportCategoryKeys.includes(category.key))
-        .reduce((total, category) => total + Number(category.linkCount || 0), 0);
+        .reduce(
+          (total, category) => total + Number(category.linkCount || 0),
+          0,
+        );
   const importMetadataEnrichmentDisabled =
     selectedImportLinkCount > IMPORT_ENRICH_LIMIT;
 
@@ -3080,7 +3137,8 @@ export default function LibraryScreen({ navigation }) {
       });
       if (result.canceled) return;
       const asset = result.assets?.[0];
-      if (!asset?.uri) throw new Error("No se pudo leer el fichero seleccionado.");
+      if (!asset?.uri)
+        throw new Error("No se pudo leer el fichero seleccionado.");
 
       setSlowTask({
         kind: "integrity",
@@ -3121,10 +3179,13 @@ export default function LibraryScreen({ navigation }) {
     if (!integrityReport?.repairedBackup || backupBusy) return;
     setBackupBusy(true);
     try {
-      const filename = integrityReport.repairedFileName || "shopp-biblioteca-reparado.json";
+      const filename =
+        integrityReport.repairedFileName || "shopp-biblioteca-reparado.json";
       const json = JSON.stringify(integrityReport.repairedBackup, null, 2);
       if (Platform.OS === "web" && typeof document !== "undefined") {
-        const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+        const blob = new Blob([json], {
+          type: "application/json;charset=utf-8",
+        });
         const objectUrl = URL.createObjectURL(blob);
         const anchor = document.createElement("a");
         anchor.href = objectUrl;
@@ -3138,10 +3199,16 @@ export default function LibraryScreen({ navigation }) {
         await FileSystem.writeAsStringAsync(fileUri, json, {
           encoding: FileSystem.EncodingType.UTF8,
         });
-        safeAlert("Copia reparada", `Se ha guardado ${filename} en el almacenamiento de Shopp.\n\n${fileUri}`);
+        safeAlert(
+          "Copia reparada",
+          `Se ha guardado ${filename} en el almacenamiento de Shopp.\n\n${fileUri}`,
+        );
       }
     } catch (error) {
-      safeAlert("No se pudo crear la copia", error?.message || "Inténtalo de nuevo.");
+      safeAlert(
+        "No se pudo crear la copia",
+        error?.message || "Inténtalo de nuevo.",
+      );
     } finally {
       setBackupBusy(false);
     }
@@ -3263,7 +3330,8 @@ export default function LibraryScreen({ navigation }) {
                 disabled={!search.trim() || Boolean(pendingSearchTerm)}
                 style={[
                   styles.searchSubmitButton,
-                  (!search.trim() || pendingSearchTerm) && styles.buttonDisabled,
+                  (!search.trim() || pendingSearchTerm) &&
+                    styles.buttonDisabled,
                 ]}
                 accessibilityLabel="Iniciar búsqueda"
               >
@@ -3319,29 +3387,36 @@ export default function LibraryScreen({ navigation }) {
                   </View>
                   <Text style={styles.slowTaskProgressText}>
                     {Number(slowTask.current || 0).toLocaleString("es-ES")} de{" "}
-                    {Number(slowTask.total).toLocaleString("es-ES")} ({slowTaskPercent}%)
+                    {Number(slowTask.total).toLocaleString("es-ES")} (
+                    {slowTaskPercent}%)
                   </Text>
                 </View>
               ) : null}
               {slowTask?.kind === "import" ? (
                 <>
                   <Text style={styles.slowTaskHint}>
-                    El progreso se guarda después de cada lote. Si la conexión se
-                    interrumpe podrás continuar desde el último punto confirmado.
+                    El progreso se guarda después de cada lote. Si la conexión
+                    se interrumpe podrás continuar desde el último punto
+                    confirmado.
                   </Text>
                   {slowTask?.canPause ? (
                     <Pressable
                       onPress={handlePauseImport}
-                      style={[styles.cancelButton, { marginTop: 14, alignSelf: "stretch" }]}
+                      style={[
+                        styles.cancelButton,
+                        { marginTop: 14, alignSelf: "stretch" },
+                      ]}
                     >
-                      <Text style={styles.cancelText}>Pausar después de este lote</Text>
+                      <Text style={styles.cancelText}>
+                        Pausar después de este lote
+                      </Text>
                     </Pressable>
                   ) : null}
                 </>
               ) : (
                 <Text style={styles.slowTaskHint}>
-                  Esta tarea no se puede cancelar. No cierres, recargues ni salgas
-                  de la aplicación hasta que termine.
+                  Esta tarea no se puede cancelar. No cierres, recargues ni
+                  salgas de la aplicación hasta que termine.
                 </Text>
               )}
             </View>
@@ -3349,7 +3424,9 @@ export default function LibraryScreen({ navigation }) {
         </Modal>
 
         <Modal
-          visible={Boolean(activeImportJob) && resumeImportModalVisible && !backupBusy}
+          visible={
+            Boolean(activeImportJob) && resumeImportModalVisible && !backupBusy
+          }
           transparent
           animationType="fade"
           onRequestClose={() => setResumeImportModalVisible(false)}
@@ -3357,7 +3434,11 @@ export default function LibraryScreen({ navigation }) {
         >
           <View style={styles.slowTaskBackdrop}>
             <View style={styles.slowTaskCard}>
-              <Ionicons name="cloud-offline-outline" size={34} color="#2563eb" />
+              <Ionicons
+                name="cloud-offline-outline"
+                size={34}
+                color="#2563eb"
+              />
               <Text style={styles.slowTaskTitle}>Importación pendiente</Text>
               <Text style={styles.slowTaskMessage} numberOfLines={2}>
                 {activeImportJob?.fileName || "Biblioteca.json"}
@@ -3374,7 +3455,8 @@ export default function LibraryScreen({ navigation }) {
                   </View>
                   <Text style={styles.slowTaskProgressText}>
                     {resumeImportCurrent.toLocaleString("es-ES")} de{" "}
-                    {resumeImportTotal.toLocaleString("es-ES")} ({resumeImportPercent}%)
+                    {resumeImportTotal.toLocaleString("es-ES")} (
+                    {resumeImportPercent}%)
                   </Text>
                 </View>
               ) : null}
@@ -3482,7 +3564,11 @@ export default function LibraryScreen({ navigation }) {
                       backupBusy && styles.buttonDisabled,
                     ]}
                   >
-                    <Ionicons name="refresh-circle-outline" size={17} color="#2563eb" />
+                    <Ionicons
+                      name="refresh-circle-outline"
+                      size={17}
+                      color="#2563eb"
+                    />
                     <Text style={styles.backupButtonText}>
                       Continuar importación
                     </Text>
@@ -3527,7 +3613,9 @@ export default function LibraryScreen({ navigation }) {
                     size={17}
                     color="#2563eb"
                   />
-                  <Text style={styles.backupButtonText}>Comprobar JSON local</Text>
+                  <Text style={styles.backupButtonText}>
+                    Comprobar JSON local
+                  </Text>
                 </Pressable>
               </View>
 
@@ -3563,7 +3651,8 @@ export default function LibraryScreen({ navigation }) {
                     accessibilityState={{ selected: libraryView === "minimal" }}
                     style={[
                       styles.displayModeButton,
-                      libraryView === "minimal" && styles.displayModeButtonActive,
+                      libraryView === "minimal" &&
+                        styles.displayModeButtonActive,
                     ]}
                   >
                     <Ionicons
@@ -3574,7 +3663,8 @@ export default function LibraryScreen({ navigation }) {
                     <Text
                       style={[
                         styles.displayModeText,
-                        libraryView === "minimal" && styles.displayModeTextActive,
+                        libraryView === "minimal" &&
+                          styles.displayModeTextActive,
                       ]}
                     >
                       Minimal
@@ -3591,7 +3681,11 @@ export default function LibraryScreen({ navigation }) {
                     style={[styles.backupButton, styles.toolsModalActionButton]}
                     accessibilityLabel="Mostrar todos los hashtags de noticias"
                   >
-                    <Ionicons name="pricetags-outline" size={17} color="#2563eb" />
+                    <Ionicons
+                      name="pricetags-outline"
+                      size={17}
+                      color="#2563eb"
+                    />
                     <Text style={styles.backupButtonText}>
                       Hashtags de noticias
                       {Array.isArray(globalHashtags)
@@ -3618,8 +3712,14 @@ export default function LibraryScreen({ navigation }) {
             <View style={[styles.modalCard, styles.hashtagCatalogModalCard]}>
               <View style={styles.hashtagCatalogHeader}>
                 <View style={styles.hashtagCatalogTitleRow}>
-                  <Ionicons name="pricetags-outline" size={20} color="#2563eb" />
-                  <Text style={styles.hashtagCatalogTitle}>Hashtags de noticias</Text>
+                  <Ionicons
+                    name="pricetags-outline"
+                    size={20}
+                    color="#2563eb"
+                  />
+                  <Text style={styles.hashtagCatalogTitle}>
+                    Hashtags de noticias
+                  </Text>
                 </View>
                 <Pressable
                   onPress={() => setHashtagModalVisible(false)}
@@ -3631,7 +3731,8 @@ export default function LibraryScreen({ navigation }) {
               </View>
 
               <Text style={styles.hashtagCatalogSubtitle}>
-                Los hashtags se guardan sin # y se muestran con el símbolo en pantalla.
+                Los hashtags se guardan sin # y se muestran con el símbolo en
+                pantalla.
               </Text>
 
               {Array.isArray(globalHashtags) ? (
@@ -3654,7 +3755,11 @@ export default function LibraryScreen({ navigation }) {
                         onPress={() => setHashtagSearch("")}
                         accessibilityLabel="Limpiar búsqueda de hashtags"
                       >
-                        <Ionicons name="close-circle" size={19} color="#94a3b8" />
+                        <Ionicons
+                          name="close-circle"
+                          size={19}
+                          color="#94a3b8"
+                        />
                       </Pressable>
                     ) : null}
                   </View>
@@ -3670,7 +3775,9 @@ export default function LibraryScreen({ navigation }) {
                       }}
                       accessibilityLabel="Actualizar lista de hashtags"
                     >
-                      <Text style={styles.hashtagCatalogRefresh}>Actualizar</Text>
+                      <Text style={styles.hashtagCatalogRefresh}>
+                        Actualizar
+                      </Text>
                     </Pressable>
                   </View>
 
@@ -3682,15 +3789,15 @@ export default function LibraryScreen({ navigation }) {
                     {filteredGlobalHashtags.map((entry) => {
                       const { tag, count } = entry;
                       return (
-                      <Pressable
-                        key={tag}
-                        onPress={() => selectHashtag(entry)}
-                        style={styles.toolsHashtagChip}
-                        accessibilityLabel={`Filtrar por #${tag}, ${count} noticias`}
-                      >
-                        <Text style={styles.toolsHashtagText}>#{tag}</Text>
-                        <Text style={styles.toolsHashtagCount}>{count}</Text>
-                      </Pressable>
+                        <Pressable
+                          key={tag}
+                          onPress={() => selectHashtag(entry)}
+                          style={styles.toolsHashtagChip}
+                          accessibilityLabel={`Filtrar por #${tag}, ${count} noticias`}
+                        >
+                          <Text style={styles.toolsHashtagText}>#{tag}</Text>
+                          <Text style={styles.toolsHashtagCount}>{count}</Text>
+                        </Pressable>
                       );
                     })}
                     {!filteredGlobalHashtags.length ? (
@@ -3845,7 +3952,9 @@ export default function LibraryScreen({ navigation }) {
               accessibilityLabel={`Quitar filtro #${selectedHashtagFilter.tag} y mostrar noticias`}
             >
               <Ionicons name="close" size={17} color="#1d4ed8" />
-              <Text style={styles.activeHashtagFilterClearText}>Mostrar noticias</Text>
+              <Text style={styles.activeHashtagFilterClearText}>
+                Mostrar noticias
+              </Text>
             </Pressable>
           </View>
         ) : null}
@@ -4140,11 +4249,7 @@ export default function LibraryScreen({ navigation }) {
                 ]}
                 accessibilityLabel="Página siguiente"
               >
-                <Ionicons
-                  name="chevron-forward"
-                  size={17}
-                  color="#2563eb"
-                />
+                <Ionicons name="chevron-forward" size={17} color="#2563eb" />
               </Pressable>
             </View>
           ) : null}
@@ -4234,7 +4339,11 @@ export default function LibraryScreen({ navigation }) {
                         style={styles.sourceMinimalButton}
                         accessibilityLabel="Opciones"
                       >
-                        <Ionicons name="ellipsis-horizontal" size={20} color="#475569" />
+                        <Ionicons
+                          name="ellipsis-horizontal"
+                          size={20}
+                          color="#475569"
+                        />
                       </Pressable>
                     </View>
                   </View>
@@ -4275,7 +4384,11 @@ export default function LibraryScreen({ navigation }) {
                       style={styles.sourceTileButton}
                       accessibilityLabel="Opciones"
                     >
-                      <Ionicons name="ellipsis-horizontal" size={20} color="#475569" />
+                      <Ionicons
+                        name="ellipsis-horizontal"
+                        size={20}
+                        color="#475569"
+                      />
                     </Pressable>
                   </View>
                 </View>
@@ -4286,61 +4399,74 @@ export default function LibraryScreen({ navigation }) {
                 <View
                   style={[
                     styles.minimalLinkCard,
-                    isInformaticaFolder(folder) && styles.minimalLinkCardDetailed,
+                    isInformaticaFolder(folder) &&
+                      styles.minimalLinkCardDetailed,
                   ]}
                 >
                   <View style={styles.minimalLinkMain}>
-                  <Pressable
-                    style={styles.minimalLinkOpenArea}
-                    onPress={() => Linking.openURL(item.normalizedUrl)}
-                    accessibilityLabel={`Abrir ${item.customTitle || getLinkDomain(item)}`}
-                  >
-                    <DomainFavicon hostname={getLinkDomain(item)} />
-                    <View style={styles.minimalLinkText}>
-                      <Text style={styles.minimalLinkDomain} numberOfLines={1}>
-                        {getLinkDomain(item)}
-                      </Text>
-                      <MinimalLinkTitle
-                        item={item}
-                        previewMode={
-                          isInformaticaFolder(folder) ? "document" : "default"
-                        }
-                      />
-                      {formatLinkDate(
-                        item.publishedAt || item.createdAt || item.updatedAt,
-                      ) ? (
-                        <Text style={styles.minimalLinkDate}>
-                          {formatLinkDate(
-                            item.publishedAt || item.createdAt || item.updatedAt,
-                          )}
-                        </Text>
-                      ) : null}
-                      {item.notes ? (
-                        <Text style={styles.minimalLinkNotes} numberOfLines={2}>
-                          {item.notes}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </Pressable>
-                  {item.hashtags?.length ? (
-                    <View style={styles.minimalHashtagRow}>
-                      {item.hashtags.map((tag) => (
-                        <Pressable
-                          key={tag}
-                          onPress={() => startSearch(tag)}
-                          accessibilityLabel={`Buscar #${tag}`}
+                    <Pressable
+                      style={styles.minimalLinkOpenArea}
+                      onPress={() => Linking.openURL(item.normalizedUrl)}
+                      accessibilityLabel={`Abrir ${item.customTitle || getLinkDomain(item)}`}
+                    >
+                      <DomainFavicon hostname={getLinkDomain(item)} />
+                      <View style={styles.minimalLinkText}>
+                        <Text
+                          style={styles.minimalLinkDomain}
+                          numberOfLines={1}
                         >
-                          <Text style={styles.minimalHashtag}>#{tag}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  ) : null}
+                          {getLinkDomain(item)}
+                        </Text>
+                        <MinimalLinkTitle
+                          item={item}
+                          previewMode={
+                            isInformaticaFolder(folder) ? "document" : "default"
+                          }
+                        />
+                        {formatLinkDate(
+                          item.publishedAt || item.createdAt || item.updatedAt,
+                        ) ? (
+                          <Text style={styles.minimalLinkDate}>
+                            {formatLinkDate(
+                              item.publishedAt ||
+                                item.createdAt ||
+                                item.updatedAt,
+                            )}
+                          </Text>
+                        ) : null}
+                        {item.notes ? (
+                          <Text
+                            style={styles.minimalLinkNotes}
+                            numberOfLines={2}
+                          >
+                            {item.notes}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </Pressable>
+                    {item.hashtags?.length ? (
+                      <View style={styles.minimalHashtagRow}>
+                        {item.hashtags.map((tag) => (
+                          <Pressable
+                            key={tag}
+                            onPress={() => startSearch(tag)}
+                            accessibilityLabel={`Buscar #${tag}`}
+                          >
+                            <Text style={styles.minimalHashtag}>#{tag}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : null}
                   </View>
                   <View style={styles.minimalLinkActions}>
                     <Pressable
                       onPress={() => toggleFavorite({ linkId: item._id })}
                       style={styles.minimalLinkButton}
-                      accessibilityLabel={item.favorite ? "Quitar de favoritos" : "Añadir a favoritos"}
+                      accessibilityLabel={
+                        item.favorite
+                          ? "Quitar de favoritos"
+                          : "Añadir a favoritos"
+                      }
                     >
                       <Ionicons
                         name={item.favorite ? "star" : "star-outline"}
@@ -4353,7 +4479,11 @@ export default function LibraryScreen({ navigation }) {
                       style={styles.minimalLinkButton}
                       accessibilityLabel="Más opciones"
                     >
-                      <Ionicons name="ellipsis-horizontal" size={19} color="#475569" />
+                      <Ionicons
+                        name="ellipsis-horizontal"
+                        size={19}
+                        color="#475569"
+                      />
                     </Pressable>
                   </View>
                 </View>
@@ -4407,7 +4537,11 @@ export default function LibraryScreen({ navigation }) {
                     <Pressable
                       onPress={() => toggleFavorite({ linkId: item._id })}
                       style={styles.iconButton}
-                      accessibilityLabel={item.favorite ? "Quitar de favoritos" : "Añadir a favoritos"}
+                      accessibilityLabel={
+                        item.favorite
+                          ? "Quitar de favoritos"
+                          : "Añadir a favoritos"
+                      }
                     >
                       <Ionicons
                         name={item.favorite ? "star" : "star-outline"}
@@ -4420,7 +4554,11 @@ export default function LibraryScreen({ navigation }) {
                       style={styles.iconButton}
                       accessibilityLabel="Más opciones"
                     >
-                      <Ionicons name="ellipsis-horizontal" size={19} color="#475569" />
+                      <Ionicons
+                        name="ellipsis-horizontal"
+                        size={19}
+                        color="#475569"
+                      />
                     </Pressable>
                   </View>
                 </View>
@@ -4452,18 +4590,24 @@ export default function LibraryScreen({ navigation }) {
             <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>Integridad local del JSON</Text>
               <Text style={styles.integrityLocalHint}>
-                Se ha analizado {integrityReport?.fileName || "la copia"} sin leer ni modificar Convex.
+                Se ha analizado {integrityReport?.fileName || "la copia"} sin
+                leer ni modificar Convex.
               </Text>
               <View style={styles.integritySummaryBox}>
                 <Text style={styles.integritySummaryText}>
-                  {integrityReport?.before?.totalLinks || 0} enlaces originales ·{" "}
-                  {integrityReport?.after?.totalLinks || 0} en la copia reparada
+                  {integrityReport?.before?.totalLinks || 0} enlaces originales
+                  · {integrityReport?.after?.totalLinks || 0} en la copia
+                  reparada
                 </Text>
                 <Text style={styles.integritySummaryText}>
-                  URL normalizadas: {integrityReport?.summary?.normalizedUrls || 0} · Duplicados eliminados: {integrityReport?.summary?.duplicatesRemoved || 0}
+                  URL normalizadas:{" "}
+                  {integrityReport?.summary?.normalizedUrls || 0} · Duplicados
+                  eliminados: {integrityReport?.summary?.duplicatesRemoved || 0}
                 </Text>
                 <Text style={styles.integritySummaryText}>
-                  Tipos corregidos: {integrityReport?.summary?.typeCorrections || 0} · Periódicos añadidos: {integrityReport?.summary?.sourcesAdded || 0}
+                  Tipos corregidos:{" "}
+                  {integrityReport?.summary?.typeCorrections || 0} · Periódicos
+                  añadidos: {integrityReport?.summary?.sourcesAdded || 0}
                 </Text>
               </View>
               {integrityReport?.before?.missingSourceDomains?.length ? (
@@ -4488,10 +4632,13 @@ export default function LibraryScreen({ navigation }) {
               )}
               {integrityReport?.summary?.invalidUrls ? (
                 <Text style={styles.integrityWarningLegacy}>
-                  Enlaces descartados por URL no válida: {integrityReport.summary.invalidUrls}
+                  Enlaces descartados por URL no válida:{" "}
+                  {integrityReport.summary.invalidUrls}
                 </Text>
               ) : null}
-              <Text style={styles.fieldLabel}>Enlaces reparados por categoría</Text>
+              <Text style={styles.fieldLabel}>
+                Enlaces reparados por categoría
+              </Text>
               <View style={styles.integritySearchRow}>
                 <Ionicons name="search-outline" size={16} color="#64748b" />
                 <TextInput
@@ -4539,10 +4686,16 @@ export default function LibraryScreen({ navigation }) {
                 <Pressable
                   onPress={downloadRepairedIntegrityBackup}
                   disabled={backupBusy}
-                  style={[styles.backupButton, styles.integrityDownloadButton, backupBusy && styles.buttonDisabled]}
+                  style={[
+                    styles.backupButton,
+                    styles.integrityDownloadButton,
+                    backupBusy && styles.buttonDisabled,
+                  ]}
                 >
                   <Ionicons name="download-outline" size={17} color="#047857" />
-                  <Text style={styles.integrityButtonText}>Descargar JSON reparado</Text>
+                  <Text style={styles.integrityButtonText}>
+                    Descargar JSON reparado
+                  </Text>
                 </Pressable>
                 <Pressable
                   onPress={closeIntegrityReport}
@@ -4578,11 +4731,13 @@ export default function LibraryScreen({ navigation }) {
                 </Text>
                 <Text style={styles.integritySummaryText}>
                   URL normalizadas: {integrityReport?.normalizedCount || 0} ·{" "}
-                  Duplicados eliminados: {integrityReport?.duplicatesRemoved || 0}
+                  Duplicados eliminados:{" "}
+                  {integrityReport?.duplicatesRemoved || 0}
                 </Text>
                 <Text style={styles.integritySummaryText}>
-                  Hashtags añadidos desde títulos: {integrityReport?.titleHashtagsAdded || 0} ·{" "}
-                  Noticias actualizadas: {integrityReport?.hashtagUpdated || 0}
+                  Hashtags añadidos desde títulos:{" "}
+                  {integrityReport?.titleHashtagsAdded || 0} · Noticias
+                  actualizadas: {integrityReport?.hashtagUpdated || 0}
                 </Text>
               </View>
               {integrityReport?.missingSourceDomains?.length ? (
@@ -5119,7 +5274,12 @@ export default function LibraryScreen({ navigation }) {
                   linkActions?.url &&
                   linkActions.normalizedUrl !== linkActions.url ? (
                     <>
-                      <Text style={[styles.linkUrlLabel, styles.linkNormalizedUrlLabel]}>
+                      <Text
+                        style={[
+                          styles.linkUrlLabel,
+                          styles.linkNormalizedUrlLabel,
+                        ]}
+                      >
                         URL normalizada
                       </Text>
                       <Text style={styles.linkUrlNormalizedText} selectable>
@@ -5130,7 +5290,9 @@ export default function LibraryScreen({ navigation }) {
                   <View style={styles.linkUrlActions}>
                     <Pressable
                       onPress={() =>
-                        openSourceUrl(linkActions?.url || linkActions?.normalizedUrl)
+                        openSourceUrl(
+                          linkActions?.url || linkActions?.normalizedUrl,
+                        )
                       }
                       style={styles.linkUrlActionButton}
                     >
@@ -5139,7 +5301,9 @@ export default function LibraryScreen({ navigation }) {
                     </Pressable>
                     <Pressable
                       onPress={() =>
-                        copyLinkUrl(linkActions?.url || linkActions?.normalizedUrl)
+                        copyLinkUrl(
+                          linkActions?.url || linkActions?.normalizedUrl,
+                        )
                       }
                       style={styles.linkUrlActionButton}
                     >
@@ -5151,28 +5315,81 @@ export default function LibraryScreen({ navigation }) {
               ) : null}
               {["newsSource", "bookStore"].includes(linkActions?.linkType) ? (
                 <>
-                  <Pressable onPress={() => { const link = linkActions; setLinkActions(null); openSourceEditor(link); }} style={styles.linkActionOption}>
+                  <Pressable
+                    onPress={() => {
+                      const link = linkActions;
+                      setLinkActions(null);
+                      openSourceEditor(link);
+                    }}
+                    style={styles.linkActionOption}
+                  >
                     <Ionicons name="create-outline" size={20} color="#475569" />
-                    <Text style={styles.linkActionText}>{linkActions?.linkType === "bookStore" ? "Editar tienda" : "Editar periódico"}</Text>
+                    <Text style={styles.linkActionText}>
+                      {linkActions?.linkType === "bookStore"
+                        ? "Editar tienda"
+                        : "Editar periódico"}
+                    </Text>
                   </Pressable>
-                  <Pressable onPress={() => { const link = linkActions; setLinkActions(null); confirmRemoveSource(link); }} style={[styles.linkActionOption, styles.linkActionOptionDanger]}>
+                  <Pressable
+                    onPress={() => {
+                      const link = linkActions;
+                      setLinkActions(null);
+                      confirmRemoveSource(link);
+                    }}
+                    style={[
+                      styles.linkActionOption,
+                      styles.linkActionOptionDanger,
+                    ]}
+                  >
                     <Ionicons name="trash-outline" size={20} color="#dc2626" />
                     <Text style={styles.linkActionDangerText}>Eliminar</Text>
                   </Pressable>
                 </>
               ) : (
                 <>
-                  <Pressable onPress={() => { const link = linkActions; setLinkActions(null); openMetadataEditor(link); }} style={styles.linkActionOption}>
+                  <Pressable
+                    onPress={() => {
+                      const link = linkActions;
+                      setLinkActions(null);
+                      openMetadataEditor(link);
+                    }}
+                    style={styles.linkActionOption}
+                  >
                     <Ionicons name="create-outline" size={20} color="#475569" />
-                    <Text style={styles.linkActionText}>Editar comentario y hashtags</Text>
+                    <Text style={styles.linkActionText}>
+                      Editar comentario y hashtags
+                    </Text>
                   </Pressable>
-                  <Pressable onPress={() => { const link = linkActions; setLinkActions(null); setMovingLink(link); }} style={styles.linkActionOption}>
-                    <Ionicons name="folder-open-outline" size={20} color="#2563eb" />
+                  <Pressable
+                    onPress={() => {
+                      const link = linkActions;
+                      setLinkActions(null);
+                      setMovingLink(link);
+                    }}
+                    style={styles.linkActionOption}
+                  >
+                    <Ionicons
+                      name="folder-open-outline"
+                      size={20}
+                      color="#2563eb"
+                    />
                     <Text style={styles.linkActionText}>Mover a categoría</Text>
                   </Pressable>
-                  <Pressable onPress={() => { const link = linkActions; setLinkActions(null); confirmRemoveLink(link); }} style={[styles.linkActionOption, styles.linkActionOptionDanger]}>
+                  <Pressable
+                    onPress={() => {
+                      const link = linkActions;
+                      setLinkActions(null);
+                      confirmRemoveLink(link);
+                    }}
+                    style={[
+                      styles.linkActionOption,
+                      styles.linkActionOptionDanger,
+                    ]}
+                  >
                     <Ionicons name="trash-outline" size={20} color="#dc2626" />
-                    <Text style={styles.linkActionDangerText}>Eliminar enlace</Text>
+                    <Text style={styles.linkActionDangerText}>
+                      Eliminar enlace
+                    </Text>
                   </Pressable>
                 </>
               )}
@@ -5460,9 +5677,24 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     alignItems: "center",
   },
-  searchLoadingTitle: { marginTop: 14, fontSize: 17, fontWeight: "900", color: "#0f172a" },
-  searchLoadingText: { marginTop: 7, fontSize: 13, textAlign: "center", color: "#475569" },
-  searchLoadingHint: { marginTop: 8, fontSize: 11, textAlign: "center", color: "#64748b" },
+  searchLoadingTitle: {
+    marginTop: 14,
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#0f172a",
+  },
+  searchLoadingText: {
+    marginTop: 7,
+    fontSize: 13,
+    textAlign: "center",
+    color: "#475569",
+  },
+  searchLoadingHint: {
+    marginTop: 8,
+    fontSize: 11,
+    textAlign: "center",
+    color: "#64748b",
+  },
   toolsModalCard: {
     width: 430,
     maxHeight: "82%",
@@ -5485,8 +5717,18 @@ const styles = StyleSheet.create({
   },
   toolsModalTitle: { fontSize: 17, fontWeight: "900", color: "#111827" },
   linkActionsModalCard: { maxWidth: 390 },
-  linkActionsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  linkActionsTitle: { marginTop: 4, marginBottom: 12, fontSize: 12, color: "#64748b" },
+  linkActionsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  linkActionsTitle: {
+    marginTop: 4,
+    marginBottom: 12,
+    fontSize: 12,
+    color: "#64748b",
+  },
   linkUrlBox: {
     marginBottom: 8,
     padding: 10,
@@ -5523,10 +5765,29 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   linkUrlActionText: { fontSize: 11, fontWeight: "800", color: "#2563eb" },
-  linkActionOption: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: "#f8fafc", marginTop: 7 },
+  linkActionOption: {
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: "#f8fafc",
+    marginTop: 7,
+  },
   linkActionOptionDanger: { backgroundColor: "#fff7f7" },
-  linkActionText: { flex: 1, fontSize: 13, fontWeight: "800", color: "#334155" },
-  linkActionDangerText: { flex: 1, fontSize: 13, fontWeight: "800", color: "#dc2626" },
+  linkActionText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#334155",
+  },
+  linkActionDangerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#dc2626",
+  },
   toolsModalClose: {
     width: 48,
     height: 48,
