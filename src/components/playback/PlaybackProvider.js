@@ -11,6 +11,14 @@ import { getLocalLyrics } from "@/src/storage/lyricsStorage";
 const PlaybackContext = createContext(null);
 const EMPTY_STATUS = { state: -1, time: 0, duration: 0, ready: false, videoIds: [], playlistIndex: 0 };
 const trackKey = (item) => `${item?.kind || "single"}:${item?.videoId || item?.playlistId || item?.url || ""}`;
+// Avenir Next is the typeface used by the reference card. The web fallback
+// stack and Android's light sans-serif keep a similar geometric appearance.
+const CARD_FONT = Platform.select({
+  ios: "Avenir Next",
+  android: "sans-serif-light",
+  web: "Avenir Next, Avenir, Century Gothic, Helvetica Neue, sans-serif",
+  default: undefined,
+});
 export function usePlayback() {
   const value = useContext(PlaybackContext);
   if (!value) throw new Error("PlaybackProvider is required");
@@ -23,7 +31,7 @@ function IconButton({ name, label, onPress, disabled = false }) {
   </Pressable>;
 }
 
-function SyncedLyricLine({ track, uri, time }) {
+function SyncedLyricLine({ track, uri, time, compact = false }) {
   const [lines, setLines] = useState([]);
   useEffect(() => {
     let cancelled = false;
@@ -58,7 +66,7 @@ function SyncedLyricLine({ track, uri, time }) {
   if (!text) return null;
   return <View style={styles.cardLyric}>
     <Ionicons name="musical-notes-outline" size={14} color="#dc2626" />
-    <Text style={styles.cardLyricText} numberOfLines={2}>{text}</Text>
+    <Text style={[styles.cardLyricText, compact && styles.cardLyricTextMobile]} numberOfLines={2}>{text}</Text>
   </View>;
 }
 
@@ -339,16 +347,29 @@ export default function PlaybackProvider({ children }) {
 
                 <View style={[styles.cardRight, !wideTransport && styles.cardRightMobile]}>
                   <View style={[styles.cardUpperHalf, !wideTransport && styles.cardUpperHalfMobile]}>
-                    <Text style={[styles.cardHeadingTitle, !wideTransport && styles.cardHeadingTitleMobile]} numberOfLines={2}>{cardTitle}</Text>
+                    <View style={styles.cardTextBlock}>
+                      <Text style={[styles.cardHeadingTitle, !wideTransport && styles.cardHeadingTitleMobile]} numberOfLines={1}>{cardTitle}</Text>
+                      <SyncedLyricLine track={item} uri={active ? lyricsUri : item.lyricsUri || item.lyricsUrl}
+                        time={elapsed} compact={!wideTransport} />
+                    </View>
                     <View style={[styles.cardTimes, !wideTransport && styles.cardTimesMobile]}>
                       <Text style={[styles.cardCurrentTime, !wideTransport && styles.cardCurrentTimeMobile]}>{formatTime(elapsed)}</Text>
                       <Text style={[styles.cardTotalTime, !wideTransport && styles.cardTotalTimeMobile]}>{duration ? formatTime(duration) : "—:—"}</Text>
                     </View>
-                    <Pressable accessibilityRole="link"
-                      accessibilityLabel={tr(`Abrir ${cardTitle} en YouTube`)}
-                      onPress={() => openTrackExternal(item, active)} style={[styles.youtubeButton, !wideTransport && styles.youtubeButtonMobile]}>
-                      <Ionicons name="logo-youtube" size={wideTransport ? 30 : 22} color="#ff0000" />
-                    </Pressable>
+                  </View>
+
+                  <View style={[styles.cardProgressRow, !wideTransport && styles.cardProgressRowMobile]}>
+                    <Slider
+                      style={styles.cardProgressSlider}
+                      minimumValue={0}
+                      maximumValue={Math.max(duration || 0, 1)}
+                      value={Math.min(elapsed || 0, Math.max(duration || 0, 1))}
+                      disabled={!active || !status.ready || !duration}
+                      onSlidingComplete={(value) => player.current?.seek(value)}
+                      minimumTrackTintColor="#ec1970"
+                      maximumTrackTintColor="#d7d9dc"
+                      thumbTintColor="transparent"
+                    />
                   </View>
 
                   <View style={[styles.cardLowerHalf, !wideTransport && styles.cardLowerHalfMobile]}>
@@ -376,11 +397,19 @@ export default function PlaybackProvider({ children }) {
                       onPress={() => setShuffle((value) => !value)} style={styles.playerOptionButton}>
                       <Ionicons name="shuffle" size={22} color={shuffle ? "#ec1970" : "#9aa0a6"} />
                     </Pressable>
+                    <Pressable accessibilityRole="link"
+                      accessibilityLabel={tr(`Abrir ${cardTitle} en YouTube`)}
+                      onPress={() => openTrackExternal(item, active)} style={[styles.youtubeButton, styles.youtubeButtonLower, !wideTransport && styles.youtubeButtonMobile]}>
+                      <Ionicons name="logo-youtube" size={wideTransport ? 30 : 22} color="#ff0000" />
+                    </Pressable>
+                  </View>
+                  <View style={[styles.cardAudioSection, !wideTransport && styles.cardAudioSectionMobile]}>
                     <View style={styles.volumeControl}>
                       <Ionicons name={volume === 0 ? "volume-mute" : "volume-medium"} size={18} color="#5f6368" />
                       <Slider style={styles.volumeSlider} minimumValue={0} maximumValue={100} value={volume}
                         onValueChange={(value) => { setVolume(value); player.current?.setVolume(value); }}
                         minimumTrackTintColor="#9aa0a6" maximumTrackTintColor="#d7d9dc" thumbTintColor="#9aa0a6" />
+                      <Ionicons name="volume-high" size={18} color="#5f6368" />
                     </View>
                   </View>
                 </View>
@@ -469,11 +498,17 @@ const styles = StyleSheet.create({
   cardArtworkButton: { height: "100%", aspectRatio: 1, flexShrink: 0 },
   cardArtwork: { width: "100%", height: "100%", backgroundColor: "#27272a" },
   cardRight: { flex: 1, minWidth: 0, height: "100%", backgroundColor: "#fff" },
-  cardUpperHalf: { flex: 1, minHeight: 0, flexDirection: "row", alignItems: "flex-start", paddingTop: 18, paddingLeft: 24, paddingRight: 14, borderBottomWidth: 1, borderBottomColor: "#eceef0" },
-  cardTimes: { width: 70, flexShrink: 0, alignItems: "flex-end", paddingTop: 1 },
-  cardCurrentTime: { fontSize: 26, lineHeight: 29, fontWeight: "700", color: "#5f6368", fontVariant: ["tabular-nums"] },
-  cardTotalTime: { marginTop: 2, fontSize: 15, lineHeight: 19, fontWeight: "600", color: "#85898f", fontVariant: ["tabular-nums"] },
-  cardLowerHalf: { flex: 1, minHeight: 0, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: 10, gap: 5 },
+  cardUpperHalf: { flex: 1, minHeight: 0, flexDirection: "row", alignItems: "flex-start", paddingTop: 18, paddingLeft: 24, paddingRight: 14 },
+  cardTextBlock: { flex: 1, minWidth: 0, justifyContent: "flex-start" },
+  cardTimes: { width: 92, flexShrink: 0, alignItems: "flex-end", paddingTop: 1 },
+  cardCurrentTime: { fontFamily: CARD_FONT, fontSize: 38, lineHeight: 40, fontWeight: "400", color: "#65696e", fontVariant: ["tabular-nums"] },
+  cardTotalTime: { fontFamily: CARD_FONT, marginTop: 1, fontSize: 16, lineHeight: 19, fontWeight: "500", color: "#85898f", fontVariant: ["tabular-nums"] },
+  cardProgressRow: { height: 18, justifyContent: "center", backgroundColor: "#fff" },
+  cardProgressRowMobile: { height: 10 },
+  cardProgressSlider: { width: "100%", height: 22, ...Platform.select({ web: { touchAction: "pan-x" } }) },
+  cardLowerHalf: { height: 68, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: 10, gap: 5 },
+  cardAudioSection: { height: 38, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", paddingHorizontal: 14, backgroundColor: "#fff" },
+  cardAudioSectionMobile: { height: 28, paddingHorizontal: 7 },
   playerOptionButton: { width: 30, height: 38, alignItems: "center", justifyContent: "center" },
   volumeControl: { flex: 1, minWidth: 68, maxWidth: 130, flexDirection: "row", alignItems: "center", gap: 2 },
   volumeSlider: { flex: 1, height: 28, ...Platform.select({ web: { touchAction: "pan-x" } }) },
@@ -483,11 +518,11 @@ const styles = StyleSheet.create({
   cardRightMobile: { height: 120 },
   cardUpperHalfMobile: { paddingTop: 8, paddingLeft: 10, paddingRight: 5 },
   cardHeadingTitleMobile: { marginRight: 4, fontSize: 14, lineHeight: 17 },
-  cardTimesMobile: { width: 42 },
-  cardCurrentTimeMobile: { fontSize: 16, lineHeight: 18 },
-  cardTotalTimeMobile: { fontSize: 11, lineHeight: 13 },
-  youtubeButtonMobile: { width: 28, height: 26, marginLeft: 2 },
-  cardLowerHalfMobile: { paddingHorizontal: 7, gap: 4 },
+  cardTimesMobile: { width: 56 },
+  cardCurrentTimeMobile: { fontSize: 24, lineHeight: 26, fontWeight: "400" },
+  cardTotalTimeMobile: { fontSize: 12, lineHeight: 14 },
+  youtubeButtonMobile: { width: 28, height: 34, marginLeft: 0 },
+  cardLowerHalfMobile: { height: 44, paddingHorizontal: 7, gap: 4 },
   mobileCardHeader: { width: "100%", flexDirection: "row", alignItems: "center", gap: 12, padding: 12 },
   desktopCardHeader: { height: 112, alignItems: "flex-start", padding: 0 },
   mobileArtworkButton: { width: 82, height: 82, flexShrink: 0 },
@@ -513,8 +548,9 @@ const styles = StyleSheet.create({
   inactiveTransportPlayButton: { backgroundColor: "#fff" },
   transportPauseButton: { backgroundColor: "#fff", borderColor: "#ec1970" },
   cardHeadingRow: { width: "100%", minHeight: 32, flexDirection: "row", alignItems: "center", gap: 8 },
-  cardHeadingTitle: { flex: 1, minWidth: 0, marginRight: 12, fontSize: 23, lineHeight: 28, fontWeight: "800", color: "#202124" },
+  cardHeadingTitle: { minWidth: 0, marginRight: 12, fontFamily: CARD_FONT, fontSize: 23, lineHeight: 28, fontWeight: "600", color: "#202124" },
   youtubeButton: { width: 46, height: 38, flexShrink: 0, alignItems: "center", justifyContent: "center", marginLeft: 8, ...Platform.select({ web: { touchAction: "pan-y" } }) },
+  youtubeButtonLower: { marginLeft: 2 },
   timelineBlock: { flex: 1, minWidth: 180, gap: 1 },
   timeLabels: { width: "100%", flexDirection: "row", alignItems: "center", gap: 8 },
   transportTitle: { flex: 1, minWidth: 0, fontSize: 11, fontWeight: "700", color: "#73777d", textAlign: "center" },
@@ -530,9 +566,10 @@ const styles = StyleSheet.create({
   trackTime: { marginTop: 7, fontSize: 12, fontWeight: "700", color: "#d1d5db", fontVariant: ["tabular-nums"] },
   meta: { fontSize: 10, color: "#9ca3af", marginVertical: 3 },
   albumVideos: { gap: 7, paddingTop: 10 },
-  cardLyric: { width: "100%", minHeight: 38, paddingHorizontal: 10, paddingVertical: 7, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: "#fafafa", borderRadius: 0, marginTop: 4 },
+  cardLyric: { minWidth: 0, minHeight: 28, paddingTop: 3, paddingRight: 10, flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#fff" },
   cardLyricSpacer: { width: "100%", height: 38, marginTop: 4 },
-  cardLyricText: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 20, fontWeight: "700", color: "#3c4043", textAlign: "center" },
+  cardLyricText: { flex: 1, minWidth: 0, fontFamily: CARD_FONT, fontSize: 17, lineHeight: 22, fontWeight: "400", color: "#6f7378", textAlign: "left" },
+  cardLyricTextMobile: { fontSize: 12, lineHeight: 15 },
   message: { width: "100%", padding: 10, gap: 8 },
   errorActions: { flexDirection: "row", alignItems: "center", gap: 18 },
   error: { color: "#b91c1c", fontSize: 12 },
