@@ -22,23 +22,7 @@ function IconButton({ name, label, onPress, disabled = false }) {
     <Ionicons name={name} size={23} color="#e5e7eb" />
   </Pressable>;
 }
-function SecondSeekButton({ direction, onPress, disabled = false }) {
-  const backward = direction < 0;
-  return <Pressable
-    accessibilityRole="button"
-    accessibilityLabel={tr(backward ? "Retroceder 1 segundo" : "Avanzar 1 segundo")}
-    accessibilityState={{ disabled }}
-    disabled={disabled}
-    onPress={onPress}
-    style={[styles.trackNavButton, disabled && styles.disabled]}
-  >
-    <Ionicons
-      name={backward ? "play-back" : "play-forward"}
-      size={25}
-      color="#f3f4f6"
-    />
-  </Pressable>;
-}
+
 function SyncedLyricLine({ track, uri, time }) {
   const [lines, setLines] = useState([]);
   useEffect(() => {
@@ -142,6 +126,9 @@ export default function PlaybackProvider({ children }) {
   const [session, setSession] = useState(null);
   const sessionRef = useRef(null);
   const [expanded, setExpanded] = useState(true);
+  const [repeat, setRepeat] = useState(false);
+  const [shuffle, setShuffle] = useState(false);
+  const [volume, setVolume] = useState(100);
   const [status, setStatus] = useState(EMPTY_STATUS);
   const statusRef = useRef(EMPTY_STATUS);
   const player = useRef(null);
@@ -166,6 +153,7 @@ export default function PlaybackProvider({ children }) {
     const currentStatus = statusRef.current;
     rememberedPlayback.current.set(trackKey(item), {
       time: currentStatus.state === 0 ? 0 : currentStatus.time || 0,
+      duration: currentStatus.duration || 0,
       playlistIndex: currentStatus.playlistIndex || 0,
     });
   }, []);
@@ -230,13 +218,25 @@ export default function PlaybackProvider({ children }) {
   const miniWidth = Math.min(360, Math.max(200, width - 16));
   const bottom = Platform.OS === "web" ? "calc(78px + env(safe-area-inset-bottom, 0px))" : 70 + Math.max(insets.bottom, 10);
   const playing = status.state === 1 || status.state === 3;
-  const seekBy = (seconds) => {
-    if (!status.ready || !status.duration || status.error) return;
-    const nextTime = Math.min(status.duration, Math.max(0, status.time + seconds));
-    statusRef.current = { ...statusRef.current, time: nextTime };
-    setStatus((value) => ({ ...value, time: nextTime }));
-    player.current?.seek(nextTime);
+  const selectRelative = (direction) => {
+    if (!session?.tracks?.length) return;
+    if (shuffle && session.tracks.length > 1) {
+      let next = session.index;
+      while (next === session.index) next = Math.floor(Math.random() * session.tracks.length);
+      select(next);
+      return;
+    }
+    select((session.index + direction + session.tracks.length) % session.tracks.length);
   };
+  useEffect(() => {
+    if (!session || status.state !== 0) return;
+    if (repeat) {
+      player.current?.seek(0);
+      player.current?.play();
+    } else if (session.tracks.length > 1) {
+      selectRelative(1);
+    }
+  }, [status.state]);
   const currentTitle = track?.kind === "album" ? status.videoTitle || track.title : track?.title;
   const openExternal = async () => {
     player.current?.pause();
@@ -273,6 +273,7 @@ export default function PlaybackProvider({ children }) {
             initialTime={session.resumeTime || 0}
             initialPlaylistIndex={session.resumePlaylistIndex || 0}
             autoPlay={Boolean(session.autoPlay)}
+            initialVolume={volume}
             onStatus={(next) => {
             if (sessionRef.current?.requestId !== session.requestId) return;
             const mergedStatus = { ...statusRef.current, ...next };
@@ -280,6 +281,7 @@ export default function PlaybackProvider({ children }) {
             if (Number.isFinite(next.time)) {
               rememberedPlayback.current.set(trackKey(track), {
                 time: mergedStatus.state === 0 ? 0 : mergedStatus.time || 0,
+                duration: mergedStatus.duration || 0,
                 playlistIndex: mergedStatus.playlistIndex || 0,
               });
             }
@@ -322,69 +324,65 @@ export default function PlaybackProvider({ children }) {
               const itemPlaying = active && playing;
               const remembered = rememberedPlayback.current.get(trackKey(item));
               const elapsed = active ? status.time : remembered?.time || 0;
+              const duration = active ? status.duration : remembered?.duration || 0;
               const imageId = active && status.videoId ? status.videoId : item.videoId;
               const cardTitle = active ? currentTitle || item.title : item.title;
-              return <View key={index} style={[styles.track, active && styles.activeTrack]}>
-                <View style={[styles.mobileCardHeader, wideTransport && styles.desktopCardHeader]}>
-                  <Pressable onPress={() => select(index)} accessibilityRole="button"
-                    accessibilityLabel={tr(itemPlaying ? `Pausar ${item.title}` : `Reproducir ${item.title}`)}
-                    accessibilityState={{ selected: active }}
-                    style={[styles.mobileArtworkButton, wideTransport && styles.wideTrackMain]}>
-                    {imageId ? <Image
-                      source={{ uri: `https://i.ytimg.com/vi/${imageId}/mqdefault.jpg` }}
-                      style={[styles.mobileThumbnail, wideTransport && styles.wideThumbnail]}
-                    /> : <View style={[styles.mobileThumbnail, wideTransport && styles.wideThumbnail, styles.fallback]}>
-                      <Ionicons name="albums-outline" size={26} color="#dc2626" />
-                    </View>}
-                  </Pressable>
-                  <View style={styles.mobileHeadingContent}>
-                    <Text style={styles.cardHeadingTitle} numberOfLines={2}>{cardTitle}</Text>
+              return <View key={index} style={[styles.track, !wideTransport && styles.trackMobile, active && styles.activeTrack]}>
+                <Pressable onPress={() => select(index)} accessibilityRole="button"
+                  accessibilityLabel={tr(itemPlaying ? `Pausar ${item.title}` : `Reproducir ${item.title}`)}
+                  accessibilityState={{ selected: active }} style={[styles.cardArtworkButton, !wideTransport && styles.cardArtworkButtonMobile]}>
+                  {imageId ? <Image source={{ uri: `https://i.ytimg.com/vi/${imageId}/mqdefault.jpg` }}
+                    style={[styles.cardArtwork, !wideTransport && styles.cardArtworkMobile]} /> : <View style={[styles.cardArtwork, !wideTransport && styles.cardArtworkMobile, styles.fallback]}>
+                    <Ionicons name="albums-outline" size={34} color="#dc2626" />
+                  </View>}
+                </Pressable>
+
+                <View style={[styles.cardRight, !wideTransport && styles.cardRightMobile]}>
+                  <View style={[styles.cardUpperHalf, !wideTransport && styles.cardUpperHalfMobile]}>
+                    <Text style={[styles.cardHeadingTitle, !wideTransport && styles.cardHeadingTitleMobile]} numberOfLines={2}>{cardTitle}</Text>
+                    <View style={[styles.cardTimes, !wideTransport && styles.cardTimesMobile]}>
+                      <Text style={[styles.cardCurrentTime, !wideTransport && styles.cardCurrentTimeMobile]}>{formatTime(elapsed)}</Text>
+                      <Text style={[styles.cardTotalTime, !wideTransport && styles.cardTotalTimeMobile]}>{duration ? formatTime(duration) : "—:—"}</Text>
+                    </View>
+                    <Pressable accessibilityRole="link"
+                      accessibilityLabel={tr(`Abrir ${cardTitle} en YouTube`)}
+                      onPress={() => openTrackExternal(item, active)} style={[styles.youtubeButton, !wideTransport && styles.youtubeButtonMobile]}>
+                      <Ionicons name="logo-youtube" size={wideTransport ? 30 : 22} color="#ff0000" />
+                    </Pressable>
                   </View>
-                  <Pressable
-                    accessibilityRole="link"
-                    accessibilityLabel={tr(`Abrir ${cardTitle} en YouTube`)}
-                    onPress={() => openTrackExternal(item, active)}
-                    style={styles.youtubeButton}
-                  >
-                    <Ionicons name="logo-youtube" size={27} color="#ff0000" />
-                  </Pressable>
-                </View>
-                <View style={[styles.activeTransport, wideTransport && styles.sideTransport]}>
-                  <View style={[styles.transportTop, wideTransport && styles.wideTransport]}>
-                    {desktop ? <View style={styles.playbackButtons}>
-                      <SecondSeekButton direction={-1}
-                        disabled={!active || !status.ready || !status.duration || status.time <= 0 || Boolean(status.error)}
-                        onPress={() => seekBy(-1)} />
+
+                  <View style={[styles.cardLowerHalf, !wideTransport && styles.cardLowerHalfMobile]}>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Repetir canción"
+                      onPress={() => setRepeat((value) => !value)} style={styles.playerOptionButton}>
+                      <Ionicons name="repeat" size={22} color={repeat ? "#ec1970" : "#9aa0a6"} />
+                    </Pressable>
+                    <View style={styles.playbackButtons}>
+                      <Pressable accessibilityRole="button" accessibilityLabel="Canción anterior"
+                        onPress={() => selectRelative(-1)} style={styles.trackNavButton}>
+                        <Ionicons name="play-skip-back" size={25} color="#202124" />
+                      </Pressable>
                       <Pressable accessibilityRole="button"
                         accessibilityLabel={tr(itemPlaying ? `Pausar ${item.title}` : `Reproducir ${item.title}`)}
                         disabled={active && (!status.ready || Boolean(status.error))}
-                        onPress={() => select(index)} style={[styles.transportPlayButton, !active && styles.inactiveTransportPlayButton, itemPlaying && styles.transportPauseButton]}>
-                          <Ionicons name={itemPlaying ? "pause" : "play"} size={23} color="#fff" />
+                        onPress={() => select(index)} style={[styles.transportPlayButton, !wideTransport && styles.transportPlayButtonMobile, itemPlaying && styles.transportPauseButton]}>
+                        <Ionicons name={itemPlaying ? "pause" : "play"} size={wideTransport ? 28 : 19} color="#202124" />
                       </Pressable>
-                      <SecondSeekButton direction={1}
-                        disabled={!active || !status.ready || !status.duration || status.time >= status.duration || Boolean(status.error)}
-                        onPress={() => seekBy(1)} />
-                    </View> : null}
-                    <View style={styles.timelineBlock}>
-                      <View style={styles.timeLabels}>
-                        <Text style={styles.progressTime}>{formatTime(elapsed)}</Text>
-                        <Text style={styles.transportTitle} numberOfLines={1}>{itemPlaying ? "Reproduciendo" : "En pausa"}</Text>
-                        <Text style={styles.progressTime}>{active && status.duration ? `−${formatTime(Math.max(0, status.duration - status.time))}` : "—:—"}</Text>
-                      </View>
-                      <Slider style={styles.cardSlider} accessibilityLabel={tr(`Posición de ${item.title}`)}
-                        minimumValue={0} maximumValue={active ? Math.max(1, status.duration) : 1}
-                        value={active ? Math.min(status.time, status.duration || 0) : 0}
-                        disabled={!active || !status.ready || !status.duration}
-                        onSlidingComplete={(time) => player.current?.seek(time)}
-                        minimumTrackTintColor="#f9fafb" maximumTrackTintColor="#6b7280" thumbTintColor="#f9fafb" />
+                      <Pressable accessibilityRole="button" accessibilityLabel="Canción siguiente"
+                        onPress={() => selectRelative(1)} style={styles.trackNavButton}>
+                        <Ionicons name="play-skip-forward" size={25} color="#202124" />
+                      </Pressable>
+                    </View>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Orden aleatorio"
+                      onPress={() => setShuffle((value) => !value)} style={styles.playerOptionButton}>
+                      <Ionicons name="shuffle" size={22} color={shuffle ? "#ec1970" : "#9aa0a6"} />
+                    </Pressable>
+                    <View style={styles.volumeControl}>
+                      <Ionicons name={volume === 0 ? "volume-mute" : "volume-medium"} size={18} color="#5f6368" />
+                      <Slider style={styles.volumeSlider} minimumValue={0} maximumValue={100} value={volume}
+                        onValueChange={(value) => { setVolume(value); player.current?.setVolume(value); }}
+                        minimumTrackTintColor="#9aa0a6" maximumTrackTintColor="#d7d9dc" thumbTintColor="#9aa0a6" />
                     </View>
                   </View>
-                  {!desktop && active ? <SyncedLyricLine
-                    key={session.requestId}
-                    track={track}
-                    uri={lyricsUri}
-                    time={status.time}
-                  /> : !desktop ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.cardLyricSpacer} /> : null}
                 </View>
               </View>})}
             {track.kind === "album" && ids.length > 0 ? <View style={styles.albumVideos}>
@@ -461,15 +459,37 @@ const styles = StyleSheet.create({
     }),
   },
   trackList: { width: "100%", gap: 10, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 30, ...Platform.select({ web: { touchAction: "pan-y" } }) },
-  desktopTrackList: { width: "100%", maxWidth: 680, alignSelf: "center", paddingHorizontal: 0, paddingTop: 18 },
+  desktopTrackList: { width: "100%", maxWidth: 788, alignSelf: "center", paddingHorizontal: 0, paddingTop: 18, gap: 10 },
   queueHeader: { width: "100%", minHeight: 72, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 3, paddingBottom: 8 },
   queueHeading: { flex: 1, minWidth: 0 },
   queueEyebrow: { fontSize: 9, letterSpacing: 1.2, fontWeight: "900", color: "#ef4444" },
   queueTitle: { marginTop: 3, fontSize: 18, fontWeight: "900", color: "#f9fafb" },
   queueCount: { fontSize: 11, color: "#9ca3af" },
-  track: { width: "100%", maxWidth: 520, alignSelf: "center", padding: 12, gap: 8, borderWidth: 1, borderColor: "#303036", borderRadius: 12, backgroundColor: "#1a1a1e", overflow: "hidden", ...Platform.select({ web: { touchAction: "pan-y" } }) },
-  mobileCardHeader: { width: "100%", flexDirection: "row", alignItems: "center", gap: 12 },
-  desktopCardHeader: { alignItems: "flex-start" },
+  track: { width: "100%", maxWidth: 788, aspectRatio: 3.152, alignSelf: "center", flexDirection: "row", padding: 0, gap: 0, borderWidth: 1, borderColor: "#d7d9dc", borderRadius: 0, backgroundColor: "#fff", overflow: "hidden", ...Platform.select({ web: { touchAction: "pan-y" } }) },
+  cardArtworkButton: { height: "100%", aspectRatio: 1, flexShrink: 0 },
+  cardArtwork: { width: "100%", height: "100%", backgroundColor: "#27272a" },
+  cardRight: { flex: 1, minWidth: 0, height: "100%", backgroundColor: "#fff" },
+  cardUpperHalf: { flex: 1, minHeight: 0, flexDirection: "row", alignItems: "flex-start", paddingTop: 18, paddingLeft: 24, paddingRight: 14, borderBottomWidth: 1, borderBottomColor: "#eceef0" },
+  cardTimes: { width: 70, flexShrink: 0, alignItems: "flex-end", paddingTop: 1 },
+  cardCurrentTime: { fontSize: 26, lineHeight: 29, fontWeight: "700", color: "#5f6368", fontVariant: ["tabular-nums"] },
+  cardTotalTime: { marginTop: 2, fontSize: 15, lineHeight: 19, fontWeight: "600", color: "#85898f", fontVariant: ["tabular-nums"] },
+  cardLowerHalf: { flex: 1, minHeight: 0, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: 10, gap: 5 },
+  playerOptionButton: { width: 30, height: 38, alignItems: "center", justifyContent: "center" },
+  volumeControl: { flex: 1, minWidth: 68, maxWidth: 130, flexDirection: "row", alignItems: "center", gap: 2 },
+  volumeSlider: { flex: 1, height: 28, ...Platform.select({ web: { touchAction: "pan-x" } }) },
+  trackMobile: { height: 120 },
+  cardArtworkButtonMobile: { width: 120, height: 120 },
+  cardArtworkMobile: { width: 120, height: 120 },
+  cardRightMobile: { height: 120 },
+  cardUpperHalfMobile: { paddingTop: 8, paddingLeft: 10, paddingRight: 5 },
+  cardHeadingTitleMobile: { marginRight: 4, fontSize: 14, lineHeight: 17 },
+  cardTimesMobile: { width: 42 },
+  cardCurrentTimeMobile: { fontSize: 16, lineHeight: 18 },
+  cardTotalTimeMobile: { fontSize: 11, lineHeight: 13 },
+  youtubeButtonMobile: { width: 28, height: 26, marginLeft: 2 },
+  cardLowerHalfMobile: { paddingHorizontal: 7, gap: 4 },
+  mobileCardHeader: { width: "100%", flexDirection: "row", alignItems: "center", gap: 12, padding: 12 },
+  desktopCardHeader: { height: 112, alignItems: "flex-start", padding: 0 },
   mobileArtworkButton: { width: 82, height: 82, flexShrink: 0 },
   mobileThumbnail: { width: 82, height: 82, borderRadius: 7, backgroundColor: "#27272a" },
   mobileHeadingContent: { flex: 1, minWidth: 0, justifyContent: "center" },
@@ -477,42 +497,42 @@ const styles = StyleSheet.create({
   desktopCardTop: { flexDirection: "row", alignItems: "center" },
   trackMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 9, ...Platform.select({ web: { touchAction: "pan-y" } }) },
   activeTrackMain: { flex: 0, width: 118 },
-  wideTrackMain: { width: 150, height: 150 },
+  wideTrackMain: { width: 112, height: 112 },
   trackControls: { width: "100%", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingTop: 2 },
   desktopTrackControls: { width: "auto", flexShrink: 0, paddingTop: 0 },
   trackPlayButton: { width: 44, height: 38, borderRadius: 19, borderWidth: 1, borderColor: "#52525b", backgroundColor: "#27272a", alignItems: "center", justifyContent: "center" },
   activePlayButton: { borderColor: "#ef4444", backgroundColor: "#ef4444" },
-  activeTransport: { width: "100%", minHeight: 0, gap: 7, paddingHorizontal: 2, paddingTop: 4, paddingBottom: 2, borderRadius: 0, backgroundColor: "transparent", justifyContent: "center" },
-  sideTransport: { position: "absolute", width: "auto", left: 174, right: 12, top: 46, height: 112, minHeight: 0, justifyContent: "space-between" },
+  activeTransport: { width: "100%", minHeight: 0, gap: 7, paddingHorizontal: 12, paddingTop: 4, paddingBottom: 10, borderRadius: 0, backgroundColor: "#fff", justifyContent: "center" },
+  sideTransport: { position: "absolute", width: "auto", left: 112, right: 0, top: 40, height: 72, minHeight: 0, paddingHorizontal: 14, paddingTop: 0, paddingBottom: 5, justifyContent: "center" },
   transportTop: { width: "100%", gap: 6, paddingTop: 2 },
   wideTransport: { flexDirection: "row", alignItems: "center", gap: 8 },
-  playbackButtons: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 2, marginTop: 2, flexShrink: 0 },
-  trackNavButton: { width: 30, height: 34, alignItems: "center", justifyContent: "center", ...Platform.select({ web: { touchAction: "pan-y" } }) },
-  transportPlayButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "#ef4444", ...Platform.select({ web: { touchAction: "pan-y" } }) },
-  inactiveTransportPlayButton: { backgroundColor: "#3f3f46" },
-  transportPauseButton: { backgroundColor: "#dc2626" },
+  playbackButtons: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3, flexShrink: 0 },
+  trackNavButton: { width: 34, height: 42, alignItems: "center", justifyContent: "center", ...Platform.select({ web: { touchAction: "pan-y" } }) },
+  transportPlayButton: { width: 60, height: 60, borderRadius: 30, borderWidth: 6, borderColor: "#dedede", alignItems: "center", justifyContent: "center", backgroundColor: "#fff", ...Platform.select({ web: { touchAction: "pan-y" } }) },
+  transportPlayButtonMobile: { width: 40, height: 40, borderRadius: 20, borderWidth: 4 },
+  inactiveTransportPlayButton: { backgroundColor: "#fff" },
+  transportPauseButton: { backgroundColor: "#fff", borderColor: "#ec1970" },
   cardHeadingRow: { width: "100%", minHeight: 32, flexDirection: "row", alignItems: "center", gap: 8 },
-  cardHeadingTitle: { flex: 1, minWidth: 0, fontSize: 18, lineHeight: 22, fontWeight: "900", color: "#f9fafb" },
-  youtubeButton: { width: 40, height: 32, alignItems: "center", justifyContent: "center", ...Platform.select({ web: { touchAction: "pan-y" } }) },
+  cardHeadingTitle: { flex: 1, minWidth: 0, marginRight: 12, fontSize: 23, lineHeight: 28, fontWeight: "800", color: "#202124" },
+  youtubeButton: { width: 46, height: 38, flexShrink: 0, alignItems: "center", justifyContent: "center", marginLeft: 8, ...Platform.select({ web: { touchAction: "pan-y" } }) },
   timelineBlock: { flex: 1, minWidth: 180, gap: 1 },
   timeLabels: { width: "100%", flexDirection: "row", alignItems: "center", gap: 8 },
-  transportTitle: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: "800", color: "#f3f4f6", textAlign: "center" },
-  progressTime: { width: 43, fontSize: 12, fontWeight: "800", color: "#f3f4f6", fontVariant: ["tabular-nums"], textAlign: "center" },
+  transportTitle: { flex: 1, minWidth: 0, fontSize: 11, fontWeight: "700", color: "#73777d", textAlign: "center" },
+  progressTime: { width: 43, fontSize: 12, fontWeight: "800", color: "#5f6368", fontVariant: ["tabular-nums"], textAlign: "center" },
   albumVideoRow: { flexDirection: "row", alignItems: "center", gap: 9 },
-  activeTrack: { borderColor: "#ef4444", backgroundColor: "#2a1719" },
+  activeTrack: { borderColor: "#ec1970", backgroundColor: "#fff" },
   thumbnail: { width: 88, height: 88, borderRadius: 5, backgroundColor: "#27272a" },
   activeThumbnail: { width: 118, height: 118 },
-  wideThumbnail: { width: 150, height: 150 },
+  wideThumbnail: { width: 112, height: 112, borderRadius: 0 },
   fallback: { alignItems: "center", justifyContent: "center" },
   trackText: { flex: 1, minWidth: 0 },
   trackTitle: { fontSize: 15, lineHeight: 20, fontWeight: "800", color: "#f3f4f6" },
   trackTime: { marginTop: 7, fontSize: 12, fontWeight: "700", color: "#d1d5db", fontVariant: ["tabular-nums"] },
   meta: { fontSize: 10, color: "#9ca3af", marginVertical: 3 },
   albumVideos: { gap: 7, paddingTop: 10 },
-  cardSlider: { width: "100%", height: 24, ...Platform.select({ web: { touchAction: "pan-x" } }) },
-  cardLyric: { width: "100%", minHeight: 38, paddingHorizontal: 10, paddingVertical: 7, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: "rgba(255,255,255,0.025)", borderRadius: 8, marginTop: 4 },
+  cardLyric: { width: "100%", minHeight: 38, paddingHorizontal: 10, paddingVertical: 7, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: "#fafafa", borderRadius: 0, marginTop: 4 },
   cardLyricSpacer: { width: "100%", height: 38, marginTop: 4 },
-  cardLyricText: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 20, fontWeight: "700", color: "#fecaca", textAlign: "left" },
+  cardLyricText: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 20, fontWeight: "700", color: "#3c4043", textAlign: "center" },
   message: { width: "100%", padding: 10, gap: 8 },
   errorActions: { flexDirection: "row", alignItems: "center", gap: 18 },
   error: { color: "#b91c1c", fontSize: 12 },

@@ -4,7 +4,8 @@ export function buildNativeYouTubeHtml(
   session,
   initialTime = 0,
   initialPlaylistIndex = 0,
-  autoPlay = false,
+  autoPlay = true,
+  initialVolume = 100,
 ) {
   const config = JSON.stringify({
     session,
@@ -14,6 +15,7 @@ export function buildNativeYouTubeHtml(
     initialTime,
     initialPlaylistIndex,
     autoPlay,
+    initialVolume,
   }).replace(/</g, "\\u003c");
   return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body,#player{margin:0;width:100%;height:100%;background:#000;overflow:hidden}</style></head><body><div id="player"></div><script>
 var config=${config}, player, ready=false, authorized=false, revision=0;
@@ -45,13 +47,14 @@ window.shoppCommand=function(command,value,requestId){
   if(command==='play')request();
   if(command==='select')request(value);
   if(command==='seek'){player.seekTo(Math.max(0,value),true);status();}
+  if(command==='volume'&&player.setVolume)player.setVolume(Math.max(0,Math.min(100,value)));
 };
 function onYouTubeIframeAPIReady(){
   var vars={autoplay:0,playsinline:1,rel:0};
   if(config.initialTime>0)vars.start=Math.floor(config.initialTime);
   if(config.kind==='album'){vars.listType='playlist';vars.list=config.playlistId;vars.index=Math.max(0,config.initialPlaylistIndex||0);}
   player=new YT.Player('player',{width:'100%',height:'100%',videoId:config.videoId||undefined,playerVars:vars,events:{
-    onReady:function(){ready=true;player.mute();if(config.initialTime>0)player.seekTo(config.initialTime,true);status();setInterval(status,500);if(config.autoPlay)request(undefined,true);},
+    onReady:function(){ready=true;if(player.setVolume)player.setVolume(Math.max(0,Math.min(100,config.initialVolume)));player.mute();if(config.initialTime>0)player.seekTo(config.initialTime,true);status();setInterval(status,500);if(config.autoPlay)request(undefined,true);},
     onStateChange:function(event){
       if(!ready)return;
       if(event.data===1&&!authorized){player.mute();request();}

@@ -11,6 +11,7 @@ export default forwardRef(function YouTubeSurface({
   initialTime = 0,
   initialPlaylistIndex = 0,
   autoPlay = false,
+  initialVolume = 100,
   onStatus,
 }, ref) {
   const web = useRef(null);
@@ -25,10 +26,11 @@ export default forwardRef(function YouTubeSurface({
         initialTime,
         initialPlaylistIndex,
         autoPlay,
+        initialVolume,
       ),
       baseUrl: "https://www.youtube.com",
     }),
-    [session, initialTime, initialPlaylistIndex, autoPlay],
+    [session, initialTime, initialPlaylistIndex, autoPlay, initialVolume],
   );
   const alive = useRef(false);
   const requestNumber = useRef(0);
@@ -47,6 +49,7 @@ export default forwardRef(function YouTubeSurface({
     pause: () => suspend().catch(() => {}),
     seek: (time) => command("seek", time),
     selectVideo: (index) => command("select", index),
+    setVolume: (value) => command("volume", value),
   }));
   useEffect(() => {
     alive.current = true;

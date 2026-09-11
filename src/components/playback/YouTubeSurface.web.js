@@ -38,6 +38,7 @@ export default forwardRef(function YouTubeSurface({
   initialTime = 0,
   initialPlaylistIndex = 0,
   autoPlay = false,
+  initialVolume = 100,
   onStatus,
 }, ref) {
   const host = useRef(null);
@@ -49,6 +50,7 @@ export default forwardRef(function YouTubeSurface({
     pause: () => commands.current.pause?.(),
     seek: (time) => commands.current.seek?.(time),
     selectVideo: (index) => commands.current.selectVideo?.(index),
+    setVolume: (value) => commands.current.setVolume?.(value),
   }), []);
   useEffect(() => {
     const id = Symbol("youtube");
@@ -119,6 +121,7 @@ export default forwardRef(function YouTubeSurface({
       play: () => requestPlay(), pause: () => suspend().catch(() => {}),
       seek: (time) => { if (ready) { player.seekTo(Math.max(0, time), true); emit(); } },
       selectVideo: (index) => requestPlay(index),
+      setVolume: (value) => { if (ready) player.setVolume(Math.max(0, Math.min(100, value))); },
     };
     emit();
     loadApi().then((YT) => {
@@ -143,6 +146,7 @@ export default forwardRef(function YouTubeSurface({
           onReady: () => {
             if (disposed) return;
             ready = true;
+            player.setVolume(Math.max(0, Math.min(100, initialVolume)));
             player.mute();
             if (initialTime > 0) player.seekTo(initialTime, true);
             emit();
