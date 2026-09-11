@@ -385,18 +385,18 @@ function ComputerLinkLibrary({ clientId, language }) {
   const ensureDefaultFolders = useMutation(
     api.computerLinks.ensureDefaultFolders,
   );
-  const syncFromChat = useMutation(api.computerLinks.syncFromChat);
   const toggleFavorite = useMutation(api.computerLinks.toggleFavorite);
   const moveToFolder = useMutation(api.computerLinks.moveToFolder);
   const removeLink = useMutation(api.computerLinks.remove);
 
   useEffect(() => {
-    ensureDefaultFolders({ clientId })
-      .then(() => syncFromChat({ clientId }))
-      .catch((error) =>
-        console.warn("[ComputerLinkLibrary] sync failed", error),
-      );
-  }, [clientId, ensureDefaultFolders, syncFromChat]);
+    // La importación histórica del chat no debe recorrer todos los mensajes
+    // cada vez que se abre esta vista. Los enlaces nuevos se guardan mediante
+    // las operaciones explícitas de Biblioteca.
+    ensureDefaultFolders({ clientId }).catch((error) =>
+      console.warn("[ComputerLinkLibrary] folder setup failed", error),
+    );
+  }, [clientId, ensureDefaultFolders]);
 
   const folderById = useMemo(
     () => new Map(folders.map((folder) => [String(folder._id), folder])),

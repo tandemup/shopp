@@ -6,10 +6,10 @@ import { v } from "convex/values";
 const DEFAULT_FOLDERS = [
   ["Noticias", "newspaper-outline", "#dc2626"],
   ["Libros", "book-outline", "#7c3aed"],
-  ["InformÃ¡tica", "laptop-outline", "#2563eb"],
-  ["PolÃ­tica", "business-outline", "#7c3aed"],
-  ["IngenierÃ­a", "construct-outline", "#ea580c"],
-  ["MÃºsica", "musical-notes-outline", "#db2777"],
+  ["Informática", "laptop-outline", "#2563eb"],
+  ["Política", "business-outline", "#7c3aed"],
+  ["Ingeniería", "construct-outline", "#ea580c"],
+  ["Música", "musical-notes-outline", "#db2777"],
 ];
 
 const LEGACY_DEFAULT_FOLDER_NAMES = [
@@ -17,24 +17,24 @@ const LEGACY_DEFAULT_FOLDER_NAMES = [
   "JavaScript",
   "React / React Native",
   "Expo",
-  "CSS y diseÃ±o",
+  "CSS y diseño",
   "Backend y Convex",
   "Bases de datos",
   "Inteligencia artificial",
   "Seguridad",
   "Herramientas",
-  "DocumentaciÃ³n",
+  "Documentación",
 ];
 
 const NEWS_DEFAULT_FOLDERS = [
   ["Nacional", "flag-outline", "#dc2626"],
   ["Internacional", "globe-outline", "#2563eb"],
-  ["EconomÃ­a", "stats-chart-outline", "#059669"],
+  ["Economía", "stats-chart-outline", "#059669"],
   ["Sociedad", "people-outline", "#7c3aed"],
-  ["Ciencia y tecnologÃ­a", "flask-outline", "#0891b2"],
+  ["Ciencia y tecnología", "flask-outline", "#0891b2"],
   ["Deportes", "football-outline", "#ea580c"],
   ["Cultura", "color-palette-outline", "#db2777"],
-  ["OpiniÃ³n", "chatbox-ellipses-outline", "#475569"],
+  ["Opinión", "chatbox-ellipses-outline", "#475569"],
 ];
 
 const URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
@@ -102,7 +102,7 @@ function extractTitleHashtags(title, sourceDomain) {
     if (!tag) continue;
 
     // Las antiguas importaciones usaban #elpaiscom, #nytimescom, etc. como
-    // referencia al periÃ³dico. No las convertimos en hashtags temÃ¡ticos.
+    // referencia al periódico. No las convertimos en hashtags temáticos.
     const compactTag = compactDomainTag(tag);
     if (
       domainTag &&
@@ -312,12 +312,19 @@ export const ensureDefaultFolders = mutation({
         .withIndex("by_name", (q) => q.eq("name", name))
         .first();
       if (existing) {
-        await ctx.db.patch(existing._id, {
-          parentFolderId: undefined,
-          icon,
-          color,
-          order: index,
-        });
+        if (
+          existing.parentFolderId !== undefined ||
+          existing.icon !== icon ||
+          existing.color !== color ||
+          existing.order !== index
+        ) {
+          await ctx.db.patch(existing._id, {
+            parentFolderId: undefined,
+            icon,
+            color,
+            order: index,
+          });
+        }
         continue;
       }
       await ctx.db.insert("computerLinkFolders", {
@@ -333,7 +340,7 @@ export const ensureDefaultFolders = mutation({
 
     const computerFolder = await ctx.db
       .query("computerLinkFolders")
-      .withIndex("by_name", (q) => q.eq("name", "InformÃ¡tica"))
+      .withIndex("by_name", (q) => q.eq("name", "Informática"))
       .first();
     const newsFolder = await ctx.db
       .query("computerLinkFolders")
@@ -345,9 +352,9 @@ export const ensureDefaultFolders = mutation({
       .first();
     let migratedBooks = 0;
 
-    // MigraciÃ³n antigua de fichas de libros. Antes se hacÃ­a un collect() de
-    // TODA computerLinks cada vez que se abrÃ­a Biblioteca. Con miles de enlaces
-    // eso genera un I/O enorme. Se procesa Ãºnicamente un lote pequeÃ±o e indexado.
+    // Migración antigua de fichas de libros. Antes se hacía un collect() de
+    // TODA computerLinks cada vez que se abría Biblioteca. Con miles de enlaces
+    // eso genera un I/O enorme. Se procesa únicamente un lote pequeño e indexado.
     if (booksFolder) {
       const legacyBookLinks = await ctx.db
         .query("computerLinks")
@@ -378,10 +385,15 @@ export const ensureDefaultFolders = mutation({
         .withIndex("by_name", (q) => q.eq("name", name))
         .first();
       if (legacyFolder) {
-        await ctx.db.patch(legacyFolder._id, {
-          parentFolderId: computerFolder?._id,
-          order: index,
-        });
+        if (
+          legacyFolder.parentFolderId !== computerFolder?._id ||
+          legacyFolder.order !== index
+        ) {
+          await ctx.db.patch(legacyFolder._id, {
+            parentFolderId: computerFolder?._id,
+            order: index,
+          });
+        }
       } else if (computerFolder) {
         await ctx.db.insert("computerLinkFolders", {
           name,
@@ -408,7 +420,13 @@ export const ensureDefaultFolders = mutation({
             String(folder.parentFolderId || "") === String(newsFolder._id),
         );
         if (existing) {
-          await ctx.db.patch(existing._id, { icon, color, order: index });
+          if (
+            existing.icon !== icon ||
+            existing.color !== color ||
+            existing.order !== index
+          ) {
+            await ctx.db.patch(existing._id, { icon, color, order: index });
+          }
         } else {
           await ctx.db.insert("computerLinkFolders", {
             name,
@@ -450,8 +468,8 @@ export const normalizeAndDeduplicate = mutation({
     batchSize: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    // Convex limita las lecturas por mutaciÃ³n. El botÃ³n de integridad repite
-    // esta funciÃ³n hasta que no quede ningÃºn lote pendiente.
+    // Convex limita las lecturas por mutación. El botón de integridad repite
+    // esta función hasta que no quede ningún lote pendiente.
     const batchSize = Math.max(
       1,
       Math.min(Math.floor(args.batchSize || 80), 120),
@@ -467,7 +485,7 @@ export const normalizeAndDeduplicate = mutation({
 
     for (const pagedLink of page.page) {
       // Evita un db.get adicional por cada fila. Si un duplicado del mismo
-      // lote ya se eliminÃ³, se controla localmente.
+      // lote ya se eliminó, se controla localmente.
       if (deletedIds.has(String(pagedLink._id))) continue;
       const link = pagedLink;
       const normalized = normalizeLink(link.normalizedUrl || link.url);
@@ -482,7 +500,7 @@ export const normalizeAndDeduplicate = mutation({
         link,
         ...indexedMatches.filter((item) => item._id !== link._id),
       ];
-      // Un periÃ³dico o una tienda son registros de catÃ¡logo. Aunque su URL
+      // Un periódico o una tienda son registros de catálogo. Aunque su URL
       // coincida con un enlace antiguo, se conservan siempre: no son un
       // duplicado intercambiable de una noticia o un libro.
       const hasCatalogSource = allCandidates.some((candidate) =>
@@ -563,9 +581,9 @@ export const createFolder = mutation({
   },
   handler: async (ctx, args) => {
     const name = args.name.trim().slice(0, 50);
-    if (!name) throw new Error("Escribe un nombre para la categorÃ­a.");
+    if (!name) throw new Error("Escribe un nombre para la categoría.");
     if (args.parentFolderId && !(await ctx.db.get(args.parentFolderId))) {
-      throw new Error("La categorÃ­a principal ya no existe.");
+      throw new Error("La categoría principal ya no existe.");
     }
     const existing = await ctx.db
       .query("computerLinkFolders")
@@ -612,12 +630,12 @@ export const updateFolder = mutation({
   },
   handler: async (ctx, args) => {
     const folder = await ctx.db.get(args.folderId);
-    if (!folder) throw new Error("La subcategorÃ­a ya no existe.");
+    if (!folder) throw new Error("La subcategoría ya no existe.");
     if (!folder.parentFolderId) {
-      throw new Error("Las categorÃ­as generales no se editan desde aquÃ­.");
+      throw new Error("Las categorías generales no se editan desde aquí.");
     }
     const name = args.name.trim().slice(0, 50);
-    if (!name) throw new Error("Escribe un nombre para la subcategorÃ­a.");
+    if (!name) throw new Error("Escribe un nombre para la subcategoría.");
     const siblings = await ctx.db
       .query("computerLinkFolders")
       .withIndex("by_parent_order", (q) =>
@@ -631,7 +649,7 @@ export const updateFolder = mutation({
           item.name.trim().toLowerCase() === name.toLowerCase(),
       )
     ) {
-      throw new Error("Ya existe una subcategorÃ­a con ese nombre.");
+      throw new Error("Ya existe una subcategoría con ese nombre.");
     }
     await ctx.db.patch(args.folderId, { name });
     return { name };
@@ -644,7 +662,7 @@ export const removeFolder = mutation({
     const folder = await ctx.db.get(args.folderId);
     if (!folder) return { movedLinks: 0 };
     if (!folder.parentFolderId) {
-      throw new Error("No se puede eliminar una categorÃ­a general.");
+      throw new Error("No se puede eliminar una categoría general.");
     }
     const children = await ctx.db
       .query("computerLinkFolders")
@@ -653,7 +671,7 @@ export const removeFolder = mutation({
       )
       .first();
     if (children)
-      throw new Error("Elimina primero sus subcategorÃ­as internas.");
+      throw new Error("Elimina primero sus subcategorías internas.");
 
     const links = await ctx.db
       .query("computerLinks")
@@ -690,7 +708,7 @@ export const addUrl = mutation({
   },
   handler: async (ctx, args) => {
     let normalized = normalizeLink(args.url);
-    if (!normalized) throw new Error("Introduce una URL http o https vÃ¡lida.");
+    if (!normalized) throw new Error("Introduce una URL http o https válida.");
     if (["newsSource", "bookStore"].includes(args.linkType)) {
       const sourceUrl = new URL(normalized.url);
       sourceUrl.pathname = "/";
@@ -708,7 +726,7 @@ export const addUrl = mutation({
         ? extractPublishedAtFromUrl(normalized.url)
         : null;
     if (args.folderId && !(await ctx.db.get(args.folderId))) {
-      throw new Error("La categorÃ­a ya no existe.");
+      throw new Error("La categoría ya no existe.");
     }
     const existing = await ctx.db
       .query("computerLinks")
@@ -876,8 +894,8 @@ export const list = query({
           : await query.take(listLimit);
       }
     } else if (isCatalogSourceQuery) {
-      // Las fuentes tienen un Ã­ndice propio. No se leen primero las noticias
-      // para descartarlas despuÃ©s, por lo que se pueden mostrar las 477.
+      // Las fuentes tienen un índice propio. No se leen primero las noticias
+      // para descartarlas después, por lo que se pueden mostrar las 477.
       const query = ctx.db
         .query("computerLinks")
         .withIndex("by_folder_linkType_updatedAt", (q) =>
@@ -1029,9 +1047,9 @@ export const list = query({
   },
 });
 
-// Copia a `hashtags` los #hashtags presentes en el tÃ­tulo de cada noticia.
-// Se ejecuta por lotes desde Comprobar integridad para no exceder los lÃ­mites
-// de lectura/escritura de Convex. Los valores se guardan sin el sÃ­mbolo #.
+// Copia a `hashtags` los #hashtags presentes en el título de cada noticia.
+// Se ejecuta por lotes desde Comprobar integridad para no exceder los límites
+// de lectura/escritura de Convex. Los valores se guardan sin el símbolo #.
 export const extractTitleHashtagsBatch = mutation({
   args: {
     cursor: v.optional(v.string()),
@@ -1102,9 +1120,9 @@ export const listHashtagPage = query({
       .filter((q) => q.neq(q.field("status"), "archived"))
       .paginate(args.paginationOpts);
 
-    // Devolvemos solo los hashtags para que el catÃ¡logo global no transfiera
-    // miles de objetos completos al navegador. La paginaciÃ³n mantiene cada
-    // ejecuciÃ³n muy por debajo del lÃ­mite de lecturas de Convex.
+    // Devolvemos solo los hashtags para que el catálogo global no transfiera
+    // miles de objetos completos al navegador. La paginación mantiene cada
+    // ejecución muy por debajo del límite de lecturas de Convex.
     return {
       ...pageResult,
       page: pageResult.page.map((link) => ({
@@ -1118,9 +1136,9 @@ export const listHashtagPage = query({
 export const getLinksByIds = query({
   args: { ids: v.array(v.id("computerLinks")) },
   handler: async (ctx, args) => {
-    // Los ids proceden del catÃ¡logo global de hashtags, que ya recorriÃ³ las
-    // noticias de forma paginada. AquÃ­ solo leemos los posts exactos del
-    // hashtag seleccionado, evitando una bÃºsqueda textual sobre toda la tabla.
+    // Los ids proceden del catálogo global de hashtags, que ya recorrió las
+    // noticias de forma paginada. Aquí solo leemos los posts exactos del
+    // hashtag seleccionado, evitando una búsqueda textual sobre toda la tabla.
     const ids = args.ids.slice(0, 100);
     const links = await Promise.all(ids.map((id) => ctx.db.get(id)));
     return links.filter(
@@ -1203,9 +1221,9 @@ export const ensureNewsSources = mutation({
       return { isDone: true, continueCursor: null, processed: 0, created: 0 };
     }
 
-    // Lotes deliberadamente pequeÃ±os. Cada dominio se comprueba mediante
-    // Ã­ndices selectivos; nunca se vuelve a cargar el catÃ¡logo completo de
-    // periÃ³dicos en cada iteraciÃ³n.
+    // Lotes deliberadamente pequeños. Cada dominio se comprueba mediante
+    // índices selectivos; nunca se vuelve a cargar el catálogo completo de
+    // periódicos en cada iteración.
     const page = await ctx.db
       .query("computerLinks")
       .withIndex("by_createdAt")
@@ -1342,7 +1360,7 @@ export const beginLibraryImportJob = mutation({
         return active;
       }
       throw new Error(
-        "Ya existe una importaciÃ³n pendiente. ContinÃºala o descÃ¡rtala antes de iniciar otra.",
+        "Ya existe una importación pendiente. Continúala o descártala antes de iniciar otra.",
       );
     }
 
@@ -1407,7 +1425,7 @@ export const updateLibraryImportJobProgress = mutation({
     if (!ownerId) throw new Error("No se pudo identificar este dispositivo.");
     const job = await ctx.db.get(args.jobId);
     if (!job || job.ownerId !== ownerId) {
-      throw new Error("La importaciÃ³n pendiente ya no existe.");
+      throw new Error("La importación pendiente ya no existe.");
     }
     if (["done", "cancelled"].includes(job.status)) return job;
 
@@ -1457,7 +1475,7 @@ export const completeLibraryImportJob = mutation({
     if (!ownerId) throw new Error("No se pudo identificar este dispositivo.");
     const job = await ctx.db.get(args.jobId);
     if (!job || job.ownerId !== ownerId) {
-      throw new Error("La importaciÃ³n pendiente ya no existe.");
+      throw new Error("La importación pendiente ya no existe.");
     }
     const now = Date.now();
     await ctx.db.patch(job._id, {
@@ -1503,7 +1521,7 @@ export const clearLibraryForImportBatch = mutation({
 
     const job = await ctx.db.get(args.jobId);
     if (!job || job.ownerId !== ownerId) {
-      throw new Error("La importaciÃ³n pendiente ya no existe.");
+      throw new Error("La importación pendiente ya no existe.");
     }
     if (job.importMode !== "replace") {
       return { done: true, deletedLinks: 0, deletedFolders: 0, job };
@@ -1643,9 +1661,9 @@ export const ensureNewsSourcesForDomains = mutation({
   },
 });
 
-// ImportaciÃ³n reanudable por lotes pequeÃ±os.
+// Importación reanudable por lotes pequeños.
 // A diferencia de importBackup, esta mutation actualiza el checkpoint del job
-// en la misma transacciÃ³n. En modo Reemplazar, una vez vaciada la Biblioteca,
+// en la misma transacción. En modo Reemplazar, una vez vaciada la Biblioteca,
 // inserta directamente y evita una consulta de existencia por cada noticia.
 export const importLibraryJobBatch = mutation({
   args: {
@@ -1662,19 +1680,19 @@ export const importLibraryJobBatch = mutation({
 
     const job = await ctx.db.get(args.jobId);
     if (!job || job.ownerId !== ownerId) {
-      throw new Error("La importaciÃ³n pendiente ya no existe.");
+      throw new Error("La importación pendiente ya no existe.");
     }
     if (["done", "cancelled"].includes(job.status)) {
       return { alreadyProcessed: true, job };
     }
     if (job.importMode === "replace" && !job.replacePrepared) {
-      throw new Error("La Biblioteca todavÃ­a no terminÃ³ de vaciarse.");
+      throw new Error("La Biblioteca todavía no terminó de vaciarse.");
     }
 
     const expectedStart = Math.max(0, Number(args.expectedStart) || 0);
     const currentStart = Math.max(0, Number(job.processedLinks) || 0);
 
-    // Si el navegador no recibiÃ³ la respuesta de un lote ya confirmado y lo
+    // Si el navegador no recibió la respuesta de un lote ya confirmado y lo
     // reintenta, devolvemos el checkpoint actual sin volver a escribir nada.
     if (currentStart > expectedStart) {
       return { alreadyProcessed: true, job };
@@ -1685,8 +1703,8 @@ export const importLibraryJobBatch = mutation({
       );
     }
 
-    // Mantener este lÃ­mite bajo evita acercarse a los lÃ­mites transaccionales
-    // de Convex incluso con una tabla que tiene muchos Ã­ndices secundarios.
+    // Mantener este límite bajo evita acercarse a los límites transaccionales
+    // de Convex incluso con una tabla que tiene muchos índices secundarios.
     const inputLinks = Array.isArray(args.links) ? args.links.slice(0, 25) : [];
     const now = Date.now();
 
@@ -1833,8 +1851,8 @@ export const importLibraryJobBatch = mutation({
       let existing = existingByNormalizedUrl.get(normalized.url);
       if (existing === undefined) {
         if (replaceMode) {
-          // En un reemplazo ya vacÃ­o no hay nada que buscar. Solo consultamos
-          // si la misma URL ya apareciÃ³ dentro de este mismo lote.
+          // En un reemplazo ya vacío no hay nada que buscar. Solo consultamos
+          // si la misma URL ya apareció dentro de este mismo lote.
           existing = null;
         } else {
           existing = await ctx.db
@@ -2105,7 +2123,7 @@ export const importBackup = mutation({
         : "general";
 
       // Las copias anteriores a bookLink guardaban las fichas de libros como
-      // enlaces generales. Al importarlas, las promovemos segÃºn su carpeta.
+      // enlaces generales. Al importarlas, las promovemos según su carpeta.
       if (
         linkType === "general" &&
         getBackupRootFolderName(item.folderKey) === "libros"
@@ -2256,7 +2274,7 @@ export const updateMetadata = mutation({
     if (!link) throw new Error("El enlace ya no existe.");
     if (["newsSource", "bookStore"].includes(link.linkType)) {
       throw new Error(
-        "Los comentarios y hashtags pertenecen a los enlaces guardados, no al catÃ¡logo.",
+        "Los comentarios y hashtags pertenecen a los enlaces guardados, no al catálogo.",
       );
     }
 
@@ -2291,7 +2309,7 @@ export const updateCustomTitle = mutation({
     const link = await ctx.db.get(args.linkId);
     if (!link) throw new Error("El enlace ya no existe.");
     if (["newsSource", "bookStore"].includes(link.linkType)) {
-      throw new Error("Edita el nombre de la fuente desde su catÃ¡logo.");
+      throw new Error("Edita el nombre de la fuente desde su catálogo.");
     }
 
     const customTitle = String(args.customTitle || "")
@@ -2331,7 +2349,7 @@ export const updatePreviewMetadata = mutation({
     const link = await ctx.db.get(args.linkId);
     if (!link) throw new Error("El enlace ya no existe.");
     if (["newsSource", "bookStore"].includes(link.linkType)) {
-      throw new Error("Edita el nombre de la fuente desde su catÃ¡logo.");
+      throw new Error("Edita el nombre de la fuente desde su catálogo.");
     }
 
     const patch = { updatedAt: Date.now() };
@@ -2381,7 +2399,7 @@ export const updateNewsSource = mutation({
       throw new Error("La fuente ya no existe.");
     }
     let normalized = normalizeLink(args.url);
-    if (!normalized) throw new Error("Introduce una URL http o https vÃ¡lida.");
+    if (!normalized) throw new Error("Introduce una URL http o https válida.");
     const sourceUrl = new URL(normalized.url);
     sourceUrl.pathname = "/";
     sourceUrl.search = "";
@@ -2394,7 +2412,7 @@ export const updateNewsSource = mutation({
       )
       .first();
     if (duplicate && duplicate._id !== args.linkId) {
-      throw new Error("Esa fuente ya existe en el catÃ¡logo.");
+      throw new Error("Esa fuente ya existe en el catálogo.");
     }
     const customTitle = String(args.customTitle || "")
       .trim()
@@ -2442,7 +2460,7 @@ export const remove = mutation({
   },
 });
 
-// Archiva el periÃ³dico y todas sus noticias asociadas.
+// Archiva el periódico y todas sus noticias asociadas.
 export const removeNewsSource = mutation({
   args: { linkId: v.id("computerLinks") },
   handler: async (ctx, args) => {
@@ -2476,8 +2494,8 @@ export const removeNewsSource = mutation({
   },
 });
 
-// OperaciÃ³n de mantenimiento: solo puede ejecutarse desde Convex CLI/Dashboard.
-// Conserva la categorÃ­a Noticias y sus subcategorÃ­as para poder reutilizarlas.
+// Operación de mantenimiento: solo puede ejecutarse desde Convex CLI/Dashboard.
+// Conserva la categoría Noticias y sus subcategorías para poder reutilizarlas.
 export const purgeNewsData = internalMutation({
   args: {
     confirmation: v.string(),
@@ -2486,7 +2504,7 @@ export const purgeNewsData = internalMutation({
   handler: async (ctx, args) => {
     if (args.confirmation !== "BORRAR NOTICIAS Y PERIODICOS") {
       throw new Error(
-        'ConfirmaciÃ³n incorrecta. Escribe exactamente "BORRAR NOTICIAS Y PERIODICOS".',
+        'Confirmación incorrecta. Escribe exactamente "BORRAR NOTICIAS Y PERIODICOS".',
       );
     }
 

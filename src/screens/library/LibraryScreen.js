@@ -19,6 +19,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useIsFocused } from "@react-navigation/native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import * as Clipboard from "expo-clipboard";
@@ -1544,6 +1545,7 @@ function HashtagCatalogLoader({ onLoaded }) {
 }
 
 export default function LibraryScreen({ navigation }) {
+  const isFocused = useIsFocused();
   const { width: screenWidth } = useWindowDimensions();
   const [clientId] = useState(getClientId);
   const [urlInput, setUrlInput] = useState("");
@@ -1599,12 +1601,18 @@ export default function LibraryScreen({ navigation }) {
     useState(false);
   const importPauseRequestedRef = useRef(false);
 
-  const folders = useQuery(api.computerLinks.listFolders) || [];
+  // React Navigation conserva las pantallas del stack montadas. Sin este
+  // `skip`, Biblioteca seguía suscrita a Convex aun estando detrás de otra
+  // pantalla y cada escritura volvía a ejecutar sus consultas.
+  const folders = useQuery(
+    api.computerLinks.listFolders,
+    isFocused ? {} : "skip",
+  ) || [];
   const activeImportJob = useQuery(
     api.computerLinks.getActiveLibraryImportJob,
-    {
+    isFocused ? {
       clientId,
-    },
+    } : "skip",
   );
   const {
     results: exportedLinks,
@@ -1612,7 +1620,7 @@ export default function LibraryScreen({ navigation }) {
     loadMore: loadMoreExportedLinks,
   } = usePaginatedQuery(
     api.computerLinks.exportBackup,
-    backupMode ? {} : "skip",
+    isFocused && backupMode ? {} : "skip",
     { initialNumItems: IMPORT_BATCH_SIZE },
   );
   const libraryBackup = useMemo(() => {
@@ -1675,7 +1683,9 @@ export default function LibraryScreen({ navigation }) {
   );
   const textLibraryResult = useQuery(
     api.computerLinks.list,
-    selectedHashtagFilter
+    !isFocused
+      ? "skip"
+      : selectedHashtagFilter
       ? "skip"
       : {
           search: submittedSearch || undefined,
@@ -1724,7 +1734,9 @@ export default function LibraryScreen({ navigation }) {
   );
   const selectedHashtagLinks = useQuery(
     api.computerLinks.getLinksByIds,
-    selectedHashtagFilter ? { ids: selectedHashtagPageIds } : "skip",
+    isFocused && selectedHashtagFilter
+      ? { ids: selectedHashtagPageIds }
+      : "skip",
   );
   const libraryResult = selectedHashtagFilter
     ? {
@@ -2114,11 +2126,11 @@ export default function LibraryScreen({ navigation }) {
   useEffect(() => {
     // Esperar a conocer si existe una importación activa. Durante un reemplazo
     // no debemos recrear carpetas mientras la fase de limpieza está en curso.
-    if (activeImportJob === undefined || activeImportJob) return;
+    if (!isFocused || activeImportJob === undefined || activeImportJob) return;
     ensureDefaultFolders({ clientId }).catch((error) =>
       console.warn("[LibraryScreen] folder setup failed", error),
     );
-  }, [activeImportJob, clientId, ensureDefaultFolders]);
+  }, [activeImportJob, clientId, ensureDefaultFolders, isFocused]);
 
   const folderById = useMemo(
     () => new Map(folders.map((folder) => [String(folder._id), folder])),
