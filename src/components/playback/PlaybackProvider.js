@@ -364,7 +364,8 @@ export default function PlaybackProvider({ children }) {
     setStatus(nextStatus);
   }, []);
   useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined") return undefined;
+    if (Platform.OS !== "web" || typeof document === "undefined")
+      return undefined;
     const styleId = "shopp-volume-slider-thumb-size";
     if (document.getElementById(styleId)) return undefined;
     const styleElement = document.createElement("style");
@@ -372,13 +373,13 @@ export default function PlaybackProvider({ children }) {
     styleElement.textContent = `
       .shopp-volume-slider input[type="range"]::-webkit-slider-thumb,
       input.shopp-volume-slider[type="range"]::-webkit-slider-thumb {
-        width: 8px !important;
-        height: 8px !important;
+        width: 6px !important;
+        height: 6px !important;
       }
       .shopp-volume-slider input[type="range"]::-moz-range-thumb,
       input.shopp-volume-slider[type="range"]::-moz-range-thumb {
-        width: 8px !important;
-        height: 8px !important;
+        width: 6px !important;
+        height: 6px !important;
       }
     `;
     document.head.appendChild(styleElement);
@@ -734,6 +735,7 @@ export default function PlaybackProvider({ children }) {
                               minimumTrackTintColor="#ec1970"
                               maximumTrackTintColor="transparent"
                               thumbTintColor="transparent"
+                              thumbSize={5}
                             />
                           </View>
 
@@ -800,14 +802,16 @@ export default function PlaybackProvider({ children }) {
                                 onPress={stopCurrentTrack}
                                 style={({ pressed }) => [
                                   styles.trackStopButton,
-                                  !wideTransport && styles.trackStopButtonMobile,
+                                  !wideTransport &&
+                                    styles.trackStopButtonMobile,
                                   pressed && styles.trackStopButtonPressed,
-                                  (!active || !status.ready) && styles.trackStopButtonDisabled,
+                                  (!active || !status.ready) &&
+                                    styles.trackStopButtonDisabled,
                                 ]}
                               >
                                 <Ionicons
                                   name="stop"
-                                  size={wideTransport ? 18 : 14}
+                                  size={wideTransport ? 24 : 19}
                                   color="#202124"
                                 />
                               </Pressable>
@@ -909,6 +913,7 @@ export default function PlaybackProvider({ children }) {
                                   minimumTrackTintColor="#9aa0a6"
                                   maximumTrackTintColor="#d7d9dc"
                                   thumbTintColor="#8f969e"
+                                  thumbSize={5}
                                 />
                               </View>
                               <Pressable
@@ -1430,12 +1435,12 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   trackStopButton: {
-    width: 30,
-    height: 34,
+    width: 40,
+    height: 42,
     alignItems: "center",
     justifyContent: "center",
   },
-  trackStopButtonMobile: { width: 24, height: 30 },
+  trackStopButtonMobile: { width: 32, height: 36 },
   trackStopButtonPressed: { opacity: 0.55 },
   trackStopButtonDisabled: { opacity: 0.25 },
   trackNavButton: {
