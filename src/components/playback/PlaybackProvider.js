@@ -217,6 +217,8 @@ export default function PlaybackProvider({ children }) {
   const [repeat, setRepeat] = useState(false);
   const [shuffle, setShuffle] = useState(false);
   const [volume, setVolume] = useState(100);
+  const trackVolumes = useRef(new Map());
+  const [, setVolumeRevision] = useState(0);
   const [status, setStatus] = useState(EMPTY_STATUS);
   const statusRef = useRef(EMPTY_STATUS);
   const player = useRef(null);
@@ -258,6 +260,7 @@ export default function PlaybackProvider({ children }) {
       if (sessionRef.current?.sourceKey !== sourceKey) {
         rememberCurrentPlayback();
         const remembered = rememberedPlayback.current.get(trackKey(tracks[0]));
+        setVolume(trackVolumes.current.get(trackKey(tracks[0])) ?? 100);
         installSession({
           title: playlist.title || "YouTube",
           tracks,
@@ -310,6 +313,7 @@ export default function PlaybackProvider({ children }) {
     const remembered = rememberedPlayback.current.get(
       trackKey(session.tracks[index]),
     );
+    setVolume(trackVolumes.current.get(trackKey(session.tracks[index])) ?? 100);
     installSession({
       ...session,
       index,
@@ -328,24 +332,14 @@ export default function PlaybackProvider({ children }) {
       ? "calc(78px + env(safe-area-inset-bottom, 0px))"
       : 70 + Math.max(insets.bottom, 10);
   const playing = status.state === 1 || status.state === 3;
-  const changeVolume = useCallback((nextVolume) => {
+  const changeTrackVolume = useCallback((item, active, nextVolume) => {
     const clampedVolume = Math.min(100, Math.max(0, Math.round(nextVolume)));
-    setVolume(clampedVolume);
-    player.current?.setVolume(clampedVolume);
-  }, []);
-  const decreaseVolume = useCallback(() => {
-    setVolume((currentVolume) => {
-      const nextVolume = Math.max(0, currentVolume - 10);
-      player.current?.setVolume(nextVolume);
-      return nextVolume;
-    });
-  }, []);
-  const increaseVolume = useCallback(() => {
-    setVolume((currentVolume) => {
-      const nextVolume = Math.min(100, currentVolume + 10);
-      player.current?.setVolume(nextVolume);
-      return nextVolume;
-    });
+    trackVolumes.current.set(trackKey(item), clampedVolume);
+    setVolumeRevision((revision) => revision + 1);
+    if (active) {
+      setVolume(clampedVolume);
+      player.current?.setVolume(clampedVolume);
+    }
   }, []);
   const stopCurrentTrack = useCallback(() => {
     const current = sessionRef.current;
@@ -373,13 +367,19 @@ export default function PlaybackProvider({ children }) {
     styleElement.textContent = `
       .shopp-volume-slider input[type="range"]::-webkit-slider-thumb,
       input.shopp-volume-slider[type="range"]::-webkit-slider-thumb {
-        width: 6px !important;
-        height: 6px !important;
+        width: 0 !important;
+        height: 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
       }
       .shopp-volume-slider input[type="range"]::-moz-range-thumb,
       input.shopp-volume-slider[type="range"]::-moz-range-thumb {
-        width: 6px !important;
-        height: 6px !important;
+        width: 0 !important;
+        height: 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
       }
     `;
     document.head.appendChild(styleElement);
@@ -604,6 +604,8 @@ export default function PlaybackProvider({ children }) {
                     const cardTitle = active
                       ? currentTitle || item.title
                       : item.title;
+                    const itemVolume =
+                      trackVolumes.current.get(trackKey(item)) ?? 100;
                     return (
                       <View
                         key={index}
@@ -735,7 +737,6 @@ export default function PlaybackProvider({ children }) {
                               minimumTrackTintColor="#ec1970"
                               maximumTrackTintColor="transparent"
                               thumbTintColor="transparent"
-                              thumbSize={5}
                             />
                           </View>
 
@@ -877,20 +878,27 @@ export default function PlaybackProvider({ children }) {
                                 accessibilityValue={{
                                   min: 0,
                                   max: 100,
-                                  now: volume,
+                                  now: itemVolume,
                                 }}
-                                disabled={volume <= 0}
+                                disabled={itemVolume <= 0}
                                 hitSlop={6}
-                                onPress={decreaseVolume}
+                                onPress={() =>
+                                  changeTrackVolume(
+                                    item,
+                                    active,
+                                    itemVolume - 10,
+                                  )
+                                }
                                 style={({ pressed }) => [
                                   styles.volumeButton,
                                   pressed && styles.volumeButtonPressed,
-                                  volume <= 0 && styles.volumeButtonDisabled,
+                                  itemVolume <= 0 &&
+                                    styles.volumeButtonDisabled,
                                 ]}
                               >
                                 <Ionicons
                                   name={
-                                    volume === 0
+                                    itemVolume === 0
                                       ? "volume-mute"
                                       : "volume-medium"
                                   }
@@ -906,14 +914,17 @@ export default function PlaybackProvider({ children }) {
                                     : {})}
                                   minimumValue={0}
                                   maximumValue={100}
-                                  value={volume}
+                                  value={itemVolume}
                                   step={1}
-                                  onValueChange={changeVolume}
-                                  onSlidingComplete={changeVolume}
+                                  onValueChange={(nextVolume) =>
+                                    changeTrackVolume(item, active, nextVolume)
+                                  }
+                                  onSlidingComplete={(nextVolume) =>
+                                    changeTrackVolume(item, active, nextVolume)
+                                  }
                                   minimumTrackTintColor="#9aa0a6"
                                   maximumTrackTintColor="#d7d9dc"
-                                  thumbTintColor="#8f969e"
-                                  thumbSize={5}
+                                  thumbTintColor="transparent"
                                 />
                               </View>
                               <Pressable
@@ -922,15 +933,22 @@ export default function PlaybackProvider({ children }) {
                                 accessibilityValue={{
                                   min: 0,
                                   max: 100,
-                                  now: volume,
+                                  now: itemVolume,
                                 }}
-                                disabled={volume >= 100}
+                                disabled={itemVolume >= 100}
                                 hitSlop={6}
-                                onPress={increaseVolume}
+                                onPress={() =>
+                                  changeTrackVolume(
+                                    item,
+                                    active,
+                                    itemVolume + 10,
+                                  )
+                                }
                                 style={({ pressed }) => [
                                   styles.volumeButton,
                                   pressed && styles.volumeButtonPressed,
-                                  volume >= 100 && styles.volumeButtonDisabled,
+                                  itemVolume >= 100 &&
+                                    styles.volumeButtonDisabled,
                                 ]}
                               >
                                 <Ionicons
@@ -1244,7 +1262,7 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingLeft: 24,
     paddingRight: 14,
-    backgroundColor: "#fff4cc",
+    backgroundColor: "#f7f7f7",
   },
   cardTextBlock: { flex: 1, minWidth: 0, justifyContent: "flex-start" },
   cardTimes: {
@@ -1293,7 +1311,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 0,
     gap: 5,
-    backgroundColor: "#e6f7e3",
+    backgroundColor: "#fff",
   },
   cardAudioSection: {
     height: 28,
@@ -1302,7 +1320,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     paddingHorizontal: 10,
     paddingVertical: 0,
-    backgroundColor: "#f1e6ff",
+    backgroundColor: "#fff",
   },
   cardAudioSectionMobile: { height: 22, paddingHorizontal: 5 },
   playerOptionButton: {
