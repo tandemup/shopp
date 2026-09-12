@@ -42,6 +42,10 @@ const TRAILING_PUNCTUATION = /[.,!?;:]+$/;
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
 const DEFAULT_VISIBLE_LINK_LIMIT = 80;
 const MAX_VISIBLE_LINK_LIMIT = 600;
+// La búsqueda textual antigua hacía collect() sobre todo el índice y podía
+// disparar el Database I/O al crecer la Biblioteca. Hasta migrarla a un
+// searchIndex, acotamos explícitamente el número máximo de documentos leídos.
+const MAX_SEARCH_SCAN_LIMIT = 1200;
 const TRACKING_QUERY_KEYS = new Set([
   "fbclid",
   "gclid",
@@ -889,9 +893,9 @@ export const list = query({
         continueCursor = pageResult.continueCursor;
         isDone = pageResult.isDone;
       } else {
-        links = shouldSearch
-          ? await query.collect()
-          : await query.take(listLimit);
+        links = await query.take(
+          shouldSearch ? MAX_SEARCH_SCAN_LIMIT : listLimit,
+        );
       }
     } else if (isCatalogSourceQuery) {
       // Las fuentes tienen un índice propio. No se leen primero las noticias
@@ -911,9 +915,9 @@ export const list = query({
         continueCursor = pageResult.continueCursor;
         isDone = pageResult.isDone;
       } else {
-        links = shouldSearch
-          ? await query.collect()
-          : await query.take(listLimit);
+        links = await query.take(
+          shouldSearch ? MAX_SEARCH_SCAN_LIMIT : listLimit,
+        );
       }
     } else if (!args.folderId) {
       const query = hasExplicitSort
@@ -936,9 +940,9 @@ export const list = query({
         continueCursor = pageResult.continueCursor;
         isDone = pageResult.isDone;
       } else {
-        links = shouldSearch
-          ? await query.collect()
-          : await query.take(listLimit);
+        links = await query.take(
+          shouldSearch ? MAX_SEARCH_SCAN_LIMIT : listLimit,
+        );
       }
     } else {
       if (useCursorPagination && selectedFolderIds.length === 1) {
@@ -978,7 +982,9 @@ export const list = query({
                 q.eq("folderId", folderId),
               )
               .order("desc");
-            return shouldSearch ? query.collect() : query.take(listLimit);
+            return query.take(
+              shouldSearch ? MAX_SEARCH_SCAN_LIMIT : listLimit,
+            );
           }),
         );
         links = linkPages.flat();
@@ -1043,6 +1049,8 @@ export const list = query({
       totalPages,
       continueCursor: isDone ? null : continueCursor,
       isDone,
+      searchTruncated:
+        shouldSearch && links.length >= MAX_SEARCH_SCAN_LIMIT,
     };
   },
 });
@@ -2472,23 +2480,33 @@ export const removeNewsSource = mutation({
       .trim()
       .toLowerCase()
       .replace(/^www\./, "");
-    const links = await ctx.db.query("computerLinks").collect();
+    const relatedType =
+      source.linkType === "bookStore" ? "bookLink" : "newsArticle";
+    const domainVariants = domain.startsWith("www.")
+      ? [domain, domain.slice(4)]
+      : [domain, `www.${domain}`];
+    const relatedPages = await Promise.all(
+      domainVariants.map((sourceDomain) =>
+        ctx.db
+          .query("computerLinks")
+          .withIndex("by_linkType_sourceDomain", (q) =>
+            q.eq("linkType", relatedType).eq("sourceDomain", sourceDomain),
+          )
+          .collect(),
+      ),
+    );
+    const links = [
+      ...new Map(
+        relatedPages.flat().map((link) => [String(link._id), link]),
+      ).values(),
+    ];
     let archivedArticles = 0;
     const now = Date.now();
+
+    await ctx.db.patch(source._id, { status: "archived", updatedAt: now });
     for (const link of links) {
-      const linkDomain = String(link.sourceDomain || link.hostname || "")
-        .trim()
-        .toLowerCase()
-        .replace(/^www\./, "");
-      const relatedType =
-        source.linkType === "bookStore" ? "bookLink" : "newsArticle";
-      if (
-        link._id === source._id ||
-        (link.linkType === relatedType && linkDomain === domain)
-      ) {
-        await ctx.db.patch(link._id, { status: "archived", updatedAt: now });
-        if (link._id !== source._id) archivedArticles += 1;
-      }
+      await ctx.db.patch(link._id, { status: "archived", updatedAt: now });
+      archivedArticles += 1;
     }
     return { archivedArticles };
   },
@@ -2524,14 +2542,47 @@ export const purgeNewsData = internalMutation({
         .map((folder) => String(folder._id)),
     );
 
-    const candidates = await ctx.db.query("computerLinks").collect();
-    const newsLinks = candidates.filter(
-      (link) =>
-        link.linkType === "newsArticle" ||
-        link.linkType === "newsSource" ||
-        newsFolderIds.has(String(link.folderId || "")),
+    // Leemos únicamente lotes indexados. La implementación anterior hacía
+    // collect() de toda computerLinks en cada ejecución de mantenimiento.
+    const articleBatch = await ctx.db
+      .query("computerLinks")
+      .withIndex("by_linkType_updatedAt", (q) =>
+        q.eq("linkType", "newsArticle"),
+      )
+      .take(limit);
+    const remainingAfterArticles = Math.max(0, limit - articleBatch.length);
+    const sourceBatch = remainingAfterArticles
+      ? await ctx.db
+          .query("computerLinks")
+          .withIndex("by_linkType_updatedAt", (q) =>
+            q.eq("linkType", "newsSource"),
+          )
+          .take(remainingAfterArticles)
+      : [];
+    const remainingAfterSources = Math.max(
+      0,
+      remainingAfterArticles - sourceBatch.length,
     );
-    const batch = newsLinks.slice(0, limit);
+    const legacyPages = remainingAfterSources
+      ? await Promise.all(
+          [...newsFolderIds].map((folderId) =>
+            ctx.db
+              .query("computerLinks")
+              .withIndex("by_folder_updatedAt", (q) =>
+                q.eq("folderId", folderId),
+              )
+              .take(remainingAfterSources),
+          ),
+        )
+      : [];
+    const selectedIds = new Set(
+      [...articleBatch, ...sourceBatch].map((link) => String(link._id)),
+    );
+    const legacyBatch = legacyPages
+      .flat()
+      .filter((link) => !selectedIds.has(String(link._id)))
+      .slice(0, remainingAfterSources);
+    const batch = [...articleBatch, ...sourceBatch, ...legacyBatch];
     let articlesDeleted = 0;
     let sourcesDeleted = 0;
     let legacyDeleted = 0;
@@ -2548,7 +2599,9 @@ export const purgeNewsData = internalMutation({
       articlesDeleted,
       sourcesDeleted,
       legacyDeleted,
-      remaining: Math.max(0, newsLinks.length - batch.length),
+      // Para conocer el total restante habría que volver a leer todas las
+      // noticias. null indica que debe repetirse hasta recibir deleted: 0.
+      remaining: batch.length === 0 ? 0 : null,
       foldersPreserved: newsFolderIds.size,
     };
   },
