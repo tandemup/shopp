@@ -336,6 +336,7 @@ export default defineSchema({
     createdAt: v.float64(),
   })
     .index("by_name", ["name"])
+    .index("by_createdBy", ["createdBy"])
     .index("by_parent_order", ["parentFolderId", "order"])
     .index("by_order", ["order"]),
 
@@ -371,6 +372,7 @@ export default defineSchema({
     updatedAt: v.float64(),
   })
     .index("by_normalizedUrl", ["normalizedUrl"])
+    .index("by_createdBy", ["createdBy"])
     .index("by_folder_linkType_updatedAt", [
       "folderId",
       "linkType",

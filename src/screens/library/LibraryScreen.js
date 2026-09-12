@@ -36,7 +36,7 @@ import CachedLinkImage from "@/src/components/chat/CachedLinkImage";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 const CLIENT_ID_KEY = "shopp-chat-client-id";
-const LIBRARY_SETUP_KEY = "shopp-library-setup-v2";
+const LIBRARY_SETUP_KEY = "shopp-library-setup-v3-utf8-folders";
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
 const CATALOG_SOURCES_IMPORT_KEY = "__catalog_sources__";
 const IMPORT_BATCH_SIZE = 250;
@@ -57,6 +57,39 @@ const HASHTAG_RESULT_PAGE_SIZE = 40;
 const PREVIEW_TITLE_CACHE = new Map();
 const PREVIEW_TITLE_REQUESTS = new Map();
 let previewTitleSaveDisabled = false;
+
+const UTF8_FOLDER_NAME_REPAIRS = new Map([
+  ["InformÃ¡tica", "Informática"],
+  ["InformÃƒÂ¡tica", "Informática"],
+  ["PolÃ­tica", "Política"],
+  ["PolÃƒÂ­tica", "Política"],
+  ["IngenierÃ­a", "Ingeniería"],
+  ["IngenierÃƒÂ­a", "Ingeniería"],
+  ["MÃºsica", "Música"],
+  ["MÃƒÂºsica", "Música"],
+]);
+
+function repairFolderName(name) {
+  const value = String(name || "");
+  return UTF8_FOLDER_NAME_REPAIRS.get(value) || value;
+}
+
+function collapseDuplicateFolders(rawFolders) {
+  const byCanonicalPath = new Map();
+  for (const folder of Array.isArray(rawFolders) ? rawFolders : []) {
+    const correctName = repairFolderName(folder?.name);
+    const key = `${String(folder?.parentFolderId || "root")}::${correctName.toLocaleLowerCase("es")}`;
+    const candidate =
+      correctName === folder?.name ? folder : { ...folder, name: correctName };
+    const previous = byCanonicalPath.get(key);
+    // Si existen ambas filas, la que ya tiene el nombre UTF-8 correcto es la
+    // canónica. La variante dañada nunca se representa como otra pestaña.
+    if (!previous || folder?.name === correctName) {
+      byCanonicalPath.set(key, candidate);
+    }
+  }
+  return [...byCanonicalPath.values()];
+}
 
 const LOCAL_TRACKING_QUERY_KEYS = new Set([
   "_ga",
@@ -1609,10 +1642,14 @@ export default function LibraryScreen({ navigation }) {
   // React Navigation conserva las pantallas del stack montadas. Sin este
   // `skip`, Biblioteca seguía suscrita a Convex aun estando detrás de otra
   // pantalla y cada escritura volvía a ejecutar sus consultas.
-  const folders = useQuery(
+  const rawFolders = useQuery(
     api.computerLinks.listFolders,
     isFocused ? {} : "skip",
   ) || [];
+  const folders = useMemo(
+    () => collapseDuplicateFolders(rawFolders),
+    [rawFolders],
+  );
   const activeImportJob = useQuery(
     api.computerLinks.getActiveLibraryImportJob,
     isFocused ? {
@@ -2138,14 +2175,26 @@ export default function LibraryScreen({ navigation }) {
       window.localStorage?.getItem(LIBRARY_SETUP_KEY) === "done";
     if (setupDone) return;
 
-    ensureDefaultFolders({ clientId })
+    const repairAndEnsureFolders = async () => {
+      let result;
+      // Normalmente basta una vuelta. Si una pestaña dañada contiene más de
+      // 100 enlaces, continuamos en lotes sin bloquear una sola mutación.
+      for (let pass = 0; pass < 25; pass += 1) {
+        result = await ensureDefaultFolders({ clientId });
+        if (!result?.duplicateMigrationPending) break;
+      }
+      return result;
+    };
+
+    repairAndEnsureFolders()
       .then((result) => {
         // Un lote completo de libros heredados indica que podría quedar otra
         // tanda. En ese caso no marcamos aún la migración como terminada.
         if (
           Platform.OS === "web" &&
           typeof window !== "undefined" &&
-          Number(result?.migratedBooks || 0) < 50
+          Number(result?.migratedBooks || 0) < 50 &&
+          !result?.duplicateMigrationPending
         ) {
           window.localStorage?.setItem(LIBRARY_SETUP_KEY, "done");
         }
@@ -2225,16 +2274,43 @@ export default function LibraryScreen({ navigation }) {
         }
       }
 
+      const automaticallyClassifiedAsNews =
+        result?.linkType === "newsArticle" && !isCatalogFolder;
+      const newsFolder = folders.find(
+        (folder) => !folder.parentFolderId && folder.name === "Noticias",
+      );
+
       if (result.existing) {
+        // Convex detecta duplicados mediante la URL canónica. Buscar con la
+        // URL pegada (que puede contener www, UTM o #fragmentos) daba cero
+        // resultados aunque el registro acabara de recuperarse.
+        const recoveredSearch = result.normalizedUrl || url;
         setSelectedHashtagFilter(null);
-        setFolderFilter("all");
+        setFolderFilter(
+          automaticallyClassifiedAsNews && newsFolder?._id
+            ? String(newsFolder._id)
+            : "all",
+        );
         setNewsView("articles");
         setSearchPage(0);
-        setSearch(url);
-        setSubmittedSearch(url);
+        setSearch(recoveredSearch);
+        setSubmittedSearch(recoveredSearch);
         safeAlert(
           "Enlace recuperado",
-          "El enlace ya existía en la biblioteca. Se ha intentado actualizar su título y fecha antes de mostrarlo.",
+          automaticallyClassifiedAsNews
+            ? `La noticia ya existía. Se mostrará en Noticias · ${result.sourceDomain || "periódico reconocido"}.`
+            : "El enlace ya existía en la biblioteca. Se ha intentado actualizar su título y fecha antes de mostrarlo.",
+        );
+      } else if (automaticallyClassifiedAsNews) {
+        setSelectedHashtagFilter(null);
+        if (newsFolder?._id) setFolderFilter(String(newsFolder._id));
+        setNewsView("articles");
+        setSearch("");
+        setSubmittedSearch("");
+        setSearchPage(0);
+        safeAlert(
+          "Noticia guardada",
+          `Guardada en Noticias · ${result.sourceDomain || "periódico reconocido"}.`,
         );
       }
     } catch (error) {
@@ -2246,6 +2322,7 @@ export default function LibraryScreen({ navigation }) {
     addUrl,
     clientId,
     getLinkPreview,
+    folders,
     isCatalogFolder,
     isBooksFolder,
     newsView,

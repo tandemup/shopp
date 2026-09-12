@@ -37,6 +37,20 @@ const NEWS_DEFAULT_FOLDERS = [
   ["Opinión", "chatbox-ellipses-outline", "#475569"],
 ];
 
+// Nombres que llegaron a Convex después de interpretar bytes UTF-8 como
+// Latin-1. Se mantienen explícitos para no modificar nombres elegidos por el
+// usuario que simplemente contengan caracteres no ASCII.
+const MOJIBAKE_DEFAULT_FOLDER_NAMES = new Map([
+  ["InformÃ¡tica", "Informática"],
+  ["InformÃƒÂ¡tica", "Informática"],
+  ["PolÃ­tica", "Política"],
+  ["PolÃƒÂ­tica", "Política"],
+  ["IngenierÃ­a", "Ingeniería"],
+  ["IngenierÃƒÂ­a", "Ingeniería"],
+  ["MÃºsica", "Música"],
+  ["MÃƒÂºsica", "Música"],
+]);
+
 const URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
 const TRAILING_PUNCTUATION = /[.,!?;:]+$/;
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
@@ -235,15 +249,27 @@ async function classifyLinkType(ctx, linkType, hostname) {
   }
 
   if (linkType === "general" || linkType === undefined) {
-    const knownNewsSource = await ctx.db
-      .query("computerLinks")
-      .withIndex("by_linkType_sourceDomain", (q) =>
-        q
-          .eq("linkType", "newsSource")
-          .eq("sourceDomain", String(hostname || "").toLowerCase()),
-      )
-      .first();
-    if (knownNewsSource) return "newsArticle";
+    // Prueba el dominio exacto y sus dominios padre. Así `amp.abc.es`,
+    // `m.abc.es` y `www.abc.es` pueden asociarse con la fuente `abc.es` sin
+    // mantener una lista fija de periódicos dentro del código.
+    const labels = String(hostname || "")
+      .replace(/^www\./i, "")
+      .toLowerCase()
+      .split(".")
+      .filter(Boolean);
+    const domainCandidates = [];
+    for (let index = 0; index <= Math.max(0, labels.length - 2); index += 1) {
+      domainCandidates.push(labels.slice(index).join("."));
+    }
+    for (const sourceDomain of domainCandidates) {
+      const knownNewsSource = await ctx.db
+        .query("computerLinks")
+        .withIndex("by_linkType_sourceDomain", (q) =>
+          q.eq("linkType", "newsSource").eq("sourceDomain", sourceDomain),
+        )
+        .first();
+      if (knownNewsSource) return "newsArticle";
+    }
   }
 
   return linkType || "general";
@@ -309,6 +335,68 @@ export const ensureDefaultFolders = mutation({
     const ownerId = await getOwnerId(ctx, args.clientId);
     const now = Date.now();
     let created = 0;
+    let duplicateFoldersRemoved = 0;
+    let duplicateLinksMoved = 0;
+    let duplicateMigrationPending = false;
+
+    // Repara las pestañas duplicadas conservando siempre la versión UTF-8.
+    // El lote acotado evita una mutación demasiado grande si una carpeta
+    // antigua contiene muchos enlaces. La pantalla repetirá la operación.
+    for (const [damagedName, correctName] of MOJIBAKE_DEFAULT_FOLDER_NAMES) {
+      const damagedFolders = await ctx.db
+        .query("computerLinkFolders")
+        .withIndex("by_name", (q) => q.eq("name", damagedName))
+        .collect();
+      for (const damagedFolder of damagedFolders) {
+        let correctFolder = await ctx.db
+          .query("computerLinkFolders")
+          .withIndex("by_name", (q) => q.eq("name", correctName))
+          .first();
+
+        if (!correctFolder) {
+          await ctx.db.patch(damagedFolder._id, { name: correctName });
+          continue;
+        }
+        if (correctFolder._id === damagedFolder._id) continue;
+
+        const childFolders = await ctx.db
+          .query("computerLinkFolders")
+          .withIndex("by_parent_order", (q) =>
+            q.eq("parentFolderId", damagedFolder._id),
+          )
+          .collect();
+        for (const child of childFolders) {
+          await ctx.db.patch(child._id, { parentFolderId: correctFolder._id });
+        }
+
+        const links = await ctx.db
+          .query("computerLinks")
+          .withIndex("by_folder_updatedAt", (q) =>
+            q.eq("folderId", damagedFolder._id),
+          )
+          .take(100);
+        for (const link of links) {
+          await ctx.db.patch(link._id, {
+            folderId: correctFolder._id,
+            updatedAt: now,
+          });
+          duplicateLinksMoved += 1;
+        }
+
+        const remainingLink = await ctx.db
+          .query("computerLinks")
+          .withIndex("by_folder_updatedAt", (q) =>
+            q.eq("folderId", damagedFolder._id),
+          )
+          .first();
+        if (remainingLink) {
+          duplicateMigrationPending = true;
+        } else {
+          await ctx.db.delete(damagedFolder._id);
+          duplicateFoldersRemoved += 1;
+        }
+      }
+    }
     for (let index = 0; index < DEFAULT_FOLDERS.length; index += 1) {
       const [name, icon, color] = DEFAULT_FOLDERS[index];
       const existing = await ctx.db
@@ -445,7 +533,13 @@ export const ensureDefaultFolders = mutation({
         }
       }
     }
-    return { created, migratedBooks };
+    return {
+      created,
+      migratedBooks,
+      duplicateFoldersRemoved,
+      duplicateLinksMoved,
+      duplicateMigrationPending,
+    };
   },
 });
 
@@ -711,6 +805,14 @@ export const addUrl = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    let originalUrl;
+    try {
+      originalUrl = new URL(
+        String(args.url || "").replace(TRAILING_PUNCTUATION, ""),
+      ).toString();
+    } catch {
+      throw new Error("Introduce una URL http o https válida.");
+    }
     let normalized = normalizeLink(args.url);
     if (!normalized) throw new Error("Introduce una URL http o https válida.");
     if (["newsSource", "bookStore"].includes(args.linkType)) {
@@ -718,6 +820,7 @@ export const addUrl = mutation({
       sourceUrl.pathname = "/";
       sourceUrl.search = "";
       normalized = normalizeLink(sourceUrl.toString());
+      originalUrl = normalized.url;
     }
     const requestedLinkType = args.linkType || "general";
     const classifiedLinkType = await classifyLinkType(
@@ -750,6 +853,9 @@ export const addUrl = mutation({
           ? existing.linkType
           : classifiedLinkType;
       await ctx.db.patch(existing._id, {
+        // Conservamos el enlace introducido para abrir la página, pero usamos
+        // normalizedUrl exclusivamente como identidad estable y antiduplicado.
+        url: originalUrl,
         folderId: args.folderId || existing.folderId,
         linkType,
         sourceDomain: [
@@ -767,13 +873,19 @@ export const addUrl = mutation({
         status: args.folderId || existing.folderId ? "reviewed" : "pending",
         updatedAt: Date.now(),
       });
-      return { linkId: existing._id, existing: true };
+      return {
+        linkId: existing._id,
+        existing: true,
+        normalizedUrl: normalized.url,
+        linkType,
+        sourceDomain: normalized.hostname,
+      };
     }
     const ownerId = await getOwnerId(ctx, args.clientId);
     if (!ownerId) throw new Error("No se pudo identificar este dispositivo.");
     const now = Date.now();
     const linkId = await ctx.db.insert("computerLinks", {
-      url: normalized.url,
+      url: originalUrl,
       normalizedUrl: normalized.url,
       hostname: normalized.hostname,
       username: String(args.username || "Biblioteca")
@@ -796,7 +908,13 @@ export const addUrl = mutation({
       createdAt: now,
       updatedAt: now,
     });
-    return { linkId, existing: false };
+    return {
+      linkId,
+      existing: false,
+      normalizedUrl: normalized.url,
+      linkType: classifiedLinkType,
+      sourceDomain: normalized.hostname,
+    };
   },
 });
 
@@ -1542,7 +1660,13 @@ export const clearLibraryForImportBatch = mutation({
       Math.max(Number(args.batchSize) || 100, 20),
       150,
     );
-    const links = await ctx.db.query("computerLinks").take(batchSize);
+    // Una importación en modo Reemplazar pertenece a un único usuario. La
+    // versión anterior tomaba filas de toda la tabla y podía borrar enlaces de
+    // otros usuarios. El índice evita además recorrer documentos ajenos.
+    const links = await ctx.db
+      .query("computerLinks")
+      .withIndex("by_createdBy", (q) => q.eq("createdBy", ownerId))
+      .take(batchSize);
     if (links.length > 0) {
       for (const link of links) await ctx.db.delete(link._id);
       await ctx.db.patch(job._id, {
@@ -1560,7 +1684,12 @@ export const clearLibraryForImportBatch = mutation({
       };
     }
 
-    const folders = await ctx.db.query("computerLinkFolders").take(batchSize);
+    // Las carpetas predeterminadas antiguas pueden ser compartidas o no tener
+    // propietario. Nunca se eliminan aquí: solo las creadas por este usuario.
+    const folders = await ctx.db
+      .query("computerLinkFolders")
+      .withIndex("by_createdBy", (q) => q.eq("createdBy", ownerId))
+      .take(batchSize);
     if (folders.length > 0) {
       for (const folder of folders) await ctx.db.delete(folder._id);
       await ctx.db.patch(job._id, {
