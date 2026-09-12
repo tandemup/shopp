@@ -27,6 +27,10 @@ import { formatTime, normalizeTrack, parseLrc } from "./youtubeUtils";
 import { getLocalLyrics } from "@/src/storage/lyricsStorage";
 
 const PlaybackContext = createContext(null);
+// Cambia este valor para alternar entre los dos diseños disponibles:
+// Ambas variantes conservan los repartos de espacio preparados anteriormente.
+// Los controles de volumen no se muestran en la card.
+const PLAYBACK_CARD_LAYOUT = "volumeInControls";
 const EMPTY_STATUS = {
   state: -1,
   time: 0,
@@ -218,7 +222,6 @@ export default function PlaybackProvider({ children }) {
   const [shuffle, setShuffle] = useState(false);
   const [volume, setVolume] = useState(100);
   const trackVolumes = useRef(new Map());
-  const [, setVolumeRevision] = useState(0);
   const [status, setStatus] = useState(EMPTY_STATUS);
   const statusRef = useRef(EMPTY_STATUS);
   const player = useRef(null);
@@ -335,15 +338,6 @@ export default function PlaybackProvider({ children }) {
       ? "calc(78px + env(safe-area-inset-bottom, 0px))"
       : 70 + Math.max(insets.bottom, 10);
   const playing = status.state === 1 || status.state === 3;
-  const changeTrackVolume = useCallback((item, active, nextVolume) => {
-    const clampedVolume = Math.min(100, Math.max(0, Math.round(nextVolume)));
-    trackVolumes.current.set(trackKey(item), clampedVolume);
-    setVolumeRevision((revision) => revision + 1);
-    if (active) {
-      setVolume(clampedVolume);
-      player.current?.setVolume(clampedVolume);
-    }
-  }, []);
   const stopCurrentTrack = useCallback(() => {
     const current = sessionRef.current;
     const currentTrack = current?.tracks?.[current.index];
@@ -359,34 +353,6 @@ export default function PlaybackProvider({ children }) {
     const nextStatus = { ...statusRef.current, state: 2, time: 0 };
     statusRef.current = nextStatus;
     setStatus(nextStatus);
-  }, []);
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined")
-      return undefined;
-    const styleId = "shopp-volume-slider-thumb-size";
-    if (document.getElementById(styleId)) return undefined;
-    const styleElement = document.createElement("style");
-    styleElement.id = styleId;
-    styleElement.textContent = `
-      .shopp-volume-slider input[type="range"]::-webkit-slider-thumb,
-      input.shopp-volume-slider[type="range"]::-webkit-slider-thumb {
-        width: 0 !important;
-        height: 0 !important;
-        border: 0 !important;
-        background: transparent !important;
-        box-shadow: none !important;
-      }
-      .shopp-volume-slider input[type="range"]::-moz-range-thumb,
-      input.shopp-volume-slider[type="range"]::-moz-range-thumb {
-        width: 0 !important;
-        height: 0 !important;
-        border: 0 !important;
-        background: transparent !important;
-        box-shadow: none !important;
-      }
-    `;
-    document.head.appendChild(styleElement);
-    return () => styleElement.remove();
   }, []);
   const selectRelative = (direction) => {
     if (!session?.tracks?.length) return;
@@ -592,6 +558,10 @@ export default function PlaybackProvider({ children }) {
                   ) : null}
                   {session.tracks.map((item, index) => {
                     const active = index === session.index;
+                    // En el reproductor ampliado solo se muestra la pista
+                    // seleccionada. La navegación anterior/siguiente cambia
+                    // session.index y sustituye esta card por la nueva activa.
+                    if (!active) return null;
                     const itemPlaying = active && playing;
                     const remembered = rememberedPlayback.current.get(
                       trackKey(item),
@@ -607,15 +577,12 @@ export default function PlaybackProvider({ children }) {
                     const cardTitle = active
                       ? currentTitle || item.title
                       : item.title;
-                    const itemVolume =
-                      trackVolumes.current.get(trackKey(item)) ?? 100;
                     return (
                       <View
                         key={index}
                         style={[
                           styles.track,
                           !wideTransport && styles.trackMobile,
-                          active && styles.activeTrack,
                         ]}
                       >
                         <Pressable
@@ -668,6 +635,9 @@ export default function PlaybackProvider({ children }) {
                           <View
                             style={[
                               styles.cardUpperHalf,
+                              PLAYBACK_CARD_LAYOUT === "balanced"
+                                ? styles.cardUpperBalanced
+                                : styles.cardUpperVolumeInControls,
                               !wideTransport && styles.cardUpperHalfMobile,
                             ]}
                           >
@@ -746,6 +716,9 @@ export default function PlaybackProvider({ children }) {
                           <View
                             style={[
                               styles.cardLowerHalf,
+                              PLAYBACK_CARD_LAYOUT === "balanced"
+                                ? styles.cardLowerBalanced
+                                : styles.cardLowerVolumeInControls,
                               !wideTransport && styles.cardLowerHalfMobile,
                             ]}
                           >
@@ -753,7 +726,10 @@ export default function PlaybackProvider({ children }) {
                               accessibilityRole="button"
                               accessibilityLabel="Repetir canción"
                               onPress={() => setRepeat((value) => !value)}
-                              style={styles.playerOptionButton}
+                              style={[
+                                styles.playerOptionButton,
+                                styles.sectionThreeButton,
+                              ]}
                             >
                               <Ionicons
                                 name="repeat"
@@ -766,7 +742,10 @@ export default function PlaybackProvider({ children }) {
                                 accessibilityRole="button"
                                 accessibilityLabel="Canción anterior"
                                 onPress={() => selectRelative(-1)}
-                                style={styles.trackNavButton}
+                                style={[
+                                  styles.trackNavButton,
+                                  styles.sectionThreeButton,
+                                ]}
                               >
                                 <Ionicons
                                   name="play-skip-back"
@@ -788,6 +767,7 @@ export default function PlaybackProvider({ children }) {
                                 onPress={() => select(index)}
                                 style={[
                                   styles.transportPlayButton,
+                                  styles.sectionThreeButton,
                                   !wideTransport &&
                                     styles.transportPlayButtonMobile,
                                   itemPlaying && styles.transportPauseButton,
@@ -806,6 +786,7 @@ export default function PlaybackProvider({ children }) {
                                 onPress={stopCurrentTrack}
                                 style={({ pressed }) => [
                                   styles.trackStopButton,
+                                  styles.sectionThreeButton,
                                   !wideTransport &&
                                     styles.trackStopButtonMobile,
                                   pressed && styles.trackStopButtonPressed,
@@ -823,7 +804,10 @@ export default function PlaybackProvider({ children }) {
                                 accessibilityRole="button"
                                 accessibilityLabel="Canción siguiente"
                                 onPress={() => selectRelative(1)}
-                                style={styles.trackNavButton}
+                                style={[
+                                  styles.trackNavButton,
+                                  styles.sectionThreeButton,
+                                ]}
                               >
                                 <Ionicons
                                   name="play-skip-forward"
@@ -836,7 +820,10 @@ export default function PlaybackProvider({ children }) {
                               accessibilityRole="button"
                               accessibilityLabel="Orden aleatorio"
                               onPress={() => setShuffle((value) => !value)}
-                              style={styles.playerOptionButton}
+                              style={[
+                                styles.playerOptionButton,
+                                styles.sectionThreeButton,
+                              ]}
                             >
                               <Ionicons
                                 name="shuffle"
@@ -853,6 +840,7 @@ export default function PlaybackProvider({ children }) {
                               style={[
                                 styles.youtubeButton,
                                 styles.youtubeButtonLower,
+                                styles.sectionThreeButton,
                                 !wideTransport && styles.youtubeButtonMobile,
                               ]}
                             >
@@ -862,105 +850,6 @@ export default function PlaybackProvider({ children }) {
                                 color="#ff0000"
                               />
                             </Pressable>
-                          </View>
-                          <View
-                            style={[
-                              styles.cardAudioSection,
-                              !wideTransport && styles.cardAudioSectionMobile,
-                            ]}
-                          >
-                            <View
-                              style={[
-                                styles.volumeControl,
-                                !wideTransport && styles.volumeControlMobile,
-                              ]}
-                            >
-                              <Pressable
-                                accessibilityRole="button"
-                                accessibilityLabel="Reducir volumen"
-                                accessibilityValue={{
-                                  min: 0,
-                                  max: 100,
-                                  now: itemVolume,
-                                }}
-                                disabled={itemVolume <= 0}
-                                hitSlop={6}
-                                onPress={() =>
-                                  changeTrackVolume(
-                                    item,
-                                    active,
-                                    itemVolume - 10,
-                                  )
-                                }
-                                style={({ pressed }) => [
-                                  styles.volumeButton,
-                                  pressed && styles.volumeButtonPressed,
-                                  itemVolume <= 0 &&
-                                    styles.volumeButtonDisabled,
-                                ]}
-                              >
-                                <Ionicons
-                                  name={
-                                    itemVolume === 0
-                                      ? "volume-mute"
-                                      : "volume-medium"
-                                  }
-                                  size={18}
-                                  color="#5f6368"
-                                />
-                              </Pressable>
-                              <View style={styles.volumeSliderWrap}>
-                                <Slider
-                                  style={styles.volumeSlider}
-                                  {...(Platform.OS === "web"
-                                    ? { className: "shopp-volume-slider" }
-                                    : {})}
-                                  minimumValue={0}
-                                  maximumValue={100}
-                                  value={itemVolume}
-                                  step={1}
-                                  onValueChange={(nextVolume) =>
-                                    changeTrackVolume(item, active, nextVolume)
-                                  }
-                                  onSlidingComplete={(nextVolume) =>
-                                    changeTrackVolume(item, active, nextVolume)
-                                  }
-                                  minimumTrackTintColor="#9aa0a6"
-                                  maximumTrackTintColor="#d7d9dc"
-                                  thumbTintColor="transparent"
-                                />
-                              </View>
-                              <Pressable
-                                accessibilityRole="button"
-                                accessibilityLabel="Aumentar volumen"
-                                accessibilityValue={{
-                                  min: 0,
-                                  max: 100,
-                                  now: itemVolume,
-                                }}
-                                disabled={itemVolume >= 100}
-                                hitSlop={6}
-                                onPress={() =>
-                                  changeTrackVolume(
-                                    item,
-                                    active,
-                                    itemVolume + 10,
-                                  )
-                                }
-                                style={({ pressed }) => [
-                                  styles.volumeButton,
-                                  pressed && styles.volumeButtonPressed,
-                                  itemVolume >= 100 &&
-                                    styles.volumeButtonDisabled,
-                                ]}
-                              >
-                                <Ionicons
-                                  name="volume-high"
-                                  size={18}
-                                  color="#5f6368"
-                                />
-                              </Pressable>
-                            </View>
                           </View>
                         </View>
                       </View>
@@ -1207,7 +1096,7 @@ const styles = StyleSheet.create({
   },
   desktopTrackList: {
     width: "100%",
-    maxWidth: 788,
+    maxWidth: 900,
     alignSelf: "center",
     paddingHorizontal: 0,
     paddingTop: 18,
@@ -1238,8 +1127,8 @@ const styles = StyleSheet.create({
   queueCount: { fontSize: 11, color: "#9ca3af" },
   track: {
     width: "100%",
-    maxWidth: 788,
-    aspectRatio: 2.82,
+    maxWidth: 900,
+    aspectRatio: 2.68,
     alignSelf: "center",
     flexDirection: "row",
     padding: 0,
@@ -1256,6 +1145,7 @@ const styles = StyleSheet.create({
   cardRight: { flex: 1, minWidth: 0, height: "100%", backgroundColor: "#fff" },
   cardUpperHalf: {
     flex: 1,
+    flexBasis: 0,
     minHeight: 0,
     flexDirection: "row",
     alignItems: "flex-start",
@@ -1264,6 +1154,8 @@ const styles = StyleSheet.create({
     paddingRight: 14,
     backgroundColor: "#f7f7f7",
   },
+  cardUpperBalanced: { flex: 3 },
+  cardUpperVolumeInControls: { flex: 3 },
   cardTextBlock: { flex: 1, minWidth: 0, justifyContent: "flex-start" },
   cardTimes: {
     width: 92,
@@ -1304,57 +1196,34 @@ const styles = StyleSheet.create({
     ...Platform.select({ web: { touchAction: "pan-x" } }),
   },
   cardLowerHalf: {
-    height: 60,
+    flex: 1,
+    flexBasis: 0,
+    minHeight: 78,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 10,
-    paddingVertical: 0,
+    paddingTop: 14,
+    paddingBottom: 4,
     gap: 5,
     backgroundColor: "#fff",
   },
-  cardAudioSection: {
-    height: 28,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    paddingHorizontal: 10,
-    paddingVertical: 0,
-    backgroundColor: "#fff",
+  cardLowerBalanced: { flex: 2 },
+  cardLowerVolumeInControls: {
+    flex: 2,
+    gap: 1,
+    paddingHorizontal: 4,
   },
-  cardAudioSectionMobile: { height: 22, paddingHorizontal: 5 },
   playerOptionButton: {
     width: 30,
     height: 38,
     alignItems: "center",
     justifyContent: "center",
   },
-  volumeControl: {
-    width: 112,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-  },
-  volumeControlMobile: { width: 92 },
-  volumeButton: {
-    width: 22,
-    height: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  volumeButtonPressed: { opacity: 0.55 },
-  volumeButtonDisabled: { opacity: 0.35 },
-  volumeSliderWrap: { flex: 1, height: 18, justifyContent: "center" },
-  volumeSlider: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    width: "100%",
-    height: 18,
-    margin: 0,
-    padding: 0,
-    ...Platform.select({ web: { touchAction: "pan-x" } }),
-  },
+  sectionThreeButton: Platform.select({
+    web: { outlineStyle: "none" },
+    default: {},
+  }),
   trackMobile: { height: 140 },
   cardArtworkButtonMobile: { width: 140, height: 140 },
   cardArtworkMobile: { width: 140, height: 140 },
@@ -1366,9 +1235,10 @@ const styles = StyleSheet.create({
   cardTotalTimeMobile: { fontSize: 12, lineHeight: 14 },
   youtubeButtonMobile: { width: 28, height: 34, marginLeft: 0 },
   cardLowerHalfMobile: {
-    height: 40,
+    minHeight: 50,
     paddingHorizontal: 7,
-    paddingVertical: 0,
+    paddingTop: 8,
+    paddingBottom: 2,
     gap: 4,
   },
   mobileCardHeader: {
@@ -1472,8 +1342,8 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    borderWidth: 6,
-    borderColor: "#dedede",
+    borderWidth: 2,
+    borderColor: "#202124",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#fff",
@@ -1483,10 +1353,10 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    borderWidth: 4,
+    borderWidth: 2,
   },
   inactiveTransportPlayButton: { backgroundColor: "#fff" },
-  transportPauseButton: { backgroundColor: "#fff", borderColor: "#ec1970" },
+  transportPauseButton: { backgroundColor: "#fff", borderColor: "#202124" },
   cardHeadingRow: {
     width: "100%",
     minHeight: 32,
