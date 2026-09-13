@@ -23,13 +23,9 @@ import { useIsFocused } from "@react-navigation/native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import * as Clipboard from "expo-clipboard";
-import {
-  useAction,
-  useMutation,
-  usePaginatedQuery,
-  useQuery,
-} from "convex/react";
+import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { libraryJsonApi } from "@/src/services/libraryJsonApi";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 import WebPreviewCard from "@/src/components/chat/WebPreviewCard";
 import CachedLinkImage from "@/src/components/chat/CachedLinkImage";
@@ -1390,9 +1386,8 @@ function ImportCheckbox({
 
 function MinimalLinkTitle({ item, previewMode = "default" }) {
   const getLinkPreview = useAction(api.linkPreviews.get);
-  const updatePreviewMetadata = useMutation(
-    api.computerLinks.updatePreviewMetadata,
-  );
+  const updatePreviewMetadata =
+    libraryJsonApi.updateMetadata.bind(libraryJsonApi);
   const fallbackTitle = getLinkDisplayTitle(item);
   const [previewTitle, setPreviewTitle] = useState("");
   const [previewSubtitle, setPreviewSubtitle] = useState("");
@@ -1521,52 +1516,15 @@ function getClientId() {
 }
 
 function HashtagCatalogLoader({ onLoaded }) {
-  const { results, status, loadMore } = usePaginatedQuery(
-    api.computerLinks.listHashtagPage,
-    {},
-    { initialNumItems: HASHTAG_SCAN_PAGE_SIZE },
-  );
-
-  const stats = useMemo(() => {
-    const counts = new Map();
-    (Array.isArray(results) ? results : []).forEach((entry) => {
-      const linkId = entry?._id;
-      const hashtags = Array.isArray(entry?.hashtags)
-        ? entry.hashtags
-        : Array.isArray(entry)
-          ? entry
-          : [];
-      hashtags.forEach((tag) => {
-        const normalizedTag = String(tag || "")
-          .trim()
-          .replace(/^#+/, "")
-          .toLowerCase();
-        if (!normalizedTag) return;
-        const current = counts.get(normalizedTag) || { count: 0, ids: [] };
-        current.count += 1;
-        if (linkId) current.ids.push(linkId);
-        counts.set(normalizedTag, current);
-      });
+  useEffect(() => {
+    let cancelled = false;
+    libraryJsonApi.getHashtagCatalog().then((stats) => {
+      if (!cancelled) onLoaded(stats);
     });
-    return [...counts.entries()]
-      .map(([tag, value]) => ({ tag, count: value.count, ids: value.ids }))
-      .sort(
-        (first, second) =>
-          second.count - first.count || first.tag.localeCompare(second.tag),
-      );
-  }, [results]);
-
-  useEffect(() => {
-    if (status === "CanLoadMore") {
-      loadMore(HASHTAG_SCAN_PAGE_SIZE);
-    }
-  }, [loadMore, status]);
-
-  useEffect(() => {
-    if (status === "Exhausted") {
-      onLoaded(stats);
-    }
-  }, [onLoaded, stats, status]);
+    return () => {
+      cancelled = true;
+    };
+  }, [onLoaded]);
 
   return (
     <View style={styles.hashtagCatalogLoading}>
@@ -1575,8 +1533,7 @@ function HashtagCatalogLoader({ onLoaded }) {
         Cargando hashtags de noticias…
       </Text>
       <Text style={styles.hashtagCatalogLoadingText}>
-        {Number(results?.length || 0).toLocaleString("es-ES")} enlaces
-        analizados
+        Analizando los enlaces guardados en este dispositivo
       </Text>
     </View>
   );
@@ -1638,33 +1595,31 @@ export default function LibraryScreen({ navigation }) {
   const [resumeImportModalVisible, setResumeImportModalVisible] =
     useState(false);
   const importPauseRequestedRef = useRef(false);
+  const [localRevision, setLocalRevision] = useState(0);
+  const [rawFolders, setRawFolders] = useState([]);
+  const [textLibraryResult, setTextLibraryResult] = useState(undefined);
+  const [selectedHashtagLinks, setSelectedHashtagLinks] = useState([]);
+  const [activeImportJob, setActiveImportJob] = useState(null);
+  const [exportedLinks, setExportedLinks] = useState([]);
+  const [exportStatus, setExportStatus] = useState("Idle");
+
+  useEffect(
+    () =>
+      libraryJsonApi.subscribe(() => setLocalRevision((value) => value + 1)),
+    [],
+  );
 
   // React Navigation conserva las pantallas del stack montadas. Sin este
   // `skip`, Biblioteca seguía suscrita a Convex aun estando detrás de otra
   // pantalla y cada escritura volvía a ejecutar sus consultas.
-  const rawFolders = useQuery(
-    api.computerLinks.listFolders,
-    isFocused ? {} : "skip",
-  ) || [];
   const folders = useMemo(
     () => collapseDuplicateFolders(rawFolders),
     [rawFolders],
   );
-  const activeImportJob = useQuery(
-    api.computerLinks.getActiveLibraryImportJob,
-    isFocused ? {
-      clientId,
-    } : "skip",
-  );
-  const {
-    results: exportedLinks,
-    status: exportStatus,
-    loadMore: loadMoreExportedLinks,
-  } = usePaginatedQuery(
-    api.computerLinks.exportBackup,
-    isFocused && backupMode ? {} : "skip",
-    { initialNumItems: IMPORT_BATCH_SIZE },
-  );
+  useEffect(() => {
+    if (!isFocused) return;
+    libraryJsonApi.listFolders().then(setRawFolders).catch(console.warn);
+  }, [isFocused, localRevision]);
   const libraryBackup = useMemo(() => {
     if (exportStatus !== "Exhausted" || !Array.isArray(exportedLinks)) {
       return null;
@@ -1723,40 +1678,55 @@ export default function LibraryScreen({ navigation }) {
     1,
     Math.min(6, Math.floor((screenWidth - 20) / 270)),
   );
-  const textLibraryResult = useQuery(
-    api.computerLinks.list,
-    !isFocused
-      ? "skip"
-      : selectedHashtagFilter
-      ? "skip"
-      : {
-          search: submittedSearch || undefined,
-          folderId: selectedFolderId,
-          onlyFavorites: folderFilter === "favorites" || undefined,
-          onlyUnclassified: folderFilter === "unclassified" || undefined,
-          excludeNewsSources: folderFilter === "all" || undefined,
-          linkType: isCatalogFolder
-            ? newsView === "sources"
-              ? isBooksFolder
-                ? "bookStore"
-                : "newsSource"
-              : isBooksFolder
-                ? "bookLink"
-                : "newsArticle"
-            : undefined,
-          newsSort: canSortCurrentList ? newsSort : undefined,
-          page: submittedSearch ? searchPage : undefined,
-          cursor: submittedSearch
-            ? undefined
-            : browseCursors[browsePage] || undefined,
-          paginate: !submittedSearch || undefined,
-          limit: isSourceCatalog
-            ? LIBRARY_CATALOG_SOURCE_LIMIT
-            : submittedSearch
-              ? LIBRARY_SEARCH_PAGE_SIZE
-              : LIBRARY_VISIBLE_LINK_LIMIT,
-        },
-  );
+  useEffect(() => {
+    if (!isFocused || selectedHashtagFilter) return;
+    let cancelled = false;
+    libraryJsonApi
+      .list({
+        search: submittedSearch || undefined,
+        folderId: selectedFolderId,
+        onlyFavorites: folderFilter === "favorites" || undefined,
+        onlyUnclassified: folderFilter === "unclassified" || undefined,
+        excludeNewsSources: folderFilter === "all" || undefined,
+        linkType: isCatalogFolder
+          ? newsView === "sources"
+            ? isBooksFolder
+              ? "bookStore"
+              : "newsSource"
+            : isBooksFolder
+              ? "bookLink"
+              : "newsArticle"
+          : undefined,
+        newsSort: canSortCurrentList ? newsSort : undefined,
+        page: submittedSearch ? searchPage : browsePage,
+        limit: isSourceCatalog
+          ? LIBRARY_CATALOG_SOURCE_LIMIT
+          : submittedSearch
+            ? LIBRARY_SEARCH_PAGE_SIZE
+            : LIBRARY_VISIBLE_LINK_LIMIT,
+      })
+      .then((result) => {
+        if (!cancelled) setTextLibraryResult(result);
+      })
+      .catch(console.warn);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isFocused,
+    selectedHashtagFilter,
+    submittedSearch,
+    selectedFolderId,
+    folderFilter,
+    isCatalogFolder,
+    newsView,
+    isBooksFolder,
+    canSortCurrentList,
+    newsSort,
+    searchPage,
+    browsePage,
+    localRevision,
+  ]);
 
   const selectedHashtagIds = Array.isArray(selectedHashtagFilter?.ids)
     ? selectedHashtagFilter.ids
@@ -1774,12 +1744,13 @@ export default function LibraryScreen({ navigation }) {
     selectedHashtagPage * HASHTAG_RESULT_PAGE_SIZE,
     (selectedHashtagPage + 1) * HASHTAG_RESULT_PAGE_SIZE,
   );
-  const selectedHashtagLinks = useQuery(
-    api.computerLinks.getLinksByIds,
-    isFocused && selectedHashtagFilter
-      ? { ids: selectedHashtagPageIds }
-      : "skip",
-  );
+  useEffect(() => {
+    if (!isFocused || !selectedHashtagFilter) return;
+    libraryJsonApi
+      .getLinksByIds(selectedHashtagPageIds)
+      .then(setSelectedHashtagLinks)
+      .catch(console.warn);
+  }, [isFocused, selectedHashtagFilter, selectedHashtagPage, localRevision]);
   const libraryResult = selectedHashtagFilter
     ? {
         items: selectedHashtagLinks || [],
@@ -1938,50 +1909,136 @@ export default function LibraryScreen({ navigation }) {
     setNewsView("articles");
   }, [folders, leaveHashtagMode]);
 
-  const ensureDefaultFolders = useMutation(
-    api.computerLinks.ensureDefaultFolders,
+  const ensureDefaultFolders = useCallback(
+    async () => ({ duplicateMigrationPending: false, migratedBooks: 0 }),
+    [],
   );
-  const addUrl = useMutation(api.computerLinks.addUrl);
-  const createFolder = useMutation(api.computerLinks.createFolder);
-  const toggleFavorite = useMutation(api.computerLinks.toggleFavorite);
-  const updateMetadata = useMutation(api.computerLinks.updateMetadata);
-  const updateNewsSource = useMutation(api.computerLinks.updateNewsSource);
-  const moveToFolder = useMutation(api.computerLinks.moveToFolder);
-  const removeLink = useMutation(api.computerLinks.remove);
-  const removeNewsSource = useMutation(api.computerLinks.removeNewsSource);
-  const importBackup = useMutation(api.computerLinks.importBackup);
-  const importLibraryJobBatch = useMutation(
-    api.computerLinks.importLibraryJobBatch,
+  const addUrl = useCallback((args) => libraryJsonApi.addUrl(args), []);
+  const createFolder = useCallback(
+    (args) => libraryJsonApi.createFolder(args),
+    [],
   );
-  const clearLibraryForImportBatch = useMutation(
-    api.computerLinks.clearLibraryForImportBatch,
+  const toggleFavorite = useCallback(
+    (args) => libraryJsonApi.toggleFavorite(args),
+    [],
   );
-  const ensureNewsSources = useMutation(api.computerLinks.ensureNewsSources);
-  const ensureNewsSourcesForDomains = useMutation(
-    api.computerLinks.ensureNewsSourcesForDomains,
+  const updateMetadata = useCallback(
+    (args) => libraryJsonApi.updateMetadata(args),
+    [],
   );
-  const beginLibraryImportJob = useMutation(
-    api.computerLinks.beginLibraryImportJob,
+  const updateNewsSource = useCallback(
+    (args) => libraryJsonApi.updateNewsSource(args),
+    [],
   );
-  const updateLibraryImportJobProgress = useMutation(
-    api.computerLinks.updateLibraryImportJobProgress,
+  const moveToFolder = useCallback(
+    (args) => libraryJsonApi.moveToFolder(args),
+    [],
   );
-  const completeLibraryImportJob = useMutation(
-    api.computerLinks.completeLibraryImportJob,
+  const removeLink = useCallback((args) => libraryJsonApi.remove(args), []);
+  const removeNewsSource = removeLink;
+  const importBackup = useCallback(
+    (payload) => libraryJsonApi.importBackup(payload, { mode: payload?.mode }),
+    [],
   );
-  const cancelLibraryImportJob = useMutation(
-    api.computerLinks.cancelLibraryImportJob,
+  const ensureNewsSources = useCallback(
+    async () => ({ processed: 0, created: 0, isDone: true }),
+    [],
   );
-  const normalizeAndDeduplicate = useMutation(
-    api.computerLinks.normalizeAndDeduplicate,
+  const ensureNewsSourcesForDomains = useCallback(
+    async () => ({ created: 0 }),
+    [],
   );
-  const extractTitleHashtagsBatch = useMutation(
-    api.computerLinks.extractTitleHashtagsBatch,
+  const normalizeAndDeduplicate = useCallback(
+    async () => ({
+      normalizedCount: 0,
+      duplicatesRemoved: 0,
+      correctedNewsPosts: 0,
+      isDone: true,
+    }),
+    [],
   );
+  const extractTitleHashtagsBatch = useCallback(
+    async () => ({ processed: 0, updated: 0, hashtagsAdded: 0, isDone: true }),
+    [],
+  );
+  const beginLibraryImportJob = useCallback(async (args) => {
+    const job = {
+      ...args,
+      _id: `local-import-${Date.now()}`,
+      status: "pending",
+      phase: "links",
+      processedLinks: 0,
+      processedSources: 0,
+    };
+    setActiveImportJob(job);
+    return job;
+  }, []);
+  const updateLibraryImportJobProgress = useCallback(async (args) => {
+    let updated;
+    setActiveImportJob((current) => {
+      updated = {
+        ...(current || {}),
+        ...args,
+        _id: args.jobId || current?._id,
+      };
+      return updated;
+    });
+    return updated || args;
+  }, []);
+  const clearLibraryForImportBatch = useCallback(async () => {
+    await libraryJsonApi.reset();
+    let job;
+    setActiveImportJob(
+      (current) => (job = { ...current, replacePrepared: true }),
+    );
+    return { done: true, job };
+  }, []);
+  const importLibraryJobBatch = useCallback(async (args) => {
+    const result = await libraryJsonApi.importBatch({
+      links: args.links,
+      folders: args.folders,
+      mode: "combine",
+    });
+    let job;
+    setActiveImportJob(
+      (current) =>
+        (job = {
+          ...current,
+          processedLinks: Number(args.expectedStart || 0) + args.links.length,
+          linksCreated: result.links,
+        }),
+    );
+    return { job };
+  }, []);
+  const completeLibraryImportJob = useCallback(async () => {
+    let completed;
+    setActiveImportJob((current) => {
+      completed = { ...current, status: "completed" };
+      return null;
+    });
+    return completed || {};
+  }, []);
+  const cancelLibraryImportJob = useCallback(async () => {
+    setActiveImportJob(null);
+    return { ok: true };
+  }, []);
   const getLinkPreview = useAction(api.linkPreviews.get);
-  const refreshPreviewMetadata = useMutation(
-    api.computerLinks.updatePreviewMetadata,
-  );
+  const refreshPreviewMetadata = updateMetadata;
+  useEffect(() => {
+    if (!backupMode) return;
+    setExportStatus("Loading");
+    libraryJsonApi
+      .exportBackup()
+      .then((backup) => {
+        setExportedLinks(backup.data.links || []);
+        setExportStatus("Exhausted");
+      })
+      .catch((error) => {
+        console.warn("[LibraryScreen] local export failed", error);
+        setExportStatus("Error");
+        setBackupBusy(false);
+      });
+  }, [backupMode, localRevision]);
   useEffect(() => {
     if (!backupMode) return;
     if (exportStatus === "CanLoadMore") {
@@ -1997,7 +2054,6 @@ export default function LibraryScreen({ navigation }) {
             }
           : current,
       );
-      loadMoreExportedLinks(IMPORT_BATCH_SIZE);
       return;
     }
     if (exportStatus === "Exhausted" && libraryBackup) {
@@ -2160,7 +2216,6 @@ export default function LibraryScreen({ navigation }) {
     exportedLinks,
     exportStatus,
     libraryBackup,
-    loadMoreExportedLinks,
     normalizeAndDeduplicate,
     extractTitleHashtagsBatch,
   ]);

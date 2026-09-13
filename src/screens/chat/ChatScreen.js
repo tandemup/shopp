@@ -35,6 +35,7 @@ import YouTubePlaylistPlayer from "@/src/components/chat/YouTubePlaylistPlayer";
 import CustomYouTubePlaylistPlayer from "@/src/components/chat/CustomYouTubePlaylistPlayer";
 import WebPreviewCard from "@/src/components/chat/WebPreviewCard";
 import { extractUrlsFromText, parseYouTubeUrl } from "@/src/services/urlSafety";
+import { libraryJsonApi } from "@/src/services/libraryJsonApi";
 
 const ROOMS = [
   { id: "compras", label: "Compras", icon: "cart-outline" },
@@ -91,7 +92,14 @@ function saveAlias(alias) {
 }
 
 function playlistJsonFileName(value) {
-  return `${String(value || "playlist").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "playlist"}.json`;
+  return `${
+    String(value || "playlist")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "playlist"
+  }.json`;
 }
 
 async function exportPlaylistJsonFile(title, tracks) {
@@ -104,13 +112,17 @@ async function exportPlaylistJsonFile(title, tracks) {
       kind: track.kind === "album" ? "album" : "single",
       title: track.title.trim() || `Elemento ${index + 1}`,
       url: parseYouTubeUrl(track.url.trim()).playableUrl,
-      ...(track.lyrics?.fileName ? { lyricsFileName: track.lyrics.fileName } : {}),
+      ...(track.lyrics?.fileName
+        ? { lyricsFileName: track.lyrics.fileName }
+        : {}),
     })),
   };
   const fileName = playlistJsonFileName(title);
   const json = JSON.stringify(data, null, 2);
   if (Platform.OS === "web" && typeof document !== "undefined") {
-    const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    const url = URL.createObjectURL(
+      new Blob([json], { type: "application/json" }),
+    );
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = fileName;
@@ -122,15 +134,28 @@ async function exportPlaylistJsonFile(title, tracks) {
   }
   const FileSystem = await import("expo-file-system/legacy");
   const uri = `${FileSystem.cacheDirectory}${fileName}`;
-  await FileSystem.writeAsStringAsync(uri, json, { encoding: FileSystem.EncodingType.UTF8 });
-  await Share.share({ title: fileName, url: uri, message: Platform.OS === "android" ? json : undefined });
+  await FileSystem.writeAsStringAsync(uri, json, {
+    encoding: FileSystem.EncodingType.UTF8,
+  });
+  await Share.share({
+    title: fileName,
+    url: uri,
+    message: Platform.OS === "android" ? json : undefined,
+  });
 }
 
 function parsePlaylistJsonForEditor(value) {
-  if (value?.type !== "shopp-youtube-playlist" || !String(value.title || "").trim()) {
+  if (
+    value?.type !== "shopp-youtube-playlist" ||
+    !String(value.title || "").trim()
+  ) {
     throw new Error("El fichero no es una playlist de Shopp compatible.");
   }
-  if (!Array.isArray(value.tracks) || value.tracks.length < 2 || value.tracks.length > 20) {
+  if (
+    !Array.isArray(value.tracks) ||
+    value.tracks.length < 2 ||
+    value.tracks.length > 20
+  ) {
     throw new Error("La playlist debe contener entre 2 y 20 elementos.");
   }
   return {
@@ -139,10 +164,20 @@ function parsePlaylistJsonForEditor(value) {
       const kind = track.kind === "album" ? "album" : "single";
       const url = String(track.url || "").trim();
       const parsed = parseYouTubeUrl(url);
-      if (!parsed.isValid || (kind === "album" ? !parsed.playlistId : !parsed.videoId)) {
-        throw new Error(`El elemento ${index + 1} no contiene un enlace de YouTube válido.`);
+      if (
+        !parsed.isValid ||
+        (kind === "album" ? !parsed.playlistId : !parsed.videoId)
+      ) {
+        throw new Error(
+          `El elemento ${index + 1} no contiene un enlace de YouTube válido.`,
+        );
       }
-      return { kind, title: String(track.title || "").trim() || `Elemento ${index + 1}`, url, lyrics: null };
+      return {
+        kind,
+        title: String(track.title || "").trim() || `Elemento ${index + 1}`,
+        url,
+        lyrics: null,
+      };
     }),
   };
 }
@@ -170,7 +205,8 @@ function getDateKey(timestamp) {
 }
 
 function formatDateLabel(timestamp, language = "es") {
-  if (!timestamp) return language === "en" ? "Unknown date" : "Fecha desconocida";
+  if (!timestamp)
+    return language === "en" ? "Unknown date" : "Fecha desconocida";
 
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) {
@@ -368,23 +404,50 @@ function ComputerLinkLibrary({ clientId, language }) {
   const [search, setSearch] = useState("");
   const [folderFilter, setFolderFilter] = useState("all");
   const [movingLink, setMovingLink] = useState(null);
-  const folders = useQuery(api.computerLinks.listFolders) || [];
+  const [folders, setFolders] = useState([]);
+  const [libraryResult, setLibraryResult] = useState(undefined);
+  const [localRevision, setLocalRevision] = useState(0);
   const folderId =
     folderFilter !== "all" &&
     folderFilter !== "favorites" &&
     folderFilter !== "unclassified"
       ? folderFilter
       : undefined;
-  const libraryResult = useQuery(api.computerLinks.list, {
-    search: search.trim() || undefined,
-    folderId,
-    onlyFavorites: folderFilter === "favorites" || undefined,
-    onlyUnclassified: folderFilter === "unclassified" || undefined,
-  });
+  useEffect(
+    () =>
+      libraryJsonApi.subscribe(() => setLocalRevision((value) => value + 1)),
+    [],
+  );
+  useEffect(() => {
+    libraryJsonApi.listFolders().then(setFolders).catch(console.warn);
+  }, [localRevision]);
+  useEffect(() => {
+    let cancelled = false;
+    libraryJsonApi
+      .list({
+        search: search.trim() || undefined,
+        folderId,
+        onlyFavorites: folderFilter === "favorites" || undefined,
+        onlyUnclassified: folderFilter === "unclassified" || undefined,
+      })
+      .then((result) => {
+        if (!cancelled) setLibraryResult(result);
+      })
+      .catch(console.warn);
+    return () => {
+      cancelled = true;
+    };
+  }, [search, folderId, folderFilter, localRevision]);
   const links = libraryResult?.items;
-  const toggleFavorite = useMutation(api.computerLinks.toggleFavorite);
-  const moveToFolder = useMutation(api.computerLinks.moveToFolder);
-  const removeLink = useMutation(api.computerLinks.remove);
+  const toggleFavorite = useCallback(
+    (args) => libraryJsonApi.toggleFavorite(args),
+    [],
+  );
+  const moveToFolder = useCallback(
+    (args) => libraryJsonApi.moveToFolder(args),
+    [],
+  );
+  const removeLink = useCallback((args) => libraryJsonApi.remove(args), []);
 
   const folderById = useMemo(
     () => new Map(folders.map((folder) => [String(folder._id), folder])),
@@ -414,9 +477,7 @@ function ComputerLinkLibrary({ clientId, language }) {
         <TextInput
           value={search}
           onChangeText={setSearch}
-          placeholder={
-            language === "en" ? "Search links…" : "Buscar enlaces…"
-          }
+          placeholder={language === "en" ? "Search links…" : "Buscar enlaces…"}
           placeholderTextColor="#94a3b8"
           style={styles.librarySearchInput}
           autoCorrect={false}
@@ -518,7 +579,11 @@ function ComputerLinkLibrary({ clientId, language }) {
                   style={styles.libraryActionButton}
                   accessibilityLabel="Mover a carpeta"
                 >
-                  <Ionicons name="folder-open-outline" size={18} color="#2563eb" />
+                  <Ionicons
+                    name="folder-open-outline"
+                    size={18}
+                    color="#2563eb"
+                  />
                 </Pressable>
                 <Pressable
                   onPress={() => removeLink({ linkId: item._id })}
@@ -607,7 +672,8 @@ export default function ChatScreen() {
   const [albumLyrics, setAlbumLyrics] = useState(null);
   const [savingAlbum, setSavingAlbum] = useState(false);
   const [creatingPlaylist, setCreatingPlaylist] = useState(false);
-  const [editingPlaylistMessageId, setEditingPlaylistMessageId] = useState(null);
+  const [editingPlaylistMessageId, setEditingPlaylistMessageId] =
+    useState(null);
   const [playlistTitle, setPlaylistTitle] = useState("");
   const [playlistTracks, setPlaylistTracks] = useState([
     { kind: "single", title: "I. Allegro", url: "" },
@@ -655,7 +721,10 @@ export default function ChatScreen() {
     refreshedNewsDatesRef.current = true;
     refreshNewsYouTubePublishedDates().catch((error) => {
       refreshedNewsDatesRef.current = false;
-      console.warn("[Chat] No se pudieron actualizar las fechas de YouTube:", error);
+      console.warn(
+        "[Chat] No se pudieron actualizar las fechas de YouTube:",
+        error,
+      );
     });
   }, [messages, refreshNewsYouTubePublishedDates, room]);
 
@@ -687,7 +756,9 @@ export default function ChatScreen() {
 
     newsMessages.forEach((message) => {
       const timestamp =
-        message.youtubePublishedAt || message.createdAt || message._creationTime;
+        message.youtubePublishedAt ||
+        message.createdAt ||
+        message._creationTime;
       const dateKey = getDateKey(timestamp);
 
       if (dateKey !== previousDateKey) {
@@ -802,34 +873,43 @@ export default function ChatScreen() {
     );
   }, []);
 
-  const handlePickPlaylistLyrics = useCallback(async (index) => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ["text/plain", "application/octet-stream"],
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
-      const asset = result.assets?.[0];
-      if (result.canceled || !asset?.uri) return;
-      const fileName = asset.name || "lyrics.lrc";
-      if (!fileName.toLowerCase().endsWith(".lrc")) {
-        safeAlert("Formato no válido", "Selecciona un fichero con extensión .lrc.");
-        return;
+  const handlePickPlaylistLyrics = useCallback(
+    async (index) => {
+      try {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: ["text/plain", "application/octet-stream"],
+          copyToCacheDirectory: true,
+          multiple: false,
+        });
+        const asset = result.assets?.[0];
+        if (result.canceled || !asset?.uri) return;
+        const fileName = asset.name || "lyrics.lrc";
+        if (!fileName.toLowerCase().endsWith(".lrc")) {
+          safeAlert(
+            "Formato no válido",
+            "Selecciona un fichero con extensión .lrc.",
+          );
+          return;
+        }
+        if ((asset.size || 0) > 512 * 1024) {
+          safeAlert(
+            "Fichero demasiado grande",
+            "El fichero LRC no puede superar 512 KB.",
+          );
+          return;
+        }
+        updatePlaylistTrack(index, "lyrics", {
+          uri: asset.uri,
+          fileName,
+          mimeType: asset.mimeType || "text/plain",
+          size: asset.size || 0,
+        });
+      } catch (error) {
+        console.error("[Chat] No se pudieron seleccionar las letras:", error);
       }
-      if ((asset.size || 0) > 512 * 1024) {
-        safeAlert("Fichero demasiado grande", "El fichero LRC no puede superar 512 KB.");
-        return;
-      }
-      updatePlaylistTrack(index, "lyrics", {
-        uri: asset.uri,
-        fileName,
-        mimeType: asset.mimeType || "text/plain",
-        size: asset.size || 0,
-      });
-    } catch (error) {
-      console.error("[Chat] No se pudieron seleccionar las letras:", error);
-    }
-  }, [updatePlaylistTrack]);
+    },
+    [updatePlaylistTrack],
+  );
 
   const handleImportPlaylistJson = useCallback(async () => {
     try {
@@ -841,7 +921,9 @@ export default function ChatScreen() {
       const asset = result.assets?.[0];
       if (result.canceled || !asset?.uri) return;
       const response = await fetch(asset.uri);
-      const imported = parsePlaylistJsonForEditor(JSON.parse(await response.text()));
+      const imported = parsePlaylistJsonForEditor(
+        JSON.parse(await response.text()),
+      );
       setEditingPlaylistMessageId(null);
       setPlaylistTitle(imported.title);
       setPlaylistTracks(imported.tracks);
@@ -902,16 +984,20 @@ export default function ChatScreen() {
       playlist.tracks.map((track, index) => ({
         kind: track.kind === "album" ? "album" : "single",
         title: track.title || `Elemento ${index + 1}`,
-        url: track.url || (track.playlistId
-          ? `https://www.youtube.com/playlist?list=${track.playlistId}`
-          : `https://www.youtube.com/watch?v=${track.videoId || ""}`),
-        lyrics: track.lyricsStorageId ? {
-          existing: true,
-          storageId: track.lyricsStorageId,
-          fileName: track.lyricsFileName || "lyrics.lrc",
-          mimeType: track.lyricsMimeType || "text/plain",
-          size: track.lyricsSize || 0,
-        } : null,
+        url:
+          track.url ||
+          (track.playlistId
+            ? `https://www.youtube.com/playlist?list=${track.playlistId}`
+            : `https://www.youtube.com/watch?v=${track.videoId || ""}`),
+        lyrics: track.lyricsStorageId
+          ? {
+              existing: true,
+              storageId: track.lyricsStorageId,
+              fileName: track.lyricsFileName || "lyrics.lrc",
+              mimeType: track.lyricsMimeType || "text/plain",
+              size: track.lyricsSize || 0,
+            }
+          : null,
       })),
     );
     setCreatingPlaylist(true);
@@ -953,7 +1039,9 @@ export default function ChatScreen() {
             body: blob,
           });
           if (!uploadResponse.ok) {
-            throw new Error(`No se pudieron subir las letras del elemento ${index + 1}.`);
+            throw new Error(
+              `No se pudieron subir las letras del elemento ${index + 1}.`,
+            );
           }
           const { storageId } = await uploadResponse.json();
           lyrics = {
@@ -1004,7 +1092,9 @@ export default function ChatScreen() {
       ]);
     } catch (error) {
       safeAlert(
-        editingPlaylistMessageId ? "No se pudo guardar la playlist" : "No se pudo crear la playlist",
+        editingPlaylistMessageId
+          ? "No se pudo guardar la playlist"
+          : "No se pudo crear la playlist",
         error?.message || "Revisa los enlaces de YouTube.",
       );
     } finally {
@@ -1421,7 +1511,9 @@ export default function ChatScreen() {
               style={styles.createPlaylistButton}
             >
               <Ionicons name="add-circle-outline" size={18} color="#fff" />
-              <Text style={styles.createPlaylistButtonText}>Nueva playlist</Text>
+              <Text style={styles.createPlaylistButtonText}>
+                Nueva playlist
+              </Text>
             </Pressable>
             <Text style={styles.youtubeToolsHint} numberOfLines={1}>
               Combina canciones individuales y álbumes
@@ -1480,67 +1572,67 @@ export default function ChatScreen() {
           <ComputerLinkLibrary clientId={chatClientId} language={language} />
         ) : (
           <FlatList
-          ref={listRef}
-          data={listItems}
-          keyExtractor={(item) =>
-            String(item._listKey || item._id || item.id)
-          }
-          renderItem={({ item }) =>
-            item._listType === "dateSeparator" ? (
-              <View style={styles.dateSeparatorRow}>
-                <View style={styles.dateSeparatorLine} />
-                <Text style={styles.dateSeparatorText}>
-                  {formatDateLabel(item.timestamp, language)}
+            ref={listRef}
+            data={listItems}
+            keyExtractor={(item) =>
+              String(item._listKey || item._id || item.id)
+            }
+            renderItem={({ item }) =>
+              item._listType === "dateSeparator" ? (
+                <View style={styles.dateSeparatorRow}>
+                  <View style={styles.dateSeparatorLine} />
+                  <Text style={styles.dateSeparatorText}>
+                    {formatDateLabel(item.timestamp, language)}
+                  </Text>
+                  <View style={styles.dateSeparatorLine} />
+                </View>
+              ) : (
+                <Message
+                  item={item}
+                  myAlias={cleanAlias}
+                  language={language}
+                  onDelete={handleDeletePost}
+                  onEditAlbum={openAlbumEditor}
+                  onEditCustomPlaylist={openCustomPlaylistEditor}
+                  onImagePress={setExpandedImageUri}
+                  deleting={deletingMessageId === item._id}
+                />
+              )
+            }
+            style={styles.list}
+            contentContainerStyle={[
+              styles.listContent,
+              visibleMessages.length === 0 && styles.listEmpty,
+            ]}
+            keyboardShouldPersistTaps="handled"
+            onContentSizeChange={() =>
+              listRef.current?.scrollToEnd?.({ animated: false })
+            }
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <Ionicons
+                  name={
+                    room === "youtube"
+                      ? "logo-youtube"
+                      : "chatbubble-ellipses-outline"
+                  }
+                  size={34}
+                  color={room === "youtube" ? "#dc2626" : "#94a3b8"}
+                />
+                <Text style={styles.emptyTitle}>
+                  {messages === undefined
+                    ? "Conectando con Convex…"
+                    : room === "youtube"
+                      ? "Comparte el primer vídeo o playlist"
+                      : "Todavía no hay mensajes"}
                 </Text>
-                <View style={styles.dateSeparatorLine} />
+                <Text style={styles.emptyText}>
+                  {room === "youtube"
+                    ? "Pega un enlace de vídeo o playlist de YouTube y pulsa enviar. Podrás reproducirlo dentro del chat; las playlists conservarán su selector de vídeos."
+                    : "Abre Shopp en otro dispositivo y usa un alias diferente para probar la conversación en tiempo real."}
+                </Text>
               </View>
-            ) : (
-              <Message
-                item={item}
-                myAlias={cleanAlias}
-                language={language}
-                onDelete={handleDeletePost}
-                onEditAlbum={openAlbumEditor}
-                onEditCustomPlaylist={openCustomPlaylistEditor}
-                onImagePress={setExpandedImageUri}
-                deleting={deletingMessageId === item._id}
-              />
-            )
-          }
-          style={styles.list}
-          contentContainerStyle={[
-            styles.listContent,
-            visibleMessages.length === 0 && styles.listEmpty,
-          ]}
-          keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() =>
-            listRef.current?.scrollToEnd?.({ animated: false })
-          }
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Ionicons
-                name={
-                  room === "youtube"
-                    ? "logo-youtube"
-                    : "chatbubble-ellipses-outline"
-                }
-                size={34}
-                color={room === "youtube" ? "#dc2626" : "#94a3b8"}
-              />
-              <Text style={styles.emptyTitle}>
-                {messages === undefined
-                  ? "Conectando con Convex…"
-                  : room === "youtube"
-                    ? "Comparte el primer vídeo o playlist"
-                    : "Todavía no hay mensajes"}
-              </Text>
-              <Text style={styles.emptyText}>
-                {room === "youtube"
-                  ? "Pega un enlace de vídeo o playlist de YouTube y pulsa enviar. Podrás reproducirlo dentro del chat; las playlists conservarán su selector de vídeos."
-                  : "Abre Shopp en otro dispositivo y usa un alias diferente para probar la conversación en tiempo real."}
-              </Text>
-            </View>
-          }
+            }
           />
         )}
 
@@ -1634,17 +1726,24 @@ export default function ChatScreen() {
               <View style={styles.playlistCreatorHeader}>
                 <View style={styles.playlistCreatorTitleBlock}>
                   <Text style={styles.playlistCreatorTitle}>
-                    {editingPlaylistMessageId ? "Editar playlist de Shopp" : "Nueva playlist de Shopp"}
+                    {editingPlaylistMessageId
+                      ? "Editar playlist de Shopp"
+                      : "Nueva playlist de Shopp"}
                   </Text>
                   <Text style={styles.playlistCreatorSubtitle}>
                     Añade singles o álbumes mediante sus enlaces de YouTube.
                   </Text>
                 </View>
-                <Pressable onPress={closePlaylistCreator} style={styles.playlistCreatorClose}>
+                <Pressable
+                  onPress={closePlaylistCreator}
+                  style={styles.playlistCreatorClose}
+                >
                   <Ionicons name="close" size={23} color="#475569" />
                 </Pressable>
               </View>
-              <Text style={styles.playlistFieldLabel}>Nombre del concierto o playlist</Text>
+              <Text style={styles.playlistFieldLabel}>
+                Nombre del concierto o playlist
+              </Text>
               <TextInput
                 value={playlistTitle}
                 onChangeText={setPlaylistTitle}
@@ -1654,7 +1753,10 @@ export default function ChatScreen() {
                 maxLength={120}
               />
               <View style={styles.playlistTransferRow}>
-                <Pressable onPress={handleImportPlaylistJson} style={styles.playlistTransferButton}>
+                <Pressable
+                  onPress={handleImportPlaylistJson}
+                  style={styles.playlistTransferButton}
+                >
                   <Ionicons name="download-outline" size={16} color="#2563eb" />
                   <Text style={styles.playlistTransferText}>Importar JSON</Text>
                 </Pressable>
@@ -1670,23 +1772,41 @@ export default function ChatScreen() {
                   <Text style={styles.playlistTransferText}>Exportar JSON</Text>
                 </Pressable>
               </View>
-              <ScrollView style={styles.playlistTracksScroll} keyboardShouldPersistTaps="handled">
+              <ScrollView
+                style={styles.playlistTracksScroll}
+                keyboardShouldPersistTaps="handled"
+              >
                 {playlistTracks.map((track, index) => (
-                  <View key={`playlist-track-${index}`} style={styles.playlistTrackEditor}>
+                  <View
+                    key={`playlist-track-${index}`}
+                    style={styles.playlistTrackEditor}
+                  >
                     <View style={styles.playlistTrackHeader}>
-                      <Text style={styles.playlistTrackNumber}>Elemento {index + 1}</Text>
+                      <Text style={styles.playlistTrackNumber}>
+                        Elemento {index + 1}
+                      </Text>
                       {playlistTracks.length > 2 ? (
-                        <Pressable onPress={() => removePlaylistTrack(index)} style={styles.playlistTrackRemove}>
-                          <Ionicons name="trash-outline" size={17} color="#dc2626" />
+                        <Pressable
+                          onPress={() => removePlaylistTrack(index)}
+                          style={styles.playlistTrackRemove}
+                        >
+                          <Ionicons
+                            name="trash-outline"
+                            size={17}
+                            color="#dc2626"
+                          />
                         </Pressable>
                       ) : null}
                     </View>
                     <View style={styles.playlistKindRow}>
                       <Pressable
-                        onPress={() => updatePlaylistTrack(index, "kind", "single")}
+                        onPress={() =>
+                          updatePlaylistTrack(index, "kind", "single")
+                        }
                         style={[
                           styles.playlistKindButton,
-                          track.kind !== "album" && styles.playlistKindButtonActive,
+                          track.kind !== "album" &&
+                            styles.playlistKindButtonActive,
                         ]}
                       >
                         <Ionicons
@@ -1694,16 +1814,24 @@ export default function ChatScreen() {
                           size={15}
                           color={track.kind !== "album" ? "#fff" : "#475569"}
                         />
-                        <Text style={[
-                          styles.playlistKindText,
-                          track.kind !== "album" && styles.playlistKindTextActive,
-                        ]}>Single</Text>
+                        <Text
+                          style={[
+                            styles.playlistKindText,
+                            track.kind !== "album" &&
+                              styles.playlistKindTextActive,
+                          ]}
+                        >
+                          Single
+                        </Text>
                       </Pressable>
                       <Pressable
-                        onPress={() => updatePlaylistTrack(index, "kind", "album")}
+                        onPress={() =>
+                          updatePlaylistTrack(index, "kind", "album")
+                        }
                         style={[
                           styles.playlistKindButton,
-                          track.kind === "album" && styles.playlistKindButtonActive,
+                          track.kind === "album" &&
+                            styles.playlistKindButtonActive,
                         ]}
                       >
                         <Ionicons
@@ -1711,15 +1839,22 @@ export default function ChatScreen() {
                           size={15}
                           color={track.kind === "album" ? "#fff" : "#475569"}
                         />
-                        <Text style={[
-                          styles.playlistKindText,
-                          track.kind === "album" && styles.playlistKindTextActive,
-                        ]}>Álbum</Text>
+                        <Text
+                          style={[
+                            styles.playlistKindText,
+                            track.kind === "album" &&
+                              styles.playlistKindTextActive,
+                          ]}
+                        >
+                          Álbum
+                        </Text>
                       </Pressable>
                     </View>
                     <TextInput
                       value={track.title}
-                      onChangeText={(value) => updatePlaylistTrack(index, "title", value)}
+                      onChangeText={(value) =>
+                        updatePlaylistTrack(index, "title", value)
+                      }
                       placeholder={
                         track.kind === "album"
                           ? `Nombre del álbum ${index + 1}`
@@ -1731,7 +1866,9 @@ export default function ChatScreen() {
                     />
                     <TextInput
                       value={track.url}
-                      onChangeText={(value) => updatePlaylistTrack(index, "url", value)}
+                      onChangeText={(value) =>
+                        updatePlaylistTrack(index, "url", value)
+                      }
                       placeholder={
                         track.kind === "album"
                           ? "https://youtube.com/playlist?list=..."
@@ -1747,9 +1884,16 @@ export default function ChatScreen() {
                         onPress={() => handlePickPlaylistLyrics(index)}
                         style={styles.playlistLyricsButton}
                       >
-                        <Ionicons name="document-text-outline" size={17} color="#2563eb" />
+                        <Ionicons
+                          name="document-text-outline"
+                          size={17}
+                          color="#2563eb"
+                        />
                         <View style={styles.playlistLyricsTextBlock}>
-                          <Text style={styles.playlistLyricsTitle} numberOfLines={1}>
+                          <Text
+                            style={styles.playlistLyricsTitle}
+                            numberOfLines={1}
+                          >
                             {track.lyrics?.fileName || "Añadir letras .lrc"}
                           </Text>
                           <Text style={styles.playlistLyricsHint}>
@@ -1759,35 +1903,56 @@ export default function ChatScreen() {
                       </Pressable>
                       {track.lyrics ? (
                         <Pressable
-                          onPress={() => updatePlaylistTrack(index, "lyrics", null)}
+                          onPress={() =>
+                            updatePlaylistTrack(index, "lyrics", null)
+                          }
                           style={styles.playlistLyricsRemove}
                         >
-                          <Ionicons name="close-circle" size={19} color="#dc2626" />
+                          <Ionicons
+                            name="close-circle"
+                            size={19}
+                            color="#dc2626"
+                          />
                         </Pressable>
                       ) : null}
                     </View>
                   </View>
                 ))}
                 {playlistTracks.length < 20 ? (
-                  <Pressable onPress={addPlaylistTrack} style={styles.addMovementButton}>
+                  <Pressable
+                    onPress={addPlaylistTrack}
+                    style={styles.addMovementButton}
+                  >
                     <Ionicons name="add" size={18} color="#2563eb" />
-                    <Text style={styles.addMovementText}>Añadir single o álbum</Text>
+                    <Text style={styles.addMovementText}>
+                      Añadir single o álbum
+                    </Text>
                   </Pressable>
                 ) : null}
               </ScrollView>
               <View style={styles.playlistCreatorActions}>
-                <Pressable onPress={closePlaylistCreator} style={styles.albumCancelButton}>
+                <Pressable
+                  onPress={closePlaylistCreator}
+                  style={styles.albumCancelButton}
+                >
                   <Text style={styles.albumCancelText}>Cancelar</Text>
                 </Pressable>
                 <Pressable
                   onPress={handleCreatePlaylist}
                   disabled={!playlistCanSave}
-                  style={[styles.albumSaveButton, !playlistCanSave && styles.albumSaveButtonDisabled]}
+                  style={[
+                    styles.albumSaveButton,
+                    !playlistCanSave && styles.albumSaveButtonDisabled,
+                  ]}
                 >
                   <Text style={styles.albumSaveText}>
                     {savingPlaylist
-                      ? editingPlaylistMessageId ? "Guardando…" : "Creando…"
-                      : editingPlaylistMessageId ? "Guardar cambios" : "Crear playlist"}
+                      ? editingPlaylistMessageId
+                        ? "Guardando…"
+                        : "Creando…"
+                      : editingPlaylistMessageId
+                        ? "Guardar cambios"
+                        : "Crear playlist"}
                   </Text>
                 </Pressable>
               </View>
@@ -2325,12 +2490,31 @@ const styles = StyleSheet.create({
     borderColor: "#d1d5db",
     backgroundColor: "#fff",
   },
-  playlistCreatorHeader: { flexDirection: "row", alignItems: "flex-start", marginBottom: 12 },
+  playlistCreatorHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 12,
+  },
   playlistCreatorTitleBlock: { flex: 1, minWidth: 0 },
   playlistCreatorTitle: { fontSize: 18, fontWeight: "900", color: "#111827" },
-  playlistCreatorSubtitle: { marginTop: 3, fontSize: 11, lineHeight: 15, color: "#64748b" },
-  playlistCreatorClose: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
-  playlistFieldLabel: { marginBottom: 5, fontSize: 12, fontWeight: "800", color: "#334155" },
+  playlistCreatorSubtitle: {
+    marginTop: 3,
+    fontSize: 11,
+    lineHeight: 15,
+    color: "#64748b",
+  },
+  playlistCreatorClose: {
+    width: 38,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  playlistFieldLabel: {
+    marginBottom: 5,
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#334155",
+  },
   playlistTitleInput: {
     minHeight: 42,
     paddingHorizontal: 10,
@@ -2365,9 +2549,24 @@ const styles = StyleSheet.create({
     borderColor: "#e2e8f0",
     backgroundColor: "#f8fafc",
   },
-  playlistTrackHeader: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
-  playlistTrackNumber: { flex: 1, fontSize: 10, fontWeight: "900", color: "#dc2626", textTransform: "uppercase" },
-  playlistTrackRemove: { width: 30, height: 26, alignItems: "center", justifyContent: "center" },
+  playlistTrackHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  playlistTrackNumber: {
+    flex: 1,
+    fontSize: 10,
+    fontWeight: "900",
+    color: "#dc2626",
+    textTransform: "uppercase",
+  },
+  playlistTrackRemove: {
+    width: 30,
+    height: 26,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   playlistKindRow: { flexDirection: "row", gap: 6, marginBottom: 2 },
   playlistKindButton: {
     minHeight: 30,
@@ -2379,7 +2578,10 @@ const styles = StyleSheet.create({
     borderColor: "#cbd5e1",
     backgroundColor: "#fff",
   },
-  playlistKindButtonActive: { borderColor: "#dc2626", backgroundColor: "#dc2626" },
+  playlistKindButtonActive: {
+    borderColor: "#dc2626",
+    backgroundColor: "#dc2626",
+  },
   playlistKindText: { fontSize: 10, fontWeight: "800", color: "#475569" },
   playlistKindTextActive: { color: "#fff" },
   playlistTrackInput: {
@@ -2392,7 +2594,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#111827",
   },
-  playlistLyricsRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 7 },
+  playlistLyricsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 7,
+  },
   playlistLyricsButton: {
     flex: 1,
     minWidth: 0,
@@ -2409,7 +2616,12 @@ const styles = StyleSheet.create({
   playlistLyricsTextBlock: { flex: 1, minWidth: 0 },
   playlistLyricsTitle: { fontSize: 11, fontWeight: "800", color: "#1d4ed8" },
   playlistLyricsHint: { marginTop: 1, fontSize: 9, color: "#64748b" },
-  playlistLyricsRemove: { width: 32, height: 38, alignItems: "center", justifyContent: "center" },
+  playlistLyricsRemove: {
+    width: 32,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   addMovementButton: {
     minHeight: 38,
     flexDirection: "row",
@@ -2422,7 +2634,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#eff6ff",
   },
   addMovementText: { fontSize: 11, fontWeight: "800", color: "#2563eb" },
-  playlistCreatorActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 13 },
+  playlistCreatorActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+    marginTop: 13,
+  },
   albumEditorBackdrop: {
     flex: 1,
     alignItems: "center",
