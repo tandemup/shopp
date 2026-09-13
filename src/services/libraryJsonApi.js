@@ -44,6 +44,55 @@ function normalizeUrl(value) {
   }
 }
 
+const MOJIBAKE_REPAIRS = [
+  [/ÃƒÂ¡|Ã¡|A¡/g, "á"],
+  [/ÃƒÂ©|Ã©|A©/g, "é"],
+  [/ÃƒÂ­|Ã­|A­/g, "í"],
+  [/ÃƒÂ³|Ã³|A³/g, "ó"],
+  [/ÃƒÂº|Ãº|Aº/g, "ú"],
+  [/ÃƒÂ±|Ã±|A±/g, "ñ"],
+  [/ÃƒÂ|Ã/g, "Á"],
+  [/ÃƒÂ‰|Ã‰/g, "É"],
+  [/ÃƒÂ|Ã/g, "Í"],
+  [/ÃƒÂ“|Ã“/g, "Ó"],
+  [/ÃƒÂš|Ãš/g, "Ú"],
+  [/ÃƒÂ‘|Ã‘/g, "Ñ"],
+];
+
+function repairText(value) {
+  let result = String(value ?? "");
+  for (const [pattern, replacement] of MOJIBAKE_REPAIRS)
+    result = result.replace(pattern, replacement);
+  return result;
+}
+
+function decodeFolderKey(value) {
+  let result = String(value || "").trim();
+  for (let pass = 0; pass < 3 && /%[0-9a-f]{2}/i.test(result); pass += 1) {
+    try {
+      result = decodeURIComponent(result);
+    } catch {
+      break;
+    }
+  }
+  return repairText(result)
+    .split("/")
+    .map((part) =>
+      part
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[\\/]+/g, " ")
+        .trim()
+        .replace(/\s+/g, "_"),
+    )
+    .filter(Boolean)
+    .join("/");
+}
+
+function folderSegment(name) {
+  return decodeFolderKey(String(name || "Sin_nombre"));
+}
+
 function emptyDatabase() {
   const now = Date.now();
   return {
@@ -52,6 +101,7 @@ function emptyDatabase() {
     updatedAt: now,
     folders: DEFAULT_FOLDERS.map(([name, icon, color], order) => ({
       _id: id("folder"),
+      key: folderSegment(name),
       name,
       icon,
       color,
@@ -67,21 +117,38 @@ function sanitizeDatabase(value) {
     value?.data && Array.isArray(value.data.links) ? value.data : value;
   const database = emptyDatabase();
   if (Array.isArray(source?.folders)) {
-    database.folders = source.folders.map((folder, order) => ({
+    const drafts = source.folders.map((folder, order) => ({
       _id: String(folder._id || folder.id || id("folder")),
-      name: String(folder.name || "Sin nombre").slice(0, 50),
-      parentFolderId: folder.parentFolderId
+      key: decodeFolderKey(folder.key || folder._key || folder.name),
+      parentKey: folder.parentKey
+        ? decodeFolderKey(folder.parentKey)
+        : undefined,
+      originalParentFolderId: folder.parentFolderId
         ? String(folder.parentFolderId)
         : undefined,
+      name: repairText(folder.name || "Sin nombre").slice(0, 50),
       icon: folder.icon || "folder-outline",
       color: folder.color || "#2563eb",
       order: Number.isFinite(folder.order) ? folder.order : order,
       createdAt: Number(folder.createdAt) || Date.now(),
     }));
+    const byKey = new Map(drafts.map((folder) => [folder.key, folder]));
+    const byId = new Map(drafts.map((folder) => [folder._id, folder]));
+    database.folders = drafts.map(
+      ({ parentKey, originalParentFolderId, ...folder }) => ({
+        ...folder,
+        parentFolderId: parentKey
+          ? byKey.get(parentKey)?._id
+          : originalParentFolderId && byId.has(originalParentFolderId)
+            ? originalParentFolderId
+            : undefined,
+      }),
+    );
   }
   const folderByKey = new Map(
-    database.folders.map((folder) => [folder.key || folder.name, folder._id]),
+    database.folders.map((folder) => [folder.key, folder._id]),
   );
+  const folderIds = new Set(database.folders.map((folder) => folder._id));
   const seen = new Set();
   database.links = (Array.isArray(source?.links) ? source.links : []).flatMap(
     (link) => {
@@ -93,13 +160,15 @@ function sanitizeDatabase(value) {
           _id: String(link._id || link.id || id("link")),
           url: normalized.normalizedUrl,
           ...normalized,
-          username: String(link.username || "Biblioteca").slice(0, 40),
-          folderId: link.folderId
-            ? String(link.folderId)
-            : folderByKey.get(link.folderKey),
+          username: repairText(link.username || "Biblioteca").slice(0, 40),
+          folderId:
+            link.folderId && folderIds.has(String(link.folderId))
+              ? String(link.folderId)
+              : folderByKey.get(decodeFolderKey(link.folderKey)),
           linkType: link.linkType || "general",
           sourceDomain: link.sourceDomain || normalized.hostname,
-          customTitle: link.customTitle || link.title || undefined,
+          customTitle:
+            repairText(link.customTitle || link.title || "") || undefined,
           favorite: Boolean(link.favorite),
           status:
             link.status === "archived"
@@ -107,9 +176,9 @@ function sanitizeDatabase(value) {
               : link.folderId || link.folderKey
                 ? "reviewed"
                 : "pending",
-          notes: link.notes || undefined,
+          notes: link.notes ? repairText(link.notes) : undefined,
           hashtags: Array.isArray(link.hashtags)
-            ? [...new Set(link.hashtags.map(String))].slice(0, 20)
+            ? [...new Set(link.hashtags.map(repairText))].slice(0, 20)
             : [],
           publishedAt: Number(link.publishedAt) || undefined,
           createdAt: Number(link.createdAt) || Date.now(),
@@ -342,14 +411,33 @@ export const libraryJsonApi = {
   },
   async exportBackup() {
     const database = await read();
+    const folderById = new Map(
+      database.folders.map((folder) => [String(folder._id), folder]),
+    );
+    const folders = database.folders.map((folder) => ({
+      key: folder.key || folderSegment(folder.name),
+      name: folder.name,
+      parentKey: folder.parentFolderId
+        ? folderById.get(String(folder.parentFolderId))?.key || null
+        : null,
+      icon: folder.icon || null,
+      color: folder.color || null,
+      order: Number(folder.order || 0),
+    }));
+    const links = database.links
+      .filter((link) => link.status !== "archived")
+      .map(({ folderId, status, ...link }) => ({
+        ...link,
+        folderKey: folderId ? folderById.get(String(folderId))?.key : undefined,
+      }));
     return {
       format: FORMAT,
       version: VERSION,
       exportedAt: new Date().toISOString(),
       app: "Shopp",
       data: {
-        folders: database.folders,
-        links: database.links.filter((link) => link.status !== "archived"),
+        folders,
+        links,
       },
     };
   },
@@ -397,24 +485,202 @@ export const libraryJsonApi = {
       if (mode === "replace") {
         database.folders = incoming.folders;
         database.links = incoming.links;
+        return {
+          foldersCreated: incoming.folders.length,
+          linksCreated: incoming.links.length,
+          linksUpdated: 0,
+          folders: incoming.folders.length,
+          links: incoming.links.length,
+          mode,
+        };
       } else {
-        const folderIds = new Set(database.folders.map((folder) => folder._id));
-        incoming.folders.forEach((folder) => {
-          if (!folderIds.has(folder._id)) database.folders.push(folder);
-        });
-        const urls = new Set(database.links.map((link) => link.normalizedUrl));
+        const existingByKey = new Map(
+          database.folders.map((folder) => [
+            folder.key || folderSegment(folder.name),
+            folder,
+          ]),
+        );
+        const targetIdByIncomingId = new Map();
+        let foldersCreated = 0;
+        [...incoming.folders]
+          .sort((a, b) => a.key.split("/").length - b.key.split("/").length)
+          .forEach((folder) => {
+            let target = existingByKey.get(folder.key);
+            if (!target) {
+              target = {
+                ...folder,
+                _id: id("folder"),
+                parentFolderId: folder.parentFolderId
+                  ? targetIdByIncomingId.get(folder.parentFolderId)
+                  : undefined,
+              };
+              database.folders.push(target);
+              existingByKey.set(folder.key, target);
+              foldersCreated += 1;
+            }
+            targetIdByIncomingId.set(folder._id, target._id);
+          });
+        const linksByUrl = new Map(
+          database.links.map((link) => [link.normalizedUrl, link]),
+        );
+        let linksCreated = 0;
+        let linksUpdated = 0;
         incoming.links.forEach((link) => {
-          if (!urls.has(link.normalizedUrl)) {
-            database.links.push(link);
-            urls.add(link.normalizedUrl);
+          const remapped = {
+            ...link,
+            folderId: link.folderId
+              ? targetIdByIncomingId.get(link.folderId)
+              : undefined,
+          };
+          const existing = linksByUrl.get(remapped.normalizedUrl);
+          if (!existing) {
+            database.links.push(remapped);
+            linksByUrl.set(remapped.normalizedUrl, remapped);
+            linksCreated += 1;
+          } else {
+            const patch = {};
+            for (const field of [
+              "folderId",
+              "linkType",
+              "sourceDomain",
+              "customTitle",
+              "notes",
+              "publishedAt",
+              "previewImageUrl",
+            ]) {
+              if ((!existing[field] || field === "folderId") && remapped[field])
+                patch[field] = remapped[field];
+            }
+            if (remapped.favorite && !existing.favorite) patch.favorite = true;
+            const tags = [
+              ...new Set([
+                ...(existing.hashtags || []),
+                ...(remapped.hashtags || []),
+              ]),
+            ];
+            if (tags.length !== (existing.hashtags || []).length)
+              patch.hashtags = tags;
+            if (Object.keys(patch).length) {
+              Object.assign(existing, patch, { updatedAt: Date.now() });
+              linksUpdated += 1;
+            }
           }
         });
+        return {
+          foldersCreated,
+          linksCreated,
+          linksUpdated,
+          folders: database.folders.length,
+          links: database.links.length,
+          mode,
+        };
       }
-      return {
-        folders: database.folders.length,
-        links: database.links.length,
-        mode,
-      };
+    });
+  },
+  async keepNewsAndYoutubeCategories() {
+    const current = await read();
+    const currentNews = current.folders.find(
+      (folder) => text(folder.name) === "noticias" && !folder.parentFolderId,
+    );
+    const currentYoutube = current.folders.find(
+      (folder) => text(folder.name) === "youtube" && !folder.parentFolderId,
+    );
+    const isYoutubeLink = (link) => {
+      const domain = String(link.hostname || link.sourceDomain || "")
+        .replace(/^www\./i, "")
+        .toLowerCase();
+      return (
+        domain === "youtu.be" ||
+        domain === "youtube.com" ||
+        domain.endsWith(".youtube.com")
+      );
+    };
+    const alreadyConsolidated =
+      currentNews &&
+      currentYoutube &&
+      current.folders.length === 2 &&
+      current.links.every((link) =>
+        isYoutubeLink(link)
+          ? link.folderId === currentYoutube._id
+          : link.folderId === currentNews._id,
+      );
+    if (alreadyConsolidated) {
+      return { changed: false, foldersRemoved: 0, linksMoved: 0 };
+    }
+
+    return update((database) => {
+      let newsFolder = database.folders.find(
+        (folder) => text(folder.name) === "noticias" && !folder.parentFolderId,
+      );
+      if (!newsFolder) {
+        newsFolder = {
+          _id: id("folder"),
+          key: "Noticias",
+          name: "Noticias",
+          icon: "newspaper-outline",
+          color: "#dc2626",
+          order: 0,
+          createdAt: Date.now(),
+        };
+      } else {
+        newsFolder = {
+          ...newsFolder,
+          key: "Noticias",
+          name: "Noticias",
+          parentFolderId: undefined,
+          order: 0,
+        };
+      }
+
+      let youtubeFolder = database.folders.find(
+        (folder) => text(folder.name) === "youtube" && !folder.parentFolderId,
+      );
+      if (!youtubeFolder) {
+        youtubeFolder = {
+          _id: id("folder"),
+          key: "YouTube",
+          name: "YouTube",
+          icon: "logo-youtube",
+          color: "#ff0000",
+          order: 1,
+          createdAt: Date.now(),
+        };
+      } else {
+        youtubeFolder = {
+          ...youtubeFolder,
+          key: "YouTube",
+          name: "YouTube",
+          parentFolderId: undefined,
+          icon: "logo-youtube",
+          color: "#ff0000",
+          order: 1,
+        };
+      }
+
+      const foldersRemoved = database.folders.filter(
+        (folder) =>
+          folder._id !== newsFolder._id && folder._id !== youtubeFolder._id,
+      ).length;
+      let linksMoved = 0;
+      let youtubeLinks = 0;
+      database.links.forEach((link) => {
+        const youtube = isYoutubeLink(link);
+        const targetFolderId = youtube ? youtubeFolder._id : newsFolder._id;
+        if (link.folderId !== targetFolderId) linksMoved += 1;
+        link.folderId = targetFolderId;
+        if (youtube) {
+          youtubeLinks += 1;
+          link.linkType = "general";
+        } else {
+          link.linkType = ["newsSource", "bookStore"].includes(link.linkType)
+            ? "newsSource"
+            : "newsArticle";
+        }
+        link.status = link.status === "archived" ? "archived" : "reviewed";
+        link.updatedAt = Date.now();
+      });
+      database.folders = [newsFolder, youtubeFolder];
+      return { changed: true, foldersRemoved, linksMoved, youtubeLinks };
     });
   },
   reset() {

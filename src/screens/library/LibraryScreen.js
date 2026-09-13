@@ -36,7 +36,9 @@ const LIBRARY_SETUP_KEY = "shopp-library-setup-v3-utf8-folders";
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
 const CATALOG_SOURCES_IMPORT_KEY = "__catalog_sources__";
 const IMPORT_BATCH_SIZE = 250;
-const IMPORT_WRITE_BATCH_SIZE = 25;
+// IndexedDB/AsyncStorage writes the complete local document. Larger batches
+// avoid rewriting a multi-megabyte Biblioteca hundreds of times.
+const IMPORT_WRITE_BATCH_SIZE = 500;
 const IMPORT_SOURCE_BATCH_SIZE = 25;
 const IMPORT_CLEAR_BATCH_SIZE = 25;
 const INTEGRITY_BATCH_SIZE = 100;
@@ -1595,11 +1597,13 @@ export default function LibraryScreen({ navigation }) {
   const [resumeImportModalVisible, setResumeImportModalVisible] =
     useState(false);
   const importPauseRequestedRef = useRef(false);
+  const newsCategoryCleanupStartedRef = useRef(false);
   const [localRevision, setLocalRevision] = useState(0);
   const [rawFolders, setRawFolders] = useState([]);
   const [textLibraryResult, setTextLibraryResult] = useState(undefined);
   const [selectedHashtagLinks, setSelectedHashtagLinks] = useState([]);
   const [activeImportJob, setActiveImportJob] = useState(null);
+  const activeImportJobRef = useRef(null);
   const [exportedLinks, setExportedLinks] = useState([]);
   const [exportStatus, setExportStatus] = useState("Idle");
 
@@ -1608,6 +1612,14 @@ export default function LibraryScreen({ navigation }) {
       libraryJsonApi.subscribe(() => setLocalRevision((value) => value + 1)),
     [],
   );
+  useEffect(() => {
+    if (!isFocused || newsCategoryCleanupStartedRef.current) return;
+    newsCategoryCleanupStartedRef.current = true;
+    libraryJsonApi.keepNewsAndYoutubeCategories().catch((error) => {
+      newsCategoryCleanupStartedRef.current = false;
+      console.warn("[LibraryScreen] news category cleanup failed", error);
+    });
+  }, [isFocused]);
 
   // React Navigation conserva las pantallas del stack montadas. Sin este
   // `skip`, Biblioteca seguía suscrita a Convex aun estando detrás de otra
@@ -1970,27 +1982,25 @@ export default function LibraryScreen({ navigation }) {
       processedLinks: 0,
       processedSources: 0,
     };
+    activeImportJobRef.current = job;
     setActiveImportJob(job);
     return job;
   }, []);
   const updateLibraryImportJobProgress = useCallback(async (args) => {
-    let updated;
-    setActiveImportJob((current) => {
-      updated = {
-        ...(current || {}),
-        ...args,
-        _id: args.jobId || current?._id,
-      };
-      return updated;
-    });
-    return updated || args;
+    const current = activeImportJobRef.current || {};
+    const updated = { ...current, ...args, _id: args.jobId || current._id };
+    activeImportJobRef.current = updated;
+    setActiveImportJob(updated);
+    return updated;
   }, []);
   const clearLibraryForImportBatch = useCallback(async () => {
     await libraryJsonApi.reset();
-    let job;
-    setActiveImportJob(
-      (current) => (job = { ...current, replacePrepared: true }),
-    );
+    const job = {
+      ...(activeImportJobRef.current || {}),
+      replacePrepared: true,
+    };
+    activeImportJobRef.current = job;
+    setActiveImportJob(job);
     return { done: true, job };
   }, []);
   const importLibraryJobBatch = useCallback(async (args) => {
@@ -1999,26 +2009,33 @@ export default function LibraryScreen({ navigation }) {
       folders: args.folders,
       mode: "combine",
     });
-    let job;
-    setActiveImportJob(
-      (current) =>
-        (job = {
-          ...current,
-          processedLinks: Number(args.expectedStart || 0) + args.links.length,
-          linksCreated: result.links,
-        }),
-    );
+    const current = activeImportJobRef.current || {};
+    const job = {
+      ...current,
+      processedLinks: Number(args.expectedStart || 0) + args.links.length,
+      foldersCreated:
+        Number(current.foldersCreated || 0) +
+        Number(result.foldersCreated || 0),
+      linksCreated:
+        Number(current.linksCreated || 0) + Number(result.linksCreated || 0),
+      linksUpdated:
+        Number(current.linksUpdated || 0) + Number(result.linksUpdated || 0),
+    };
+    activeImportJobRef.current = job;
+    setActiveImportJob(job);
     return { job };
   }, []);
   const completeLibraryImportJob = useCallback(async () => {
-    let completed;
-    setActiveImportJob((current) => {
-      completed = { ...current, status: "completed" };
-      return null;
-    });
-    return completed || {};
+    const completed = {
+      ...(activeImportJobRef.current || {}),
+      status: "completed",
+    };
+    activeImportJobRef.current = null;
+    setActiveImportJob(null);
+    return completed;
   }, []);
   const cancelLibraryImportJob = useCallback(async () => {
+    activeImportJobRef.current = null;
     setActiveImportJob(null);
     return { ok: true };
   }, []);
