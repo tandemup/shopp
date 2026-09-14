@@ -16,6 +16,57 @@ const DEFAULT_FOLDERS = [
 const listeners = new Set();
 let writeQueue = Promise.resolve();
 
+const NON_NEWS_DOMAINS = new Set([
+  "editor.pascal.app",
+  "ejoish.co",
+  "englishuniversity.eu",
+  "fgbueno.es",
+  "github.com",
+  "legacy.reactjs.org",
+  "peerjs.com",
+  "r3f.docs.pmnd.rs",
+  "react.dev",
+  "rork.com",
+  "starpulsify.net",
+]);
+
+const TECHNICAL_DOMAIN_SUFFIXES = [
+  "github.com",
+  "react.dev",
+  "reactjs.org",
+  "peerjs.com",
+  "docs.pmnd.rs",
+  "pascal.app",
+  "rork.com",
+];
+
+function cleanDomain(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .split(/[/?#]/)[0]
+    .toLowerCase();
+}
+
+function domainMatches(domain, suffix) {
+  return domain === suffix || domain.endsWith(`.${suffix}`);
+}
+
+function isKnownNonNewsDomain(value) {
+  const domain = cleanDomain(value);
+  return [...NON_NEWS_DOMAINS].some((suffix) =>
+    domainMatches(domain, suffix),
+  );
+}
+
+function isTechnicalDomain(value) {
+  const domain = cleanDomain(value);
+  return TECHNICAL_DOMAIN_SUFFIXES.some((suffix) =>
+    domainMatches(domain, suffix),
+  );
+}
+
 function id(prefix) {
   const random = globalThis.crypto?.randomUUID?.();
   return `${prefix}_${random || `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
@@ -29,9 +80,32 @@ function normalizeUrl(value) {
     url.hash = "";
     [...url.searchParams.keys()].forEach((key) => {
       const lower = key.toLowerCase();
+      const parameterValue = url.searchParams.get(key);
+      let selfReference = false;
+      if (["ref", "referer", "redirect", "url"].includes(lower)) {
+        try {
+          const referenced = new URL(parameterValue);
+          const referencedHost = referenced.hostname
+            .replace(/^www\./i, "")
+            .toLowerCase();
+          const referencedPath =
+            referenced.pathname.length > 1
+              ? referenced.pathname.replace(/\/+$/, "")
+              : referenced.pathname;
+          const currentPath =
+            url.pathname.length > 1
+              ? url.pathname.replace(/\/+$/, "")
+              : url.pathname;
+          selfReference =
+            referencedHost === url.hostname && referencedPath === currentPath;
+        } catch {
+          selfReference = false;
+        }
+      }
       if (
         lower.startsWith("utm_") ||
-        ["fbclid", "gclid", "si"].includes(lower)
+        ["fbclid", "gclid", "si"].includes(lower) ||
+        selfReference
       ) {
         url.searchParams.delete(key);
       }
@@ -578,13 +652,6 @@ export const libraryJsonApi = {
     });
   },
   async keepNewsAndYoutubeCategories() {
-    const current = await read();
-    const currentNews = current.folders.find(
-      (folder) => text(folder.name) === "noticias" && !folder.parentFolderId,
-    );
-    const currentYoutube = current.folders.find(
-      (folder) => text(folder.name) === "youtube" && !folder.parentFolderId,
-    );
     const isYoutubeLink = (link) => {
       const domain = String(link.hostname || link.sourceDomain || "")
         .replace(/^www\./i, "")
@@ -595,92 +662,125 @@ export const libraryJsonApi = {
         domain.endsWith(".youtube.com")
       );
     };
-    const alreadyConsolidated =
-      currentNews &&
-      currentYoutube &&
-      current.folders.length === 2 &&
-      current.links.every((link) =>
-        isYoutubeLink(link)
-          ? link.folderId === currentYoutube._id
-          : link.folderId === currentNews._id,
-      );
-    if (alreadyConsolidated) {
-      return { changed: false, foldersRemoved: 0, linksMoved: 0 };
-    }
-
     return update((database) => {
-      let newsFolder = database.folders.find(
-        (folder) => text(folder.name) === "noticias" && !folder.parentFolderId,
-      );
-      if (!newsFolder) {
-        newsFolder = {
-          _id: id("folder"),
-          key: "Noticias",
-          name: "Noticias",
-          icon: "newspaper-outline",
-          color: "#dc2626",
-          order: 0,
-          createdAt: Date.now(),
-        };
-      } else {
-        newsFolder = {
-          ...newsFolder,
-          key: "Noticias",
-          name: "Noticias",
-          parentFolderId: undefined,
-          order: 0,
-        };
-      }
+      const canonicalByName = new Map();
+      const duplicateIds = new Map();
+      const folders = [];
+      database.folders
+        .slice()
+        .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
+        .forEach((folder) => {
+          const key = `${text(folder.name)}|${String(folder.parentFolderId || "")}`;
+          const canonical = canonicalByName.get(key);
+          if (canonical) {
+            duplicateIds.set(folder._id, canonical._id);
+            return;
+          }
+          canonicalByName.set(key, folder);
+          folders.push(folder);
+        });
 
-      let youtubeFolder = database.folders.find(
-        (folder) => text(folder.name) === "youtube" && !folder.parentFolderId,
-      );
-      if (!youtubeFolder) {
-        youtubeFolder = {
-          _id: id("folder"),
-          key: "YouTube",
-          name: "YouTube",
-          icon: "logo-youtube",
-          color: "#ff0000",
-          order: 1,
-          createdAt: Date.now(),
-        };
-      } else {
-        youtubeFolder = {
-          ...youtubeFolder,
-          key: "YouTube",
-          name: "YouTube",
-          parentFolderId: undefined,
-          icon: "logo-youtube",
-          color: "#ff0000",
-          order: 1,
-        };
-      }
+      const ensureRootFolder = (name, icon, color) => {
+        let folder = folders.find(
+          (item) => text(item.name) === text(name) && !item.parentFolderId,
+        );
+        if (!folder) {
+          folder = {
+            _id: id("folder"),
+            key: folderSegment(name),
+            name,
+            icon,
+            color,
+            order: folders.length,
+            createdAt: Date.now(),
+          };
+          folders.push(folder);
+        }
+        return folder;
+      };
 
-      const foldersRemoved = database.folders.filter(
-        (folder) =>
-          folder._id !== newsFolder._id && folder._id !== youtubeFolder._id,
-      ).length;
+      const newsFolder = ensureRootFolder(
+        "Noticias",
+        "newspaper-outline",
+        "#dc2626",
+      );
+      const youtubeFolder = ensureRootFolder(
+        "YouTube",
+        "logo-youtube",
+        "#ff0000",
+      );
       let linksMoved = 0;
       let youtubeLinks = 0;
       database.links.forEach((link) => {
+        if (duplicateIds.has(link.folderId)) {
+          link.folderId = duplicateIds.get(link.folderId);
+          linksMoved += 1;
+        }
         const youtube = isYoutubeLink(link);
-        const targetFolderId = youtube ? youtubeFolder._id : newsFolder._id;
-        if (link.folderId !== targetFolderId) linksMoved += 1;
-        link.folderId = targetFolderId;
         if (youtube) {
+          if (link.folderId !== youtubeFolder._id) linksMoved += 1;
+          link.folderId = youtubeFolder._id;
           youtubeLinks += 1;
           link.linkType = "general";
-        } else {
-          link.linkType = ["newsSource", "bookStore"].includes(link.linkType)
-            ? "newsSource"
-            : "newsArticle";
+          link.status = link.status === "archived" ? "archived" : "reviewed";
+          link.updatedAt = Date.now();
         }
-        link.status = link.status === "archived" ? "archived" : "reviewed";
-        link.updatedAt = Date.now();
       });
-      database.folders = [newsFolder, youtubeFolder];
-      return { changed: true, foldersRemoved, linksMoved, youtubeLinks };
+      database.folders = folders.map((folder, order) => ({ ...folder, order }));
+      return {
+        changed: duplicateIds.size > 0 || linksMoved > 0,
+        foldersRemoved: duplicateIds.size,
+        linksMoved,
+        youtubeLinks,
+        newsFolderId: newsFolder._id,
+      };
+    });
+  },
+  repairIntegrity() {
+    return update((database) => {
+      const ensureFolder = (name, icon, color) => {
+        let folder = database.folders.find(
+          (item) => text(item.name) === text(name) && !item.parentFolderId,
+        );
+        if (!folder) {
+          folder = {
+            _id: id("folder"),
+            key: folderSegment(name),
+            name,
+            icon,
+            color,
+            order: database.folders.length,
+            createdAt: Date.now(),
+          };
+          database.folders.push(folder);
+        }
+        return folder;
+      };
+      const computerFolder = ensureFolder(
+        "Informática",
+        "laptop-outline",
+        "#2563eb",
+      );
+      let correctedPosts = 0;
+      database.links.forEach((link) => {
+        // hostname/url son la identidad real del enlace. sourceDomain puede
+        // contener un valor antiguo o incorrecto procedente de una importación.
+        const domain = cleanDomain(link.hostname || link.url);
+        if (
+          !["newsArticle", "newsSource"].includes(link.linkType) ||
+          !isKnownNonNewsDomain(domain)
+        )
+          return;
+        link.linkType = "general";
+        link.sourceDomain = undefined;
+        link.folderId = isTechnicalDomain(domain)
+          ? computerFolder._id
+          : undefined;
+        link.status = link.folderId ? "reviewed" : "pending";
+        link.updatedAt = Date.now();
+        correctedPosts += 1;
+      });
+      return { correctedPosts, created: 0, processed: database.links.length };
     });
   },
   reset() {

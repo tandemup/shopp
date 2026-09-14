@@ -685,9 +685,32 @@ function normalizeLocalBackupUrl(value) {
     url.hash = "";
     for (const key of [...url.searchParams.keys()]) {
       const normalizedKey = key.toLowerCase();
+      const parameterValue = url.searchParams.get(key);
+      let selfReference = false;
+      if (["ref", "referer", "redirect", "url"].includes(normalizedKey)) {
+        try {
+          const referenced = new URL(parameterValue);
+          const referencedHost = referenced.hostname
+            .replace(/^www\./i, "")
+            .toLowerCase();
+          const referencedPath =
+            referenced.pathname.length > 1
+              ? referenced.pathname.replace(/\/+$/, "")
+              : referenced.pathname;
+          const currentPath =
+            url.pathname.length > 1
+              ? url.pathname.replace(/\/+$/, "")
+              : url.pathname;
+          selfReference =
+            referencedHost === url.hostname && referencedPath === currentPath;
+        } catch {
+          selfReference = false;
+        }
+      }
       if (
         normalizedKey.startsWith("utm_") ||
-        LOCAL_TRACKING_QUERY_KEYS.has(normalizedKey)
+        LOCAL_TRACKING_QUERY_KEYS.has(normalizedKey) ||
+        selfReference
       ) {
         url.searchParams.delete(key);
       }
@@ -1953,7 +1976,10 @@ export default function LibraryScreen({ navigation }) {
     [],
   );
   const ensureNewsSources = useCallback(
-    async () => ({ processed: 0, created: 0, isDone: true }),
+    async () => ({
+      ...(await libraryJsonApi.repairIntegrity()),
+      isDone: true,
+    }),
     [],
   );
   const ensureNewsSourcesForDomains = useCallback(
@@ -2114,6 +2140,7 @@ export default function LibraryScreen({ navigation }) {
             let sourceSyncResult = null;
             let processedSources = 0;
             let createdSources = 0;
+            let sourceCorrections = 0;
             while (true) {
               sourceSyncResult = await ensureNewsSources({
                 clientId,
@@ -2125,6 +2152,9 @@ export default function LibraryScreen({ navigation }) {
                 sourceSyncResult?.created ||
                   sourceSyncResult?.createdSources ||
                   0,
+              );
+              sourceCorrections += Number(
+                sourceSyncResult?.correctedPosts || 0,
               );
               setSlowTask({
                 kind: "integrity",
@@ -2140,7 +2170,7 @@ export default function LibraryScreen({ navigation }) {
 
             let normalizationCursor = null;
             let normalizationResult = null;
-            let correctedPosts = 0;
+            let correctedPosts = sourceCorrections;
             let duplicatesRemoved = 0;
             let normalizedCount = 0;
             let normalizedBatches = 0;
@@ -2201,9 +2231,18 @@ export default function LibraryScreen({ navigation }) {
             // La lista global puede haber cambiado durante la reparación.
             setGlobalHashtags(null);
 
+            const repairedBackup = await libraryJsonApi.exportBackup();
+            const after = buildLibraryIntegrityReport(
+              repairedBackup?.data?.links || [],
+              repairedBackup?.data?.folders || [],
+            );
+            correctedPosts = Math.max(
+              correctedPosts,
+              Number(before.newsPosts || 0) - Number(after.newsPosts || 0),
+            );
             setIntegrityReport({
               kind: "library",
-              ...before,
+              ...after,
               addedSources: createdSources,
               correctedPosts,
               duplicatesRemoved,
@@ -4927,7 +4966,7 @@ export default function LibraryScreen({ navigation }) {
               {integrityReport?.missingSourceDomains?.length ? (
                 <View style={styles.integrityWarningBox}>
                   <Text style={styles.integrityWarning}>
-                    Dominios que requerían periódico antes de la reparación:{" "}
+                    Dominios pendientes de revisar:{" "}
                     {integrityReport.missingSourceDomains.length}
                   </Text>
                   <ScrollView

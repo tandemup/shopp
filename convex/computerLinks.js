@@ -167,9 +167,32 @@ function normalizeLink(value) {
     url.hash = "";
     for (const key of [...url.searchParams.keys()]) {
       const normalizedKey = key.toLowerCase();
+      const parameterValue = url.searchParams.get(key);
+      let selfReference = false;
+      if (["ref", "referer", "redirect", "url"].includes(normalizedKey)) {
+        try {
+          const referenced = new URL(parameterValue);
+          const referencedHost = referenced.hostname
+            .replace(/^www\./i, "")
+            .toLowerCase();
+          const referencedPath =
+            referenced.pathname.length > 1
+              ? referenced.pathname.replace(/\/+$/, "")
+              : referenced.pathname;
+          const currentPath =
+            url.pathname.length > 1
+              ? url.pathname.replace(/\/+$/, "")
+              : url.pathname;
+          selfReference =
+            referencedHost === url.hostname && referencedPath === currentPath;
+        } catch {
+          selfReference = false;
+        }
+      }
       if (
         normalizedKey.startsWith("utm_") ||
-        TRACKING_QUERY_KEYS.has(normalizedKey)
+        TRACKING_QUERY_KEYS.has(normalizedKey) ||
+        selfReference
       ) {
         url.searchParams.delete(key);
       }
@@ -1376,6 +1399,26 @@ export const ensureNewsSources = mutation({
       const domain = normalizeNewsDomain(
         article.sourceDomain || article.hostname || article.url,
       );
+      // No conviertas automáticamente servicios técnicos o sitios personales
+      // conocidos en periódicos. Estos registros deben revisarse y
+      // reclasificarse desde la Biblioteca.
+      if (
+        [
+          "editor.pascal.app",
+          "ejoish.co",
+          "englishuniversity.eu",
+          "fgbueno.es",
+          "github.com",
+          "legacy.reactjs.org",
+          "peerjs.com",
+          "r3f.docs.pmnd.rs",
+          "react.dev",
+          "rork.com",
+          "starpulsify.net",
+        ].some((suffix) => domain === suffix || domain.endsWith(`.${suffix}`))
+      ) {
+        continue;
+      }
       if (!domain || checkedDomains.has(domain)) continue;
       checkedDomains.add(domain);
 
