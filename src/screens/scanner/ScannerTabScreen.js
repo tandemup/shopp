@@ -25,11 +25,6 @@ import { ROUTES } from "@/src/navigation/ROUTES";
 import { api } from "@/convex/_generated/api";
 import { DEFAULT_BARCODE_SETTINGS } from "@/src/constants/barcodeFormats";
 import { getBarcodeSettings } from "@/src/storage/barcodeSettingsStorage";
-import {
-  DEFAULT_SEARCH_SETTINGS,
-  getSearchSettings,
-} from "@/src/storage/settingsStorage";
-import { SEARCH_ENGINES } from "@/src/constants/searchEngines";
 import { buildHeaderConfig } from "@/src/utils/layout/headerStyles";
 import {
   DEFAULT_PRODUCT_SEARCH_TYPE,
@@ -50,19 +45,6 @@ function normalizedProducts(items) {
     if (product.barcode) byBarcode.set(product.barcode, product);
   });
   return Array.from(byBarcode.values());
-}
-
-function buildProductSearchEngineSubtitle(settings) {
-  const engineId =
-    settings?.selectedProductEngine ||
-    settings?.generalEngine ||
-    DEFAULT_SEARCH_SETTINGS?.selectedProductEngine ||
-    DEFAULT_SEARCH_SETTINGS?.generalEngine ||
-    "google";
-  const engine = SEARCH_ENGINES?.[engineId];
-  const engineLabel = engine?.label || engine?.name || engineId;
-
-  return `Motor activo: ${engineLabel}`;
 }
 
 function getEnabledBarcodeTypes(settings) {
@@ -95,8 +77,6 @@ export default function ScannerTabScreen({ navigation }) {
     DEFAULT_PRODUCT_SEARCH_TYPE,
   );
   const [manualBarcodeError, setManualBarcodeError] = useState("");
-  const [productSearchEngineSubtitle, setProductSearchEngineSubtitle] =
-    useState("Motor activo: Google");
   const [transferModal, setTransferModal] = useState(null);
 
   const exportProductsNow = async () => {
@@ -177,24 +157,6 @@ export default function ScannerTabScreen({ navigation }) {
 
       loadBarcodeSettings();
 
-      getSearchSettings()
-        .then((settings) => {
-          if (mounted) {
-            setProductSearchEngineSubtitle(
-              buildProductSearchEngineSubtitle(settings),
-            );
-          }
-        })
-        .catch((error) => {
-          console.warn("[ScannerTabScreen] search settings error", error);
-
-          if (mounted) {
-            setProductSearchEngineSubtitle(
-              buildProductSearchEngineSubtitle(DEFAULT_SEARCH_SETTINGS),
-            );
-          }
-        });
-
       return () => {
         mounted = false;
       };
@@ -213,14 +175,6 @@ export default function ScannerTabScreen({ navigation }) {
 
   const goToScannedHistory = () => {
     navigation.navigate(ROUTES.SCANNED_HISTORY);
-  };
-
-  const goToBarcodeSettings = () => {
-    navigation.navigate(ROUTES.BARCODE_SETTINGS);
-  };
-
-  const goToProductSearchEngines = () => {
-    navigation.navigate(ROUTES.SEARCH_ENGINES, { type: "product" });
   };
 
   const handleManualBarcodeChange = (value) => {
@@ -299,34 +253,6 @@ export default function ScannerTabScreen({ navigation }) {
 
                 <Text style={styles.cardSubtitle}>
                   Abrir la cámara para leer un código de barras.
-                </Text>
-
-                <Text style={styles.cardMeta} numberOfLines={1}>
-                  Formatos activos: {enabledFormatsLabel}
-                </Text>
-              </View>
-
-              <Ionicons name="chevron-forward" size={22} color="#9CA3AF" />
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.card,
-                pressed && styles.cardPressed,
-              ]}
-              onPress={goToBarcodeSettings}
-            >
-              <View style={styles.iconBox}>
-                <Ionicons name="options-outline" size={26} color="#111827" />
-              </View>
-
-              <View style={styles.cardText}>
-                <Text style={styles.cardTitle}>
-                  Configuración del código de barras
-                </Text>
-
-                <Text style={styles.cardSubtitle}>
-                  Elige los formatos que puede detectar el scanner.
                 </Text>
 
                 <Text style={styles.cardMeta} numberOfLines={1}>
@@ -435,31 +361,6 @@ export default function ScannerTabScreen({ navigation }) {
                 </View>
               </View>
             ) : null}
-
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Búsqueda</Text>
-            </View>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.card,
-                pressed && styles.cardPressed,
-              ]}
-              onPress={goToProductSearchEngines}
-            >
-              <View style={styles.iconBox}>
-                <Ionicons name="search-outline" size={26} color="#111827" />
-              </View>
-
-              <View style={styles.cardText}>
-                <Text style={styles.cardTitle}>Buscador de productos</Text>
-                <Text style={styles.cardSubtitle}>
-                  {productSearchEngineSubtitle}
-                </Text>
-              </View>
-
-              <Ionicons name="chevron-forward" size={22} color="#9CA3AF" />
-            </Pressable>
 
             <Pressable
               style={({ pressed }) => [

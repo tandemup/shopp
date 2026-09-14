@@ -24,6 +24,7 @@ import { useLists } from "@/src/context/ListsContext";
 import { useScannedHistoryStorage } from "@/src/hooks/useScannedHistoryStorage";
 import { ROUTES } from "@/src/navigation/ROUTES";
 import { buildHeaderConfig } from "@/src/utils/layout/headerStyles";
+import { isAdminUser } from "@/src/utils/featureAccess";
 
 const COLORS = {
   background: "#F4F7FB",
@@ -93,17 +94,33 @@ function QuickAction({
   iconBackground,
   badge = 0,
   badgeLabel,
+  requiresAdmin = false,
+  isAdmin = false,
   onPress,
 }) {
+  const isLocked = requiresAdmin && !isAdmin;
+  const handlePress = () => {
+    if (isLocked) {
+      safeAlert(
+        "Funcionalidad DEV",
+        "Esta función está en desarrollo y solo está disponible para administradores.",
+      );
+      return;
+    }
+    onPress?.();
+  };
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={description}
-      onPress={onPress}
+      accessibilityState={{ disabled: isLocked }}
+      onPress={handlePress}
       style={({ pressed }) => [
         styles.quickAction,
         { width },
+        isLocked && styles.quickActionLocked,
         pressed && styles.quickActionPressed,
       ]}
     >
@@ -214,6 +231,8 @@ function QuickActions({
         icon: "chatbubble-ellipses-outline",
         iconColor: COLORS.purple,
         iconBackground: COLORS.purpleSoft,
+        badgeLabel: "DEV",
+        requiresAdmin: true,
         onPress: () =>
           navigateToNestedRoute(ROUTES.CHAT_TAB, ROUTES.CHAT_SCREEN),
       },
@@ -224,6 +243,8 @@ function QuickActions({
         icon: "car-outline",
         iconColor: COLORS.green,
         iconBackground: COLORS.greenSoft,
+        badgeLabel: "DEV",
+        requiresAdmin: true,
         onPress: () =>
           navigateToNestedRoute(ROUTES.CHAT_TAB, ROUTES.PARKING_SCREEN),
       },
@@ -234,6 +255,8 @@ function QuickActions({
         icon: "language-outline",
         iconColor: COLORS.primary,
         iconBackground: COLORS.primarySoft,
+        badgeLabel: "DEV",
+        requiresAdmin: true,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.ENGLISH_TUTOR),
       },
@@ -244,6 +267,8 @@ function QuickActions({
         icon: "library-outline",
         iconColor: COLORS.cyan,
         iconBackground: COLORS.cyanSoft,
+        badgeLabel: "DEV",
+        requiresAdmin: true,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.LIBRARY),
       },
@@ -264,6 +289,8 @@ function QuickActions({
         icon: "musical-notes-outline",
         iconColor: COLORS.purple,
         iconBackground: COLORS.purpleSoft,
+        badgeLabel: "DEV",
+        requiresAdmin: true,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.CLASSICAL_MUSIC),
       },
@@ -274,6 +301,8 @@ function QuickActions({
         icon: "school-outline",
         iconColor: COLORS.primary,
         iconBackground: COLORS.primarySoft,
+        badgeLabel: "DEV",
+        requiresAdmin: true,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.TUTORIALS),
       },
@@ -285,6 +314,7 @@ function QuickActions({
         iconColor: COLORS.red,
         iconBackground: COLORS.redSoft,
         badgeLabel: "DEV",
+        requiresAdmin: true,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.SHOPP_LIVE),
       },
@@ -296,12 +326,11 @@ function QuickActions({
         iconColor: COLORS.orange,
         iconBackground: COLORS.orangeSoft,
         badgeLabel: "DEV",
+        requiresAdmin: true,
         onPress: () =>
           navigateToNestedRoute(ROUTES.CHAT_TAB, ROUTES.CHAT_PROTOTYPE),
       },
-      ...(isAdmin
-        ? [
-            {
+      {
               key: "webrtcFireAlarm",
               label: "Fire Alarm",
               description: "Vigilancia de incendios por WebRTC",
@@ -309,13 +338,14 @@ function QuickActions({
               iconColor: COLORS.red,
               iconBackground: COLORS.redSoft,
               badgeLabel: "DEV",
+              requiresAdmin: true,
               onPress: () =>
                 navigateToNestedRoute(
                   ROUTES.SHOPPING_TAB,
                   ROUTES.WEBRTC_FIRE_ALARM,
                 ),
-            },
-            {
+      },
+      {
               key: "parkingGpsDebug",
               label: "GPS Debug",
               description: "Comprueba la precisión",
@@ -323,14 +353,13 @@ function QuickActions({
               iconColor: COLORS.orange,
               iconBackground: COLORS.orangeSoft,
               badgeLabel: "DEV",
+              requiresAdmin: true,
               onPress: () =>
                 navigateToNestedRoute(
                   ROUTES.CHAT_TAB,
                   ROUTES.PARKING_GPS_DEBUG,
                 ),
-            },
-          ]
-        : []),
+      },
     ],
     [
       archivedCount,
@@ -356,7 +385,12 @@ function QuickActions({
 
       <View style={styles.quickGrid}>
         {actions.map(({ key, ...actionProps }) => (
-          <QuickAction key={key} width={cardWidth} {...actionProps} />
+          <QuickAction
+            key={key}
+            width={cardWidth}
+            isAdmin={isAdmin}
+            {...actionProps}
+          />
         ))}
       </View>
     </View>
@@ -705,7 +739,7 @@ export default function ShoppingListsScreen() {
         archivedCount={archivedLists.length}
         historyCount={purchaseHistory.length}
         scannedCount={scannedCount}
-        isAdmin={currentUser?.isAdmin === true}
+        isAdmin={isAdminUser(currentUser)}
       />
 
       <View style={styles.listsSectionHeader}>
@@ -1097,6 +1131,11 @@ const styles = StyleSheet.create({
         scale: 0.985,
       },
     ],
+  },
+
+  quickActionLocked: {
+    opacity: 0.62,
+    borderStyle: "dashed",
   },
 
   quickActionTop: {

@@ -11,13 +11,15 @@ import ParkingScreen from "@/src/screens/parking/ParkingScreen";
 import ParkingSettingsScreen from "@/src/screens/parking/ParkingSettingsScreen";
 import ParkingGpsDebugScreen from "@/src/screens/parking/ParkingGpsDebugScreen";
 import ChatPrototypeScreen from "@/src/screens/chat/ChatPrototypeScreen";
+import { AdminOnlyFeature } from "@/src/components/access/AdminOnlyFeature";
 
 const Stack = createNativeStackNavigator();
 
 export default function ChatStack() {
   useI18n();
   return (
-    <Stack.Navigator
+    <AdminOnlyFeature title="Chat y Parking">
+      <Stack.Navigator
       initialRouteName={ROUTES.CHAT_SCREEN}
       screenOptions={DEFAULT_HEADER_OPTIONS}
     >
@@ -83,6 +85,7 @@ export default function ChatStack() {
           title: tr("Chat de compras"),
         }}
       />
-    </Stack.Navigator>
+      </Stack.Navigator>
+    </AdminOnlyFeature>
   );
 }

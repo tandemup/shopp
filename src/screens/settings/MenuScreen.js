@@ -40,6 +40,11 @@ import {
 import { useScannedHistoryStorage } from "@/src/hooks/useScannedHistoryStorage";
 import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
+import {
+  DEFAULT_SEARCH_SETTINGS,
+  getSearchSettings,
+} from "@/src/storage/settingsStorage";
+import { SEARCH_ENGINES } from "@/src/constants/searchEngines";
 
 const USER_EXPORT_VERSION = 1;
 
@@ -53,6 +58,19 @@ const EXPORT_STORAGE_KEYS = {
 
 const CAMERA_GRANTED_STORAGE_KEY = "shopp:web-camera-access-granted";
 const MICROPHONE_GRANTED_STORAGE_KEY = "shopp:web-microphone-access-granted";
+
+function buildProductSearchEngineSubtitle(settings) {
+  const engineId =
+    settings?.selectedProductEngine ||
+    settings?.generalEngine ||
+    DEFAULT_SEARCH_SETTINGS?.selectedProductEngine ||
+    DEFAULT_SEARCH_SETTINGS?.generalEngine ||
+    "google";
+  const engine = SEARCH_ENGINES?.[engineId];
+  const engineLabel = engine?.label || engine?.name || engineId;
+
+  return `Motor activo: ${engineLabel}`;
+}
 
 const ADMIN_EMAIL = "info@ramshopp.com";
 const IMPORT_ITEMS_CHUNK_SIZE = 150;
@@ -696,6 +714,8 @@ export default function MenuScreen({ navigation }) {
   const [locationPermission, setLocationPermission] = useState(null);
   const [exportingUserData, setExportingUserData] = useState(false);
   const [importingItems, setImportingItems] = useState(false);
+  const [productSearchEngineSubtitle, setProductSearchEngineSubtitle] =
+    useState("Motor activo: Google");
 
   const {
     activeLists,
@@ -775,6 +795,24 @@ export default function MenuScreen({ navigation }) {
       }
 
       refreshWebCameraPermission();
+
+      getSearchSettings()
+        .then((settings) => {
+          if (active) {
+            setProductSearchEngineSubtitle(
+              buildProductSearchEngineSubtitle(settings),
+            );
+          }
+        })
+        .catch((error) => {
+          console.warn("[MenuScreen] search settings error", error);
+
+          if (active) {
+            setProductSearchEngineSubtitle(
+              buildProductSearchEngineSubtitle(DEFAULT_SEARCH_SETTINGS),
+            );
+          }
+        });
 
       // Safari/PWA puede cambiar el permiso mientras Settings no está activa.
       // Al recuperar el foco volvemos a consultar al navegador y evitamos
@@ -944,6 +982,26 @@ export default function MenuScreen({ navigation }) {
 
   const goToAdminUsers = () => {
     navigation.navigate(ROUTES.ADMIN_USERS);
+  };
+
+  const goToAdminStoreRequests = () => {
+    navigation.navigate(ROUTES.ADMIN_STORE_REQUESTS);
+  };
+
+  const goToAdminStoreCatalog = () => {
+    navigation.navigate(ROUTES.ADMIN_STORE_CATALOG);
+  };
+
+  const goToAdminStoreOffers = () => {
+    navigation.navigate(ROUTES.ADMIN_STORE_OFFERS);
+  };
+
+  const goToBarcodeSettings = () => {
+    navigation.navigate(ROUTES.BARCODE_SETTINGS);
+  };
+
+  const goToProductSearchEngines = () => {
+    navigation.navigate(ROUTES.SEARCH_ENGINES, { type: "product" });
   };
 
   const goToScannedHistory = () => {
@@ -1290,13 +1348,39 @@ export default function MenuScreen({ navigation }) {
             />
 
             {isAdmin ? (
-              <SettingsCard
-                icon="shield-checkmark-outline"
-                title="Administrar usuarios"
-                subtitle="Consultar usuarios y asignar roles"
-                badge="ADMIN"
-                onPress={goToAdminUsers}
-              />
+              <>
+                <SettingsCard
+                  icon="shield-checkmark-outline"
+                  title="Administrar usuarios"
+                  subtitle="Consultar usuarios y asignar roles"
+                  badge="ADMIN"
+                  onPress={goToAdminUsers}
+                />
+
+                <SettingsCard
+                  icon="storefront-outline"
+                  title="Peticiones de creación de tiendas"
+                  subtitle="Revisar, aprobar o rechazar solicitudes"
+                  badge="ADMIN"
+                  onPress={goToAdminStoreRequests}
+                />
+
+                <SettingsCard
+                  icon="document-text-outline"
+                  title="Catálogo de supermercados"
+                  subtitle="Importar y exportar supermercados en JSON"
+                  badge="ADMIN"
+                  onPress={goToAdminStoreCatalog}
+                />
+
+                <SettingsCard
+                  icon="pricetags-outline"
+                  title="Ofertas recibidas"
+                  subtitle="Revisar sugerencias y solicitudes comerciales"
+                  badge="ADMIN"
+                  onPress={goToAdminStoreOffers}
+                />
+              </>
             ) : null}
 
             <SettingsCard
@@ -1324,10 +1408,17 @@ export default function MenuScreen({ navigation }) {
             <Text style={styles.sectionTitle}>Escáner</Text>
 
             <SettingsCard
-              icon="time-outline"
-              title="Historial de escaneos"
-              subtitle="Consulta los códigos escaneados recientemente"
-              onPress={goToScannedHistory}
+              icon="options-outline"
+              title="Configuración del código de barras"
+              subtitle="Elige los formatos que puede detectar el scanner"
+              onPress={goToBarcodeSettings}
+            />
+
+            <SettingsCard
+              icon="search-outline"
+              title="Buscador de productos"
+              subtitle={productSearchEngineSubtitle}
+              onPress={goToProductSearchEngines}
             />
           </View>
 

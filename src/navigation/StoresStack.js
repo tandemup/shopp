@@ -10,6 +10,9 @@ import StoresBrowseScreen from "@/src/screens/stores/StoresBrowseScreen";
 import StoresFavoritesScreen from "@/src/screens/stores/StoresFavoritesScreen";
 import StoresNearbyScreen from "@/src/screens/stores/StoresNearbyScreen";
 import StoreDetailScreen from "@/src/screens/stores/StoreDetailScreen";
+import StoreCreationRequestScreen from "@/src/screens/stores/StoreCreationRequestScreen";
+import StoreOfferSubmissionScreen from "@/src/screens/stores/StoreOfferSubmissionScreen";
+import StoreOffersScreen from "@/src/screens/stores/StoreOffersScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -52,6 +55,24 @@ export default function StoresStack() {
           headerShown: true,
           headerBackTitleVisible: false,
         }}
+      />
+
+      <Stack.Screen
+        name={ROUTES.STORE_CREATION_REQUEST}
+        component={StoreCreationRequestScreen}
+        options={{ title: tr("Petición de creación de tienda") }}
+      />
+
+      <Stack.Screen
+        name={ROUTES.STORE_OFFER_SUBMISSION}
+        component={StoreOfferSubmissionScreen}
+        options={{ title: tr("Enviar oferta") }}
+      />
+
+      <Stack.Screen
+        name={ROUTES.STORE_OFFERS}
+        component={StoreOffersScreen}
+        options={{ title: tr("Ofertas de supermercados") }}
       />
     </Stack.Navigator>
   );

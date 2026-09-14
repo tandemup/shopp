@@ -22,8 +22,18 @@ import EnglishTutorScreen from "@/src/screens/chat/EnglishTutorScreen";
 import LibraryScreen from "@/src/screens/library/LibraryScreen";
 import PlayListScreen from "@/src/screens/playlist/PlayListScreen";
 import ShoppLiveScreen from "@/src/screens/live/ShoppLiveScreen";
+import { adminOnly } from "@/src/components/access/AdminOnlyFeature";
 
 const Stack = createNativeStackNavigator();
+
+const DevStoresScreen = adminOnly(StoresScreen, "Tiendas");
+const DevStoreMapScreen = adminOnly(StoreMapScreen, "Mapa de tiendas");
+const DevFireAlarmScreen = adminOnly(WebRtcFireAlarmScreen, "Fire Alarm");
+const DevEnglishTutorScreen = adminOnly(EnglishTutorScreen, "Tutor de Inglés");
+const DevLibraryScreen = adminOnly(LibraryScreen, "Biblioteca");
+const DevClassicalMusicScreen = adminOnly(PlayListScreen, "Música clásica");
+const DevTutorialsScreen = adminOnly(PlayListScreen, "Tutoriales");
+const DevShoppLiveScreen = adminOnly(ShoppLiveScreen, "Shopp Live");
 
 export default function ShoppingStack() {
   useI18n();
@@ -38,9 +48,9 @@ export default function ShoppingStack() {
         component={ShoppingListScreen}
       />
       <Stack.Screen name={ROUTES.ITEM_DETAIL} component={ItemDetailScreen} />
-      <Stack.Screen name={ROUTES.STORES_HOME} component={StoresScreen} />
+      <Stack.Screen name={ROUTES.STORES_HOME} component={DevStoresScreen} />
       <Stack.Screen name={ROUTES.STORE_SELECT} component={StoreSelectScreen} />
-      <Stack.Screen name={ROUTES.STORE_MAP} component={StoreMapScreen} />
+      <Stack.Screen name={ROUTES.STORE_MAP} component={DevStoreMapScreen} />
       <Stack.Screen
         name={ROUTES.ARCHIVED_LISTS}
         component={ArchivedListsScreen}
@@ -63,16 +73,16 @@ export default function ShoppingStack() {
       />
       <Stack.Screen
         name={ROUTES.WEBRTC_FIRE_ALARM}
-        component={WebRtcFireAlarmScreen}
+        component={DevFireAlarmScreen}
       />
       <Stack.Screen
         name={ROUTES.ENGLISH_TUTOR}
-        component={EnglishTutorScreen}
+        component={DevEnglishTutorScreen}
         options={{ title: tr("Tutor de Inglés") }}
       />
       <Stack.Screen
         name={ROUTES.LIBRARY}
-        component={LibraryScreen}
+        component={DevLibraryScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen
@@ -82,17 +92,17 @@ export default function ShoppingStack() {
       />
       <Stack.Screen
         name={ROUTES.CLASSICAL_MUSIC}
-        component={PlayListScreen}
+        component={DevClassicalMusicScreen}
         options={{ title: "Música clásica" }}
       />
       <Stack.Screen
         name={ROUTES.TUTORIALS}
-        component={PlayListScreen}
+        component={DevTutorialsScreen}
         options={{ title: "Tutoriales" }}
       />
       <Stack.Screen
         name={ROUTES.SHOPP_LIVE}
-        component={ShoppLiveScreen}
+        component={DevShoppLiveScreen}
         options={{ title: "Shopp Live" }}
       />
       <Stack.Screen name={ROUTES.MENU} component={MenuScreen} />

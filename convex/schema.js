@@ -858,8 +858,12 @@ export default defineSchema({
   stores: defineTable({
     id: v.string(),
     name: v.string(),
+    type: v.optional(v.string()),
+    chain: v.optional(v.string()),
     address: v.string(),
     city: v.string(),
+    status: v.optional(v.string()),
+    submittedBy: v.optional(v.string()),
 
     // Campo heredado. No usarlo para favoritos de usuario.
     favorite: v.optional(v.boolean()),
@@ -887,6 +891,53 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_userId_storeId", ["userId", "storeId"])
     .index("by_storeId", ["storeId"]),
+
+  storeCreationRequests: defineTable({
+    submittedBy: v.string(),
+    name: v.string(),
+    chain: v.optional(v.string()),
+    address: v.string(),
+    city: v.string(),
+    provincia: v.optional(v.string()),
+    zipcode: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    lat: v.optional(v.float64()),
+    lng: v.optional(v.float64()),
+    approvedStoreId: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected"),
+    ),
+    createdAt: v.float64(),
+    updatedAt: v.float64(),
+  })
+    .index("by_submittedBy_createdAt", ["submittedBy", "createdAt"])
+    .index("by_status_createdAt", ["status", "createdAt"]),
+
+  storeOfferSubmissions: defineTable({
+    submittedBy: v.string(),
+    submissionType: v.union(v.literal("shopper"), v.literal("owner")),
+    storeId: v.string(),
+    productName: v.string(),
+    barcode: v.optional(v.string()),
+    offerText: v.string(),
+    startsAt: v.optional(v.float64()),
+    endsAt: v.optional(v.float64()),
+    contactName: v.optional(v.string()),
+    contactEmail: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected"),
+    ),
+    createdAt: v.float64(),
+    updatedAt: v.float64(),
+  })
+    .index("by_status_createdAt", ["status", "createdAt"])
+    .index("by_storeId_createdAt", ["storeId", "createdAt"])
+    .index("by_submittedBy_createdAt", ["submittedBy", "createdAt"]),
 
   shoppingItemsImport: defineTable({
     userId: v.id("users"),

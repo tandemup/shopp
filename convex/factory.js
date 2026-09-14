@@ -4,6 +4,8 @@ import { v } from "convex/values";
 const storeValidator = v.object({
   id: v.optional(v.string()),
   name: v.string(),
+  type: v.optional(v.string()),
+  chain: v.optional(v.string()),
   address: v.string(),
   city: v.string(),
   provincia: v.optional(v.string()),
@@ -15,6 +17,9 @@ const storeValidator = v.object({
       source: v.optional(v.string()),
     }),
   ),
+  favorite: v.optional(v.boolean()),
+  status: v.optional(v.string()),
+  submittedBy: v.optional(v.string()),
 });
 
 const itemValidator = v.object({
@@ -104,6 +109,8 @@ function normalizeStore(store) {
   const normalizedStore = {
     id: cleanText(store.id) || createStoreId(store),
     name,
+    ...(cleanText(store.type) ? { type: cleanText(store.type) } : {}),
+    ...(cleanText(store.chain) ? { chain: cleanText(store.chain) } : {}),
     address: cleanText(store.address),
     city: cleanText(store.city) || "gijon",
     provincia: cleanText(store.provincia) || "Asturias",
@@ -111,6 +118,11 @@ function normalizeStore(store) {
       store.zipcode === undefined || store.zipcode === null
         ? 0
         : Number(store.zipcode),
+    favorite: false,
+    ...(cleanText(store.status) ? { status: cleanText(store.status) } : {}),
+    ...(cleanText(store.submittedBy)
+      ? { submittedBy: cleanText(store.submittedBy) }
+      : {}),
   };
 
   if (store.location) {

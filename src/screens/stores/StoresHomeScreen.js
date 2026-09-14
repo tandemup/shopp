@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from "react";
-import { View, StyleSheet, Pressable } from "react-native";
+import { View, StyleSheet, Pressable, ScrollView } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
 
 import { StatusBar } from "expo-status-bar";
@@ -66,7 +66,11 @@ export default function StoresHomeScreen() {
       <StatusBar {...headerConfig.statusBar} />
 
       <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
-        <View style={styles.content}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={styles.title}>Tiendas</Text>
 
           <Text style={styles.subtitle}>
@@ -75,6 +79,13 @@ export default function StoresHomeScreen() {
           </Text>
 
           <View style={styles.actions}>
+            <MenuItem
+              icon="pricetags-outline"
+              title="Ofertas de supermercados"
+              subtitle="Consulta ofertas aprobadas por Shopp"
+              onPress={() => navigation.navigate(ROUTES.STORE_OFFERS)}
+            />
+
             <MenuItem
               icon="storefront-outline"
               title="Explorar tiendas"
@@ -102,8 +113,39 @@ export default function StoresHomeScreen() {
               subtitle="Horarios, direcciones y estado"
               onPress={() => navigation.navigate(ROUTES.STORE_INFO)}
             />
+
+            <MenuItem
+              icon="add-circle-outline"
+              title="Proponer un supermercado"
+              subtitle="Solicita que añadamos un supermercado que no encuentras"
+              onPress={() =>
+                navigation.navigate(ROUTES.STORE_CREATION_REQUEST)
+              }
+            />
+
+            <MenuItem
+              icon="pricetag-outline"
+              title="Comunicar una oferta"
+              subtitle="Comparte una oferta que has visto al comprar"
+              onPress={() =>
+                navigation.navigate(ROUTES.STORE_OFFER_SUBMISSION, {
+                  submissionType: "shopper",
+                })
+              }
+            />
+
+            <MenuItem
+              icon="megaphone-outline"
+              title="Promocionar productos"
+              subtitle="Solicitud para propietarios de supermercados"
+              onPress={() =>
+                navigation.navigate(ROUTES.STORE_OFFER_SUBMISSION, {
+                  submissionType: "owner",
+                })
+              }
+            />
           </View>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     </View>
   );
@@ -123,10 +165,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#F9FAFB",
   },
 
-  content: {
+  scrollView: {
     flex: 1,
+  },
+
+  content: {
     paddingHorizontal: 20,
     paddingTop: 24,
+    paddingBottom: 32,
   },
 
   title: {
