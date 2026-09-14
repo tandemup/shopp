@@ -4,17 +4,13 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { Platform, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQuery } from "convex/react";
 
-import { api } from "@/convex/_generated/api";
 import { ROUTES } from "@/src/navigation/ROUTES";
 import ShoppingStack from "@/src/navigation/ShoppingStack";
 import StoresStack from "@/src/navigation/StoresStack";
 import ChatStack from "@/src/navigation/ChatStack";
 import ScannerStack from "@/src/navigation/ScannerStack";
 import MenuStack from "@/src/navigation/MenuStack";
-import { safeAlert } from "@/src/components/ui/alert/safeAlert";
-import { isAdminUser } from "@/src/utils/featureAccess";
 
 const Tab = createBottomTabNavigator();
 
@@ -27,8 +23,6 @@ const WEB_TAB_BAR_HEIGHT = `calc(${TAB_BAR_CONTENT_HEIGHT}px + env(safe-area-ins
 
 export default function MainTabs() {
   useI18n();
-  const currentUser = useQuery(api.users.current);
-  const isAdmin = isAdminUser(currentUser);
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_PADDING);
   const tabBarHeight =
@@ -37,22 +31,6 @@ export default function MainTabs() {
       : TAB_BAR_CONTENT_HEIGHT + bottomPadding;
   const tabBarBottomPadding =
     Platform.OS === "web" ? WEB_SAFE_BOTTOM : bottomPadding;
-  const adminOnlyTabListeners = (tab, screen) =>
-    ({ navigation }) => ({
-      tabPress: (event) => {
-        if (!isAdmin) {
-          event.preventDefault();
-          safeAlert(
-            "Funcionalidad DEV",
-            "Esta función está en desarrollo y solo está disponible para administradores.",
-          );
-          return;
-        }
-
-        event.preventDefault();
-        navigation.navigate(tab, { screen });
-      },
-    });
 
   return (
     <Tab.Navigator
@@ -124,13 +102,18 @@ export default function MainTabs() {
       <Tab.Screen
         name={ROUTES.STORES_TAB}
         component={StoresStack}
-        listeners={adminOnlyTabListeners(
-          ROUTES.STORES_TAB,
-          ROUTES.STORES_HOME,
-        )}
+        listeners={({ navigation }) => ({
+          tabPress: (event) => {
+            event.preventDefault();
+
+            navigation.navigate(ROUTES.STORES_TAB, {
+              screen: ROUTES.STORES_HOME,
+            });
+          },
+        })}
         options={{
           title: tr("Tiendas"),
-          tabBarBadge: "DEV",
+          tabBarBadge: null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons
               name="storefront"
@@ -144,10 +127,18 @@ export default function MainTabs() {
       <Tab.Screen
         name={ROUTES.CHAT_TAB}
         component={ChatStack}
-        listeners={adminOnlyTabListeners(ROUTES.CHAT_TAB, ROUTES.CHAT_SCREEN)}
+        listeners={({ navigation }) => ({
+          tabPress: (event) => {
+            event.preventDefault();
+
+            navigation.navigate(ROUTES.CHAT_TAB, {
+              screen: ROUTES.CHAT_SCREEN,
+            });
+          },
+        })}
         options={{
           title: "Chat",
-          tabBarBadge: "DEV",
+          tabBarBadge: null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons
               name="chatbox-ellipses-sharp"
@@ -164,6 +155,7 @@ export default function MainTabs() {
         listeners={({ navigation }) => ({
           tabPress: (event) => {
             event.preventDefault();
+
             navigation.navigate(ROUTES.SCANNER_TAB, {
               screen: ROUTES.SCANNER_HOME,
             });
