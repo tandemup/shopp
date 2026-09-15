@@ -1,11 +1,13 @@
 // screens/scanner/ScannedHistoryScreen.js
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, FlatList, StyleSheet, Pressable } from "react-native";
+import { View, FlatList, StyleSheet, Pressable, Platform, Share } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
 
 import { StatusBar } from "expo-status-bar";
 import { Image } from "expo-image";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -27,11 +29,83 @@ import {
   PRODUCT_SEARCH_TYPES,
   normalizeProductSearchType,
 } from "@/src/constants/productSearchTypes";
+import { normalizeScannedProduct } from "@/src/utils/scannedProductModel";
+
+const SCANNER_PRODUCTS_FORMAT = "shopp-scanner-products";
+const SCANNER_PRODUCTS_VERSION = 1;
 
 const HISTORY_FILTERS = [
   ...PRODUCT_SEARCH_TYPES.map(({ value, label }) => ({ id: value, label })),
   { id: PRODUCT_SEARCH_TYPE.ALL, label: PRODUCT_SEARCH_TYPE.ALL },
 ];
+
+function normalizeExportProduct(product) {
+  const normalized = normalizeScannedProduct(product, product?.barcode);
+  const scanCount = Number(normalized.scanCount || 1);
+
+  return {
+    id: normalized.id,
+    barcode: normalized.barcode,
+    name: normalized.name,
+    brand: normalized.brand,
+    productType: normalized.productType,
+    category: normalized.category,
+    subcategory: normalized.subcategory,
+    imageUrl: normalized.imageUrl,
+    url: normalized.url,
+    productUrl: normalized.productUrl,
+    thumbnailUri: normalized.thumbnailUri || null,
+    details:
+      normalized.details && typeof normalized.details === "object"
+        ? normalized.details
+        : {},
+    notes: String(normalized.notes || "").trim(),
+    source: String(normalized.source || "scanner").trim() || "scanner",
+    lookupSource: normalized.lookupSource || null,
+    dataSource: String(normalized.dataSource || "").trim(),
+    scannedAt: String(normalized.scannedAt || "").trim(),
+    updatedAt: String(normalized.updatedAt || "").trim(),
+    scanCount: Number.isFinite(scanCount) ? Math.max(1, scanCount) : 1,
+  };
+}
+
+function getImportedProducts(payload) {
+  if (
+    !payload ||
+    payload.format !== SCANNER_PRODUCTS_FORMAT ||
+    payload.version !== SCANNER_PRODUCTS_VERSION ||
+    !Array.isArray(payload.data?.products)
+  ) {
+    throw new Error("El fichero no es una exportación compatible del historial de escaneos.");
+  }
+
+  return Array.from(
+    payload.data.products.reduce((byBarcode, item) => {
+      const product = normalizeExportProduct(item);
+      if (product.barcode) byBarcode.set(product.barcode, product);
+      return byBarcode;
+    }, new Map()).values(),
+  );
+}
+
+function buildJsonFilename() {
+  return `shopp-historial-escaneos-${new Date()
+    .toISOString()
+    .replace(/[:.]/g, "-")}.json`;
+}
+
+function downloadJsonOnWeb(filename, json) {
+  const objectUrl = URL.createObjectURL(
+    new Blob([json], { type: "application/json;charset=utf-8" }),
+  );
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(objectUrl);
+}
 
 function getItemGroup(item) {
   if (item?.isBook === true) return PRODUCT_SEARCH_TYPE.BOOKS;
@@ -165,6 +239,7 @@ export default function ScannedHistoryScreen({ navigation, route }) {
   const [activeFilter, setActiveFilter] = useState(
     DEFAULT_PRODUCT_SEARCH_TYPE,
   );
+  const [transferBusy, setTransferBusy] = useState(null);
 
   const isFocused = useIsFocused();
   const scanHistoryStorage = useScannedHistoryStorage();
@@ -257,6 +332,146 @@ export default function ScannedHistoryScreen({ navigation, route }) {
     );
   };
 
+  const handleExportHistory = async () => {
+    try {
+      setTransferBusy("export");
+      const history = await scanHistoryStorage.getScannedHistory();
+      const products = history
+        .map(normalizeExportProduct)
+        .filter((product) => Boolean(product.barcode));
+
+      if (!products.length) {
+        safeAlert("Exportar historial", "No hay escaneos para exportar.");
+        return;
+      }
+
+      const filename = buildJsonFilename();
+      const json = JSON.stringify(
+        {
+          app: "Shopp",
+          format: SCANNER_PRODUCTS_FORMAT,
+          version: SCANNER_PRODUCTS_VERSION,
+          exportedAt: new Date().toISOString(),
+          data: { products },
+        },
+        null,
+        2,
+      );
+
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        downloadJsonOnWeb(filename, json);
+      } else {
+        const uri = `${FileSystem.cacheDirectory}${filename}`;
+        await FileSystem.writeAsStringAsync(uri, json, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+        await Share.share({ title: filename, url: uri });
+      }
+    } catch (error) {
+      safeAlert(
+        "No se pudo exportar",
+        error?.message || "No se pudo exportar el historial.",
+      );
+    } finally {
+      setTransferBusy(null);
+    }
+  };
+
+  const handleImportHistory = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/json", "text/json", "text/plain"],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) {
+        throw new Error("No se pudo leer el fichero seleccionado.");
+      }
+
+      const jsonText =
+        Platform.OS === "web" && asset.file
+          ? await asset.file.text()
+          : await FileSystem.readAsStringAsync(asset.uri, {
+              encoding: FileSystem.EncodingType.UTF8,
+            });
+      const importedProducts = getImportedProducts(JSON.parse(jsonText));
+
+      if (!importedProducts.length) {
+        throw new Error("El fichero no contiene productos con código de barras.");
+      }
+
+      safeAlert(
+        "Importar historial",
+        `Se incorporarán ${importedProducts.length} elementos. Los códigos repetidos se actualizarán sin borrar el resto del historial.`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Importar",
+            onPress: async () => {
+              try {
+                setTransferBusy("import");
+                const currentHistory = await scanHistoryStorage.getScannedHistory();
+                const productsByBarcode = new Map(
+                  currentHistory
+                    .map(normalizeExportProduct)
+                    .filter((product) => Boolean(product.barcode))
+                    .map((product) => [product.barcode, product]),
+                );
+
+                importedProducts.forEach((imported) => {
+                  const previous = productsByBarcode.get(imported.barcode);
+                  productsByBarcode.set(
+                    imported.barcode,
+                    normalizeExportProduct({
+                      ...previous,
+                      ...imported,
+                      details: {
+                        ...(previous?.details || {}),
+                        ...(imported.details || {}),
+                      },
+                      scanCount: Math.max(
+                        Number(previous?.scanCount || 1),
+                        Number(imported.scanCount || 1),
+                      ),
+                    }),
+                  );
+                });
+
+                await scanHistoryStorage.replaceScannedHistory(
+                  Array.from(productsByBarcode.values()),
+                );
+                await loadScannedHistory();
+
+                safeAlert(
+                  "Importación completada",
+                  `Se han incorporado ${importedProducts.length} elementos al historial.`,
+                );
+              } catch (error) {
+                safeAlert(
+                  "No se pudo importar",
+                  error?.message || "No se pudo actualizar el historial.",
+                );
+              } finally {
+                setTransferBusy(null);
+              }
+            },
+          },
+        ],
+      );
+    } catch (error) {
+      safeAlert(
+        "Fichero no válido",
+        error?.name === "SyntaxError"
+          ? "El fichero seleccionado no contiene JSON válido."
+          : error?.message || "Selecciona una exportación válida del historial.",
+      );
+    }
+  };
+
   const openItem = (item) => {
     navigation.navigate(ROUTES.EDIT_SCANNED_ITEM, {
       item,
@@ -332,6 +547,38 @@ export default function ScannedHistoryScreen({ navigation, route }) {
           <Text style={styles.subtitle}>
             Consulta productos y códigos de barras escaneados anteriormente.
           </Text>
+
+          <View style={styles.transferRow}>
+            <Pressable
+              disabled={transferBusy !== null}
+              onPress={handleImportHistory}
+              style={({ pressed }) => [
+                styles.transferButton,
+                transferBusy !== null && styles.transferButtonDisabled,
+                pressed && transferBusy === null && styles.filterChipPressed,
+              ]}
+            >
+              <Ionicons name="download-outline" size={18} color="#2563EB" />
+              <Text style={styles.transferText}>
+                {transferBusy === "import" ? "Importando..." : "Importar JSON"}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              disabled={transferBusy !== null}
+              onPress={handleExportHistory}
+              style={({ pressed }) => [
+                styles.transferButton,
+                transferBusy !== null && styles.transferButtonDisabled,
+                pressed && transferBusy === null && styles.filterChipPressed,
+              ]}
+            >
+              <Ionicons name="cloud-upload-outline" size={18} color="#2563EB" />
+              <Text style={styles.transferText}>
+                {transferBusy === "export" ? "Exportando..." : "Exportar JSON"}
+              </Text>
+            </Pressable>
+          </View>
 
           <SearchBar
             value={searchQuery}
@@ -420,6 +667,35 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: "#6B7280",
     marginBottom: 18,
+  },
+
+  transferRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 14,
+  },
+
+  transferButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    backgroundColor: "#EFF6FF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+
+  transferButtonDisabled: {
+    opacity: 0.55,
+  },
+
+  transferText: {
+    color: "#1D4ED8",
+    fontSize: 13,
+    fontWeight: "800",
   },
 
   searchBar: {

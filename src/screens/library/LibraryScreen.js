@@ -1411,8 +1411,13 @@ function ImportCheckbox({
 
 function MinimalLinkTitle({ item, previewMode = "default" }) {
   const getLinkPreview = useAction(api.linkPreviews.get);
-  const updatePreviewMetadata =
-    libraryJsonApi.updateMetadata.bind(libraryJsonApi);
+  // `bind` crea una función nueva en cada render. Al estar incluida en las
+  // dependencias del efecto de vista previa, eso provocaba un bucle de
+  // actualizaciones de React. Se mantiene una única referencia estable.
+  const updatePreviewMetadata = useMemo(
+    () => libraryJsonApi.updateMetadata.bind(libraryJsonApi),
+    [],
+  );
   const fallbackTitle = getLinkDisplayTitle(item);
   const [previewTitle, setPreviewTitle] = useState("");
   const [previewSubtitle, setPreviewSubtitle] = useState("");

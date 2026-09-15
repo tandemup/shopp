@@ -66,6 +66,9 @@ export const ROUTES = {
   SETTINGS: "Settings Screen",
   BARCODE_SETTINGS: "Barcode Settings Screen",
   ADMIN_USERS: "Admin Users",
+  ADMIN_STORE_REQUESTS: "Admin Store Requests",
+  ADMIN_STORE_CATALOG: "Admin Store Catalog",
+  ADMIN_STORE_OFFERS: "Admin Store Offers",
   CONFIRM_DELETE: "Confirm Delete Screen",
 
   // Chat stack
