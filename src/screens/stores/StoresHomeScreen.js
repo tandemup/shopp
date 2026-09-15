@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from "react";
-import { View, StyleSheet, Pressable, ScrollView } from "react-native";
+import { View, StyleSheet, Pressable } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
 
 import { StatusBar } from "expo-status-bar";
@@ -9,6 +9,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ROUTES } from "@/src/navigation/ROUTES";
 import { buildHeaderConfig } from "@/src/utils/layout/headerStyles";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 /* -------------------------------------------------
    Menu Item
@@ -47,6 +49,9 @@ function MenuItem({ icon, title, subtitle, onPress }) {
 -------------------------------------------------- */
 export default function StoresHomeScreen() {
   const navigation = useNavigation();
+  const currentUser = useQuery(api.users.current);
+  const isAdmin =
+    currentUser?.isAdmin === true || currentUser?.role === "admin";
 
   const headerConfig = useMemo(
     () =>
@@ -66,11 +71,7 @@ export default function StoresHomeScreen() {
       <StatusBar {...headerConfig.statusBar} />
 
       <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
+        <View style={styles.content}>
           <Text style={styles.title}>Tiendas</Text>
 
           <Text style={styles.subtitle}>
@@ -79,13 +80,6 @@ export default function StoresHomeScreen() {
           </Text>
 
           <View style={styles.actions}>
-            <MenuItem
-              icon="pricetags-outline"
-              title="Ofertas de supermercados"
-              subtitle="Consulta ofertas aprobadas por Shopp"
-              onPress={() => navigation.navigate(ROUTES.STORE_OFFERS)}
-            />
-
             <MenuItem
               icon="storefront-outline"
               title="Explorar tiendas"
@@ -114,38 +108,16 @@ export default function StoresHomeScreen() {
               onPress={() => navigation.navigate(ROUTES.STORE_INFO)}
             />
 
-            <MenuItem
-              icon="add-circle-outline"
-              title="Proponer un supermercado"
-              subtitle="Solicita que añadamos un supermercado que no encuentras"
-              onPress={() =>
-                navigation.navigate(ROUTES.STORE_CREATION_REQUEST)
-              }
-            />
-
-            <MenuItem
-              icon="pricetag-outline"
-              title="Comunicar una oferta"
-              subtitle="Comparte una oferta que has visto al comprar"
-              onPress={() =>
-                navigation.navigate(ROUTES.STORE_OFFER_SUBMISSION, {
-                  submissionType: "shopper",
-                })
-              }
-            />
-
-            <MenuItem
-              icon="megaphone-outline"
-              title="Promocionar productos"
-              subtitle="Solicitud para propietarios de supermercados"
-              onPress={() =>
-                navigation.navigate(ROUTES.STORE_OFFER_SUBMISSION, {
-                  submissionType: "owner",
-                })
-              }
-            />
+            {isAdmin ? (
+              <MenuItem
+                icon="cloud-outline"
+                title="Datos de tiendas"
+                subtitle="Importar o exportar el catálogo en JSON"
+                onPress={() => navigation.navigate(ROUTES.ADMIN_STORES_DATA)}
+              />
+            ) : null}
           </View>
-        </ScrollView>
+        </View>
       </SafeAreaView>
     </View>
   );
@@ -165,14 +137,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#F9FAFB",
   },
 
-  scrollView: {
-    flex: 1,
-  },
-
   content: {
+    flex: 1,
     paddingHorizontal: 20,
     paddingTop: 24,
-    paddingBottom: 32,
   },
 
   title: {

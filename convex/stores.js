@@ -10,22 +10,20 @@ const DEFAULT_ZIPCODE = 0;
 const storeValidator = v.object({
   id: v.string(),
   name: v.string(),
-  type: v.optional(v.string()),
-  chain: v.optional(v.string()),
-  city: v.string(),
-  provincia: v.string(),
-  address: v.string(),
-  zipcode: v.union(v.string(), v.number()),
+  city: v.optional(v.string()),
+  provincia: v.optional(v.string()),
+  address: v.optional(v.string()),
+  zipcode: v.optional(v.union(v.string(), v.number())),
 
-  location: v.object({
-    lat: v.number(),
-    lng: v.number(),
-    source: v.string(),
-  }),
+  location: v.optional(
+    v.object({
+      lat: v.number(),
+      lng: v.number(),
+      source: v.optional(v.string()),
+    }),
+  ),
 
   favorite: v.optional(v.boolean()),
-  status: v.optional(v.string()),
-  submittedBy: v.optional(v.string()),
 });
 
 function cleanText(value) {
@@ -69,7 +67,7 @@ function isValidLongitude(value) {
 }
 
 function normalizeZipcode(value) {
-  const numericValue = typeof value === "string" ? Number(value.trim()) : value;
+  const numericValue = typeof value === "string" ? Number(value) : value;
 
   if (!isFiniteNumber(numericValue)) {
     return DEFAULT_ZIPCODE;
@@ -100,8 +98,6 @@ function normalizeStore(store) {
   return {
     id,
     name,
-    ...(cleanText(store.type) ? { type: cleanText(store.type) } : {}),
-    ...(cleanText(store.chain) ? { chain: cleanText(store.chain) } : {}),
 
     city: cleanCity(store.city),
     provincia: cleanProvincia(store.provincia),
@@ -116,10 +112,6 @@ function normalizeStore(store) {
 
     // Campo heredado: las tiendas ya no guardan favoritos globales.
     favorite: false,
-    ...(cleanText(store.status) ? { status: cleanText(store.status) } : {}),
-    ...(cleanText(store.submittedBy)
-      ? { submittedBy: cleanText(store.submittedBy) }
-      : {}),
   };
 }
 
@@ -129,6 +121,15 @@ function sortStoresByName(stores) {
       sensitivity: "base",
     }),
   );
+}
+
+function toExportStore(store) {
+  const { _id, _creationTime, ...exportStore } = store;
+
+  return {
+    ...exportStore,
+    favorite: false,
+  };
 }
 
 async function requireAuthUserId(ctx) {
@@ -262,12 +263,32 @@ export const listFavoriteStores = query({
   },
 });
 
+export const exportStoresJson = query({
+  args: {},
+
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+
+    const stores = await ctx.db.query("stores").collect();
+
+    return {
+      app: "Shopp",
+      type: "stores-export",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      stores: sortStoresByName(stores).map(toExportStore),
+    };
+  },
+});
+
 export const upsertStores = mutation({
   args: {
     stores: v.array(storeValidator),
   },
 
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     let inserted = 0;
     let updated = 0;
     let skipped = 0;
@@ -291,6 +312,39 @@ export const upsertStores = mutation({
       inserted,
       updated,
       skipped,
+      total: args.stores.length,
+    };
+  },
+});
+
+export const importStoresJson = mutation({
+  args: {
+    stores: v.array(storeValidator),
+  },
+
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    let inserted = 0;
+    let updated = 0;
+
+    for (const rawStore of args.stores) {
+      const store = normalizeStore(rawStore);
+      const existing = await getStoreByPublicId(ctx, store.id);
+
+      if (existing) {
+        await ctx.db.patch(existing._id, store);
+        updated += 1;
+      } else {
+        await ctx.db.insert("stores", store);
+        inserted += 1;
+      }
+    }
+
+    return {
+      ok: true,
+      inserted,
+      updated,
       total: args.stores.length,
     };
   },
@@ -425,6 +479,8 @@ export const deleteStoreById = mutation({
   },
 
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const id = cleanStoreId(args.id);
 
     if (!id) {
@@ -448,61 +504,5 @@ export const deleteStoreById = mutation({
       deleted: true,
       id,
     };
-  },
-});
-
-export const exportCatalogForAdmin = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireAdmin(ctx);
-    const stores = await ctx.db.query("stores").collect();
-    return sortStoresByName(stores).map(({ _id, _creationTime, ...store }) => store);
-  },
-});
-
-export const importCatalogForAdmin = mutation({
-  args: {
-    stores: v.array(storeValidator),
-    mode: v.union(v.literal("merge"), v.literal("replace")),
-  },
-  handler: async (ctx, args) => {
-    await requireAdmin(ctx);
-
-    if (args.stores.length > 5000) {
-      throw new Error("El catálogo supera el límite de 5000 supermercados.");
-    }
-
-    const normalized = args.stores.map(normalizeStore);
-    const ids = new Set();
-    for (const store of normalized) {
-      if (ids.has(store.id)) {
-        throw new Error(`El id ${store.id} está duplicado en el JSON.`);
-      }
-      ids.add(store.id);
-    }
-
-    let deleted = 0;
-    if (args.mode === "replace") {
-      const existingStores = await ctx.db.query("stores").collect();
-      for (const store of existingStores) {
-        await ctx.db.delete(store._id);
-        deleted += 1;
-      }
-    }
-
-    let inserted = 0;
-    let updated = 0;
-    for (const store of normalized) {
-      const existing = await getStoreByPublicId(ctx, store.id);
-      if (existing) {
-        await ctx.db.patch(existing._id, store);
-        updated += 1;
-      } else {
-        await ctx.db.insert("stores", store);
-        inserted += 1;
-      }
-    }
-
-    return { ok: true, mode: args.mode, total: normalized.length, inserted, updated, deleted };
   },
 });

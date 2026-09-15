@@ -28,7 +28,7 @@ export const ROUTES = {
   STORE_MAP: "Store Map",
   STORES_NEARBY: "Stores Nearby",
   STORE_INFO: "Store Info",
-  STORE_CREATION_REQUEST: "Store Creation Request",
+  ADMIN_STORES_DATA: "Admin Stores Data",
 
   // Archive
   ARCHIVED_LISTS: "Archived Lists",
@@ -65,11 +65,6 @@ export const ROUTES = {
   SETTINGS: "Settings Screen",
   BARCODE_SETTINGS: "Barcode Settings Screen",
   ADMIN_USERS: "Admin Users",
-  ADMIN_STORE_REQUESTS: "Admin Store Requests",
-  ADMIN_STORE_CATALOG: "Admin Store Catalog",
-  ADMIN_STORE_OFFERS: "Admin Store Offers",
-  STORE_OFFER_SUBMISSION: "Store Offer Submission",
-  STORE_OFFERS: "Store Offers",
   CONFIRM_DELETE: "Confirm Delete Screen",
 
   // Chat stack

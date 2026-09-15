@@ -74,7 +74,7 @@ export const current = query({
       phoneVerificationTime: user.phoneVerificationTime ?? null,
       isAnonymous: user.isAnonymous ?? false,
       role: user.role ?? "user",
-      isAdmin: user.role === "admin",
+      isAdmin: user.role === "admin" || user.isAdmin === true,
 
       profile: profile
         ? {
