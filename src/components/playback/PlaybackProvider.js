@@ -579,10 +579,8 @@ export default function PlaybackProvider({ children }) {
                   ) : null}
                   {session.tracks.map((item, index) => {
                     const active = index === session.index;
-                    // En el reproductor ampliado solo se muestra la pista
-                    // seleccionada. La navegación anterior/siguiente cambia
-                    // session.index y sustituye esta card por la nueva activa.
-                    if (!active) return null;
+                    // La cola permanece visible: las canciones no activas
+                    // conservan su card y permiten seleccionarlas directamente.
                     const itemPlaying = active && playing;
                     const remembered = rememberedPlayback.current.get(
                       trackKey(item),
