@@ -50,6 +50,13 @@ export default forwardRef(function YouTubeSurface({
     pause: () => commands.current.pause?.(),
     seek: (time) => commands.current.seek?.(time),
     selectVideo: (index) => commands.current.selectVideo?.(index),
+    loadTrack: (nextTrack, time, playlistIndex, autoPlayNext) =>
+      commands.current.loadTrack?.(
+        nextTrack,
+        time,
+        playlistIndex,
+        autoPlayNext,
+      ),
     setVolume: (value) => commands.current.setVolume?.(value),
   }), []);
   useEffect(() => {
@@ -117,10 +124,40 @@ export default forwardRef(function YouTubeSurface({
         if (!disposed) { suspend().catch(() => {}); emit({ error: "No se pudo pausar el otro reproductor. Inténtalo de nuevo." }); }
       }
     };
+    const loadTrack = (nextTrack, time = 0, playlistIndex = 0, autoPlayNext = true) => {
+      if (!ready || disposed || !nextTrack) return;
+
+      action += 1;
+      granted = Boolean(autoPlayNext);
+      player.mute();
+
+      if (nextTrack.kind === "album" && nextTrack.playlistId) {
+        player.loadPlaylist({
+          list: nextTrack.playlistId,
+          index: Math.max(0, playlistIndex || 0),
+          startSeconds: Math.max(0, time || 0),
+        });
+      } else if (nextTrack.videoId) {
+        player.loadVideoById({
+          videoId: nextTrack.videoId,
+          startSeconds: Math.max(0, time || 0),
+        });
+      } else {
+        return;
+      }
+
+      // The iframe is deliberately kept alive between Shopp tracks. Loading
+      // the next video inside it preserves the user gesture that started the
+      // playlist, so Chrome does not require a second press on Play.
+      if (autoPlayNext) player.unMute();
+      else player.pauseVideo();
+      emit({ state: autoPlayNext ? 1 : 2 });
+    };
     commands.current = {
       play: () => requestPlay(), pause: () => suspend().catch(() => {}),
       seek: (time) => { if (ready) { player.seekTo(Math.max(0, time), true); emit(); } },
       selectVideo: (index) => requestPlay(index),
+      loadTrack,
       setVolume: (value) => { if (ready) player.setVolume(Math.max(0, Math.min(100, value))); },
     };
     emit();

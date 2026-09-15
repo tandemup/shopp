@@ -46,6 +46,18 @@ window.shoppCommand=function(command,value,requestId){
   }
   if(command==='play')request();
   if(command==='select')request(value);
+  if(command==='load'&&value&&value.track){
+    revision++; authorized=value.autoPlay!==false;
+    player.mute();
+    var next=value.track, start=Math.max(0,value.time||0), index=Math.max(0,value.playlistIndex||0);
+    if(next.kind==='album'&&next.playlistId){
+      player.loadPlaylist({list:next.playlistId,index:index,startSeconds:start});
+    }else if(next.videoId){
+      player.loadVideoById({videoId:next.videoId,startSeconds:start});
+    }else{return;}
+    if(value.autoPlay!==false)player.unMute();else player.pauseVideo();
+    status({state:value.autoPlay!==false?1:2});
+  }
   if(command==='seek'){player.seekTo(Math.max(0,value),true);status();}
   if(command==='volume'&&player.setVolume)player.setVolume(Math.max(0,Math.min(100,value)));
 };

@@ -17,20 +17,30 @@ export default forwardRef(function YouTubeSurface({
   const web = useRef(null);
   const pending = useRef(new Map());
   const id = useRef(Symbol("youtube-native")).current;
-  const session = useMemo(() => `shopp-${++nextSession}`, [track.videoId, track.playlistId, track.kind]);
+  // PlaybackProvider remounts this surface only when the source playlist
+  // changes. Keep the initial WebView document immutable while individual
+  // tracks are loaded through the bridge.
+  const initial = useRef({
+    track,
+    initialTime,
+    initialPlaylistIndex,
+    autoPlay,
+    initialVolume,
+  }).current;
+  const session = useMemo(() => `shopp-${++nextSession}`, []);
   const source = useMemo(
     () => ({
       html: buildNativeYouTubeHtml(
-        track,
+        initial.track,
         session,
-        initialTime,
-        initialPlaylistIndex,
-        autoPlay,
-        initialVolume,
+        initial.initialTime,
+        initial.initialPlaylistIndex,
+        initial.autoPlay,
+        initial.initialVolume,
       ),
       baseUrl: "https://www.youtube.com",
     }),
-    [session, initialTime, initialPlaylistIndex, autoPlay, initialVolume],
+    [session],
   );
   const alive = useRef(false);
   const requestNumber = useRef(0);
@@ -49,6 +59,12 @@ export default forwardRef(function YouTubeSurface({
     pause: () => suspend().catch(() => {}),
     seek: (time) => command("seek", time),
     selectVideo: (index) => command("select", index),
+    loadTrack: (track, time, playlistIndex, autoPlayNext) => command("load", {
+      track,
+      time: Math.max(0, time || 0),
+      playlistIndex: Math.max(0, playlistIndex || 0),
+      autoPlay: autoPlayNext !== false,
+    }),
     setVolume: (value) => command("volume", value),
   }));
   useEffect(() => {
