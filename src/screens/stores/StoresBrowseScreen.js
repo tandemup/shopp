@@ -203,11 +203,12 @@ export default function StoresBrowseScreen() {
           <Text style={styles.countText}>{countLabel}</Text>
 
           <FlatList
+            style={styles.list}
             data={filteredStores}
             keyExtractor={(item) => item.id}
             renderItem={renderStoreRow}
             keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
+            showsVerticalScrollIndicator
             contentContainerStyle={[
               styles.listContent,
               filteredStores.length === 0 && styles.emptyListContent,
@@ -283,8 +284,12 @@ const styles = StyleSheet.create({
 
   listContent: {
     paddingTop: 4,
-    paddingBottom: 32,
+    paddingBottom: 120,
     gap: 14,
+  },
+
+  list: {
+    flex: 1,
   },
 
   emptyListContent: {

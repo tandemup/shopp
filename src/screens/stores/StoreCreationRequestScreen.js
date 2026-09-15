@@ -1,212 +1,221 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
 } from "react-native";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
-import { StatusBar } from "expo-status-bar";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { useMutation } from "convex/react";
-import * as Location from "expo-location";
-
 import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
-import { buildHeaderConfig } from "@/src/utils/layout/headerStyles";
 
 const EMPTY_FORM = {
   name: "",
-  chain: "",
   address: "",
   city: "Gijón",
   provincia: "Asturias",
   zipcode: "",
-  notes: "",
-  lat: "",
-  lng: "",
+  latitude: "",
+  longitude: "",
 };
 
-function FormField({ label, value, onChangeText, required, ...props }) {
+function Field({ label, value, onChangeText, placeholder, keyboardType }) {
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>
-        {label}{required ? " *" : ""}
-      </Text>
+      <Text style={styles.label}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
-        placeholder={label}
-        placeholderTextColor="#9CA3AF"
-        style={[styles.input, props.multiline && styles.notesInput]}
-        {...props}
+        placeholder={placeholder || label}
+        placeholderTextColor="#94a3b8"
+        keyboardType={keyboardType}
+        style={styles.input}
       />
     </View>
   );
 }
 
+function numberOrUndefined(value) {
+  const text = String(value || "").trim().replace(",", ".");
+  if (!text) return undefined;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : null;
+}
+
 export default function StoreCreationRequestScreen({ navigation }) {
-  const createRequest = useMutation(api.storeCreationRequests.create);
+  const submitStoreRequest = useMutation(api.stores.submitStoreRequest);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
-  const [locating, setLocating] = useState(false);
 
-  const headerConfig = useMemo(
-    () =>
-      buildHeaderConfig({
-        title: "Petición de creación de tienda",
-        preset: "light",
-      }),
-    [],
+  const canSubmit = useMemo(
+    () => form.name.trim().length > 1 && form.address.trim().length > 3,
+    [form.name, form.address],
   );
 
-  useEffect(() => {
-    navigation.setOptions(headerConfig.navigationOptions);
-  }, [navigation, headerConfig]);
-
-  const updateField = (field) => (value) => {
-    setForm((current) => ({ ...current, [field]: value }));
+  const updateField = (field, value) => {
+    setForm((previous) => ({ ...previous, [field]: value }));
   };
 
   const handleSubmit = async () => {
-    if (submitting) return;
+    const latitude = numberOrUndefined(form.latitude);
+    const longitude = numberOrUndefined(form.longitude);
+    const zipcode = numberOrUndefined(form.zipcode);
 
-    const lat = Number(form.lat.replace(",", "."));
-    const lng = Number(form.lng.replace(",", "."));
-    if (!form.name.trim() || !form.address.trim() || !form.city.trim() || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-      safeAlert("Faltan datos", "Nombre, dirección, ciudad y ubicación son obligatorios.");
+    if (!canSubmit) {
+      safeAlert("Faltan datos", "Indica el nombre y la dirección de la tienda.");
+      return;
+    }
+
+    if (latitude === null || longitude === null || zipcode === null) {
+      safeAlert("Datos no válidos", "Las coordenadas y el código postal deben ser números.");
+      return;
+    }
+
+    if ((latitude === undefined) !== (longitude === undefined)) {
+      safeAlert(
+        "Coordenadas incompletas",
+        "Indica latitud y longitud, o deja ambos campos vacíos.",
+      );
       return;
     }
 
     try {
       setSubmitting(true);
-      await createRequest({
-        name: form.name.trim(),
-        ...(form.chain.trim() ? { chain: form.chain.trim() } : {}),
-        address: form.address.trim(),
-        city: form.city.trim(),
-        ...(form.provincia.trim()
-          ? { provincia: form.provincia.trim() }
-          : {}),
-        ...(form.zipcode.trim() ? { zipcode: form.zipcode.trim() } : {}),
-        ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
-        lat,
-        lng,
+      await submitStoreRequest({
+        name: form.name,
+        address: form.address,
+        city: form.city,
+        provincia: form.provincia,
+        ...(zipcode === undefined ? {} : { zipcode }),
+        ...(latitude === undefined ? {} : { latitude, longitude }),
       });
-      setForm(EMPTY_FORM);
+
       safeAlert(
-        "Petición enviada",
-        "La tienda se revisará antes de incorporarla a Shopp.",
+        "Tienda enviada",
+        "La propuesta queda pendiente de validación por un administrador. No se publicará hasta ser aprobada.",
         [{ text: "Aceptar", onPress: () => navigation.goBack() }],
       );
+      setForm(EMPTY_FORM);
     } catch (error) {
-      console.warn("[StoreCreationRequestScreen] submit error", error);
-      safeAlert("Error", error?.message || "No se pudo enviar la petición.");
+      safeAlert("No se pudo enviar", error?.message || "Inténtalo de nuevo.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const captureLocation = async () => {
-    try {
-      setLocating(true);
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) throw new Error("No se concedió permiso de ubicación.");
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      setForm((current) => ({
-        ...current,
-        lat: String(position.coords.latitude),
-        lng: String(position.coords.longitude),
-      }));
-    } catch (error) {
-      safeAlert("Ubicación", error?.message || "No se pudo obtener la ubicación.");
-    } finally {
-      setLocating(false);
-    }
-  };
-
   return (
-    <View style={styles.screen}>
-      <StatusBar {...headerConfig.statusBar} />
-      <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
-          <ScrollView
-            contentContainerStyle={styles.content}
-            keyboardShouldPersistTaps="handled"
-          >
-            <Text style={styles.title}>Proponer un supermercado</Text>
-            <Text style={styles.subtitle}>
-              Indica los datos de un supermercado que todavía no aparece en Shopp.
-              La petición quedará pendiente de revisión.
-            </Text>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={styles.infoCard}>
+        <Ionicons name="storefront-outline" size={28} color="#2563eb" />
+        <View style={styles.infoBody}>
+          <Text style={styles.infoTitle}>Proponer una tienda</Text>
+          <Text style={styles.infoText}>
+            Tu propuesta será revisada antes de aparecer para el resto de usuarios.
+          </Text>
+        </View>
+      </View>
 
-            <View style={styles.card}>
-              <FormField label="Nombre de la tienda" required value={form.name} onChangeText={updateField("name")} />
-              <FormField label="Cadena" value={form.chain} onChangeText={updateField("chain")} />
-              <FormField label="Dirección" required value={form.address} onChangeText={updateField("address")} />
-              <FormField label="Ciudad" required value={form.city} onChangeText={updateField("city")} />
-              <FormField label="Provincia" value={form.provincia} onChangeText={updateField("provincia")} />
-              <FormField label="Código postal" value={form.zipcode} onChangeText={updateField("zipcode")} keyboardType="number-pad" maxLength={12} />
-              <Pressable style={styles.locationButton} disabled={locating} onPress={captureLocation}>
-                <Text style={styles.locationButtonText}>{locating ? "Obteniendo ubicación…" : "Usar mi ubicación actual"}</Text>
-              </Pressable>
-              <View style={styles.coordinateRow}>
-                <View style={styles.coordinateField}><FormField label="Latitud" required value={form.lat} onChangeText={updateField("lat")} keyboardType="decimal-pad" /></View>
-                <View style={styles.coordinateField}><FormField label="Longitud" required value={form.lng} onChangeText={updateField("lng")} keyboardType="decimal-pad" /></View>
-              </View>
-              <FormField label="Observaciones" value={form.notes} onChangeText={updateField("notes")} multiline numberOfLines={4} maxLength={1000} textAlignVertical="top" />
+      <Field
+        label="Nombre de la tienda *"
+        value={form.name}
+        onChangeText={(value) => updateField("name", value)}
+        placeholder="Ej. Alimerka"
+      />
+      <Field
+        label="Dirección *"
+        value={form.address}
+        onChangeText={(value) => updateField("address", value)}
+        placeholder="Calle y número"
+      />
+      <Field
+        label="Ciudad"
+        value={form.city}
+        onChangeText={(value) => updateField("city", value)}
+      />
+      <Field
+        label="Provincia"
+        value={form.provincia}
+        onChangeText={(value) => updateField("provincia", value)}
+      />
+      <Field
+        label="Código postal"
+        value={form.zipcode}
+        onChangeText={(value) => updateField("zipcode", value)}
+        keyboardType="numeric"
+      />
 
-              <Text style={styles.requiredNote}>* Campos obligatorios</Text>
+      <Text style={styles.coordinatesTitle}>Coordenadas (opcionales)</Text>
+      <Text style={styles.coordinatesHint}>
+        Si no las conoces, el administrador podrá completarlas al validar la tienda.
+      </Text>
+      <Field
+        label="Latitud"
+        value={form.latitude}
+        onChangeText={(value) => updateField("latitude", value)}
+        placeholder="43.5350"
+        keyboardType="decimal-pad"
+      />
+      <Field
+        label="Longitud"
+        value={form.longitude}
+        onChangeText={(value) => updateField("longitude", value)}
+        placeholder="-5.6615"
+        keyboardType="decimal-pad"
+      />
 
-              <Pressable
-                accessibilityRole="button"
-                disabled={submitting}
-                onPress={handleSubmit}
-                style={({ pressed }) => [
-                  styles.submitButton,
-                  pressed && styles.submitPressed,
-                  submitting && styles.submitDisabled,
-                ]}
-              >
-                {submitting ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.submitText}>Enviar petición</Text>
-                )}
-              </Pressable>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </View>
+      <Pressable
+        accessibilityRole="button"
+        disabled={submitting}
+        onPress={handleSubmit}
+        style={({ pressed }) => [
+          styles.submitButton,
+          (!canSubmit || submitting) && styles.submitButtonDisabled,
+          pressed && !submitting && styles.buttonPressed,
+        ]}
+      >
+        {submitting ? (
+          <ActivityIndicator color="#ffffff" />
+        ) : (
+          <>
+            <Ionicons name="send-outline" size={19} color="#ffffff" />
+            <Text style={styles.submitText}>Enviar para validación</Text>
+          </>
+        )}
+      </Pressable>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  screen: { flex: 1, backgroundColor: "#F9FAFB" },
-  safeArea: { flex: 1, backgroundColor: "#F9FAFB" },
-  content: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 40 },
-  title: { fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 8 },
-  subtitle: { fontSize: 15, lineHeight: 22, color: "#6B7280", marginBottom: 22 },
-  card: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 18, padding: 18 },
-  field: { marginBottom: 16 },
-  label: { fontSize: 14, fontWeight: "700", color: "#374151", marginBottom: 7 },
-  input: { minHeight: 48, borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 12, paddingHorizontal: 13, color: "#111827", backgroundColor: "#FFFFFF", fontSize: 16 },
-  notesInput: { minHeight: 100, paddingTop: 12 },
-  locationButton: { minHeight: 46, borderRadius: 12, backgroundColor: "#EFF6FF", alignItems: "center", justifyContent: "center", marginBottom: 14 },
-  locationButtonText: { color: "#1D4ED8", fontWeight: "700" },
-  coordinateRow: { flexDirection: "row", gap: 12 },
-  coordinateField: { flex: 1 },
-  requiredNote: { color: "#6B7280", fontSize: 13, marginBottom: 16 },
-  submitButton: { minHeight: 50, borderRadius: 12, backgroundColor: "#2563EB", alignItems: "center", justifyContent: "center" },
-  submitPressed: { opacity: 0.82 },
-  submitDisabled: { opacity: 0.6 },
-  submitText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+  screen: { flex: 1, backgroundColor: "#f8fafc" },
+  container: { padding: 20, paddingBottom: 120 },
+  infoCard: {
+    flexDirection: "row", backgroundColor: "#eff6ff", borderWidth: 1,
+    borderColor: "#bfdbfe", borderRadius: 16, padding: 16, marginBottom: 24,
+  },
+  infoBody: { flex: 1, marginLeft: 12 },
+  infoTitle: { fontSize: 17, fontWeight: "800", color: "#1e3a8a", marginBottom: 4 },
+  infoText: { fontSize: 14, lineHeight: 20, color: "#334155" },
+  field: { marginBottom: 14 },
+  label: { color: "#334155", fontSize: 14, fontWeight: "700", marginBottom: 6 },
+  input: {
+    minHeight: 48, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 12,
+    paddingHorizontal: 13, fontSize: 16, color: "#0f172a", backgroundColor: "#ffffff",
+  },
+  coordinatesTitle: { color: "#0f172a", fontSize: 16, fontWeight: "800", marginTop: 8 },
+  coordinatesHint: { color: "#64748b", fontSize: 13, lineHeight: 19, marginTop: 4, marginBottom: 14 },
+  submitButton: {
+    minHeight: 52, borderRadius: 13, backgroundColor: "#2563eb", alignItems: "center",
+    justifyContent: "center", flexDirection: "row", gap: 8, marginTop: 12,
+  },
+  submitButtonDisabled: { backgroundColor: "#93c5fd" },
+  submitText: { color: "#ffffff", fontSize: 16, fontWeight: "800" },
+  buttonPressed: { opacity: 0.82 },
 });

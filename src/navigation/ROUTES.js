@@ -28,7 +28,8 @@ export const ROUTES = {
   STORE_MAP: "Store Map",
   STORES_NEARBY: "Stores Nearby",
   STORE_INFO: "Store Info",
-  ADMIN_STORES_DATA: "Admin Stores Data",
+  STORE_CREATION_REQUEST: "Store Creation Request",
+  ADMIN_STORE_REQUESTS: "Admin Store Requests",
 
   // Archive
   ARCHIVED_LISTS: "Archived Lists",

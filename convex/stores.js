@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { requireAdmin } from "./lib/auth";
+import { requireAdmin, requireUser } from "./lib/auth";
 
 const DEFAULT_CITY = "gijon";
 const DEFAULT_PROVINCIA = "Asturias";
@@ -10,18 +10,16 @@ const DEFAULT_ZIPCODE = 0;
 const storeValidator = v.object({
   id: v.string(),
   name: v.string(),
-  city: v.optional(v.string()),
-  provincia: v.optional(v.string()),
-  address: v.optional(v.string()),
-  zipcode: v.optional(v.union(v.string(), v.number())),
+  city: v.string(),
+  provincia: v.string(),
+  address: v.string(),
+  zipcode: v.number(),
 
-  location: v.optional(
-    v.object({
-      lat: v.number(),
-      lng: v.number(),
-      source: v.optional(v.string()),
-    }),
-  ),
+  location: v.object({
+    lat: v.number(),
+    lng: v.number(),
+    source: v.string(),
+  }),
 
   favorite: v.optional(v.boolean()),
 });
@@ -67,13 +65,11 @@ function isValidLongitude(value) {
 }
 
 function normalizeZipcode(value) {
-  const numericValue = typeof value === "string" ? Number(value) : value;
-
-  if (!isFiniteNumber(numericValue)) {
+  if (!isFiniteNumber(value)) {
     return DEFAULT_ZIPCODE;
   }
 
-  return Math.trunc(numericValue);
+  return Math.trunc(value);
 }
 
 function normalizeStore(store) {
@@ -121,15 +117,6 @@ function sortStoresByName(stores) {
       sensitivity: "base",
     }),
   );
-}
-
-function toExportStore(store) {
-  const { _id, _creationTime, ...exportStore } = store;
-
-  return {
-    ...exportStore,
-    favorite: false,
-  };
 }
 
 async function requireAuthUserId(ctx) {
@@ -263,24 +250,6 @@ export const listFavoriteStores = query({
   },
 });
 
-export const exportStoresJson = query({
-  args: {},
-
-  handler: async (ctx) => {
-    await requireAdmin(ctx);
-
-    const stores = await ctx.db.query("stores").collect();
-
-    return {
-      app: "Shopp",
-      type: "stores-export",
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      stores: sortStoresByName(stores).map(toExportStore),
-    };
-  },
-});
-
 export const upsertStores = mutation({
   args: {
     stores: v.array(storeValidator),
@@ -288,7 +257,6 @@ export const upsertStores = mutation({
 
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-
     let inserted = 0;
     let updated = 0;
     let skipped = 0;
@@ -312,39 +280,6 @@ export const upsertStores = mutation({
       inserted,
       updated,
       skipped,
-      total: args.stores.length,
-    };
-  },
-});
-
-export const importStoresJson = mutation({
-  args: {
-    stores: v.array(storeValidator),
-  },
-
-  handler: async (ctx, args) => {
-    await requireAdmin(ctx);
-
-    let inserted = 0;
-    let updated = 0;
-
-    for (const rawStore of args.stores) {
-      const store = normalizeStore(rawStore);
-      const existing = await getStoreByPublicId(ctx, store.id);
-
-      if (existing) {
-        await ctx.db.patch(existing._id, store);
-        updated += 1;
-      } else {
-        await ctx.db.insert("stores", store);
-        inserted += 1;
-      }
-    }
-
-    return {
-      ok: true,
-      inserted,
-      updated,
       total: args.stores.length,
     };
   },
@@ -480,7 +415,6 @@ export const deleteStoreById = mutation({
 
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-
     const id = cleanStoreId(args.id);
 
     if (!id) {
@@ -504,5 +438,162 @@ export const deleteStoreById = mutation({
       deleted: true,
       id,
     };
+  },
+});
+
+export const submitStoreRequest = mutation({
+  args: {
+    name: v.string(),
+    address: v.string(),
+    city: v.string(),
+    provincia: v.optional(v.string()),
+    zipcode: v.optional(v.float64()),
+    latitude: v.optional(v.float64()),
+    longitude: v.optional(v.float64()),
+  },
+
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const name = cleanStoreName(args.name);
+    const address = cleanAddress(args.address);
+    const city = cleanCity(args.city);
+
+    if (!name || !address) {
+      throw new Error("Indica al menos el nombre y la dirección de la tienda.");
+    }
+
+    const hasLatitude = args.latitude !== undefined;
+    const hasLongitude = args.longitude !== undefined;
+
+    if (hasLatitude !== hasLongitude) {
+      throw new Error("Indica las dos coordenadas o deja ambas vacías.");
+    }
+
+    let location;
+    if (hasLatitude && hasLongitude) {
+      if (!isValidLatitude(args.latitude) || !isValidLongitude(args.longitude)) {
+        throw new Error("Las coordenadas de la tienda no son válidas.");
+      }
+
+      location = {
+        lat: args.latitude,
+        lng: args.longitude,
+        source: "user_request",
+      };
+    }
+
+    const now = Date.now();
+    const request = {
+      submittedBy: user._id,
+      name,
+      address,
+      city,
+      provincia: cleanProvincia(args.provincia),
+      status: "pending",
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    if (args.zipcode !== undefined) {
+      request.zipcode = normalizeZipcode(args.zipcode);
+    }
+
+    if (location) {
+      request.location = location;
+    }
+
+    const requestId = await ctx.db.insert("storeRequests", request);
+
+    return { ok: true, requestId };
+  },
+});
+
+export const listPendingStoreRequests = query({
+  args: {},
+
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+
+    return await ctx.db
+      .query("storeRequests")
+      .withIndex("by_status_createdAt", (q) => q.eq("status", "pending"))
+      .order("desc")
+      .collect();
+  },
+});
+
+export const approveStoreRequest = mutation({
+  args: {
+    requestId: v.id("storeRequests"),
+    latitude: v.float64(),
+    longitude: v.float64(),
+  },
+
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const request = await ctx.db.get(args.requestId);
+
+    if (!request || request.status !== "pending") {
+      throw new Error("La petición ya no está pendiente de validación.");
+    }
+
+    if (!isValidLatitude(args.latitude) || !isValidLongitude(args.longitude)) {
+      throw new Error("Las coordenadas de la tienda no son válidas.");
+    }
+
+    const storeId = `store-${Date.now().toString(36)}-${String(request._id).slice(-6)}`;
+    const now = Date.now();
+
+    await ctx.db.insert("stores", {
+      id: storeId,
+      name: request.name,
+      address: request.address,
+      city: request.city,
+      provincia: request.provincia,
+      zipcode: request.zipcode ?? DEFAULT_ZIPCODE,
+      location: {
+        lat: args.latitude,
+        lng: args.longitude,
+        source: "admin_validation",
+      },
+      favorite: false,
+    });
+
+    await ctx.db.patch(request._id, {
+      status: "approved",
+      reviewedBy: admin._id,
+      reviewedAt: now,
+      approvedStoreId: storeId,
+      updatedAt: now,
+    });
+
+    return { ok: true, storeId };
+  },
+});
+
+export const rejectStoreRequest = mutation({
+  args: {
+    requestId: v.id("storeRequests"),
+    reason: v.optional(v.string()),
+  },
+
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const request = await ctx.db.get(args.requestId);
+
+    if (!request || request.status !== "pending") {
+      throw new Error("La petición ya no está pendiente de validación.");
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(request._id, {
+      status: "rejected",
+      reviewedBy: admin._id,
+      reviewedAt: now,
+      rejectionReason: cleanText(args.reason) || "Rechazada por administración.",
+      updatedAt: now,
+    });
+
+    return { ok: true };
   },
 });

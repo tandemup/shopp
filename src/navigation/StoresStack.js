@@ -10,7 +10,8 @@ import StoresBrowseScreen from "@/src/screens/stores/StoresBrowseScreen";
 import StoresFavoritesScreen from "@/src/screens/stores/StoresFavoritesScreen";
 import StoresNearbyScreen from "@/src/screens/stores/StoresNearbyScreen";
 import StoreDetailScreen from "@/src/screens/stores/StoreDetailScreen";
-import AdminStoresDataScreen from "@/src/screens/admin/AdminStoresDataScreen";
+import StoreCreationRequestScreen from "@/src/screens/stores/StoreCreationRequestScreen";
+import AdminStoreRequestsScreen from "@/src/screens/stores/AdminStoreRequestsScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -29,6 +30,18 @@ export default function StoresStack() {
       <Stack.Screen name={ROUTES.STORES_HOME} component={StoresHomeScreen} />
 
       <Stack.Screen name={ROUTES.STORE_SELECT} component={StoreSelectScreen} />
+
+      <Stack.Screen
+        name={ROUTES.STORE_CREATION_REQUEST}
+        component={StoreCreationRequestScreen}
+        options={{ title: "Proponer una tienda" }}
+      />
+
+      <Stack.Screen
+        name={ROUTES.ADMIN_STORE_REQUESTS}
+        component={AdminStoreRequestsScreen}
+        options={{ title: "Validar tiendas" }}
+      />
 
       <Stack.Screen
         name={ROUTES.STORES_BROWSE}
@@ -53,12 +66,6 @@ export default function StoresStack() {
           headerShown: true,
           headerBackTitleVisible: false,
         }}
-      />
-
-      <Stack.Screen
-        name={ROUTES.ADMIN_STORES_DATA}
-        component={AdminStoresDataScreen}
-        options={{ title: "Datos de tiendas" }}
       />
     </Stack.Navigator>
   );
