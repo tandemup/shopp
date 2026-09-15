@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from "react";
-import { View, StyleSheet, Pressable } from "react-native";
+import { View, ScrollView, StyleSheet, Pressable } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
 
 import { StatusBar } from "expo-status-bar";
@@ -9,8 +9,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ROUTES } from "@/src/navigation/ROUTES";
 import { buildHeaderConfig } from "@/src/utils/layout/headerStyles";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
 
 /* -------------------------------------------------
    Menu Item
@@ -49,9 +47,6 @@ function MenuItem({ icon, title, subtitle, onPress }) {
 -------------------------------------------------- */
 export default function StoresHomeScreen() {
   const navigation = useNavigation();
-  const currentUser = useQuery(api.users.current);
-  const isAdmin =
-    currentUser?.isAdmin === true || currentUser?.role === "admin";
 
   const headerConfig = useMemo(
     () =>
@@ -71,7 +66,12 @@ export default function StoresHomeScreen() {
       <StatusBar {...headerConfig.statusBar} />
 
       <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
-        <View style={styles.content}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           <Text style={styles.title}>Tiendas</Text>
 
           <Text style={styles.subtitle}>
@@ -107,17 +107,8 @@ export default function StoresHomeScreen() {
               subtitle="Horarios, direcciones y estado"
               onPress={() => navigation.navigate(ROUTES.STORE_INFO)}
             />
-
-            {isAdmin ? (
-              <MenuItem
-                icon="cloud-outline"
-                title="Datos de tiendas"
-                subtitle="Importar o exportar el catálogo en JSON"
-                onPress={() => navigation.navigate(ROUTES.ADMIN_STORES_DATA)}
-              />
-            ) : null}
           </View>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     </View>
   );
@@ -138,9 +129,13 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    flex: 1,
     paddingHorizontal: 20,
     paddingTop: 24,
+    paddingBottom: 128,
+  },
+
+  scrollView: {
+    flex: 1,
   },
 
   title: {
