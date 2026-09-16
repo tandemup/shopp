@@ -226,6 +226,7 @@ export default function PlaybackProvider({ children }) {
   const statusRef = useRef(EMPTY_STATUS);
   const player = useRef(null);
   const serial = useRef(0);
+  const autoPlayAttempt = useRef(null);
   const rememberedPlayback = useRef(new Map());
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -338,6 +339,20 @@ export default function PlaybackProvider({ children }) {
       ? "calc(78px + env(safe-area-inset-bottom, 0px))"
       : 70 + Math.max(insets.bottom, 10);
   const playing = status.state === 1 || status.state === 3;
+  useEffect(() => {
+    if (
+      !session?.autoPlay ||
+      !status.ready ||
+      status.error ||
+      autoPlayAttempt.current === session.requestId
+    ) {
+      return;
+    }
+    autoPlayAttempt.current = session.requestId;
+    // Respalda el autoarranque del adaptador web/nativo cuando la nueva
+    // superficie queda lista antes de completar la reclamación exclusiva.
+    player.current?.play();
+  }, [session?.autoPlay, session?.requestId, status.error, status.ready]);
   const stopCurrentTrack = useCallback(() => {
     const current = sessionRef.current;
     const currentTrack = current?.tracks?.[current.index];
@@ -864,7 +879,7 @@ export default function PlaybackProvider({ children }) {
                       contentContainerStyle={styles.queueRows}
                       nestedScrollEnabled
                       scrollEnabled={session.tracks.length > 5}
-                      showsVerticalScrollIndicator
+                      showsVerticalScrollIndicator={false}
                       keyboardShouldPersistTaps="handled"
                     >
                       {session.tracks.map((item, index) => {
@@ -1228,7 +1243,8 @@ const styles = StyleSheet.create({
     ...Platform.select({
       web: {
         touchAction: "pan-y",
-        scrollbarWidth: "thin",
+        scrollbarWidth: "none",
+        msOverflowStyle: "none",
       },
     }),
   },
