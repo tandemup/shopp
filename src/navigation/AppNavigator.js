@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
 
@@ -7,8 +7,16 @@ import { Authenticated, AuthLoading, Unauthenticated } from "convex/react";
 import AuthStack from "@/src/navigation/AuthStack";
 import MainTabs from "@/src/navigation/MainTabs";
 import PlaybackProvider from "@/src/components/playback/PlaybackProvider";
+import SplashScreen from "@/src/screens/system/SplashScreen";
 
 export default function AppNavigator() {
+  const [showSplash, setShowSplash] = useState(true);
+  const finishSplash = useCallback(() => setShowSplash(false), []);
+
+  if (showSplash) {
+    return <SplashScreen onFinish={finishSplash} />;
+  }
+
   return (
     <>
       <AuthLoading>

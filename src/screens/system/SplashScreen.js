@@ -1,73 +1,44 @@
-// screens/SplashScreen.js
 import React, { useEffect, useRef } from "react";
-import {
-  View,
-  Image,
-  StyleSheet,
-  ActivityIndicator,
-  Animated
-} from "react-native";
-import { I18nText as Text } from "@/src/i18n";
+import { Animated, Image, StatusBar, StyleSheet, View } from "react-native";
 
-import splashIcon from "@/assets/images/splash-icon.png";
-//source={require("../assets/images/splash-icon.png")}
+import splashImage from "@/assets/images/splash.png";
 
-export default function SplashScreen({ navigation }) {
-  const fadeAnim = useRef(new Animated.Value(0)).current; // valor inicial de opacidad 0
+const DISPLAY_TIME_MS = 1800;
+
+export default function SplashScreen({ onFinish }) {
+  const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // 🎬 Animar entrada (fade-in)
-    Animated.timing(fadeAnim, {
+    Animated.timing(opacity, {
       toValue: 1,
-      duration: 1200, // duración de la animación en ms
+      duration: 280,
       useNativeDriver: true,
     }).start();
 
-    // ⏳ Después de un breve tiempo, pasar al Tab principal
-    const timer = setTimeout(() => {
-      navigation.replace("Main"); // reemplaza el stack actual
-    }, 2000);
-
+    const timer = setTimeout(onFinish, DISPLAY_TIME_MS);
     return () => clearTimeout(timer);
-  }, [fadeAnim, navigation]);
+  }, [onFinish, opacity]);
 
   return (
-    <View style={styles.container}>
-      <Animated.View style={{ alignItems: "center", opacity: fadeAnim }}>
-        <Image source={splashIcon} style={styles.logo} resizeMode="contain" />
-        <Text style={styles.title}>Shopp</Text>
-        <Text style={styles.subtitle}>Tu lista de compras inteligente</Text>
+    <View style={styles.screen} accessibilityLabel="Bienvenido a Shopp">
+      <StatusBar hidden animated />
+      <Animated.View style={[styles.imageContainer, { opacity }]}>
+        <Image source={splashImage} style={styles.image} resizeMode="cover" />
       </Animated.View>
-
-      <ActivityIndicator
-        size="large"
-        color="#007AFF"
-        style={{ marginTop: 40 }}
-      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#fff",
+    backgroundColor: "#ffffff",
   },
-  logo: {
-    width: 130,
-    height: 130,
-    marginBottom: 20,
+  imageContainer: {
+    flex: 1,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#007AFF",
-  },
-  subtitle: {
-    fontSize: 16,
-    color: "#555",
-    marginTop: 6,
+  image: {
+    width: "100%",
+    height: "100%",
   },
 });
