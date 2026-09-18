@@ -1761,6 +1761,9 @@ const styles = StyleSheet.create({
   editorCard: {
     width: "100%",
     maxWidth: 750,
+    // A fixed available height lets the internal list shrink and scroll instead
+    // of pushing the Cancel/Save actions below the viewport on web or mobile.
+    height: "92%",
     maxHeight: "92%",
     padding: 14,
     backgroundColor: "#fff",
@@ -1846,7 +1849,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     color: "#111827",
   },
-  tracksScroll: { marginTop: 10, flexShrink: 1, minHeight: 220 },
+  tracksScroll: {
+    marginTop: 10,
+    flex: 1,
+    flexShrink: 1,
+    minHeight: 0,
+  },
   trackEditor: {
     marginBottom: 10,
     padding: 12,
@@ -1979,6 +1987,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     gap: 10,
     marginTop: 14,
+    flexShrink: 0,
   },
   cancelButton: {
     minWidth: 115,

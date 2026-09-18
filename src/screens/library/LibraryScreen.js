@@ -490,11 +490,11 @@ function getNewsDisplayTitle(link) {
     link?.customTitle || "",
     domain,
   );
-  if (storedTitle && storedTitle.toLowerCase() !== domain) {
-    return sentenceCaseTitle(storedTitle);
-  }
   if (customTitle && customTitle.toLowerCase() !== domain) {
     return sentenceCaseTitle(customTitle);
+  }
+  if (storedTitle && storedTitle.toLowerCase() !== domain) {
+    return sentenceCaseTitle(storedTitle);
   }
 
   return (
@@ -513,8 +513,8 @@ function getLinkDisplayTitle(link) {
   ).trim();
   const customTitle = String(link?.customTitle || "").trim();
   return (
-    title ||
     customTitle ||
+    title ||
     getLinkDomain(link) ||
     link?.normalizedUrl ||
     "Enlace"
@@ -1574,6 +1574,7 @@ export default function LibraryScreen({ navigation }) {
   const { width: screenWidth } = useWindowDimensions();
   const [clientId] = useState(getClientId);
   const [urlInput, setUrlInput] = useState("");
+  const [addTitleInput, setAddTitleInput] = useState("");
   const [search, setSearch] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [pendingSearchTerm, setPendingSearchTerm] = useState(null);
@@ -1582,6 +1583,7 @@ export default function LibraryScreen({ navigation }) {
   const [movingLink, setMovingLink] = useState(null);
   const [linkActions, setLinkActions] = useState(null);
   const [editingLink, setEditingLink] = useState(null);
+  const [editingTitleInput, setEditingTitleInput] = useState("");
   const [notesInput, setNotesInput] = useState("");
   const [hashtagsInput, setHashtagsInput] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -2327,6 +2329,7 @@ export default function LibraryScreen({ navigation }) {
 
   const handleAddUrl = useCallback(async () => {
     const url = urlInput.trim();
+    const customTitle = addTitleInput.trim().slice(0, 240);
     if (!url || saving) return;
 
     if (!isValidHttpUrl(url)) {
@@ -2341,6 +2344,7 @@ export default function LibraryScreen({ navigation }) {
     try {
       const result = await addUrl({
         url,
+        customTitle: customTitle || undefined,
         clientId,
         username: "Biblioteca",
         folderId: selectedFolderId,
@@ -2355,11 +2359,16 @@ export default function LibraryScreen({ navigation }) {
           : "general",
       });
       setUrlInput("");
+      setAddTitleInput("");
 
       // Una URL pegada explícitamente es una buena oportunidad para refrescar
       // título/fecha, incluso si el enlace ya existía con metadatos antiguos.
       // Nunca guardamos un título de fallback ni usamos la descripción como título.
-      if (result?.linkId && (result.existing || isCatalogFolder)) {
+      if (
+        !customTitle &&
+        result?.linkId &&
+        (result.existing || isCatalogFolder)
+      ) {
         try {
           const preview = await getLinkPreview({ url });
           const parsedDomain = (() => {
@@ -2436,6 +2445,7 @@ export default function LibraryScreen({ navigation }) {
     }
   }, [
     addUrl,
+    addTitleInput,
     clientId,
     getLinkPreview,
     folders,
@@ -2514,6 +2524,7 @@ export default function LibraryScreen({ navigation }) {
 
   const openMetadataEditor = useCallback((link) => {
     setEditingLink(link);
+    setEditingTitleInput(link?.customTitle || "");
     setNotesInput(link?.notes || "");
     setHashtagsInput((link?.hashtags || []).map((tag) => `#${tag}`).join(" "));
   }, []);
@@ -2611,10 +2622,12 @@ export default function LibraryScreen({ navigation }) {
         .filter(Boolean);
       await updateMetadata({
         linkId: editingLink._id,
+        customTitle: editingTitleInput.trim().slice(0, 240),
         notes: notesInput,
         hashtags,
       });
       setEditingLink(null);
+      setEditingTitleInput("");
       setNotesInput("");
       setHashtagsInput("");
     } catch (error) {
@@ -2622,7 +2635,14 @@ export default function LibraryScreen({ navigation }) {
     } finally {
       setSaving(false);
     }
-  }, [editingLink, hashtagsInput, notesInput, saving, updateMetadata]);
+  }, [
+    editingLink,
+    editingTitleInput,
+    hashtagsInput,
+    notesInput,
+    saving,
+    updateMetadata,
+  ]);
 
   const performExportBackup = useCallback(async () => {
     const filename = normalizeBackupFilename(exportFilename);
@@ -3528,6 +3548,15 @@ export default function LibraryScreen({ navigation }) {
                 <Ionicons name="add" size={22} color="#fff" />
               </Pressable>
             </View>
+            <TextInput
+              value={addTitleInput}
+              onChangeText={setAddTitleInput}
+              placeholder="Título descriptivo (opcional)"
+              placeholderTextColor="#94a3b8"
+              style={styles.addTitleInput}
+              maxLength={240}
+              onSubmitEditing={handleAddUrl}
+            />
 
             <View style={styles.searchRow}>
               <Ionicons name="search-outline" size={19} color="#64748b" />
@@ -5585,7 +5614,7 @@ export default function LibraryScreen({ navigation }) {
                   >
                     <Ionicons name="create-outline" size={20} color="#475569" />
                     <Text style={styles.linkActionText}>
-                      Editar comentario y hashtags
+                      Editar título, comentario y hashtags
                     </Text>
                   </Pressable>
                   <Pressable
@@ -5703,7 +5732,16 @@ export default function LibraryScreen({ navigation }) {
         >
           <View style={styles.modalBackdrop}>
             <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Comentario y hashtags</Text>
+              <Text style={styles.modalTitle}>Editar enlace</Text>
+              <Text style={styles.fieldLabel}>Título descriptivo</Text>
+              <TextInput
+                value={editingTitleInput}
+                onChangeText={setEditingTitleInput}
+                placeholder="Describe este enlace o vídeo…"
+                placeholderTextColor="#94a3b8"
+                style={styles.modalInput}
+                maxLength={240}
+              />
               <Text style={styles.fieldLabel}>Comentario</Text>
               <TextInput
                 value={notesInput}
@@ -5849,6 +5887,17 @@ const styles = StyleSheet.create({
   urlInput: {
     flex: 1,
     minHeight: 44,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+    fontSize: 14,
+    color: "#111827",
+  },
+  addTitleInput: {
+    minHeight: 42,
+    marginHorizontal: 12,
+    marginTop: 8,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: "#cbd5e1",

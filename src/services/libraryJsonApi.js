@@ -398,15 +398,24 @@ export const libraryJsonApi = {
       return { folderId: folder._id, existing: false };
     });
   },
-  addUrl({ url, username, folderId, linkType = "general" }) {
+  addUrl({ url, username, folderId, linkType = "general", customTitle }) {
     return update((database) => {
       const normalized = normalizeUrl(url);
       if (!normalized)
         throw new Error("Introduce una URL http o https válida.");
+      const cleanCustomTitle = String(customTitle || "")
+        .trim()
+        .slice(0, 240);
       const existing = database.links.find(
         (link) => link.normalizedUrl === normalized.normalizedUrl,
       );
-      if (existing) return { linkId: existing._id, existing: true };
+      if (existing) {
+        if (cleanCustomTitle) {
+          existing.customTitle = cleanCustomTitle;
+          existing.updatedAt = Date.now();
+        }
+        return { linkId: existing._id, existing: true };
+      }
       const now = Date.now();
       const link = {
         _id: id("link"),
@@ -416,6 +425,7 @@ export const libraryJsonApi = {
         folderId,
         linkType,
         sourceDomain: normalized.hostname,
+        customTitle: cleanCustomTitle || undefined,
         favorite: false,
         status: folderId ? "reviewed" : "pending",
         hashtags: [],
