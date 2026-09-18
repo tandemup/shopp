@@ -74,6 +74,14 @@
           "locationWhenInUsePermission": "Shopp usa tu ubicación mientras buscas aparcamiento cerca de tu destino."
         }
       ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Permitir que Shopp acceda a tus fotos.",
+          "savePhotosPermission": "Permitir que Shopp guarde la imagen final del ticket.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
       "expo-web-browser",
       "expo-font",
       "expo-image",

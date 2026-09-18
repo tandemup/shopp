@@ -13,6 +13,7 @@ import ArchivedListsScreen from "@/src/screens/lists/ArchivedListsScreen";
 import StoresScreen from "@/src/screens/stores/StoresBrowseScreen";
 import PurchaseHistoryScreen from "@/src/screens/history/PurchaseHistoryScreen";
 import PurchaseDetailScreen from "@/src/screens/history/PurchaseDetailScreen";
+import TicketCaptureScreen from "@/src/screens/history/TicketCaptureScreen";
 import ScannedHistoryScreen from "@/src/screens/scanner/ScannedHistoryScreen";
 import EditScannedItemScreen from "@/src/screens/scanner/EditScannedItemScreen";
 import StoreMapScreen from "@/src/screens/stores/StoreMapScreen";
@@ -62,6 +63,11 @@ export default function ShoppingStack() {
       <Stack.Screen
         name={ROUTES.PURCHASE_DETAIL}
         component={PurchaseDetailScreen}
+      />
+      <Stack.Screen
+        name={ROUTES.TICKET_CAPTURE}
+        component={TicketCaptureScreen}
+        options={{ title: "Fotografiar ticket" }}
       />
       <Stack.Screen
         name={ROUTES.SCANNED_HISTORY}

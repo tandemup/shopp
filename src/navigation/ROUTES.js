@@ -38,6 +38,7 @@ export const ROUTES = {
   // History
   PURCHASE_HISTORY: "Purchase History",
   PURCHASE_DETAIL: "Purchase Detail",
+  TICKET_CAPTURE: "Ticket Capture",
   SCANNED_HISTORY: "Scanned History",
 
   // Scanner stack

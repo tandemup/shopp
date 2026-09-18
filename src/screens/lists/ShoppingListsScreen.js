@@ -212,6 +212,17 @@ function QuickActions({
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.PURCHASE_HISTORY),
       },
       {
+        key: "ticket",
+        label: "Ticket",
+        description: "Une fotos de un ticket largo",
+        icon: "camera-outline",
+        iconColor: COLORS.orange,
+        iconBackground: COLORS.orangeSoft,
+        badgeLabel: "PRUEBA",
+        onPress: () =>
+          navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.TICKET_CAPTURE),
+      },
+      {
         key: "scanned",
         label: "Escaneos",
         description: "Escanea productos y consulta el historial",

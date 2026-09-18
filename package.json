@@ -47,6 +47,7 @@
     "expo-image-picker": "~57.0.14",
     "expo-linking": "~57.0.8",
     "expo-location": "~57.0.14",
+    "expo-media-library": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "expo-updates": "~57.0.19",
     "expo-web-browser": "~57.0.2",
@@ -62,6 +63,7 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
+    "react-native-view-shot": "~4.0.3",
     "react-native-web": "^0.21.0",
     "react-native-webview": "13.16.1",
     "resend": "^6.17.2"
