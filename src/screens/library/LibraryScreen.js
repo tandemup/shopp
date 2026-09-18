@@ -32,7 +32,7 @@ import CachedLinkImage from "@/src/components/chat/CachedLinkImage";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 const CLIENT_ID_KEY = "shopp-chat-client-id";
-const LIBRARY_SETUP_KEY = "shopp-library-setup-v3-utf8-folders";
+const LIBRARY_SETUP_KEY = "shopp-library-setup-v4-instagram-folder";
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
 const CATALOG_SOURCES_IMPORT_KEY = "__catalog_sources__";
 const IMPORT_BATCH_SIZE = 250;
@@ -375,6 +375,11 @@ function isYouTubeLink(link) {
   );
 }
 
+function isInstagramUrl(value) {
+  const domain = getHostnameFromUrl(value);
+  return domain === "instagram.com" || domain.endsWith(".instagram.com");
+}
+
 function normalizeLabel(value) {
   return String(value || "")
     .normalize("NFD")
@@ -388,15 +393,17 @@ function isInformaticaFolder(folder) {
 }
 
 function getFolderTabIcon(folder) {
-  return normalizeLabel(folder?.name) === "youtube"
-    ? "logo-youtube"
-    : folder?.icon || "folder-outline";
+  const name = normalizeLabel(folder?.name);
+  if (name === "youtube") return "logo-youtube";
+  if (name === "instagram") return "logo-instagram";
+  return folder?.icon || "folder-outline";
 }
 
 function getFolderTabColor(folder) {
-  return normalizeLabel(folder?.name) === "youtube"
-    ? "#dc2626"
-    : folder?.color || "#475569";
+  const name = normalizeLabel(folder?.name);
+  if (name === "youtube") return "#dc2626";
+  if (name === "instagram") return "#E1306C";
+  return folder?.color || "#475569";
 }
 
 function sentenceCaseTitle(value) {
@@ -1707,6 +1714,11 @@ export default function LibraryScreen({ navigation }) {
   );
   const isNewsFolder = selectedFolder?.name === "Noticias";
   const isBooksFolder = selectedFolder?.name === "Libros";
+  const isInstagramFolder = selectedFolder?.name === "Instagram";
+  const instagramFolder = folders.find(
+    (folder) =>
+      !folder.parentFolderId && normalizeLabel(folder.name) === "instagram",
+  );
   const isCatalogFolder = isNewsFolder || isBooksFolder;
   const isSourceCatalog = isCatalogFolder && newsView === "sources";
   const isSourceCatalogCards = isSourceCatalog && libraryView === "cards";
@@ -1952,7 +1964,7 @@ export default function LibraryScreen({ navigation }) {
   }, [folders, leaveHashtagMode]);
 
   const ensureDefaultFolders = useCallback(
-    async () => ({ duplicateMigrationPending: false, migratedBooks: 0 }),
+    () => libraryJsonApi.ensureDefaultFolders(),
     [],
   );
   const addUrl = useCallback((args) => libraryJsonApi.addUrl(args), []);
@@ -2330,6 +2342,9 @@ export default function LibraryScreen({ navigation }) {
   const handleAddUrl = useCallback(async () => {
     const url = urlInput.trim();
     const customTitle = addTitleInput.trim().slice(0, 240);
+    const targetFolderId = isInstagramUrl(url)
+      ? instagramFolder?._id || selectedFolderId
+      : selectedFolderId;
     if (!url || saving) return;
 
     if (!isValidHttpUrl(url)) {
@@ -2347,7 +2362,7 @@ export default function LibraryScreen({ navigation }) {
         customTitle: customTitle || undefined,
         clientId,
         username: "Biblioteca",
-        folderId: selectedFolderId,
+        folderId: targetFolderId,
         linkType: isCatalogFolder
           ? newsView === "sources"
             ? isBooksFolder
@@ -2454,6 +2469,7 @@ export default function LibraryScreen({ navigation }) {
     newsView,
     refreshPreviewMetadata,
     saving,
+    instagramFolder,
     selectedFolderId,
     urlInput,
   ]);
@@ -3529,6 +3545,8 @@ export default function LibraryScreen({ navigation }) {
                       ? "Pega la URL de un libro"
                       : isNewsFolder
                         ? "Pega la URL de una noticia"
+                        : isInstagramFolder
+                          ? "Pega la URL de una publicación de Instagram"
                         : "https://ejemplo.com"
                 }
                 placeholderTextColor="#94a3b8"

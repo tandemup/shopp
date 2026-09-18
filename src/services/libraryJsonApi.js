@@ -11,6 +11,7 @@ const DEFAULT_FOLDERS = [
   ["Política", "business-outline", "#7c3aed"],
   ["Ingeniería", "construct-outline", "#ea580c"],
   ["Música", "musical-notes-outline", "#db2777"],
+  ["Instagram", "logo-instagram", "#E1306C"],
 ];
 
 const listeners = new Set();
@@ -306,6 +307,29 @@ export const libraryJsonApi = {
     return () => listeners.delete(listener);
   },
   getSnapshot: read,
+  ensureDefaultFolders() {
+    return update((database) => {
+      const [name, icon, color] = DEFAULT_FOLDERS.find(
+        ([folderName]) => folderName === "Instagram",
+      );
+      const existing = database.folders.find(
+        (folder) => text(folder.name) === text(name) && !folder.parentFolderId,
+      );
+      if (existing) {
+        return { created: 0, duplicateMigrationPending: false, migratedBooks: 0 };
+      }
+      database.folders.push({
+        _id: id("folder"),
+        key: folderSegment(name),
+        name,
+        icon,
+        color,
+        order: database.folders.length,
+        createdAt: Date.now(),
+      });
+      return { created: 1, duplicateMigrationPending: false, migratedBooks: 0 };
+    });
+  },
   async listFolders() {
     return (await read()).folders.sort((a, b) => a.order - b.order);
   },
