@@ -17,6 +17,10 @@ export default defineSchema({
     phoneVerificationTime: v.optional(v.float64()),
     isAnonymous: v.optional(v.boolean()),
     role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
+    status: v.optional(v.union(v.literal("active"), v.literal("blocked"))),
+    blockedAt: v.optional(v.float64()),
+    blockedBy: v.optional(v.id("users")),
+    blockReason: v.optional(v.string()),
   }).index("email", ["email"]),
 
   products: defineTable({

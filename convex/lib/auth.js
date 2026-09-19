@@ -13,6 +13,10 @@ export async function requireUser(ctx) {
     throw new Error("Usuario no encontrado.");
   }
 
+  if (user.status === "blocked") {
+    throw new Error("Usuario bloqueado.");
+  }
+
   return user;
 }
 

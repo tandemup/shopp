@@ -14,8 +14,9 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
-function UserCard({ user, busy, onChangeRole }) {
+function UserCard({ user, busy, onChangeRole, onChangeBlocked }) {
   const isAdmin = user.role === "admin";
+  const isBlocked = user.status === "blocked";
   const label = user.email || user.name || String(user._id);
 
   return (
@@ -40,8 +41,10 @@ function UserCard({ user, busy, onChangeRole }) {
         <Text style={styles.userId} numberOfLines={1}>
           {String(user._id)}
         </Text>
+        {isBlocked ? <Text style={styles.blockText}>Bloqueado</Text> : null}
       </View>
 
+      <View style={styles.actions}>
       <Pressable
         accessibilityRole="button"
         disabled={busy}
@@ -61,6 +64,17 @@ function UserCard({ user, busy, onChangeRole }) {
           </Text>
         )}
       </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        disabled={busy}
+        onPress={() => onChangeBlocked(user)}
+        style={({ pressed }) => [styles.roleButton, isBlocked ? styles.adminButton : styles.blockButton, pressed && styles.pressed, busy && styles.disabled]}
+      >
+        <Text style={isBlocked ? styles.adminText : styles.blockText}>
+          {isBlocked ? "Desbloquear" : "Bloquear"}
+        </Text>
+      </Pressable>
+      </View>
     </View>
   );
 }
@@ -72,6 +86,7 @@ export default function AdminUsersScreen() {
     currentUser?.isAdmin ? {} : "skip",
   );
   const setRole = useMutation(api.users.setRole);
+  const setBlocked = useMutation(api.users.setBlocked);
   const [busyUserId, setBusyUserId] = useState(null);
 
   const changeRole = (user) => {
@@ -96,6 +111,31 @@ export default function AdminUsersScreen() {
                 "No se pudo cambiar el rol",
                 error?.message || "Se ha producido un error.",
               );
+            } finally {
+              setBusyUserId(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const changeBlocked = (user) => {
+    const blocked = user.status !== "blocked";
+    const label = user.email || user.name || "este usuario";
+    safeAlert(
+      blocked ? "Bloquear usuario" : "Desbloquear usuario",
+      blocked ? `¿Quieres bloquear a ${label}?` : `¿Quieres desbloquear a ${label}?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Confirmar",
+          onPress: async () => {
+            try {
+              setBusyUserId(user._id);
+              await setBlocked({ userId: user._id, blocked });
+            } catch (error) {
+              safeAlert("No se pudo actualizar el estado", error?.message || "Se ha producido un error.");
             } finally {
               setBusyUserId(null);
             }
@@ -145,6 +185,7 @@ export default function AdminUsersScreen() {
           user={user}
           busy={busyUserId === user._id}
           onChangeRole={changeRole}
+          onChangeBlocked={changeBlocked}
         />
       ))}
     </ScrollView>
@@ -191,6 +232,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f1f5f9",
   },
   userInfo: { flex: 1, minWidth: 0 },
+  actions: { alignItems: "flex-end", gap: 6 },
   userName: { fontSize: 15, fontWeight: "800", color: "#0f172a" },
   userEmail: { marginTop: 2, fontSize: 13, color: "#475569" },
   userId: { marginTop: 3, fontSize: 11, color: "#94a3b8" },
@@ -205,6 +247,8 @@ const styles = StyleSheet.create({
   },
   adminButton: { borderColor: "#86efac", backgroundColor: "#dcfce7" },
   userButton: { borderColor: "#cbd5e1", backgroundColor: "#f8fafc" },
+  blockButton: { borderColor: "#fecaca", backgroundColor: "#fef2f2" },
+  blockText: { fontWeight: "700", color: "#b91c1c" },
   adminText: { fontWeight: "800", color: "#15803d" },
   userText: { fontWeight: "700", color: "#475569" },
   pressed: { opacity: 0.72 },

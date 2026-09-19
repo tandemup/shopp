@@ -12,6 +12,12 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
     }),
   ],
   callbacks: {
+    async beforeSessionCreation(ctx, { userId }) {
+      const user = await ctx.db.get(userId);
+      if (user?.status === "blocked") {
+        throw new Error("Usuario bloqueado. Contacta con administración.");
+      }
+    },
     async afterUserCreatedOrUpdated(ctx, { userId }) {
       const user = await ctx.db.get(userId);
 

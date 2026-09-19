@@ -20,6 +20,10 @@ function getLoginErrorMessage(error) {
 
   const message = originalMessage.toLowerCase();
 
+  if (message.includes("bloqueado") || message.includes("blocked")) {
+    return "Tu cuenta está bloqueada. Contacta con administración.";
+  }
+
   if (
     message.includes("invalid credentials") ||
     message.includes("invalid password") ||

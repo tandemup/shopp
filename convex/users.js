@@ -24,6 +24,11 @@ async function requireAuthUserId(ctx) {
     throw new Error("Usuario no autenticado.");
   }
 
+  const user = await ctx.db.get(userId);
+  if (!user || user.status === "blocked") {
+    throw new Error("Usuario no disponible.");
+  }
+
   return String(userId);
 }
 
@@ -75,6 +80,7 @@ export const current = query({
       isAnonymous: user.isAnonymous ?? false,
       role: user.role ?? "user",
       isAdmin: user.role === "admin" || user.isAdmin === true,
+      status: user.status ?? "active",
 
       profile: profile
         ? {
@@ -110,6 +116,9 @@ export const listForAdmin = query({
         email: user.email ?? null,
         role: user.role ?? "user",
         isAnonymous: user.isAnonymous ?? false,
+        status: user.status ?? "active",
+        blockedAt: user.blockedAt ?? null,
+        blockReason: user.blockReason ?? null,
       }))
       .sort((a, b) => {
         const aLabel = a.email || a.name || String(a._id);
@@ -139,6 +148,28 @@ export const setRole = mutation({
 
     await ctx.db.patch(args.userId, { role: args.role });
 
+    return { ok: true };
+  },
+});
+
+export const setBlocked = mutation({
+  args: {
+    userId: v.id("users"),
+    blocked: v.boolean(),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, { userId, blocked, reason }) => {
+    const admin = await requireAdmin(ctx);
+    if (admin._id === userId) {
+      throw new Error("No puedes bloquear tu propia cuenta.");
+    }
+    const target = await ctx.db.get(userId);
+    if (!target) throw new Error("Usuario no encontrado.");
+    if (target.status === (blocked ? "blocked" : "active")) return { ok: true };
+    const normalizedReason = String(reason ?? "").trim().slice(0, 300);
+    await ctx.db.patch(userId, blocked
+      ? { status: "blocked", blockedAt: Date.now(), blockedBy: admin._id, blockReason: normalizedReason || undefined }
+      : { status: "active", blockedAt: undefined, blockedBy: undefined, blockReason: undefined });
     return { ok: true };
   },
 });
