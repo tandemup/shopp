@@ -1,10 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { I18nText as Text } from "@/src/i18n";
 import { usePlayback } from "@/src/components/playback/PlaybackProvider";
 
-export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, isTutorial = false }) {
+export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, isTutorial = false }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const playback = usePlayback();
   const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
   const activeTrack = tracks[0];
@@ -30,18 +31,16 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
               {userName}
             </Text>
             <Text style={styles.date}>{dateLabel}</Text>
-            {canEdit ? (
-              <Pressable onPress={(event) => { event.stopPropagation(); onEdit?.(); }} style={styles.deleteButton}>
-                <Ionicons name="create-outline" size={17} color="#475569" />
-              </Pressable>
-            ) : null}
-            {canDelete ? (
+            {(canEdit || canDelete || onExport) ? (
               <Pressable
-                onPress={(event) => { event.stopPropagation(); onDelete?.(); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Opciones de ${playlist.title}`}
+                accessibilityState={{ expanded: menuOpen }}
+                onPress={(event) => { event.stopPropagation(); setMenuOpen((open) => !open); }}
                 disabled={deleting}
-                style={styles.deleteButton}
+                style={styles.menuButton}
               >
-                <Ionicons name="trash-outline" size={16} color="#dc2626" />
+                <Ionicons name="ellipsis-vertical" size={19} color="#475569" />
               </Pressable>
             ) : null}
           </View>
@@ -53,6 +52,28 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
           </Text>
         </View>
       </Pressable>
+      {menuOpen ? (
+        <View style={styles.menu}>
+          {canEdit ? (
+            <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setMenuOpen(false); onEdit?.(); }}>
+              <Ionicons name="create-outline" size={18} color="#334155" />
+              <Text style={styles.menuText}>{isTutorial ? "Editar tutorial" : "Editar lista"}</Text>
+            </Pressable>
+          ) : null}
+          {onExport ? (
+            <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setMenuOpen(false); onExport(); }}>
+              <Ionicons name="share-outline" size={18} color="#334155" />
+              <Text style={styles.menuText}>Exportar JSON</Text>
+            </Pressable>
+          ) : null}
+          {canDelete ? (
+            <Pressable accessibilityRole="button" disabled={deleting} style={styles.menuItem} onPress={() => { setMenuOpen(false); onDelete?.(); }}>
+              <Ionicons name="trash-outline" size={18} color="#dc2626" />
+              <Text style={styles.deleteText}>Borrar</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -89,12 +110,16 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   user: { flex: 1, fontSize: 11, fontWeight: "800", color: "#2563eb" },
   date: { fontSize: 10, color: "#64748b" },
-  deleteButton: {
-    width: 24,
-    height: 24,
+  menuButton: {
+    width: 36,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
   },
+  menu: { borderTopWidth: 1, borderTopColor: "#e2e8f0", paddingVertical: 4 },
+  menuItem: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
+  menuText: { fontSize: 14, color: "#334155", fontWeight: "600" },
+  deleteText: { fontSize: 14, color: "#dc2626", fontWeight: "600" },
   title: {
     marginTop: 4,
     fontSize: 14,

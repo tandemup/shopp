@@ -294,6 +294,18 @@ function QuickActions({
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.PLAY_LIST),
       },
       {
+        key: "investments",
+        label: "Inversiones",
+        description: "Acciones y criptomonedas",
+        icon: "trending-up-outline",
+        iconColor: COLORS.green,
+        iconBackground: COLORS.greenSoft,
+        badgeLabel: "DEV",
+        requiresAdmin: true,
+        onPress: () =>
+          navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.INVESTMENTS),
+      },
+      {
         key: "classicalMusic",
         label: "Música clásica",
         description: "Organiza obras, conciertos e intérpretes",

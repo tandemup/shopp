@@ -23,6 +23,7 @@ import EnglishTutorScreen from "@/src/screens/chat/EnglishTutorScreen";
 import LibraryScreen from "@/src/screens/library/LibraryScreen";
 import PlayListScreen from "@/src/screens/playlist/PlayListScreen";
 import ShoppLiveScreen from "@/src/screens/live/ShoppLiveScreen";
+import InvestmentsScreen from "@/src/screens/investments/InvestmentsScreen";
 import { adminOnly } from "@/src/components/access/AdminOnlyFeature";
 
 const Stack = createNativeStackNavigator();
@@ -35,6 +36,7 @@ const DevLibraryScreen = adminOnly(LibraryScreen, "Biblioteca");
 const DevClassicalMusicScreen = adminOnly(PlayListScreen, "Música clásica");
 const DevTutorialsScreen = adminOnly(PlayListScreen, "Tutoriales");
 const DevShoppLiveScreen = adminOnly(ShoppLiveScreen, "Shopp Live");
+const DevInvestmentsScreen = adminOnly(InvestmentsScreen, "Inversiones");
 
 export default function ShoppingStack() {
   useI18n();
@@ -110,6 +112,11 @@ export default function ShoppingStack() {
         name={ROUTES.SHOPP_LIVE}
         component={DevShoppLiveScreen}
         options={{ title: "Shopp Live" }}
+      />
+      <Stack.Screen
+        name={ROUTES.INVESTMENTS}
+        component={DevInvestmentsScreen}
+        options={{ title: "Inversiones" }}
       />
       <Stack.Screen name={ROUTES.MENU} component={MenuScreen} />
     </Stack.Navigator>

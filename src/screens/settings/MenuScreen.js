@@ -182,15 +182,6 @@ function chunkArray(items, size) {
   return chunks;
 }
 
-function openAdminEmail() {
-  const subject = encodeURIComponent("Contacto con administración Shopp");
-  const body = encodeURIComponent(
-    "Hola,\n\nQuiero ponerme en contacto con la administración de Shopp y denunciar Fake News y delitos contra la intimidad personal y familiar.\n\n",
-  );
-
-  Linking.openURL(`mailto:${ADMIN_EMAIL}?subject=${subject}&body=${body}`);
-}
-
 function getPermissionLabel(permission) {
   if (!permission) return "Comprobando...";
 
@@ -1209,22 +1200,6 @@ export default function MenuScreen({ navigation }) {
     );
   };
 
-  function Email({ onPress }) {
-    return (
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Email</Text>
-
-        <SettingsCard
-          icon="mail-outline"
-          title="Contacto con administración"
-          subtitle={`Enviar un mensaje privado a ${ADMIN_EMAIL} con fotos, vídeos o documentos adjuntos`}
-          badge="EMAIL"
-          onPress={onPress}
-        />
-      </View>
-    );
-  }
-
   function DangerZone({}) {
     return (
       <View style={styles.section}>
@@ -1529,7 +1504,6 @@ export default function MenuScreen({ navigation }) {
               )}
             </View>
           </View>
-          <Email onPress={openAdminEmail} />
           {/* <DangerZone /> */}
 
           <View style={styles.appInfo}>
@@ -1537,6 +1511,7 @@ export default function MenuScreen({ navigation }) {
             <Text style={styles.appInfoSeparator}>·</Text>
             <Text style={styles.appInfoText}>Versión {APP_VERSION}</Text>
           </View>
+          <Text style={styles.contactEmail}>Contacto: {ADMIN_EMAIL}</Text>
 
           <View style={styles.footerSpace} />
         </ScrollView>
@@ -1882,6 +1857,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 7,
     fontSize: 12,
     color: "#cbd5e1",
+  },
+
+  contactEmail: {
+    marginTop: 6,
+    textAlign: "center",
+    fontSize: 12,
+    color: "#94a3b8",
   },
 
   footerSpace: {

@@ -18,6 +18,7 @@ export const ROUTES = {
   CLASSICAL_MUSIC: "Música clásica",
   TUTORIALS: "Tutoriales",
   SHOPP_LIVE: "Shopp Live",
+  INVESTMENTS: "Inversiones",
 
   // Stores stack
   STORES_HOME: "Stores Home",

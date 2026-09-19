@@ -1060,15 +1060,9 @@ export default function PlayListScreen() {
                 deleting={deletingId === item._id}
                 onEdit={() => openEdit(item)}
                 onDelete={() => confirmRemove(item)}
+                onExport={() => exportPlaylist(item)}
                 onReorder={(nextTracks) => reorderPlaylist(item, nextTracks)}
               />
-              <Pressable
-                onPress={() => exportPlaylist(item)}
-                style={styles.exportButton}
-              >
-                <Ionicons name="share-outline" size={17} color="#2563eb" />
-                <Text style={styles.exportButtonText}>Exportar JSON</Text>
-              </Pressable>
             </View>
           )}
           ListEmptyComponent={
@@ -1716,20 +1710,6 @@ const styles = StyleSheet.create({
   },
   list: { width: "100%", maxWidth: 760, alignSelf: "center", padding: 14 },
   playerCard: { alignItems: "center" },
-  exportButton: {
-    width: 440,
-    maxWidth: "100%",
-    minHeight: 38,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderTopWidth: 0,
-    borderColor: "#d1d5db",
-    backgroundColor: "#fff",
-  },
-  exportButtonText: { fontSize: 12, fontWeight: "800", color: "#2563eb" },
   emptyList: { flexGrow: 1 },
   empty: { alignItems: "center", padding: 24 },
   emptyTitle: {
