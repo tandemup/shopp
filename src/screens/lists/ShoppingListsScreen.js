@@ -285,7 +285,7 @@ function QuickActions({
       },
       {
         key: "playList",
-        label: "Play List",
+        label: "Music Playlist",
         description: "Crea y reproduce música de YouTube",
         icon: "musical-notes-outline",
         iconColor: COLORS.red,
@@ -307,7 +307,7 @@ function QuickActions({
       },
       {
         key: "classicalMusic",
-        label: "Música clásica",
+        label: "Classic Playlist",
         description: "Organiza obras, conciertos e intérpretes",
         icon: "musical-notes-outline",
         iconColor: COLORS.purple,
@@ -354,34 +354,28 @@ function QuickActions({
           navigateToNestedRoute(ROUTES.CHAT_TAB, ROUTES.CHAT_PROTOTYPE),
       },
       {
-              key: "webrtcFireAlarm",
-              label: "Fire Alarm",
-              description: "Vigilancia de incendios por WebRTC",
-              icon: "flame-outline",
-              iconColor: COLORS.red,
-              iconBackground: COLORS.redSoft,
-              badgeLabel: "DEV",
-              requiresAdmin: true,
-              onPress: () =>
-                navigateToNestedRoute(
-                  ROUTES.SHOPPING_TAB,
-                  ROUTES.WEBRTC_FIRE_ALARM,
-                ),
+        key: "webrtcFireAlarm",
+        label: "Fire Alarm",
+        description: "Vigilancia de incendios por WebRTC",
+        icon: "flame-outline",
+        iconColor: COLORS.red,
+        iconBackground: COLORS.redSoft,
+        badgeLabel: "DEV",
+        requiresAdmin: true,
+        onPress: () =>
+          navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.WEBRTC_FIRE_ALARM),
       },
       {
-              key: "parkingGpsDebug",
-              label: "GPS Debug",
-              description: "Comprueba la precisión",
-              icon: "locate-outline",
-              iconColor: COLORS.orange,
-              iconBackground: COLORS.orangeSoft,
-              badgeLabel: "DEV",
-              requiresAdmin: true,
-              onPress: () =>
-                navigateToNestedRoute(
-                  ROUTES.CHAT_TAB,
-                  ROUTES.PARKING_GPS_DEBUG,
-                ),
+        key: "parkingGpsDebug",
+        label: "GPS Debug",
+        description: "Comprueba la precisión",
+        icon: "locate-outline",
+        iconColor: COLORS.orange,
+        iconBackground: COLORS.orangeSoft,
+        badgeLabel: "DEV",
+        requiresAdmin: true,
+        onPress: () =>
+          navigateToNestedRoute(ROUTES.CHAT_TAB, ROUTES.PARKING_GPS_DEBUG),
       },
     ],
     [
