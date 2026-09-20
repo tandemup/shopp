@@ -28,7 +28,11 @@ import { ROUTES } from "@/src/navigation/ROUTES";
 import TutorialTransferScreen from "./TutorialTransferScreen";
 import EditorVideoPreview from "./EditorVideoPreview";
 import { MAX_TUTORIAL_ITEMS } from "@/convex/lib/tutorialItems";
-import { getLocalLyrics, saveLocalLyrics, removeLocalLyrics } from "@/src/storage/lyricsStorage";
+import {
+  getLocalLyrics,
+  saveLocalLyrics,
+  removeLocalLyrics,
+} from "@/src/storage/lyricsStorage";
 
 const CLIENT_ID_KEY = "shopp-playlist-client-id";
 const normalizeSearchText = (value) =>
@@ -225,7 +229,7 @@ export default function PlayListScreen() {
   const collectionTitle = isTutorials
     ? "Mis tutoriales"
     : isClassical
-      ? "Mi música clásica"
+      ? "Mis playlists classic"
       : "Mis playlists";
   const itemLabel = isTutorials ? "vídeo" : "elemento";
   const exportType = isTutorials
@@ -256,7 +260,8 @@ export default function PlayListScreen() {
   const generateUploadUrl = useMutation(contentApi.generateUploadUrl);
   const [editorVisible, setEditorVisible] = useState(false);
   const { width } = useWindowDimensions();
-  const canEditLyricsLocally = Platform.OS === "web" && width >= 960 && !isTutorials;
+  const canEditLyricsLocally =
+    Platform.OS === "web" && width >= 960 && !isTutorials;
   const [lyricsEditorIndex, setLyricsEditorIndex] = useState(null);
   const [lyricsDraft, setLyricsDraft] = useState("");
   const [lyricsFileName, setLyricsFileName] = useState("lyrics.lrc");
@@ -276,7 +281,8 @@ export default function PlayListScreen() {
     period: "",
     year: "",
   });
-  const [classicalDetailsExpanded, setClassicalDetailsExpanded] = useState(true);
+  const [classicalDetailsExpanded, setClassicalDetailsExpanded] =
+    useState(true);
   const [tracks, setTracks] = useState(() => initialTracks(isTutorials));
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -480,7 +486,10 @@ export default function PlayListScreen() {
         !parsed.isValid ||
         (editorTrack.kind === "album" ? !parsed.playlistId : !parsed.videoId)
       ) {
-        safeAlert("Enlace de YouTube requerido", "Introduce primero un enlace válido para esta canción.");
+        safeAlert(
+          "Enlace de YouTube requerido",
+          "Introduce primero un enlace válido para esta canción.",
+        );
         return;
       }
       setLyricsEditorIndex(index);
@@ -499,7 +508,8 @@ export default function PlayListScreen() {
           setLyricsFileName(local.fileName || "lyrics.lrc");
           return;
         }
-        const sourceUri = editorTrack.lyrics?.uri || editorTrack.lyrics?.sourceUri;
+        const sourceUri =
+          editorTrack.lyrics?.uri || editorTrack.lyrics?.sourceUri;
         if (sourceUri) {
           const response = await fetch(sourceUri);
           const sourceText = response.ok ? await response.text() : "";
@@ -510,7 +520,10 @@ export default function PlayListScreen() {
           setLyricsFileName(editorTrack.lyrics?.fileName || "lyrics.lrc");
         }
       } catch (error) {
-        safeAlert("No se pudo abrir la letra", error?.message || "Inténtalo de nuevo.");
+        safeAlert(
+          "No se pudo abrir la letra",
+          error?.message || "Inténtalo de nuevo.",
+        );
       } finally {
         setLyricsEditorLoading(false);
       }
@@ -529,18 +542,27 @@ export default function PlayListScreen() {
       if (result.canceled || !asset?.uri) return;
       const fileName = asset.name || "lyrics.lrc";
       if (!fileName.toLowerCase().endsWith(".lrc")) {
-        safeAlert("Formato no válido", "Selecciona un fichero con extensión .lrc.");
+        safeAlert(
+          "Formato no válido",
+          "Selecciona un fichero con extensión .lrc.",
+        );
         return;
       }
       if ((asset.size || 0) > 512 * 1024) {
-        safeAlert("Fichero demasiado grande", "El fichero LRC no puede superar 512 KB.");
+        safeAlert(
+          "Fichero demasiado grande",
+          "El fichero LRC no puede superar 512 KB.",
+        );
         return;
       }
       const response = await fetch(asset.uri);
       setLyricsDraft(await response.text());
       setLyricsFileName(fileName);
     } catch (error) {
-      safeAlert("No se pudo importar la letra", error?.message || "Inténtalo de nuevo.");
+      safeAlert(
+        "No se pudo importar la letra",
+        error?.message || "Inténtalo de nuevo.",
+      );
     }
   }, []);
 
@@ -567,7 +589,10 @@ export default function PlayListScreen() {
       );
       setLyricsEditorVisible(false);
     } catch (error) {
-      safeAlert("No se pudo guardar la letra", error?.message || "Inténtalo de nuevo.");
+      safeAlert(
+        "No se pudo guardar la letra",
+        error?.message || "Inténtalo de nuevo.",
+      );
     }
   }, [lyricsDraft, lyricsEditorIndex, lyricsFileName, tracks]);
 
@@ -1209,21 +1234,30 @@ export default function PlayListScreen() {
                   }
                 >
                   <View style={styles.classicalSectionHeaderText}>
-                    <Text style={styles.classicalSectionTitle}>Datos de la colección</Text>
+                    <Text style={styles.classicalSectionTitle}>
+                      Datos de la colección
+                    </Text>
                     {!classicalDetailsExpanded ? (
-                      <Text style={styles.classicalSectionSummary} numberOfLines={1}>
+                      <Text
+                        style={styles.classicalSectionSummary}
+                        numberOfLines={1}
+                      >
                         {[
                           title,
                           classicalDetails.composer,
                           classicalDetails.performer,
                           classicalDetails.period,
                           classicalDetails.year,
-                        ].filter(Boolean).join(" · ") || "Sin datos"}
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "Sin datos"}
                       </Text>
                     ) : null}
                   </View>
                   <Ionicons
-                    name={classicalDetailsExpanded ? "chevron-up" : "chevron-down"}
+                    name={
+                      classicalDetailsExpanded ? "chevron-up" : "chevron-down"
+                    }
                     size={20}
                     color="#2563eb"
                   />
@@ -1231,7 +1265,9 @@ export default function PlayListScreen() {
 
                 {classicalDetailsExpanded ? (
                   <View style={styles.classicalSectionBody}>
-                    <Text style={styles.label}>Nombre de la obra o colección</Text>
+                    <Text style={styles.label}>
+                      Nombre de la obra o colección
+                    </Text>
                     <TextInput
                       value={title}
                       onChangeText={setTitle}
@@ -1461,7 +1497,11 @@ export default function PlayListScreen() {
                         style={styles.lyricsButton}
                       >
                         <Ionicons
-                          name={track.localLyrics ? "create-outline" : "document-text-outline"}
+                          name={
+                            track.localLyrics
+                              ? "create-outline"
+                              : "document-text-outline"
+                          }
                           size={20}
                           color="#2563eb"
                         />
@@ -1469,7 +1509,9 @@ export default function PlayListScreen() {
                           <Text style={styles.lyricsTitle} numberOfLines={1}>
                             {track.localLyrics?.fileName ||
                               track.lyrics?.fileName ||
-                              (canEditLyricsLocally ? "Editar letra local" : "Añadir letras .lrc")}
+                              (canEditLyricsLocally
+                                ? "Editar letra local"
+                                : "Añadir letras .lrc")}
                           </Text>
                           <Text style={styles.lyricsHint}>
                             {track.localLyrics
@@ -1486,7 +1528,11 @@ export default function PlayListScreen() {
                           style={styles.removeLyrics}
                           accessibilityLabel="Editar letra"
                         >
-                          <Ionicons name="pencil-outline" size={20} color="#2563eb" />
+                          <Ionicons
+                            name="pencil-outline"
+                            size={20}
+                            color="#2563eb"
+                          />
                         </Pressable>
                       ) : track.lyrics ? (
                         <Pressable
@@ -1555,10 +1601,15 @@ export default function PlayListScreen() {
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.editorTitle}>Editar letra .lrc</Text>
                 <Text style={styles.editorSubtitle} numberOfLines={1}>
-                  {lyricsEditorIndex != null ? tracks[lyricsEditorIndex]?.title : ""}
+                  {lyricsEditorIndex != null
+                    ? tracks[lyricsEditorIndex]?.title
+                    : ""}
                 </Text>
               </View>
-              <Pressable onPress={() => setLyricsEditorVisible(false)} style={styles.closeButton}>
+              <Pressable
+                onPress={() => setLyricsEditorVisible(false)}
+                style={styles.closeButton}
+              >
                 <Ionicons name="close" size={24} color="#475569" />
               </Pressable>
             </View>
@@ -1580,15 +1631,32 @@ export default function PlayListScreen() {
               style={styles.lyricsTextArea}
             />
             <View style={styles.lyricsEditorActions}>
-              <Pressable onPress={importLyricsIntoEditor} style={styles.lyricsSecondaryButton}>
-                <Ionicons name="folder-open-outline" size={18} color="#2563eb" />
+              <Pressable
+                onPress={importLyricsIntoEditor}
+                style={styles.lyricsSecondaryButton}
+              >
+                <Ionicons
+                  name="folder-open-outline"
+                  size={18}
+                  color="#2563eb"
+                />
                 <Text style={styles.lyricsSecondaryText}>Importar .lrc</Text>
               </Pressable>
-              <Pressable onPress={removeLocalLyricsFromEditor} style={styles.lyricsSecondaryButton}>
+              <Pressable
+                onPress={removeLocalLyricsFromEditor}
+                style={styles.lyricsSecondaryButton}
+              >
                 <Ionicons name="trash-outline" size={18} color="#dc2626" />
-                <Text style={[styles.lyricsSecondaryText, { color: "#dc2626" }]}>Borrar local</Text>
+                <Text
+                  style={[styles.lyricsSecondaryText, { color: "#dc2626" }]}
+                >
+                  Borrar local
+                </Text>
               </Pressable>
-              <Pressable onPress={saveLyricsEditor} style={styles.lyricsSaveButton}>
+              <Pressable
+                onPress={saveLyricsEditor}
+                style={styles.lyricsSaveButton}
+              >
                 <Ionicons name="save-outline" size={18} color="#fff" />
                 <Text style={styles.lyricsSaveText}>Guardar</Text>
               </Pressable>
