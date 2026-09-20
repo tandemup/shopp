@@ -61,7 +61,9 @@ function getYouTubePlaylist(text) {
     return {
       id: playlistId,
       url: match[0],
-      remainingText: String(text || "").replace(match[0], "").trim(),
+      remainingText: String(text || "")
+        .replace(match[0], "")
+        .trim(),
     };
   } catch {
     return null;
@@ -267,11 +269,7 @@ function MessageBubble({
                   language === "en" ? "Edit playlist" : "Editar playlist"
                 }
               >
-                <Ionicons
-                  name="pencil-outline"
-                  size={17}
-                  color="#2563EB"
-                />
+                <Ionicons name="pencil-outline" size={17} color="#2563EB" />
               </Pressable>
             ) : null}
           </Pressable>
@@ -1035,6 +1033,7 @@ export default function ChatPrototypeScreen() {
                 value={productPrice}
                 onChangeText={setProductPrice}
                 placeholder="Precio pagado"
+                placeholderTextColor="#999"
                 keyboardType="decimal-pad"
               />
               <Text style={styles.euroLabel}>€</Text>
@@ -1289,11 +1288,7 @@ export default function ChatPrototypeScreen() {
                 />
               ) : (
                 <View style={styles.playlistModalCoverPlaceholder}>
-                  <Ionicons
-                    name="image-outline"
-                    size={38}
-                    color="#64748B"
-                  />
+                  <Ionicons name="image-outline" size={38} color="#64748B" />
                   <Text style={styles.playlistModalCoverHint}>
                     Seleccionar carátula
                   </Text>
@@ -1301,14 +1296,13 @@ export default function ChatPrototypeScreen() {
               )}
             </Pressable>
 
-            <Text style={styles.playlistFieldLabel}>
-              Nombre de la playlist
-            </Text>
+            <Text style={styles.playlistFieldLabel}>Nombre de la playlist</Text>
             <TextInput
               value={playlistTitle}
               onChangeText={setPlaylistTitle}
               maxLength={MAX_YOUTUBE_TITLE_LENGTH}
               placeholder="Nombre de la playlist"
+              placeholderTextColor="#999"
               style={styles.playlistTitleInput}
             />
 

@@ -179,9 +179,10 @@ function QuickActions({
   const cardWidth = Math.floor((contentWidth - gap * (columns - 1)) / columns);
 
   const navigateToNestedRoute = useCallback(
-    (tab, screen) => {
+    (tab, screen, params) => {
       navigation.navigate(tab, {
         screen,
+        params,
       });
     },
     [navigation],
@@ -328,6 +329,17 @@ function QuickActions({
         requiresAdmin: true,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.TUTORIALS),
+      },
+      {
+        key: "news",
+        label: "Noticias",
+        description: "Guarda y reproduce vídeos de actualidad",
+        icon: "newspaper-outline",
+        iconColor: COLORS.primary,
+        iconBackground: COLORS.primarySoft,
+        badgeLabel: "DEV",
+        requiresAdmin: true,
+        onPress: () => navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.NEWS),
       },
       {
         key: "shoppLive",

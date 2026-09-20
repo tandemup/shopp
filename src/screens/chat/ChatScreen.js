@@ -1748,7 +1748,7 @@ export default function ChatScreen() {
                 value={playlistTitle}
                 onChangeText={setPlaylistTitle}
                 placeholder="Mozart · Concierto para piano · Daniel Barenboim"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor="#999"
                 style={styles.playlistTitleInput}
                 maxLength={120}
               />
@@ -1860,7 +1860,7 @@ export default function ChatScreen() {
                           ? `Nombre del álbum ${index + 1}`
                           : `Nombre del single ${index + 1}`
                       }
-                      placeholderTextColor="#94a3b8"
+                      placeholderTextColor="#999"
                       style={styles.playlistTrackInput}
                       maxLength={120}
                     />
@@ -1874,7 +1874,7 @@ export default function ChatScreen() {
                           ? "https://youtube.com/playlist?list=..."
                           : "https://youtu.be/..."
                       }
-                      placeholderTextColor="#94a3b8"
+                      placeholderTextColor="#999"
                       style={styles.playlistTrackInput}
                       autoCorrect={false}
                       autoCapitalize="none"
@@ -2028,6 +2028,7 @@ export default function ChatScreen() {
                     ? "Nombre del álbum"
                     : "Nombre de la playlist"
                 }
+                placeholderTextColor="#999"
                 editable={!savingAlbum}
                 maxLength={120}
                 style={styles.albumTitleInput}

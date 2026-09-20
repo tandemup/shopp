@@ -39,7 +39,9 @@ function Field({ label, value, onChangeText, placeholder, keyboardType }) {
 }
 
 function numberOrUndefined(value) {
-  const text = String(value || "").trim().replace(",", ".");
+  const text = String(value || "")
+    .trim()
+    .replace(",", ".");
   if (!text) return undefined;
   const number = Number(text);
   return Number.isFinite(number) ? number : null;
@@ -65,12 +67,18 @@ export default function StoreCreationRequestScreen({ navigation }) {
     const zipcode = numberOrUndefined(form.zipcode);
 
     if (!canSubmit) {
-      safeAlert("Faltan datos", "Indica el nombre y la dirección de la tienda.");
+      safeAlert(
+        "Faltan datos",
+        "Indica el nombre y la dirección de la tienda.",
+      );
       return;
     }
 
     if (latitude === null || longitude === null || zipcode === null) {
-      safeAlert("Datos no válidos", "Las coordenadas y el código postal deben ser números.");
+      safeAlert(
+        "Datos no válidos",
+        "Las coordenadas y el código postal deben ser números.",
+      );
       return;
     }
 
@@ -117,7 +125,8 @@ export default function StoreCreationRequestScreen({ navigation }) {
         <View style={styles.infoBody}>
           <Text style={styles.infoTitle}>Proponer una tienda</Text>
           <Text style={styles.infoText}>
-            Tu propuesta será revisada antes de aparecer para el resto de usuarios.
+            Tu propuesta será revisada antes de aparecer para el resto de
+            usuarios.
           </Text>
         </View>
       </View>
@@ -127,12 +136,14 @@ export default function StoreCreationRequestScreen({ navigation }) {
         value={form.name}
         onChangeText={(value) => updateField("name", value)}
         placeholder="Ej. Alimerka"
+        placeholderTextColor="#999"
       />
       <Field
         label="Dirección *"
         value={form.address}
         onChangeText={(value) => updateField("address", value)}
         placeholder="Calle y número"
+        placeholderTextColor="#999"
       />
       <Field
         label="Ciudad"
@@ -153,13 +164,15 @@ export default function StoreCreationRequestScreen({ navigation }) {
 
       <Text style={styles.coordinatesTitle}>Coordenadas (opcionales)</Text>
       <Text style={styles.coordinatesHint}>
-        Si no las conoces, el administrador podrá completarlas al validar la tienda.
+        Si no las conoces, el administrador podrá completarlas al validar la
+        tienda.
       </Text>
       <Field
         label="Latitud"
         value={form.latitude}
         onChangeText={(value) => updateField("latitude", value)}
         placeholder="43.5350"
+        placeholderTextColor="#999"
         keyboardType="decimal-pad"
       />
       <Field
@@ -167,6 +180,7 @@ export default function StoreCreationRequestScreen({ navigation }) {
         value={form.longitude}
         onChangeText={(value) => updateField("longitude", value)}
         placeholder="-5.6615"
+        placeholderTextColor="#999"
         keyboardType="decimal-pad"
       />
 
@@ -197,23 +211,56 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#f8fafc" },
   container: { padding: 20, paddingBottom: 120 },
   infoCard: {
-    flexDirection: "row", backgroundColor: "#eff6ff", borderWidth: 1,
-    borderColor: "#bfdbfe", borderRadius: 16, padding: 16, marginBottom: 24,
+    flexDirection: "row",
+    backgroundColor: "#eff6ff",
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
   },
   infoBody: { flex: 1, marginLeft: 12 },
-  infoTitle: { fontSize: 17, fontWeight: "800", color: "#1e3a8a", marginBottom: 4 },
+  infoTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#1e3a8a",
+    marginBottom: 4,
+  },
   infoText: { fontSize: 14, lineHeight: 20, color: "#334155" },
   field: { marginBottom: 14 },
   label: { color: "#334155", fontSize: 14, fontWeight: "700", marginBottom: 6 },
   input: {
-    minHeight: 48, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 12,
-    paddingHorizontal: 13, fontSize: 16, color: "#0f172a", backgroundColor: "#ffffff",
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    fontSize: 16,
+    color: "#0f172a",
+    backgroundColor: "#ffffff",
   },
-  coordinatesTitle: { color: "#0f172a", fontSize: 16, fontWeight: "800", marginTop: 8 },
-  coordinatesHint: { color: "#64748b", fontSize: 13, lineHeight: 19, marginTop: 4, marginBottom: 14 },
+  coordinatesTitle: {
+    color: "#0f172a",
+    fontSize: 16,
+    fontWeight: "800",
+    marginTop: 8,
+  },
+  coordinatesHint: {
+    color: "#64748b",
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 4,
+    marginBottom: 14,
+  },
   submitButton: {
-    minHeight: 52, borderRadius: 13, backgroundColor: "#2563eb", alignItems: "center",
-    justifyContent: "center", flexDirection: "row", gap: 8, marginTop: 12,
+    minHeight: 52,
+    borderRadius: 13,
+    backgroundColor: "#2563eb",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
   },
   submitButtonDisabled: { backgroundColor: "#93c5fd" },
   submitText: { color: "#ffffff", fontSize: 16, fontWeight: "800" },

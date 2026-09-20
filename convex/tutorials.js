@@ -2,7 +2,11 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
-import { MAX_TUTORIAL_ITEMS, mergeTutorialItems, tutorialItemKey } from "./lib/tutorialItems";
+import {
+  MAX_TUTORIAL_ITEMS,
+  mergeTutorialItems,
+  tutorialItemKey,
+} from "./lib/tutorialItems";
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const PLAYLIST_ID = /^[A-Za-z0-9_-]{10,80}$/;
@@ -16,6 +20,14 @@ const trackValidator = v.object({
   lyricsMimeType: v.optional(v.string()),
   lyricsSize: v.optional(v.number()),
 });
+
+const contentTypeValidator = v.optional(
+  v.union(v.literal("tutorial"), v.literal("news")),
+);
+
+function normalizeContentType(value) {
+  return value === "news" ? "news" : "tutorial";
+}
 
 function cleanClientId(value) {
   const result = String(value || "")
@@ -42,7 +54,9 @@ function normalizeTutorial(titleValue, trackValues) {
     trackValues.length < 1 ||
     trackValues.length > MAX_TUTORIAL_ITEMS
   ) {
-    throw new Error(`El tutorial debe contener entre 1 y ${MAX_TUTORIAL_ITEMS} vídeos o series.`);
+    throw new Error(
+      `El tutorial debe contener entre 1 y ${MAX_TUTORIAL_ITEMS} vídeos o series.`,
+    );
   }
   const seen = new Set();
   const tracks = trackValues.map((track, index) => {
@@ -81,13 +95,18 @@ function normalizeTutorial(titleValue, trackValues) {
   return { title, tracks };
 }
 
-async function getTutorials(ctx, clientId) {
+async function getTutorials(ctx, clientId, contentType) {
   const ownerId = await getOwnerId(ctx, clientId);
-  return await ctx.db
+  const expectedContentType = normalizeContentType(contentType);
+  const tutorials = await ctx.db
     .query("youtubeTutorials")
     .withIndex("by_owner_updatedAt", (q) => q.eq("ownerId", ownerId))
     .order("desc")
     .collect();
+  return tutorials.filter(
+    (tutorial) =>
+      normalizeContentType(tutorial.contentType) === expectedContentType,
+  );
 }
 
 export const generateUploadUrl = mutation({
@@ -96,13 +115,15 @@ export const generateUploadUrl = mutation({
 });
 
 export const listMine = query({
-  args: { clientId: v.optional(v.string()) },
-  handler: async (ctx, args) => await getTutorials(ctx, args.clientId),
+  args: { clientId: v.optional(v.string()), contentType: contentTypeValidator },
+  handler: async (ctx, args) =>
+    await getTutorials(ctx, args.clientId, args.contentType),
 });
 
 export const create = mutation({
   args: {
     clientId: v.optional(v.string()),
+    contentType: contentTypeValidator,
     title: v.string(),
     tracks: v.array(trackValidator),
   },
@@ -112,6 +133,7 @@ export const create = mutation({
     const now = Date.now();
     return await ctx.db.insert("youtubeTutorials", {
       ownerId,
+      contentType: normalizeContentType(args.contentType),
       ...tutorial,
       createdAt: now,
       updatedAt: now,
@@ -123,13 +145,19 @@ export const update = mutation({
   args: {
     playlistId: v.id("youtubeTutorials"),
     clientId: v.optional(v.string()),
+    contentType: contentTypeValidator,
     title: v.string(),
     tracks: v.array(trackValidator),
   },
   handler: async (ctx, args) => {
     const ownerId = await getOwnerId(ctx, args.clientId);
     const current = await ctx.db.get(args.playlistId);
-    if (!current || current.ownerId !== ownerId)
+    if (
+      !current ||
+      current.ownerId !== ownerId ||
+      normalizeContentType(current.contentType) !==
+        normalizeContentType(args.contentType)
+    )
       throw new Error("No puedes editar este tutorial.");
     await ctx.db.patch(args.playlistId, {
       ...normalizeTutorial(args.title, args.tracks),
@@ -142,11 +170,17 @@ export const remove = mutation({
   args: {
     playlistId: v.id("youtubeTutorials"),
     clientId: v.optional(v.string()),
+    contentType: contentTypeValidator,
   },
   handler: async (ctx, args) => {
     const ownerId = await getOwnerId(ctx, args.clientId);
     const current = await ctx.db.get(args.playlistId);
-    if (!current || current.ownerId !== ownerId)
+    if (
+      !current ||
+      current.ownerId !== ownerId ||
+      normalizeContentType(current.contentType) !==
+        normalizeContentType(args.contentType)
+    )
       throw new Error("No puedes borrar este tutorial.");
     await ctx.db.delete(args.playlistId);
   },
@@ -156,6 +190,7 @@ export const remove = mutation({
 export const copyItems = mutation({
   args: {
     clientId: v.optional(v.string()),
+    contentType: contentTypeValidator,
     sourceId: v.id("youtubeTutorials"),
     destinationId: v.id("youtubeTutorials"),
     itemKeys: v.array(v.string()),
@@ -167,18 +202,42 @@ export const copyItems = mutation({
       throw new Error("Elige dos listas diferentes.");
     const source = await ctx.db.get(args.sourceId);
     const destination = await ctx.db.get(args.destinationId);
-    if (!source || !destination || source.ownerId !== ownerId || destination.ownerId !== ownerId)
-      throw new Error("No puedes copiar entre estas listas. Comprueba que ambas siguen disponibles.");
-    const result = mergeTutorialItems(source.tracks, destination.tracks, args.itemKeys);
+    if (
+      !source ||
+      !destination ||
+      source.ownerId !== ownerId ||
+      destination.ownerId !== ownerId ||
+      normalizeContentType(source.contentType) !==
+        normalizeContentType(args.contentType) ||
+      normalizeContentType(destination.contentType) !==
+        normalizeContentType(args.contentType)
+    )
+      throw new Error(
+        "No puedes copiar entre estas listas. Comprueba que ambas siguen disponibles.",
+      );
+    const result = mergeTutorialItems(
+      source.tracks,
+      destination.tracks,
+      args.itemKeys,
+    );
     const cutting = args.mode === "cut";
     const selected = new Set(args.itemKeys);
-    const remaining = cutting ? source.tracks.filter((track) => !selected.has(tutorialItemKey(track))) : source.tracks;
+    const remaining = cutting
+      ? source.tracks.filter((track) => !selected.has(tutorialItemKey(track)))
+      : source.tracks;
     if (cutting && remaining.length < 1)
-      throw new Error("La lista de origen debe conservar al menos un elemento. Reduce la selección o usa Copiar.");
+      throw new Error(
+        "La lista de origen debe conservar al menos un elemento. Reduce la selección o usa Copiar.",
+      );
     // Validate both resulting lists before writing. Convex commits both patches
     // atomically, so a failed paste never removes the originals.
-    const destinationUpdate = result.copied > 0 ? normalizeTutorial(destination.title, result.tracks) : null;
-    const sourceUpdate = cutting ? normalizeTutorial(source.title, remaining) : null;
+    const destinationUpdate =
+      result.copied > 0
+        ? normalizeTutorial(destination.title, result.tracks)
+        : null;
+    const sourceUpdate = cutting
+      ? normalizeTutorial(source.title, remaining)
+      : null;
     const now = Date.now();
     if (destinationUpdate) {
       await ctx.db.patch(args.destinationId, {
@@ -189,8 +248,11 @@ export const copyItems = mutation({
     if (sourceUpdate) {
       await ctx.db.patch(args.sourceId, { ...sourceUpdate, updatedAt: now });
     }
-    return { copied: result.copied, skipped: result.skipped, total: result.tracks.length,
-      moved: cutting ? source.tracks.length - remaining.length : 0 };
-
+    return {
+      copied: result.copied,
+      skipped: result.skipped,
+      total: result.tracks.length,
+      moved: cutting ? source.tracks.length - remaining.length : 0,
+    };
   },
 });

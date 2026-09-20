@@ -36,6 +36,7 @@ export default function ItemsScreen() {
         value={name}
         onChangeText={setName}
         placeholder="Nombre del producto"
+        placeholderTextColor="#999"
         style={{
           borderWidth: 1,
           borderColor: "#ccc",

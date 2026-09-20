@@ -202,6 +202,9 @@ export default defineSchema({
 
   youtubeTutorials: defineTable({
     ownerId: v.string(),
+    // Las colecciones de Noticias comparten la misma estructura de vídeos y
+    // series, pero se mantienen separadas de los tutoriales del usuario.
+    contentType: v.optional(v.union(v.literal("tutorial"), v.literal("news"))),
     title: v.string(),
     tracks: v.array(
       v.object({

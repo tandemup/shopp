@@ -5,7 +5,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView
+  ScrollView,
 } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
 
@@ -65,6 +65,7 @@ const InfoRow = ({ date, store, onSelectStore, onPressStoreInfo }) => (
       store={store}
       onPressStore={onSelectStore}
       placeholder="Especificar tienda"
+      placeholderTextColor="#999"
     />
 
     {!!store?.id && (

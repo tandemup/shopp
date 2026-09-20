@@ -1576,7 +1576,7 @@ function HashtagCatalogLoader({ onLoaded }) {
   );
 }
 
-export default function LibraryScreen({ navigation }) {
+export default function LibraryScreen({ navigation, route }) {
   const isFocused = useIsFocused();
   const { width: screenWidth } = useWindowDimensions();
   const [clientId] = useState(getClientId);
@@ -1962,6 +1962,20 @@ export default function LibraryScreen({ navigation }) {
     setFolderFilter(newsFolder ? String(newsFolder._id) : "all");
     setNewsView("articles");
   }, [folders, leaveHashtagMode]);
+
+  // El acceso rápido de Inicio debe llegar a la vista de artículos, no al
+  // catálogo de periódicos ni a la última carpeta abierta por el usuario.
+  useEffect(() => {
+    if (!isFocused || !route?.params?.openNews || !folders.length) return;
+    showNewsArticles();
+    navigation.setParams({ openNews: undefined });
+  }, [
+    folders.length,
+    isFocused,
+    navigation,
+    route?.params?.openNews,
+    showNewsArticles,
+  ]);
 
   const ensureDefaultFolders = useCallback(
     () => libraryJsonApi.ensureDefaultFolders(),
@@ -3547,7 +3561,7 @@ export default function LibraryScreen({ navigation }) {
                         ? "Pega la URL de una noticia"
                         : isInstagramFolder
                           ? "Pega la URL de una publicación de Instagram"
-                        : "https://ejemplo.com"
+                          : "https://ejemplo.com"
                 }
                 placeholderTextColor="#94a3b8"
                 style={styles.urlInput}

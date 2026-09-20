@@ -1,7 +1,14 @@
 // screens/scanner/ScannedHistoryScreen.js
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, FlatList, StyleSheet, Pressable, Platform, Share } from "react-native";
+import {
+  View,
+  FlatList,
+  StyleSheet,
+  Pressable,
+  Platform,
+  Share,
+} from "react-native";
 import { I18nText as Text } from "@/src/i18n";
 
 import { StatusBar } from "expo-status-bar";
@@ -76,15 +83,19 @@ function getImportedProducts(payload) {
     payload.version !== SCANNER_PRODUCTS_VERSION ||
     !Array.isArray(payload.data?.products)
   ) {
-    throw new Error("El fichero no es una exportación compatible del historial de escaneos.");
+    throw new Error(
+      "El fichero no es una exportación compatible del historial de escaneos.",
+    );
   }
 
   return Array.from(
-    payload.data.products.reduce((byBarcode, item) => {
-      const product = normalizeExportProduct(item);
-      if (product.barcode) byBarcode.set(product.barcode, product);
-      return byBarcode;
-    }, new Map()).values(),
+    payload.data.products
+      .reduce((byBarcode, item) => {
+        const product = normalizeExportProduct(item);
+        if (product.barcode) byBarcode.set(product.barcode, product);
+        return byBarcode;
+      }, new Map())
+      .values(),
   );
 }
 
@@ -236,9 +247,7 @@ export default function ScannedHistoryScreen({ navigation, route }) {
   const [scannedItems, setScannedItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [filteredItems, setFilteredItems] = useState([]);
-  const [activeFilter, setActiveFilter] = useState(
-    DEFAULT_PRODUCT_SEARCH_TYPE,
-  );
+  const [activeFilter, setActiveFilter] = useState(DEFAULT_PRODUCT_SEARCH_TYPE);
   const [transferBusy, setTransferBusy] = useState(null);
 
   const isFocused = useIsFocused();
@@ -401,7 +410,9 @@ export default function ScannedHistoryScreen({ navigation, route }) {
       const importedProducts = getImportedProducts(JSON.parse(jsonText));
 
       if (!importedProducts.length) {
-        throw new Error("El fichero no contiene productos con código de barras.");
+        throw new Error(
+          "El fichero no contiene productos con código de barras.",
+        );
       }
 
       safeAlert(
@@ -414,7 +425,8 @@ export default function ScannedHistoryScreen({ navigation, route }) {
             onPress: async () => {
               try {
                 setTransferBusy("import");
-                const currentHistory = await scanHistoryStorage.getScannedHistory();
+                const currentHistory =
+                  await scanHistoryStorage.getScannedHistory();
                 const productsByBarcode = new Map(
                   currentHistory
                     .map(normalizeExportProduct)
@@ -467,7 +479,8 @@ export default function ScannedHistoryScreen({ navigation, route }) {
         "Fichero no válido",
         error?.name === "SyntaxError"
           ? "El fichero seleccionado no contiene JSON válido."
-          : error?.message || "Selecciona una exportación válida del historial.",
+          : error?.message ||
+              "Selecciona una exportación válida del historial.",
       );
     }
   };
@@ -584,6 +597,7 @@ export default function ScannedHistoryScreen({ navigation, route }) {
             value={searchQuery}
             onChange={setSearchQuery}
             placeholder="Buscar producto, marca o código..."
+            placeholderTextColor="#999"
             style={styles.searchBar}
           />
 

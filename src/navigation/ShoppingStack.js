@@ -35,6 +35,7 @@ const DevEnglishTutorScreen = adminOnly(EnglishTutorScreen, "Tutor de Inglés");
 const DevLibraryScreen = adminOnly(LibraryScreen, "Biblioteca");
 const DevClassicalMusicScreen = adminOnly(PlayListScreen, "Música clásica");
 const DevTutorialsScreen = adminOnly(PlayListScreen, "Tutoriales");
+const DevNewsScreen = adminOnly(PlayListScreen, "Noticias");
 const DevShoppLiveScreen = adminOnly(ShoppLiveScreen, "Shopp Live");
 const DevInvestmentsScreen = adminOnly(InvestmentsScreen, "Inversiones");
 
@@ -107,6 +108,11 @@ export default function ShoppingStack() {
         name={ROUTES.TUTORIALS}
         component={DevTutorialsScreen}
         options={{ title: "Tutoriales" }}
+      />
+      <Stack.Screen
+        name={ROUTES.NEWS}
+        component={DevNewsScreen}
+        options={{ title: "Noticias" }}
       />
       <Stack.Screen
         name={ROUTES.SHOPP_LIVE}

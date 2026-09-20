@@ -1,13 +1,6 @@
 import React, { useState, useMemo } from "react";
-import {
-  View,
-  Pressable,
-  StyleSheet,
-  FlatList,
-  Linking
-} from "react-native";
+import { View, Pressable, StyleSheet, FlatList, Linking } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
-
 
 import DatePill from "@/src/components/controls/DatePill";
 import StorePill from "@/src/components/controls/StorePill";
@@ -287,6 +280,7 @@ export default function ArchivedListsScreen({ navigation }) {
           value={search}
           onChange={setSearch}
           placeholder="Buscar lista, supermercado o producto…"
+          placeholderTextColor="#999"
           style={styles.searchBar}
         />
 

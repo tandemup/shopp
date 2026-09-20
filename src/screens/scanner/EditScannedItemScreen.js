@@ -536,6 +536,7 @@ function ProductDetailsFields({
                   : onChange(key, value)
               }
               placeholder={placeholder}
+              placeholderTextColor="#999"
               multiline={Boolean(multiline)}
             />
           </View>
@@ -596,9 +597,9 @@ function GoogleModeIA({
       ? "Buscar ficha de libro (JSON)"
       : foodJsonSearch
         ? "Buscar ficha de alimentos (JSON)"
-      : supermarketJsonSearch
-        ? "Buscar ficha de supermercado (JSON)"
-        : "Google Modo IA";
+        : supermarketJsonSearch
+          ? "Buscar ficha de supermercado (JSON)"
+          : "Google Modo IA";
   const jsonSearchDescription = musicJsonSearch
     ? "Identifica la edición y devuelve sus datos"
     : bookJsonSearch
@@ -1061,8 +1062,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
       console.error("EditScannedItemScreen clipboard image error:", error);
 
       const permissionDenied =
-        error?.name === "NotAllowedError" ||
-        error?.name === "SecurityError";
+        error?.name === "NotAllowedError" || error?.name === "SecurityError";
 
       setLocalError(
         permissionDenied
@@ -1145,7 +1145,9 @@ export default function EditScannedItemScreen({ route, navigation }) {
       }
 
       const nextProductType = normalizeProductSearchType(
-        nextProduct.productType || nextProduct.product_type || params.productType,
+        nextProduct.productType ||
+          nextProduct.product_type ||
+          params.productType,
       );
 
       setName(getProductDisplayName(nextProduct, barcode));
@@ -1610,9 +1612,9 @@ export default function EditScannedItemScreen({ route, navigation }) {
         error instanceof SyntaxError
           ? "El texto pegado no es un JSON válido. Copia únicamente el objeto JSON."
           : error?.message ||
-            (isFoodProductType(productType)
-              ? "No se pudo aplicar la ficha de alimentos."
-              : "No se pudo aplicar la ficha de supermercado."),
+              (isFoodProductType(productType)
+                ? "No se pudo aplicar la ficha de alimentos."
+                : "No se pudo aplicar la ficha de supermercado."),
       );
     }
   }, [barcode, productType, supermarketJson]);
@@ -1926,7 +1928,9 @@ export default function EditScannedItemScreen({ route, navigation }) {
                           styles.clipboardImageButtonText,
                         ]}
                       >
-                        {selectingImage ? "Procesando imagen..." : "Paste image"}
+                        {selectingImage
+                          ? "Procesando imagen..."
+                          : "Paste image"}
                       </Text>
                       <Text style={styles.imageImportHint}>
                         Usa la imagen copiada en el clipboard
@@ -2037,6 +2041,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
                       ? "Título de la obra o álbum"
                       : "Nombre del producto"
                 }
+                placeholderTextColor="#999"
               />
 
               <ProductTypeSelector
@@ -2055,6 +2060,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
                       ? "Ej. música clásica, Mozart, edición remasterizada…"
                       : "Ej. marca, modelo, color, talla o características…"
                 }
+                placeholderTextColor="#999"
                 multiline
               />
 
@@ -2063,7 +2069,9 @@ export default function EditScannedItemScreen({ route, navigation }) {
                   accessibilityRole="button"
                   accessibilityState={{ expanded: showLookupPrompt }}
                   accessibilityLabel={
-                    showLookupPrompt ? "Ocultar prompt utilizado" : "Ver prompt utilizado"
+                    showLookupPrompt
+                      ? "Ocultar prompt utilizado"
+                      : "Ver prompt utilizado"
                   }
                   onPress={() => setShowLookupPrompt((current) => !current)}
                   style={({ pressed }) => [
@@ -2071,10 +2079,16 @@ export default function EditScannedItemScreen({ route, navigation }) {
                     pressed && styles.promptPreviewTogglePressed,
                   ]}
                 >
-                  <Ionicons name="code-slash-outline" size={18} color="#475467" />
+                  <Ionicons
+                    name="code-slash-outline"
+                    size={18}
+                    color="#475467"
+                  />
                   <View style={styles.promptPreviewToggleText}>
                     <Text style={styles.promptPreviewTitle}>
-                      {showLookupPrompt ? "Ocultar prompt" : "Ver prompt utilizado"}
+                      {showLookupPrompt
+                        ? "Ocultar prompt"
+                        : "Ver prompt utilizado"}
                     </Text>
                     <Text style={styles.promptPreviewDescription}>
                       Texto exacto enviado a Google Modo IA
@@ -2102,7 +2116,9 @@ export default function EditScannedItemScreen({ route, navigation }) {
                       ]}
                     >
                       <Ionicons
-                        name={promptCopied ? "checkmark-outline" : "copy-outline"}
+                        name={
+                          promptCopied ? "checkmark-outline" : "copy-outline"
+                        }
                         size={17}
                         color="#FFFFFF"
                       />
@@ -2282,6 +2298,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
                   value={brand}
                   onChangeText={setBrand}
                   placeholder="Marca o fabricante"
+                  placeholderTextColor="#999"
                   autoCapitalize="words"
                 />
               ) : null}
@@ -2292,6 +2309,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
                   value={category}
                   onChangeText={setCategory}
                   placeholder="Ej. Música clásica"
+                  placeholderTextColor="#999"
                 />
               ) : null}
 
@@ -2310,6 +2328,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
                 value={notes}
                 onChangeText={setNotes}
                 placeholder="Notas personales sobre el producto"
+                placeholderTextColor="#999"
                 multiline
               />
 
@@ -2318,6 +2337,7 @@ export default function EditScannedItemScreen({ route, navigation }) {
                 value={productUrl}
                 onChangeText={setProductUrl}
                 placeholder="https://..."
+                placeholderTextColor="#999"
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="url"

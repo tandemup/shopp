@@ -9,7 +9,7 @@ import {
   Switch,
   TouchableOpacity,
   View,
-  Modal
+  Modal,
 } from "react-native";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 
@@ -522,6 +522,7 @@ export default function ProfileScreen({ navigation }) {
               value={alias}
               onChangeText={handleChangeAlias}
               placeholder="Ej. 4104-BZG"
+              placeholderTextColor="#999"
               autoCapitalize="none"
               autoCorrect={false}
               maxLength={40}
@@ -539,6 +540,7 @@ export default function ProfileScreen({ navigation }) {
               value={phone}
               onChangeText={handleChangePhone}
               placeholder="Ej. 600 000 000"
+              placeholderTextColor="#999"
               keyboardType="phone-pad"
               textContentType="telephoneNumber"
               maxLength={30}

@@ -197,6 +197,7 @@ export default function StoresBrowseScreen() {
             value={query}
             onChange={setQuery}
             placeholder="Buscar tienda…"
+            placeholderTextColor="#999"
             style={styles.search}
           />
 

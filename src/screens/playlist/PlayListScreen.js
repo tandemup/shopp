@@ -94,6 +94,14 @@ function safeFileName(value) {
   );
 }
 
+function jsonFileName(value, fallback) {
+  const baseName = String(value || "")
+    .trim()
+    .replace(/[\\/]+/g, "-")
+    .replace(/\.json$/i, "");
+  return `${baseName || fallback}.json`;
+}
+
 function toExportedPlaylist(playlist, type = "shopp-youtube-playlist") {
   return {
     version: 1,
@@ -157,14 +165,18 @@ function parseImportedPayload(
   collectionListType = "shopp-youtube-playlists",
   minimumTracks = 1,
   maximumTracks = 20,
+  compatibleItemTypes = [],
+  compatibleListTypes = [],
 ) {
+  const acceptedItemTypes = [collectionType, ...compatibleItemTypes];
+  const acceptedListTypes = [collectionListType, ...compatibleListTypes];
   const candidates =
-    value?.type === collectionListType && Array.isArray(value.playlists)
+    acceptedListTypes.includes(value?.type) && Array.isArray(value.playlists)
       ? value.playlists
       : [value];
   return candidates.map((playlist, playlistIndex) => {
     if (
-      playlist?.type !== collectionType ||
+      !acceptedItemTypes.includes(playlist?.type) ||
       !String(playlist.title || "").trim()
     ) {
       throw new Error(
@@ -219,38 +231,48 @@ function parseImportedPayload(
 export default function PlayListScreen() {
   const route = useRoute();
   const isTutorials = route.name === ROUTES.TUTORIALS;
+  const isNews = route.name === ROUTES.NEWS;
+  const isTutorialStyle = isTutorials || isNews;
   const isClassical = route.name === ROUTES.CLASSICAL_MUSIC;
-  const contentApi = isTutorials ? api.tutorials : api.playlists;
-  const collectionLabel = isTutorials
-    ? "tutorial"
-    : isClassical
-      ? "colección clásica"
-      : "playlist";
-  const collectionTitle = isTutorials
-    ? "Mis tutoriales"
-    : isClassical
-      ? "Mis playlists classic"
-      : "Mis playlists";
-  const itemLabel = isTutorials ? "vídeo" : "elemento";
-  const exportType = isTutorials
-    ? "shopp-youtube-tutorials"
-    : isClassical
-      ? "shopp-youtube-classical-playlists"
-      : "shopp-youtube-playlists";
+  const contentApi = isTutorialStyle ? api.tutorials : api.playlists;
+  const collectionLabel = isNews
+    ? "colección de noticias"
+    : isTutorials
+      ? "tutorial"
+      : isClassical
+        ? "colección clásica"
+        : "playlist";
+  const collectionTitle = isNews
+    ? "Mis noticias"
+    : isTutorials
+      ? "Mis tutoriales"
+      : isClassical
+        ? "Mis playlists classic"
+        : "Mis playlists";
+  const itemLabel = isTutorialStyle ? "vídeo" : "elemento";
+  const exportType = isNews
+    ? "shopp-youtube-news"
+    : isTutorials
+      ? "shopp-youtube-tutorials"
+      : isClassical
+        ? "shopp-youtube-classical-playlists"
+        : "shopp-youtube-playlists";
   const minimumTracks = 1;
-  const maximumTracks = isTutorials ? MAX_TUTORIAL_ITEMS : 20;
+  const maximumTracks = isTutorialStyle ? MAX_TUTORIAL_ITEMS : 20;
   const [transferVisible, setTransferVisible] = useState(false);
-  const exportItemType = isTutorials
-    ? "shopp-youtube-tutorial"
-    : isClassical
-      ? "shopp-youtube-classical-playlist"
-      : "shopp-youtube-playlist";
+  const exportItemType = isNews
+    ? "shopp-youtube-news-item"
+    : isTutorials
+      ? "shopp-youtube-tutorial"
+      : isClassical
+        ? "shopp-youtube-classical-playlist"
+        : "shopp-youtube-playlist";
   const [clientId, setClientId] = useState(getWebClientId);
   const playlists = useQuery(
     contentApi.listMine,
     clientId
-      ? isTutorials
-        ? { clientId }
+      ? isTutorialStyle
+        ? { clientId, contentType: isNews ? "news" : "tutorial" }
         : { clientId, collectionType: isClassical ? "classical" : "playlist" }
       : "skip",
   );
@@ -261,7 +283,7 @@ export default function PlayListScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const { width } = useWindowDimensions();
   const canEditLyricsLocally =
-    Platform.OS === "web" && width >= 960 && !isTutorials;
+    Platform.OS === "web" && width >= 960 && !isTutorialStyle;
   const [lyricsEditorIndex, setLyricsEditorIndex] = useState(null);
   const [lyricsDraft, setLyricsDraft] = useState("");
   const [lyricsFileName, setLyricsFileName] = useState("lyrics.lrc");
@@ -283,10 +305,13 @@ export default function PlayListScreen() {
   });
   const [classicalDetailsExpanded, setClassicalDetailsExpanded] =
     useState(true);
-  const [tracks, setTracks] = useState(() => initialTracks(isTutorials));
+  const [tracks, setTracks] = useState(() => initialTracks(isTutorialStyle));
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [exportNameVisible, setExportNameVisible] = useState(false);
+  const [exportFileName, setExportFileName] = useState("");
+  const [exportTarget, setExportTarget] = useState(null);
   const [draggingIndex, setDraggingIndex] = useState(null);
   const [searchText, setSearchText] = useState("");
   const searchTerms = useMemo(
@@ -315,7 +340,7 @@ export default function PlayListScreen() {
 
   useEffect(() => {
     setSearchText("");
-  }, [isClassical, isTutorials]);
+  }, [isClassical, isNews, isTutorials]);
 
   useEffect(() => {
     if (Platform.OS === "web" || clientId) return;
@@ -363,10 +388,10 @@ export default function PlayListScreen() {
       period: "",
       year: "",
     });
-    setTracks(initialTracks(isTutorials));
+    setTracks(initialTracks(isTutorialStyle));
     setClassicalDetailsExpanded(true);
     setEditorVisible(true);
-  }, [isTutorials]);
+  }, [isTutorialStyle]);
 
   const openEdit = useCallback(
     async (item) => {
@@ -384,7 +409,8 @@ export default function PlayListScreen() {
       const baseTracks = item.tracks.map((track, index) => ({
         kind: track.kind === "album" ? "album" : "single",
         title:
-          track.title || `${isTutorials ? "Vídeo" : "Elemento"} ${index + 1}`,
+          track.title ||
+          `${isTutorialStyle ? "Vídeo" : "Elemento"} ${index + 1}`,
         url:
           track.url ||
           (track.playlistId
@@ -402,7 +428,7 @@ export default function PlayListScreen() {
           : null,
         localLyrics: null,
       }));
-      if (Platform.OS === "web" && !isTutorials) {
+      if (Platform.OS === "web" && !isTutorialStyle) {
         const hydrated = await Promise.all(
           baseTracks.map(async (track) => {
             try {
@@ -425,7 +451,7 @@ export default function PlayListScreen() {
       }
       setEditorVisible(true);
     },
-    [isTutorials],
+    [isTutorialStyle],
   );
 
   const updateTrack = useCallback((index, field, value) => {
@@ -626,13 +652,13 @@ export default function PlayListScreen() {
               ...current,
               {
                 kind: "single",
-                title: `${isTutorials ? "Vídeo" : isClassical ? "Obra" : "Single"} ${current.length + 1}`,
+                title: `${isTutorialStyle ? "Vídeo" : isClassical ? "Obra" : "Single"} ${current.length + 1}`,
                 url: "",
                 lyrics: null,
               },
             ],
       ),
-    [isClassical, isTutorials, maximumTracks],
+    [isClassical, isTutorialStyle, maximumTracks],
   );
   const removeTrack = useCallback(
     (index) => {
@@ -640,10 +666,12 @@ export default function PlayListScreen() {
       if (!track || saving || tracks.length <= minimumTracks) return;
       const trackTitle =
         track.title?.trim() ||
-        `${isTutorials ? "Vídeo" : "Elemento"} ${index + 1}`;
+        `${isTutorialStyle ? "Vídeo" : "Elemento"} ${index + 1}`;
       safeAlert(
-        isTutorials
-          ? "Quitar vídeo del tutorial"
+        isTutorialStyle
+          ? isNews
+            ? "Quitar vídeo de noticias"
+            : "Quitar vídeo del tutorial"
           : "Quitar elemento de la playlist",
         `¿Quieres quitar «${trackTitle}»? El cambio se aplicará cuando guardes.`,
         [
@@ -661,7 +689,7 @@ export default function PlayListScreen() {
         ],
       );
     },
-    [isTutorials, minimumTracks, saving, tracks],
+    [isNews, isTutorialStyle, minimumTracks, saving, tracks],
   );
   const moveTrack = useCallback((index, direction) => {
     setTracks((current) => {
@@ -740,9 +768,12 @@ export default function PlayListScreen() {
       }
       const args = {
         clientId,
+        ...(isTutorialStyle
+          ? { contentType: isNews ? "news" : "tutorial" }
+          : {}),
         title: title.trim(),
         tracks: normalizedTracks,
-        ...(!isTutorials
+        ...(!isTutorialStyle
           ? {
               collectionType: isClassical ? "classical" : "playlist",
               ...(isClassical ? classicalDetails : {}),
@@ -768,7 +799,8 @@ export default function PlayListScreen() {
     createPlaylist,
     editingId,
     isClassical,
-    isTutorials,
+    isNews,
+    isTutorialStyle,
     title,
     tracks,
     updatePlaylist,
@@ -783,7 +815,13 @@ export default function PlayListScreen() {
         async () => {
           setDeletingId(item._id);
           try {
-            await removePlaylist({ playlistId: item._id, clientId });
+            await removePlaylist({
+              playlistId: item._id,
+              clientId,
+              ...(isTutorialStyle
+                ? { contentType: isNews ? "news" : "tutorial" }
+                : {}),
+            });
           } catch (error) {
             safeAlert(
               "No se pudo borrar",
@@ -795,14 +833,14 @@ export default function PlayListScreen() {
         },
         { confirmText: "Borrar", destructive: true },
       ),
-    [clientId, collectionLabel, removePlaylist],
+    [clientId, collectionLabel, isNews, isTutorialStyle, removePlaylist],
   );
 
   const exportPlaylist = useCallback(
-    async (item) => {
+    async (item, fileName) => {
       try {
         await saveJsonFile(
-          `${safeFileName(item.title)}.json`,
+          jsonFileName(fileName, safeFileName(item.title)),
           toExportedPlaylist(item, exportItemType),
         );
       } catch (error) {
@@ -815,31 +853,68 @@ export default function PlayListScreen() {
     [exportItemType],
   );
 
-  const exportAll = useCallback(async () => {
-    try {
-      await saveJsonFile(
-        isClassical ? "shopp-musica-clasica.json" : "shopp-playlists.json",
-        {
+  const defaultExportName = isNews
+    ? "Noticias"
+    : isTutorials
+      ? "Tutoriales"
+      : isClassical
+        ? "Classic playlist"
+        : "Music playlist";
+
+  const exportAll = useCallback(
+    async (fileName) => {
+      try {
+        await saveJsonFile(jsonFileName(fileName, defaultExportName), {
           version: 1,
           type: exportType,
           exportedAt: new Date().toISOString(),
           playlists: (playlists || []).map((item) =>
             toExportedPlaylist(item, exportItemType),
           ),
-        },
-      );
-    } catch (error) {
-      safeAlert("No se pudo exportar", error?.message || "Inténtalo de nuevo.");
+        });
+      } catch (error) {
+        safeAlert(
+          "No se pudo exportar",
+          error?.message || "Inténtalo de nuevo.",
+        );
+      }
+    },
+    [defaultExportName, exportItemType, exportType, playlists],
+  );
+
+  const openExportAll = useCallback(() => {
+    setExportTarget(null);
+    setExportFileName(defaultExportName);
+    setExportNameVisible(true);
+  }, [defaultExportName]);
+
+  const openExportPlaylist = useCallback((item) => {
+    setExportTarget(item);
+    setExportFileName(item.title || "playlist");
+    setExportNameVisible(true);
+  }, []);
+
+  const confirmExport = useCallback(async () => {
+    const fileName = exportFileName.trim();
+    if (!fileName) {
+      safeAlert("Nombre requerido", "Escribe un nombre para el fichero JSON.");
+      return;
     }
-  }, [exportItemType, exportType, isClassical, playlists]);
+    setExportNameVisible(false);
+    if (exportTarget) await exportPlaylist(exportTarget, fileName);
+    else await exportAll(fileName);
+  }, [exportAll, exportFileName, exportPlaylist, exportTarget]);
   const reorderPlaylist = useCallback(
     async (item, nextTracks) => {
       try {
         await updatePlaylist({
           playlistId: item._id,
           clientId,
+          ...(isTutorialStyle
+            ? { contentType: isNews ? "news" : "tutorial" }
+            : {}),
           title: item.title,
-          ...(!isTutorials
+          ...(!isTutorialStyle
             ? {
                 collectionType: isClassical ? "classical" : "playlist",
                 ...(isClassical
@@ -876,7 +951,7 @@ export default function PlayListScreen() {
         );
       }
     },
-    [clientId, isClassical, isTutorials, updatePlaylist],
+    [clientId, isClassical, isNews, isTutorialStyle, updatePlaylist],
   );
 
   const importJson = useCallback(async () => {
@@ -896,6 +971,8 @@ export default function PlayListScreen() {
         exportType,
         minimumTracks,
         maximumTracks,
+        isNews ? ["shopp-youtube-tutorial"] : [],
+        isNews ? ["shopp-youtube-tutorials"] : [],
       );
       const existingSignatures = new Set(
         (playlists || []).map(
@@ -911,7 +988,13 @@ export default function PlayListScreen() {
           skipped += 1;
           continue;
         }
-        await createPlaylist({ clientId, ...playlist });
+        await createPlaylist({
+          clientId,
+          ...(isTutorialStyle
+            ? { contentType: isNews ? "news" : "tutorial" }
+            : {}),
+          ...playlist,
+        });
         existingSignatures.add(signature);
         added += 1;
       }
@@ -935,6 +1018,8 @@ export default function PlayListScreen() {
     exportItemType,
     exportType,
     isClassical,
+    isNews,
+    isTutorialStyle,
     minimumTracks,
     maximumTracks,
     playlists,
@@ -950,19 +1035,23 @@ export default function PlayListScreen() {
           value={searchText}
           onChangeText={setSearchText}
           placeholder={
-            isTutorials
-              ? "Buscar tutoriales…"
-              : isClassical
-                ? "Buscar música clásica…"
-                : "Buscar playlists…"
+            isNews
+              ? "Buscar noticias…"
+              : isTutorials
+                ? "Buscar tutoriales…"
+                : isClassical
+                  ? "Buscar música clásica…"
+                  : "Buscar playlists…"
           }
           placeholderTextColor="#888"
           accessibilityLabel={
-            isTutorials
-              ? "Buscar tutoriales"
-              : isClassical
-                ? "Buscar música clásica"
-                : "Buscar playlists"
+            isNews
+              ? "Buscar noticias"
+              : isTutorials
+                ? "Buscar tutoriales"
+                : isClassical
+                  ? "Buscar música clásica"
+                  : "Buscar playlists"
           }
           autoCapitalize="none"
           autoCorrect={false}
@@ -991,7 +1080,7 @@ export default function PlayListScreen() {
         <Text style={styles.searchCount} accessibilityLiveRegion="polite">
           {searchTerms.length
             ? `${filteredPlaylists.length} ${filteredPlaylists.length === 1 ? "coincidencia" : "coincidencias"} de ${playlists.length}`
-            : `${playlists.length} ${isTutorials ? "tutoriales" : isClassical ? "colecciones" : "playlists"}`}
+            : `${playlists.length} ${isNews ? "noticias" : isTutorials ? "tutoriales" : isClassical ? "colecciones" : "playlists"}`}
         </Text>
       ) : null}
     </View>
@@ -1003,15 +1092,17 @@ export default function PlayListScreen() {
         <View style={styles.headerText}>
           <Text style={styles.heading}>{collectionTitle}</Text>
           <Text style={styles.subtitle}>
-            {isTutorials
-              ? "Organiza vídeos y series de YouTube para aprender a tu ritmo."
-              : isClassical
-                ? "Organiza obras, conciertos, intérpretes y grabaciones de YouTube."
-                : "Combina canciones individuales y álbumes de YouTube."}
+            {isNews
+              ? "Organiza vídeos y series de actualidad de YouTube."
+              : isTutorials
+                ? "Organiza vídeos y series de YouTube para aprender a tu ritmo."
+                : isClassical
+                  ? "Organiza obras, conciertos, intérpretes y grabaciones de YouTube."
+                  : "Combina canciones individuales y álbumes de YouTube."}
           </Text>
         </View>
         <View style={styles.headerActions}>
-          {isTutorials ? (
+          {isTutorialStyle ? (
             <Pressable
               onPress={() => setTransferVisible(true)}
               style={styles.secondaryButton}
@@ -1033,7 +1124,7 @@ export default function PlayListScreen() {
             </Text>
           </Pressable>
           {playlists?.length ? (
-            <Pressable onPress={exportAll} style={styles.secondaryButton}>
+            <Pressable onPress={openExportAll} style={styles.secondaryButton}>
               <Ionicons name="share-outline" size={21} color="#2563eb" />
               <Text style={styles.secondaryButtonText}>Exportar todo</Text>
             </Pressable>
@@ -1041,11 +1132,13 @@ export default function PlayListScreen() {
           <Pressable onPress={openNew} style={styles.newButton}>
             <Ionicons name="add-circle-outline" size={20} color="#fff" />
             <Text style={styles.newButtonText}>
-              {isTutorials
-                ? "Nuevo tutorial"
-                : isClassical
-                  ? "Nueva colección"
-                  : "Nueva playlist"}
+              {isNews
+                ? "Nueva colección"
+                : isTutorials
+                  ? "Nuevo tutorial"
+                  : isClassical
+                    ? "Nueva colección"
+                    : "Nueva playlist"}
             </Text>
           </Pressable>
         </View>
@@ -1070,22 +1163,24 @@ export default function PlayListScreen() {
               <CustomYouTubePlaylistPlayer
                 playlist={item}
                 userName={
-                  isTutorials
-                    ? "Mis tutoriales"
-                    : isClassical
-                      ? [item.composer, item.performer]
-                          .filter(Boolean)
-                          .join(" · ") || "Música clásica"
-                      : "Mi playlist"
+                  isNews
+                    ? "Mis noticias"
+                    : isTutorials
+                      ? "Mis tutoriales"
+                      : isClassical
+                        ? [item.composer, item.performer]
+                            .filter(Boolean)
+                            .join(" · ") || "Música clásica"
+                        : "Mi playlist"
                 }
-                isTutorial={isTutorials}
+                isTutorial={isTutorialStyle}
                 dateLabel={formatDate(item.updatedAt)}
                 canEdit
                 canDelete
                 deleting={deletingId === item._id}
                 onEdit={() => openEdit(item)}
                 onDelete={() => confirmRemove(item)}
-                onExport={() => exportPlaylist(item)}
+                onExport={() => openExportPlaylist(item)}
                 onReorder={(nextTracks) => reorderPlaylist(item, nextTracks)}
               />
             </View>
@@ -1111,26 +1206,32 @@ export default function PlayListScreen() {
               <View style={styles.empty}>
                 <Ionicons name="logo-youtube" size={46} color="#dc2626" />
                 <Text style={styles.emptyTitle}>
-                  {isTutorials
-                    ? "Todavía no hay tutoriales"
-                    : isClassical
-                      ? "Todavía no hay música clásica"
-                      : "Todavía no hay playlists"}
+                  {isNews
+                    ? "Todavía no hay noticias"
+                    : isTutorials
+                      ? "Todavía no hay tutoriales"
+                      : isClassical
+                        ? "Todavía no hay música clásica"
+                        : "Todavía no hay playlists"}
                 </Text>
                 <Text style={styles.emptyText}>
-                  {isTutorials
-                    ? "Crea una colección con vídeos o series de YouTube."
-                    : isClassical
-                      ? "Crea una colección de obras o conciertos mediante sus enlaces de YouTube."
-                      : "Crea una combinando singles o álbumes mediante sus enlaces de YouTube."}
+                  {isNews
+                    ? "Crea una colección con vídeos o series de actualidad de YouTube."
+                    : isTutorials
+                      ? "Crea una colección con vídeos o series de YouTube."
+                      : isClassical
+                        ? "Crea una colección de obras o conciertos mediante sus enlaces de YouTube."
+                        : "Crea una combinando singles o álbumes mediante sus enlaces de YouTube."}
                 </Text>
                 <Pressable onPress={openNew} style={styles.emptyButton}>
                   <Text style={styles.emptyButtonText}>
-                    {isTutorials
-                      ? "Nuevo tutorial"
-                      : isClassical
-                        ? "Nueva colección"
-                        : "Nueva playlist"}
+                    {isNews
+                      ? "Nueva colección"
+                      : isTutorials
+                        ? "Nuevo tutorial"
+                        : isClassical
+                          ? "Nueva colección"
+                          : "Nueva playlist"}
                   </Text>
                 </Pressable>
               </View>
@@ -1138,13 +1239,56 @@ export default function PlayListScreen() {
           }
         />
       )}
-      {isTutorials && transferVisible ? (
+      {isTutorialStyle && transferVisible ? (
         <TutorialTransferScreen
           tutorials={playlists}
           clientId={clientId}
+          contentType={isNews ? "news" : "tutorial"}
+          collectionName={isNews ? "noticias" : "tutoriales"}
           onClose={() => setTransferVisible(false)}
         />
       ) : null}
+      <Modal
+        visible={exportNameVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setExportNameVisible(false)}
+      >
+        <View style={styles.backdrop}>
+          <View style={styles.exportNameCard}>
+            <Text style={styles.editorTitle}>
+              {exportTarget
+                ? `Exportar «${exportTarget.title}»`
+                : "Nombre del fichero JSON"}
+            </Text>
+            <Text style={styles.editorSubtitle}>
+              Escribe el nombre del fichero. Se añadirá automáticamente la
+              extensión .json.
+            </Text>
+            <TextInput
+              value={exportFileName}
+              onChangeText={setExportFileName}
+              placeholder={defaultExportName}
+              placeholderTextColor="#999"
+              autoFocus
+              selectTextOnFocus
+              style={styles.titleInput}
+            />
+            <View style={styles.exportNameActions}>
+              <Pressable
+                onPress={() => setExportNameVisible(false)}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonText}>Cancelar</Text>
+              </Pressable>
+              <Pressable onPress={confirmExport} style={styles.newButton}>
+                <Ionicons name="share-outline" size={18} color="#fff" />
+                <Text style={styles.newButtonText}>Exportar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <Modal
         visible={editorVisible}
         transparent
@@ -1161,11 +1305,13 @@ export default function PlayListScreen() {
                     : `Nuevo ${collectionLabel}`}
                 </Text>
                 <Text style={styles.editorSubtitle}>
-                  {isTutorials
-                    ? "Añade vídeos y series mediante sus enlaces de YouTube."
-                    : isClassical
-                      ? "Añade obras o conciertos mediante sus enlaces de YouTube."
-                      : "Añade singles o álbumes mediante sus enlaces de YouTube."}
+                  {isNews
+                    ? "Añade vídeos y series de actualidad mediante enlaces de YouTube."
+                    : isTutorials
+                      ? "Añade vídeos y series mediante sus enlaces de YouTube."
+                      : isClassical
+                        ? "Añade obras o conciertos mediante sus enlaces de YouTube."
+                        : "Añade singles o álbumes mediante sus enlaces de YouTube."}
                 </Text>
               </View>
               <Pressable
@@ -1179,17 +1325,23 @@ export default function PlayListScreen() {
               <View style={styles.tutorialTypeHelpItem}>
                 <Ionicons
                   name={
-                    isTutorials ? "play-circle-outline" : "musical-note-outline"
+                    isTutorialStyle
+                      ? "play-circle-outline"
+                      : "musical-note-outline"
                   }
                   size={21}
                   color="#2563eb"
                 />
                 <View style={styles.tutorialTypeHelpText}>
                   <Text style={styles.tutorialTypeHelpTitle}>
-                    {isTutorials ? "Vídeo" : isClassical ? "Obra" : "Single"}
+                    {isTutorialStyle
+                      ? "Vídeo"
+                      : isClassical
+                        ? "Obra"
+                        : "Single"}
                   </Text>
                   <Text style={styles.tutorialTypeHelpDescription}>
-                    {isTutorials
+                    {isTutorialStyle
                       ? "Un único vídeo o capítulo de YouTube."
                       : isClassical
                         ? "Una obra, movimiento o interpretación individual."
@@ -1199,20 +1351,20 @@ export default function PlayListScreen() {
               </View>
               <View style={styles.tutorialTypeHelpItem}>
                 <Ionicons
-                  name={isTutorials ? "list-outline" : "albums-outline"}
+                  name={isTutorialStyle ? "list-outline" : "albums-outline"}
                   size={21}
                   color="#2563eb"
                 />
                 <View style={styles.tutorialTypeHelpText}>
                   <Text style={styles.tutorialTypeHelpTitle}>
-                    {isTutorials
+                    {isTutorialStyle
                       ? "Serie"
                       : isClassical
                         ? "Concierto"
                         : "Álbum"}
                   </Text>
                   <Text style={styles.tutorialTypeHelpDescription}>
-                    {isTutorials
+                    {isTutorialStyle
                       ? "Una playlist de YouTube con varios capítulos."
                       : isClassical
                         ? "Una playlist con varios movimientos u obras."
@@ -1273,6 +1425,7 @@ export default function PlayListScreen() {
                       onChangeText={setTitle}
                       maxLength={120}
                       placeholder="Concierto para piano n.º 5"
+                      placeholderTextColor="#999"
                       style={styles.titleInput}
                     />
                     <View style={styles.classicalDetails}>
@@ -1296,6 +1449,7 @@ export default function PlayListScreen() {
                             }
                             maxLength={field === "year" ? 20 : 120}
                             placeholder={placeholder}
+                            placeholderTextColor="#999"
                             style={styles.compactClassicalInput}
                           />
                         </View>
@@ -1307,19 +1461,24 @@ export default function PlayListScreen() {
             ) : (
               <>
                 <Text style={styles.label}>
-                  {isTutorials
-                    ? "Nombre del curso o colección"
-                    : "Nombre del concierto o playlist"}
+                  {isNews
+                    ? "Nombre de la colección de noticias"
+                    : isTutorials
+                      ? "Nombre del curso o colección"
+                      : "Nombre del concierto o playlist"}
                 </Text>
                 <TextInput
                   value={title}
                   onChangeText={setTitle}
                   maxLength={120}
                   placeholder={
-                    isTutorials
-                      ? "React Native · Curso de iniciación"
-                      : "Mozart · Concierto para piano · Daniel Barenboim"
+                    isNews
+                      ? "Actualidad nacional · Septiembre"
+                      : isTutorials
+                        ? "React Native · Curso de iniciación"
+                        : "Mozart · Concierto para piano · Daniel Barenboim"
                   }
+                  placeholderTextColor="#999"
                   style={styles.titleInput}
                 />
               </>
@@ -1394,7 +1553,7 @@ export default function PlayListScreen() {
                     >
                       <Ionicons
                         name={
-                          isTutorials
+                          isTutorialStyle
                             ? "play-circle-outline"
                             : "musical-note-outline"
                         }
@@ -1407,7 +1566,7 @@ export default function PlayListScreen() {
                           track.kind !== "album" && styles.kindTextActive,
                         ]}
                       >
-                        {isTutorials
+                        {isTutorialStyle
                           ? "Vídeo"
                           : isClassical
                             ? "Obra"
@@ -1422,7 +1581,9 @@ export default function PlayListScreen() {
                       ]}
                     >
                       <Ionicons
-                        name={isTutorials ? "list-outline" : "albums-outline"}
+                        name={
+                          isTutorialStyle ? "list-outline" : "albums-outline"
+                        }
                         size={16}
                         color={track.kind === "album" ? "#fff" : "#475569"}
                       />
@@ -1432,7 +1593,7 @@ export default function PlayListScreen() {
                           track.kind === "album" && styles.kindTextActive,
                         ]}
                       >
-                        {isTutorials
+                        {isTutorialStyle
                           ? "Serie"
                           : isClassical
                             ? "Concierto"
@@ -1445,7 +1606,7 @@ export default function PlayListScreen() {
                     onChangeText={(value) => updateTrack(index, "title", value)}
                     maxLength={120}
                     placeholder={
-                      isTutorials
+                      isTutorialStyle
                         ? track.kind === "album"
                           ? "Título de la serie"
                           : "Título del vídeo"
@@ -1457,6 +1618,7 @@ export default function PlayListScreen() {
                             ? "I. Allegro"
                             : "Título del single"
                     }
+                    placeholderTextColor="#999"
                     style={styles.trackInput}
                   />
                   <TextInput
@@ -1469,9 +1631,10 @@ export default function PlayListScreen() {
                         ? "https://youtube.com/playlist?list=..."
                         : "https://youtu.be/..."
                     }
+                    placeholderTextColor="#999"
                     style={styles.trackInput}
                   />
-                  {isTutorials && editorVisible ? (
+                  {isTutorialStyle && editorVisible ? (
                     <EditorVideoPreview
                       track={track}
                       active={
@@ -1486,7 +1649,7 @@ export default function PlayListScreen() {
                       }}
                     />
                   ) : null}
-                  {!isTutorials ? (
+                  {!isTutorialStyle ? (
                     <View style={styles.lyricsRow}>
                       <Pressable
                         onPress={() =>
@@ -1617,6 +1780,7 @@ export default function PlayListScreen() {
               value={lyricsFileName}
               onChangeText={setLyricsFileName}
               placeholder="lyrics.lrc"
+              placeholderTextColor="#999"
               style={styles.trackInput}
               autoCapitalize="none"
               autoCorrect={false}
@@ -1974,6 +2138,21 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: "#cbd5e1",
+  },
+  exportNameCard: {
+    width: 460,
+    maxWidth: "92%",
+    gap: 12,
+    padding: 18,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+  },
+  exportNameActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 8,
   },
   lyricsTextArea: {
     minHeight: 360,
