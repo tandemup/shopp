@@ -21,7 +21,6 @@ import CurrencyBadge from "@/src/components/ui/CurrencyBadge";
 import { safeAlert, safeMenu } from "@/src/components/ui/alert/safeAlert";
 import { DEFAULT_CURRENCY } from "@/src/constants/currency";
 import { useLists } from "@/src/context/ListsContext";
-import { useScannedHistoryStorage } from "@/src/hooks/useScannedHistoryStorage";
 import { ROUTES } from "@/src/navigation/ROUTES";
 import { buildHeaderConfig } from "@/src/utils/layout/headerStyles";
 import { isAdminUser } from "@/src/utils/featureAccess";
@@ -163,7 +162,6 @@ function QuickAction({
 function QuickActions({
   archivedCount = 0,
   historyCount = 0,
-  scannedCount = 0,
   isAdmin = false,
 }) {
   const navigation = useNavigation();
@@ -224,13 +222,24 @@ function QuickActions({
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.TICKET_CAPTURE),
       },
       {
+        key: "recipes",
+        label: "Recetas",
+        description: "Cocina sana y asequible",
+        icon: "nutrition-outline",
+        iconColor: COLORS.green,
+        iconBackground: COLORS.greenSoft,
+        onPress: () =>
+          navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.RECIPES),
+      },
+      {
         key: "scanned",
         label: "Escaneos",
         description: "Escanea productos y consulta el historial",
         icon: "barcode-outline",
         iconColor: COLORS.cyan,
         iconBackground: COLORS.cyanSoft,
-        badge: scannedCount,
+        badgeLabel: "DEV",
+        requiresAdmin: true,
         // El acceso rápido debe abrir el tab Scanner completo para
         // centralizar allí todas sus acciones, en lugar de saltar
         // directamente a una pantalla interna como el historial.
@@ -396,7 +405,6 @@ function QuickActions({
       isAdmin,
       navigateToNestedRoute,
       navigation,
-      scannedCount,
     ],
   );
 
@@ -503,43 +511,14 @@ export default function ShoppingListsScreen() {
     updateList,
     archiveList,
   } = useLists();
-  const scanHistoryStorage = useScannedHistoryStorage();
-
   const [editingList, setEditingList] = useState(undefined);
   const [editName, setEditName] = useState("");
-  const [scannedCount, setScannedCount] = useState(0);
 
   const maxContentWidth = width >= 1000 ? 920 : undefined;
 
   useEffect(() => {
     navigation.setOptions(headerConfig.navigationOptions);
   }, [navigation]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadScannedCount() {
-      try {
-        const history = await scanHistoryStorage.getScannedHistory();
-
-        if (isMounted) {
-          setScannedCount(Array.isArray(history) ? history.length : 0);
-        }
-      } catch (error) {
-        console.warn("[ShoppingListsScreen] scan history count failed", error);
-
-        if (isMounted) {
-          setScannedCount(0);
-        }
-      }
-    }
-
-    loadScannedCount();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [scanHistoryStorage]);
 
   const sortedActiveLists = useMemo(
     () =>
@@ -843,7 +822,6 @@ export default function ShoppingListsScreen() {
                 <QuickActions
                   archivedCount={archivedLists.length}
                   historyCount={purchaseHistory.length}
-                  scannedCount={scannedCount}
                   isAdmin={isAdminUser(currentUser)}
                 />
               }

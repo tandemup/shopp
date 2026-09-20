@@ -20,12 +20,21 @@ const normalizeStores = (stores) => {
 };
 
 export const StoresProvider = ({ children }) => {
-  const convexStores = useQuery(api.stores.listStoresWithMyFavorites);
+  const currentUser = useQuery(api.users.current);
+  const isAdmin =
+    currentUser?.isAdmin === true || currentUser?.role === "admin";
+  // El catálogo de tiendas es una herramienta DEV. Los compradores pueden
+  // seguir usando sus listas locales sin descargar toda la tabla en cada
+  // inicio de sesión.
+  const convexStores = useQuery(
+    api.stores.listStoresWithMyFavorites,
+    isAdmin ? {} : "skip",
+  );
   const toggleFavoriteMutation = useMutation(api.stores.toggleMyFavoriteStore);
 
   const stores = useMemo(() => normalizeStores(convexStores), [convexStores]);
 
-  const ready = convexStores !== undefined;
+  const ready = !isAdmin || convexStores !== undefined;
 
   const favoriteStores = useMemo(() => {
     return stores.filter((store) => store.favorite === true);

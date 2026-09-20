@@ -22,6 +22,7 @@ import WebRtcFireAlarmScreen from "@/src/screens/webRtcFireAlarm/WebRtcFireAlarm
 import EnglishTutorScreen from "@/src/screens/chat/EnglishTutorScreen";
 import LibraryScreen from "@/src/screens/library/LibraryScreen";
 import PlayListScreen from "@/src/screens/playlist/PlayListScreen";
+import RecipesScreen from "@/src/screens/recipes/RecipesScreen";
 import ShoppLiveScreen from "@/src/screens/live/ShoppLiveScreen";
 import InvestmentsScreen from "@/src/screens/investments/InvestmentsScreen";
 import { adminOnly } from "@/src/components/access/AdminOnlyFeature";
@@ -30,6 +31,14 @@ const Stack = createNativeStackNavigator();
 
 const DevStoresScreen = adminOnly(StoresScreen, "Tiendas");
 const DevStoreMapScreen = adminOnly(StoreMapScreen, "Mapa de tiendas");
+const DevScannedHistoryScreen = adminOnly(
+  ScannedHistoryScreen,
+  "Historial de escaneos",
+);
+const DevEditScannedItemScreen = adminOnly(
+  EditScannedItemScreen,
+  "Edición de escaneos",
+);
 const DevFireAlarmScreen = adminOnly(WebRtcFireAlarmScreen, "Fire Alarm");
 const DevEnglishTutorScreen = adminOnly(EnglishTutorScreen, "Tutor de Inglés");
 const DevLibraryScreen = adminOnly(LibraryScreen, "Biblioteca");
@@ -38,6 +47,7 @@ const DevTutorialsScreen = adminOnly(PlayListScreen, "Tutoriales");
 const DevNewsScreen = adminOnly(PlayListScreen, "Noticias");
 const DevShoppLiveScreen = adminOnly(ShoppLiveScreen, "Shopp Live");
 const DevInvestmentsScreen = adminOnly(InvestmentsScreen, "Inversiones");
+const DevPlayListScreen = adminOnly(PlayListScreen, "Playlists musicales");
 
 export default function ShoppingStack() {
   useI18n();
@@ -74,11 +84,11 @@ export default function ShoppingStack() {
       />
       <Stack.Screen
         name={ROUTES.SCANNED_HISTORY}
-        component={ScannedHistoryScreen}
+        component={DevScannedHistoryScreen}
       />
       <Stack.Screen
         name={ROUTES.EDIT_SCANNED_ITEM}
-        component={EditScannedItemScreen}
+        component={DevEditScannedItemScreen}
       />
       <Stack.Screen
         name={ROUTES.WEBRTC_FIRE_ALARM}
@@ -96,8 +106,13 @@ export default function ShoppingStack() {
       />
       <Stack.Screen
         name={ROUTES.PLAY_LIST}
-        component={PlayListScreen}
+        component={DevPlayListScreen}
         options={{ title: "Play List" }}
+      />
+      <Stack.Screen
+        name={ROUTES.RECIPES}
+        component={RecipesScreen}
+        options={{ title: "Recetas saludables" }}
       />
       <Stack.Screen
         name={ROUTES.CLASSICAL_MUSIC}

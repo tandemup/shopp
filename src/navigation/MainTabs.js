@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { Platform, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery } from "convex/react";
 
 import { ROUTES } from "@/src/navigation/ROUTES";
 import ShoppingStack from "@/src/navigation/ShoppingStack";
@@ -11,6 +12,7 @@ import StoresStack from "@/src/navigation/StoresStack";
 import ChatStack from "@/src/navigation/ChatStack";
 import ScannerStack from "@/src/navigation/ScannerStack";
 import MenuStack from "@/src/navigation/MenuStack";
+import { api } from "@/convex/_generated/api";
 
 const Tab = createBottomTabNavigator();
 
@@ -23,6 +25,8 @@ const WEB_TAB_BAR_HEIGHT = `calc(${TAB_BAR_CONTENT_HEIGHT}px + env(safe-area-ins
 
 export default function MainTabs() {
   useI18n();
+  const currentUser = useQuery(api.users.current);
+  const isAdmin = currentUser?.role === "admin" || currentUser?.isAdmin === true;
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_PADDING);
   const tabBarHeight =
@@ -99,7 +103,7 @@ export default function MainTabs() {
         }}
       />
 
-      <Tab.Screen
+      {isAdmin ? <Tab.Screen
         name={ROUTES.STORES_TAB}
         component={StoresStack}
         listeners={({ navigation }) => ({
@@ -122,9 +126,9 @@ export default function MainTabs() {
             />
           ),
         }}
-      />
+      /> : null}
 
-      <Tab.Screen
+      {isAdmin ? <Tab.Screen
         name={ROUTES.CHAT_TAB}
         component={ChatStack}
         listeners={({ navigation }) => ({
@@ -147,9 +151,9 @@ export default function MainTabs() {
             />
           ),
         }}
-      />
+      /> : null}
 
-      <Tab.Screen
+      {isAdmin ? <Tab.Screen
         name={ROUTES.SCANNER_TAB}
         component={ScannerStack}
         listeners={({ navigation }) => ({
@@ -167,7 +171,7 @@ export default function MainTabs() {
             <Ionicons name="barcode" color={color} size={Math.min(size, 29)} />
           ),
         }}
-      />
+      /> : null}
 
       <Tab.Screen
         name={ROUTES.MENU_TAB}
