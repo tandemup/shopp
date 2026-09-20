@@ -1629,7 +1629,6 @@ export default function LibraryScreen({ navigation, route }) {
   const [newsSortModalVisible, setNewsSortModalVisible] = useState(false);
   const [searchPage, setSearchPage] = useState(0);
   const [browsePage, setBrowsePage] = useState(0);
-  const [browseCursors, setBrowseCursors] = useState([null]);
   const [slowTask, setSlowTask] = useState(null);
   const [resumeImportModalVisible, setResumeImportModalVisible] =
     useState(false);
@@ -1681,7 +1680,6 @@ export default function LibraryScreen({ navigation, route }) {
   useEffect(() => {
     setSearchPage(0);
     setBrowsePage(0);
-    setBrowseCursors([null]);
   }, [
     submittedSearch,
     selectedHashtagFilter,
@@ -1845,7 +1843,9 @@ export default function LibraryScreen({ navigation, route }) {
     !isSearchingLibrary && (browsePage > 0 || browseHasNextPage);
   const showPagination = showSearchPagination || showBrowsePagination;
   const activePage = isSearchingLibrary ? activeSearchPage : browsePage;
-  const displayedTotalPages = isSearchingLibrary ? searchTotalPages : null;
+  // La API local siempre conoce el total. Mostrarlo también al navegar sin
+  // búsqueda evita que "10" se interprete como si solo hubiera una página.
+  const displayedTotalPages = Number(libraryResult?.totalPages || 1);
   const shownItemLabel = isSourceCatalog
     ? isBooksFolder
       ? shownItemCount === 1
@@ -4497,9 +4497,7 @@ export default function LibraryScreen({ navigation, route }) {
                 <Ionicons name="chevron-back" size={17} color="#2563eb" />
               </Pressable>
               <Text style={styles.searchPaginationInlineText}>
-                {displayedTotalPages
-                  ? `${activePage + 1}/${displayedTotalPages}`
-                  : activePage + 1}
+                {`Página ${activePage + 1} de ${displayedTotalPages}`}
               </Text>
               <Pressable
                 onPress={() => {
@@ -4511,11 +4509,6 @@ export default function LibraryScreen({ navigation, route }) {
                   }
                   const nextCursor = libraryResult?.continueCursor;
                   if (!nextCursor) return;
-                  setBrowseCursors((current) => {
-                    const next = current.slice(0, browsePage + 1);
-                    next.push(nextCursor);
-                    return next;
-                  });
                   setBrowsePage((page) => page + 1);
                 }}
                 disabled={
