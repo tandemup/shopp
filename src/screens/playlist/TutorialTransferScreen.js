@@ -156,7 +156,6 @@ function TutorialPane({
         value={query}
         onChangeText={setQuery}
         placeholder="Buscar elementos…"
-        placeholderTextColor="#888"
         accessibilityLabel={`Buscar elementos: ${label}`}
         editable={!busy && Boolean(tutorial)}
         style={styles.search}

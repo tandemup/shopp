@@ -280,7 +280,6 @@ export default function ArchivedListsScreen({ navigation }) {
           value={search}
           onChange={setSearch}
           placeholder="Buscar lista, supermercado o producto…"
-          placeholderTextColor="#999"
           style={styles.searchBar}
         />
 

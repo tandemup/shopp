@@ -7,6 +7,7 @@ import {
 } from "react-native";
 import { I18nTextInput as TextInput } from "@/src/i18n";
 import { Ionicons } from "@expo/vector-icons";
+import { COLORS } from "@/src/constants/colors";
 
 export default function BarcodeInput({
   value,
@@ -14,6 +15,7 @@ export default function BarcodeInput({
   onPressScanner,
   onPressSearch,
   placeholder = "EAN-13",
+  placeholderTextColor = COLORS.textSoft,
   editable = true,
   autoFocus = false,
   style,
@@ -26,7 +28,7 @@ export default function BarcodeInput({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="#999"
+        placeholderTextColor={placeholderTextColor}
         autoCapitalize="none"
         autoCorrect={false}
         editable={editable}

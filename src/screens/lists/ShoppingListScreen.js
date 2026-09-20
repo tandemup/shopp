@@ -65,7 +65,6 @@ const InfoRow = ({ date, store, onSelectStore, onPressStoreInfo }) => (
       store={store}
       onPressStore={onSelectStore}
       placeholder="Especificar tienda"
-      placeholderTextColor="#999"
     />
 
     {!!store?.id && (

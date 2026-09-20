@@ -97,7 +97,6 @@ export default function EnglishTutorScreen() {
             setImageFailed(false);
           }}
           placeholder="https://ejemplo.com/fotografia.jpg"
-          placeholderTextColor="#98A2B3"
           style={styles.input}
           value={imageUrl}
         />
@@ -123,7 +122,6 @@ export default function EnglishTutorScreen() {
           multiline
           onChangeText={setDescription}
           placeholder="In this photo, I can see..."
-          placeholderTextColor="#98A2B3"
           style={[styles.input, styles.descriptionInput]}
           textAlignVertical="top"
           value={description}

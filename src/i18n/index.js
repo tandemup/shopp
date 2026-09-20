@@ -6,6 +6,7 @@ import React, {
   useState,
 } from "react";
 import { Text as RNText, TextInput as RNTextInput } from "react-native";
+import { COLORS } from "@/src/constants/colors";
 import { storage } from "@/src/storage/storage";
 import { STORAGE_KEYS } from "@/src/storage/storageKeys";
 
@@ -1289,7 +1290,17 @@ export function I18nText({ children, ...props }) {
   return <RNText {...props}>{translateNode(children, language)}</RNText>;
 }
 
-export function I18nTextInput({ placeholder, ...props }) {
+export function I18nTextInput({
+  placeholder,
+  placeholderTextColor = COLORS.textSoft,
+  ...props
+}) {
   const { language } = useI18n();
-  return <RNTextInput {...props} placeholder={tr(placeholder, language)} />;
+  return (
+    <RNTextInput
+      {...props}
+      placeholder={tr(placeholder, language)}
+      placeholderTextColor={placeholderTextColor}
+    />
+  );
 }

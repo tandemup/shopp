@@ -33,6 +33,7 @@ const COLORS = {
   greenSoft: "#E8F4E9",
   text: "#141414",
   muted: "#777D86",
+  textSoft: "#98A2B3",
   border: "#E3E8E2",
   danger: "#D94A3A",
   bubbleIn: "#FFFFFF",
@@ -326,7 +327,7 @@ function Sidebar({
             value={username}
             onChangeText={onChangeUsername}
             placeholder="anonymous"
-            placeholderTextColor={COLORS.muted}
+            placeholderTextColor={COLORS.textSoft}
             style={styles.sidebarUsernameInput}
             autoCapitalize="none"
             autoCorrect={false}
@@ -363,7 +364,7 @@ function MobileHeader({
         value={username}
         onChangeText={onChangeUsername}
         placeholder="anonymous"
-        placeholderTextColor={COLORS.muted}
+        placeholderTextColor={COLORS.textSoft}
         style={styles.mobileUsernameInput}
         autoCapitalize="none"
         autoCorrect={false}
@@ -485,7 +486,7 @@ function Composer({ value, onChangeText, onSend, isDesktop, sending }) {
         value={value}
         onChangeText={onChangeText}
         placeholder="Escribe mensaje..."
-        placeholderTextColor={COLORS.muted}
+        placeholderTextColor={COLORS.textSoft}
         multiline={!isDesktop}
         maxLength={500}
         returnKeyType="send"

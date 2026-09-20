@@ -42,10 +42,10 @@ const normalizeSearchText = (value) =>
     .toLowerCase()
     .trim();
 
-const initialTracks = (tutorials = false) => {
+const initialTracks = () => {
   const first = {
     kind: "single",
-    title: tutorials ? "Vídeo 1" : "I. Allegro",
+    title: "",
     url: "",
     lyrics: null,
   };
@@ -305,7 +305,7 @@ export default function PlayListScreen() {
   });
   const [classicalDetailsExpanded, setClassicalDetailsExpanded] =
     useState(true);
-  const [tracks, setTracks] = useState(() => initialTracks(isTutorialStyle));
+  const [tracks, setTracks] = useState(initialTracks);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -388,7 +388,7 @@ export default function PlayListScreen() {
       period: "",
       year: "",
     });
-    setTracks(initialTracks(isTutorialStyle));
+    setTracks(initialTracks());
     setClassicalDetailsExpanded(true);
     setEditorVisible(true);
   }, [isTutorialStyle]);
@@ -1043,7 +1043,6 @@ export default function PlayListScreen() {
                   ? "Buscar música clásica…"
                   : "Buscar playlists…"
           }
-          placeholderTextColor="#888"
           accessibilityLabel={
             isNews
               ? "Buscar noticias"
@@ -1269,7 +1268,6 @@ export default function PlayListScreen() {
               value={exportFileName}
               onChangeText={setExportFileName}
               placeholder={defaultExportName}
-              placeholderTextColor="#999"
               autoFocus
               selectTextOnFocus
               style={styles.titleInput}
@@ -1425,7 +1423,6 @@ export default function PlayListScreen() {
                       onChangeText={setTitle}
                       maxLength={120}
                       placeholder="Concierto para piano n.º 5"
-                      placeholderTextColor="#999"
                       style={styles.titleInput}
                     />
                     <View style={styles.classicalDetails}>
@@ -1449,7 +1446,6 @@ export default function PlayListScreen() {
                             }
                             maxLength={field === "year" ? 20 : 120}
                             placeholder={placeholder}
-                            placeholderTextColor="#999"
                             style={styles.compactClassicalInput}
                           />
                         </View>
@@ -1478,7 +1474,6 @@ export default function PlayListScreen() {
                         ? "React Native · Curso de iniciación"
                         : "Mozart · Concierto para piano · Daniel Barenboim"
                   }
-                  placeholderTextColor="#999"
                   style={styles.titleInput}
                 />
               </>
@@ -1618,7 +1613,6 @@ export default function PlayListScreen() {
                             ? "I. Allegro"
                             : "Título del single"
                     }
-                    placeholderTextColor="#999"
                     style={styles.trackInput}
                   />
                   <TextInput
@@ -1631,7 +1625,6 @@ export default function PlayListScreen() {
                         ? "https://youtube.com/playlist?list=..."
                         : "https://youtu.be/..."
                     }
-                    placeholderTextColor="#999"
                     style={styles.trackInput}
                   />
                   {isTutorialStyle && editorVisible ? (
@@ -1780,7 +1773,6 @@ export default function PlayListScreen() {
               value={lyricsFileName}
               onChangeText={setLyricsFileName}
               placeholder="lyrics.lrc"
-              placeholderTextColor="#999"
               style={styles.trackInput}
               autoCapitalize="none"
               autoCorrect={false}

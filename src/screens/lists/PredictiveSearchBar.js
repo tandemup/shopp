@@ -7,6 +7,7 @@ import {
   StyleSheet
 } from "react-native";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
+import { COLORS } from "@/src/constants/colors";
 
 import { Ionicons } from "@expo/vector-icons";
 
@@ -16,6 +17,7 @@ export default function PredictiveSearchBar({
   onChangeText,
   onSelect,
   placeholder = "Buscar productos",
+  placeholderTextColor = COLORS.textSoft,
   maxSuggestions = 8,
 }) {
   const [focused, setFocused] = useState(false);
@@ -57,7 +59,7 @@ export default function PredictiveSearchBar({
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor="#9CA3AF"
+          placeholderTextColor={placeholderTextColor}
           autoCapitalize="none"
           autoCorrect={false}
           onFocus={() => setFocused(true)}

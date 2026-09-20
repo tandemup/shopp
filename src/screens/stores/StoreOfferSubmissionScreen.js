@@ -3,14 +3,35 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "reac
 import { useFocusEffect } from "@react-navigation/native";
 import { useConvex, useMutation } from "convex/react";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
+import { COLORS } from "@/src/constants/colors";
 
 import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 const EMPTY_FORM = { storeId: "", productName: "", barcode: "", offerText: "", contactName: "", contactEmail: "", notes: "" };
 
-function Field({ label, value, onChangeText, multiline = false, ...props }) {
-  return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={label} placeholderTextColor="#9CA3AF" multiline={multiline} style={[styles.input, multiline && styles.multiline]} {...props} /></View>;
+function Field({
+  label,
+  value,
+  onChangeText,
+  multiline = false,
+  placeholderTextColor = COLORS.textSoft,
+  ...props
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={label}
+        placeholderTextColor={placeholderTextColor}
+        multiline={multiline}
+        style={[styles.input, multiline && styles.multiline]}
+        {...props}
+      />
+    </View>
+  );
 }
 
 export default function StoreOfferSubmissionScreen({ navigation, route }) {

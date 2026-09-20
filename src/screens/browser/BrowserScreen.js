@@ -16,6 +16,7 @@ import { StatusBar } from "expo-status-bar";
 import { useAction, useMutation } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
+import { COLORS } from "@/src/constants/colors";
 import { I18nText as Text } from "@/src/i18n";
 import BrowserViewport from "@/src/components/browser/BrowserViewport";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
@@ -290,7 +291,7 @@ export default function BrowserScreen() {
               returnKeyType="go"
               selectTextOnFocus
               placeholder="https://example.com"
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={COLORS.textSoft}
               style={styles.addressInput}
             />
           </View>

@@ -23,6 +23,7 @@ import { useQuery } from "convex/react";
 
 import { ROUTES } from "@/src/navigation/ROUTES";
 import { api } from "@/convex/_generated/api";
+import { COLORS } from "@/src/constants/colors";
 import { DEFAULT_BARCODE_SETTINGS } from "@/src/constants/barcodeFormats";
 import { getBarcodeSettings } from "@/src/storage/barcodeSettingsStorage";
 import { buildHeaderConfig } from "@/src/utils/layout/headerStyles";
@@ -316,7 +317,7 @@ export default function ScannerTabScreen({ navigation }) {
                     value={manualUserHint}
                     onChangeText={setManualUserHint}
                     placeholder="Información adicional opcional: marca, autor, intérprete…"
-                    placeholderTextColor={TEXT_MUTED}
+                    placeholderTextColor={COLORS.textSoft}
                     multiline
                     style={styles.manualHintInput}
                     accessibilityLabel="Información adicional del producto"
@@ -330,7 +331,7 @@ export default function ScannerTabScreen({ navigation }) {
                       onChangeText={handleManualBarcodeChange}
                       onSubmitEditing={processManualBarcode}
                       placeholder="Código de barras"
-                      placeholderTextColor={TEXT_MUTED}
+                      placeholderTextColor={COLORS.textSoft}
                       keyboardType="number-pad"
                       inputMode="numeric"
                       returnKeyType="go"

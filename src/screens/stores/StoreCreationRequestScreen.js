@@ -7,6 +7,7 @@ import {
   View,
 } from "react-native";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
+import { COLORS } from "@/src/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -22,7 +23,14 @@ const EMPTY_FORM = {
   longitude: "",
 };
 
-function Field({ label, value, onChangeText, placeholder, keyboardType }) {
+function Field({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  placeholderTextColor = COLORS.textSoft,
+  keyboardType,
+}) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -30,7 +38,7 @@ function Field({ label, value, onChangeText, placeholder, keyboardType }) {
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder || label}
-        placeholderTextColor="#94a3b8"
+        placeholderTextColor={placeholderTextColor}
         keyboardType={keyboardType}
         style={styles.input}
       />
@@ -136,14 +144,12 @@ export default function StoreCreationRequestScreen({ navigation }) {
         value={form.name}
         onChangeText={(value) => updateField("name", value)}
         placeholder="Ej. Alimerka"
-        placeholderTextColor="#999"
       />
       <Field
         label="Dirección *"
         value={form.address}
         onChangeText={(value) => updateField("address", value)}
         placeholder="Calle y número"
-        placeholderTextColor="#999"
       />
       <Field
         label="Ciudad"
@@ -172,7 +178,6 @@ export default function StoreCreationRequestScreen({ navigation }) {
         value={form.latitude}
         onChangeText={(value) => updateField("latitude", value)}
         placeholder="43.5350"
-        placeholderTextColor="#999"
         keyboardType="decimal-pad"
       />
       <Field
@@ -180,7 +185,6 @@ export default function StoreCreationRequestScreen({ navigation }) {
         value={form.longitude}
         onChangeText={(value) => updateField("longitude", value)}
         placeholder="-5.6615"
-        placeholderTextColor="#999"
         keyboardType="decimal-pad"
       />
 

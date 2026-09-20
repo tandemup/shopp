@@ -299,7 +299,6 @@ export default function LoginScreen({ navigation, route }) {
                     value={email}
                     onChangeText={handleEmailChange}
                     placeholder="tu@email.com"
-                    placeholderTextColor="#94a3b8"
                     autoCapitalize="none"
                     autoCorrect={false}
                     keyboardType="email-address"
@@ -333,7 +332,6 @@ export default function LoginScreen({ navigation, route }) {
                     value={password}
                     onChangeText={handlePasswordChange}
                     placeholder="Tu contraseña"
-                    placeholderTextColor="#94a3b8"
                     secureTextEntry={!showPassword}
                     autoCapitalize="none"
                     autoCorrect={false}

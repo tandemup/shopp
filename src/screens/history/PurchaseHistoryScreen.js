@@ -454,7 +454,6 @@ export default function PurchaseHistoryScreen() {
           value={search}
           onChange={setSearch}
           placeholder="Buscar categoría, producto o supermercado..."
-          placeholderTextColor="#999"
           style={styles.searchBar}
         />
 

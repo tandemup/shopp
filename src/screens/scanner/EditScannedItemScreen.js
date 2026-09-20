@@ -16,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
+import { COLORS } from "@/src/constants/colors";
 
 import { Image } from "expo-image";
 import * as Clipboard from "expo-clipboard";
@@ -436,6 +437,7 @@ function FormField({
   value,
   onChangeText,
   placeholder,
+  placeholderTextColor = COLORS.textSoft,
   autoCapitalize = "sentences",
   autoCorrect = true,
   keyboardType = "default",
@@ -449,7 +451,7 @@ function FormField({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="#9CA3AF"
+        placeholderTextColor={placeholderTextColor}
         style={[styles.input, multiline && styles.multilineInput]}
         autoCapitalize={autoCapitalize}
         autoCorrect={autoCorrect}
@@ -536,7 +538,6 @@ function ProductDetailsFields({
                   : onChange(key, value)
               }
               placeholder={placeholder}
-              placeholderTextColor="#999"
               multiline={Boolean(multiline)}
             />
           </View>
@@ -2041,7 +2042,6 @@ export default function EditScannedItemScreen({ route, navigation }) {
                       ? "Título de la obra o álbum"
                       : "Nombre del producto"
                 }
-                placeholderTextColor="#999"
               />
 
               <ProductTypeSelector
@@ -2060,7 +2060,6 @@ export default function EditScannedItemScreen({ route, navigation }) {
                       ? "Ej. música clásica, Mozart, edición remasterizada…"
                       : "Ej. marca, modelo, color, talla o características…"
                 }
-                placeholderTextColor="#999"
                 multiline
               />
 
@@ -2155,7 +2154,6 @@ export default function EditScannedItemScreen({ route, navigation }) {
                       value={supermarketJson}
                       onChangeText={setSupermarketJson}
                       placeholder={'{"barcode":"...","name":"..."}'}
-                      placeholderTextColor="#98A2B3"
                       multiline
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -2210,7 +2208,6 @@ export default function EditScannedItemScreen({ route, navigation }) {
                       value={musicJson}
                       onChangeText={setMusicJson}
                       placeholder={'{"barcode":"...","title":"..."}'}
-                      placeholderTextColor="#98A2B3"
                       multiline
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -2261,7 +2258,6 @@ export default function EditScannedItemScreen({ route, navigation }) {
                       value={bookJson}
                       onChangeText={setBookJson}
                       placeholder={'{"barcode":"...","title":"..."}'}
-                      placeholderTextColor="#98A2B3"
                       multiline
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -2298,7 +2294,6 @@ export default function EditScannedItemScreen({ route, navigation }) {
                   value={brand}
                   onChangeText={setBrand}
                   placeholder="Marca o fabricante"
-                  placeholderTextColor="#999"
                   autoCapitalize="words"
                 />
               ) : null}
@@ -2309,7 +2304,6 @@ export default function EditScannedItemScreen({ route, navigation }) {
                   value={category}
                   onChangeText={setCategory}
                   placeholder="Ej. Música clásica"
-                  placeholderTextColor="#999"
                 />
               ) : null}
 
@@ -2328,7 +2322,6 @@ export default function EditScannedItemScreen({ route, navigation }) {
                 value={notes}
                 onChangeText={setNotes}
                 placeholder="Notas personales sobre el producto"
-                placeholderTextColor="#999"
                 multiline
               />
 
@@ -2337,7 +2330,6 @@ export default function EditScannedItemScreen({ route, navigation }) {
                 value={productUrl}
                 onChangeText={setProductUrl}
                 placeholder="https://..."
-                placeholderTextColor="#999"
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="url"

@@ -490,7 +490,6 @@ export default function RegisterScreen({ navigation }) {
                   clearError();
                 }}
                 placeholder="Tu nombre"
-                placeholderTextColor="#94a3b8"
                 autoCapitalize="words"
                 autoCorrect={false}
                 textContentType="name"
@@ -519,7 +518,6 @@ export default function RegisterScreen({ navigation }) {
                   clearError();
                 }}
                 placeholder="Tu alias"
-                placeholderTextColor="#94a3b8"
                 autoCapitalize="none"
                 autoCorrect={false}
                 editable={!loading}
@@ -550,7 +548,6 @@ export default function RegisterScreen({ navigation }) {
                 clearError();
               }}
               placeholder="Número de teléfono"
-              placeholderTextColor="#94a3b8"
               keyboardType="phone-pad"
               inputMode="tel"
               textContentType="telephoneNumber"
@@ -584,7 +581,6 @@ export default function RegisterScreen({ navigation }) {
                 clearError();
               }}
               placeholder="tu@email.com"
-              placeholderTextColor="#94a3b8"
               keyboardType="email-address"
               inputMode="email"
               autoCapitalize="none"
@@ -622,7 +618,6 @@ export default function RegisterScreen({ navigation }) {
                   clearError();
                 }}
                 placeholder="Contraseña"
-                placeholderTextColor="#94a3b8"
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -678,7 +673,6 @@ export default function RegisterScreen({ navigation }) {
                   clearError();
                 }}
                 placeholder="Repite la contraseña"
-                placeholderTextColor="#94a3b8"
                 secureTextEntry={!showPasswordConfirmation}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -846,7 +840,6 @@ export default function RegisterScreen({ navigation }) {
             clearError();
           }}
           placeholder="00000000"
-          placeholderTextColor="#cbd5e1"
           keyboardType="number-pad"
           inputMode="numeric"
           autoCapitalize="none"

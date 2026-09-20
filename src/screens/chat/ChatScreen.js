@@ -478,7 +478,6 @@ function ComputerLinkLibrary({ clientId, language }) {
           value={search}
           onChangeText={setSearch}
           placeholder={language === "en" ? "Search links…" : "Buscar enlaces…"}
-          placeholderTextColor="#94a3b8"
           style={styles.librarySearchInput}
           autoCorrect={false}
           autoCapitalize="none"
@@ -1457,7 +1456,6 @@ export default function ChatScreen() {
               value={alias}
               onChangeText={handleAliasChange}
               placeholder="Tu alias"
-              placeholderTextColor="#9ca3af"
               style={styles.aliasInput}
               maxLength={40}
               autoCorrect={false}
@@ -1688,7 +1686,6 @@ export default function ChatScreen() {
                 ? "Pega un vídeo o playlist de YouTube…"
                 : "Escribe un mensaje…"
             }
-            placeholderTextColor="#9ca3af"
             style={styles.messageInput}
             multiline
             maxLength={messageLengthLimit}
@@ -1748,7 +1745,6 @@ export default function ChatScreen() {
                 value={playlistTitle}
                 onChangeText={setPlaylistTitle}
                 placeholder="Mozart · Concierto para piano · Daniel Barenboim"
-                placeholderTextColor="#999"
                 style={styles.playlistTitleInput}
                 maxLength={120}
               />
@@ -1860,7 +1856,6 @@ export default function ChatScreen() {
                           ? `Nombre del álbum ${index + 1}`
                           : `Nombre del single ${index + 1}`
                       }
-                      placeholderTextColor="#999"
                       style={styles.playlistTrackInput}
                       maxLength={120}
                     />
@@ -1874,7 +1869,6 @@ export default function ChatScreen() {
                           ? "https://youtube.com/playlist?list=..."
                           : "https://youtu.be/..."
                       }
-                      placeholderTextColor="#999"
                       style={styles.playlistTrackInput}
                       autoCorrect={false}
                       autoCapitalize="none"
@@ -2028,7 +2022,6 @@ export default function ChatScreen() {
                     ? "Nombre del álbum"
                     : "Nombre de la playlist"
                 }
-                placeholderTextColor="#999"
                 editable={!savingAlbum}
                 maxLength={120}
                 style={styles.albumTitleInput}

@@ -1799,7 +1799,6 @@ export default function LibraryScreen({ navigation }) {
                         ? "Pega la URL de una noticia"
                         : "https://ejemplo.com"
                 }
-                placeholderTextColor="#94a3b8"
                 style={styles.urlInput}
                 autoCorrect={false}
                 autoCapitalize="none"
@@ -1823,7 +1822,6 @@ export default function LibraryScreen({ navigation }) {
                 value={search}
                 onChangeText={setSearch}
                 placeholder="Buscar por URL, dominio o autor…"
-                placeholderTextColor="#94a3b8"
                 style={[
                   styles.searchInput,
                   Platform.OS === "web" && styles.webInputNoOutline,
@@ -2152,7 +2150,6 @@ export default function LibraryScreen({ navigation }) {
                 value={folderName}
                 onChangeText={setFolderName}
                 placeholder="Nombre de la categoría"
-                placeholderTextColor="#94a3b8"
                 style={styles.folderEditorInput}
                 maxLength={50}
                 autoFocus
@@ -2194,7 +2191,6 @@ export default function LibraryScreen({ navigation }) {
                 value={editingFolderName}
                 onChangeText={setEditingFolderName}
                 placeholder="Nombre de la subcategoría"
-                placeholderTextColor="#94a3b8"
                 style={styles.folderEditorInput}
                 maxLength={50}
                 autoFocus
@@ -2755,7 +2751,6 @@ export default function LibraryScreen({ navigation }) {
                   value={integritySearch}
                   onChangeText={setIntegritySearch}
                   placeholder="Buscar categoría o dominio..."
-                  placeholderTextColor="#94a3b8"
                   autoCapitalize="none"
                   autoCorrect={false}
                   style={[
@@ -2824,7 +2819,6 @@ export default function LibraryScreen({ navigation }) {
                   value={exportFilename}
                   onChangeText={setExportFilename}
                   placeholder="shopp-biblioteca.json"
-                  placeholderTextColor="#94a3b8"
                   style={styles.modalInput}
                   autoCorrect={false}
                   autoCapitalize="none"
@@ -3230,7 +3224,6 @@ export default function LibraryScreen({ navigation }) {
                     ? "Por ejemplo: Casa del Libro"
                     : "Por ejemplo: El País"
                 }
-                placeholderTextColor="#94a3b8"
                 style={styles.modalInput}
                 maxLength={80}
               />
@@ -3243,7 +3236,6 @@ export default function LibraryScreen({ navigation }) {
                     ? "https://www.casadellibro.com"
                     : "https://elpais.com"
                 }
-                placeholderTextColor="#94a3b8"
                 style={styles.modalInput}
                 autoCorrect={false}
                 autoCapitalize="none"
@@ -3292,7 +3284,6 @@ export default function LibraryScreen({ navigation }) {
                 value={notesInput}
                 onChangeText={setNotesInput}
                 placeholder="Añade una nota sobre este enlace…"
-                placeholderTextColor="#94a3b8"
                 style={[styles.modalInput, styles.notesInput]}
                 multiline
                 maxLength={1000}
@@ -3302,7 +3293,6 @@ export default function LibraryScreen({ navigation }) {
                 value={hashtagsInput}
                 onChangeText={setHashtagsInput}
                 placeholder="#javascript #tutorial #consulta"
-                placeholderTextColor="#94a3b8"
                 style={styles.modalInput}
                 autoCorrect={false}
                 autoCapitalize="none"

@@ -597,7 +597,6 @@ export default function ScannedHistoryScreen({ navigation, route }) {
             value={searchQuery}
             onChange={setSearchQuery}
             placeholder="Buscar producto, marca o código..."
-            placeholderTextColor="#999"
             style={styles.searchBar}
           />
 

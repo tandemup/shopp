@@ -225,7 +225,6 @@ function CardNombreBarcode({
         value={nameItem}
         onChangeText={onChangeName}
         placeholder="Nombre del producto"
-        placeholderTextColor="#9ca3af"
         autoCapitalize="none"
         autoCorrect={false}
       />

@@ -6,6 +6,7 @@ import {
   StyleSheet
 } from "react-native";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
+import { COLORS } from "@/src/constants/colors";
 
 import { Ionicons } from "@expo/vector-icons";
 
@@ -34,6 +35,7 @@ export default function SearchCombinedBar({
   currentList,
   onAddFromHistory,
   onCreateNew,
+  placeholderTextColor = COLORS.textSoft,
 }) {
   const inputRef = useRef(null);
 
@@ -136,7 +138,7 @@ export default function SearchCombinedBar({
           ref={inputRef}
           style={styles.searchInput}
           placeholder="Buscar producto (actual o histórico)…"
-          placeholderTextColor="#9CA3AF"
+          placeholderTextColor={placeholderTextColor}
           value={query}
           onChangeText={setQuery}
           onSubmitEditing={() => {

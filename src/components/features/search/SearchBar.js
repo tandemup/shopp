@@ -2,11 +2,13 @@ import React from "react";
 import { View, StyleSheet } from "react-native";
 import { I18nTextInput as TextInput } from "@/src/i18n";
 import { Ionicons } from "@expo/vector-icons";
+import { COLORS } from "@/src/constants/colors";
 
 export default function SearchBar({
   value,
   onChange,
   placeholder = "Buscar…",
+  placeholderTextColor = COLORS.textSoft,
   style,
 }) {
   return (
@@ -15,7 +17,7 @@ export default function SearchBar({
       <TextInput
         style={styles.input}
         placeholder={placeholder}
-        placeholderTextColor="#999"
+        placeholderTextColor={placeholderTextColor}
         value={value}
         onChangeText={onChange}
         autoCorrect={false}

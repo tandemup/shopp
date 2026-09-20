@@ -313,7 +313,6 @@ export default function ChatScreen({
                       value={activeUsername}
                       onChangeText={setActiveUsername}
                       placeholder="anonymous"
-                      placeholderTextColor="#888"
                       style={styles.usernameInput}
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -366,7 +365,6 @@ export default function ChatScreen({
                   value={text}
                   onChangeText={handleChangeText}
                   placeholder="¿Qué está pasando en la compra?"
-                  placeholderTextColor="#888"
                   style={styles.input}
                   multiline
                   maxLength={MAX_POST_LENGTH}

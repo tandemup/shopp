@@ -2378,7 +2378,6 @@ export default function ParkingScreen({ navigation }) {
             value={note}
             onChangeText={setNote}
             placeholder="Ejemplo: estoy en doble fila, salgo en 2 minutos..."
-            placeholderTextColor="#9ca3af"
             style={styles.noteInput}
             multiline
             maxLength={180}

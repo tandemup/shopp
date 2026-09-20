@@ -735,7 +735,6 @@ export default function ParkingSettingsScreen({ navigation, route }) {
                 value={draftParkingAlias}
                 onChangeText={setDraftParkingAlias}
                 placeholder="Ej. 4104-BZG"
-                placeholderTextColor="#888"
                 style={styles.usernameInput}
                 autoCapitalize="none"
                 autoCorrect={false}

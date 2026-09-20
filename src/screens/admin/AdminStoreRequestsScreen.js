@@ -52,8 +52,8 @@ function RequestCard({ item, busy, onUpdateStatus, onSaveLocation }) {
       {item.status === "pending" ? (
         <>
           <View style={styles.coordinateRow}>
-            <TextInput value={lat} onChangeText={setLat} placeholder="Latitud" placeholderTextColor="#9CA3AF" keyboardType="decimal-pad" style={styles.coordinateInput} />
-            <TextInput value={lng} onChangeText={setLng} placeholder="Longitud" placeholderTextColor="#9CA3AF" keyboardType="decimal-pad" style={styles.coordinateInput} />
+            <TextInput value={lat} onChangeText={setLat} placeholder="Latitud" keyboardType="decimal-pad" style={styles.coordinateInput} />
+            <TextInput value={lng} onChangeText={setLng} placeholder="Longitud" keyboardType="decimal-pad" style={styles.coordinateInput} />
             <Pressable style={styles.saveLocation} onPress={() => onSaveLocation(item, lat, lng)}><Ionicons name="save-outline" size={20} color="#1D4ED8" /></Pressable>
           </View>
           <View style={styles.actions}>

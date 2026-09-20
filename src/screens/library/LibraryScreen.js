@@ -3563,7 +3563,6 @@ export default function LibraryScreen({ navigation, route }) {
                           ? "Pega la URL de una publicación de Instagram"
                           : "https://ejemplo.com"
                 }
-                placeholderTextColor="#94a3b8"
                 style={styles.urlInput}
                 autoCorrect={false}
                 autoCapitalize="none"
@@ -3584,7 +3583,6 @@ export default function LibraryScreen({ navigation, route }) {
               value={addTitleInput}
               onChangeText={setAddTitleInput}
               placeholder="Título descriptivo (opcional)"
-              placeholderTextColor="#94a3b8"
               style={styles.addTitleInput}
               maxLength={240}
               onSubmitEditing={handleAddUrl}
@@ -3596,7 +3594,6 @@ export default function LibraryScreen({ navigation, route }) {
                 value={search}
                 onChangeText={setSearch}
                 placeholder="Buscar por URL, dominio o autor…"
-                placeholderTextColor="#94a3b8"
                 style={[
                   styles.searchInput,
                   Platform.OS === "web" && styles.webInputNoOutline,
@@ -4032,7 +4029,6 @@ export default function LibraryScreen({ navigation, route }) {
                       value={hashtagSearch}
                       onChangeText={setHashtagSearch}
                       placeholder="Buscar hashtag…"
-                      placeholderTextColor="#94a3b8"
                       style={[
                         styles.hashtagCatalogSearchInput,
                         Platform.OS === "web" && styles.webInputNoOutline,
@@ -4263,7 +4259,6 @@ export default function LibraryScreen({ navigation, route }) {
                 value={folderName}
                 onChangeText={setFolderName}
                 placeholder="Nombre de la categoría"
-                placeholderTextColor="#94a3b8"
                 style={styles.folderEditorInput}
                 maxLength={50}
                 autoFocus
@@ -4305,7 +4300,6 @@ export default function LibraryScreen({ navigation, route }) {
                 value={editingFolderName}
                 onChangeText={setEditingFolderName}
                 placeholder="Nombre de la subcategoría"
-                placeholderTextColor="#94a3b8"
                 style={styles.folderEditorInput}
                 maxLength={50}
                 autoFocus
@@ -4934,7 +4928,6 @@ export default function LibraryScreen({ navigation, route }) {
                   value={integritySearch}
                   onChangeText={setIntegritySearch}
                   placeholder="Buscar categoría o dominio..."
-                  placeholderTextColor="#94a3b8"
                   autoCapitalize="none"
                   autoCorrect={false}
                   style={[
@@ -5056,7 +5049,6 @@ export default function LibraryScreen({ navigation, route }) {
                   value={integritySearch}
                   onChangeText={setIntegritySearch}
                   placeholder="Buscar categoría o dominio..."
-                  placeholderTextColor="#94a3b8"
                   autoCapitalize="none"
                   autoCorrect={false}
                   style={[
@@ -5125,7 +5117,6 @@ export default function LibraryScreen({ navigation, route }) {
                   value={exportFilename}
                   onChangeText={setExportFilename}
                   placeholder="shopp-biblioteca.json"
-                  placeholderTextColor="#94a3b8"
                   style={styles.modalInput}
                   autoCorrect={false}
                   autoCapitalize="none"
@@ -5708,7 +5699,6 @@ export default function LibraryScreen({ navigation, route }) {
                     ? "Por ejemplo: Casa del Libro"
                     : "Por ejemplo: El País"
                 }
-                placeholderTextColor="#94a3b8"
                 style={styles.modalInput}
                 maxLength={80}
               />
@@ -5721,7 +5711,6 @@ export default function LibraryScreen({ navigation, route }) {
                     ? "https://www.casadellibro.com"
                     : "https://elpais.com"
                 }
-                placeholderTextColor="#94a3b8"
                 style={styles.modalInput}
                 autoCorrect={false}
                 autoCapitalize="none"
@@ -5770,7 +5759,6 @@ export default function LibraryScreen({ navigation, route }) {
                 value={editingTitleInput}
                 onChangeText={setEditingTitleInput}
                 placeholder="Describe este enlace o vídeo…"
-                placeholderTextColor="#94a3b8"
                 style={styles.modalInput}
                 maxLength={240}
               />
@@ -5779,7 +5767,6 @@ export default function LibraryScreen({ navigation, route }) {
                 value={notesInput}
                 onChangeText={setNotesInput}
                 placeholder="Añade una nota sobre este enlace…"
-                placeholderTextColor="#94a3b8"
                 style={[styles.modalInput, styles.notesInput]}
                 multiline
                 maxLength={1000}
@@ -5789,7 +5776,6 @@ export default function LibraryScreen({ navigation, route }) {
                 value={hashtagsInput}
                 onChangeText={setHashtagsInput}
                 placeholder="#javascript #tutorial #consulta"
-                placeholderTextColor="#94a3b8"
                 style={styles.modalInput}
                 autoCorrect={false}
                 autoCapitalize="none"

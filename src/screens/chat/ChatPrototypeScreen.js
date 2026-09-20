@@ -1033,7 +1033,6 @@ export default function ChatPrototypeScreen() {
                 value={productPrice}
                 onChangeText={setProductPrice}
                 placeholder="Precio pagado"
-                placeholderTextColor="#999"
                 keyboardType="decimal-pad"
               />
               <Text style={styles.euroLabel}>€</Text>
@@ -1098,7 +1097,6 @@ export default function ChatPrototypeScreen() {
                 placeholder={
                   selectedImages.length > 0 ? "Añade un comentario…" : "Mensaje"
                 }
-                placeholderTextColor="#8A959E"
                 multiline={false}
                 maxLength={MAX_MESSAGE_LENGTH}
                 returnKeyType="send"
@@ -1302,7 +1300,6 @@ export default function ChatPrototypeScreen() {
               onChangeText={setPlaylistTitle}
               maxLength={MAX_YOUTUBE_TITLE_LENGTH}
               placeholder="Nombre de la playlist"
-              placeholderTextColor="#999"
               style={styles.playlistTitleInput}
             />
 

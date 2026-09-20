@@ -35,7 +35,6 @@ function Field({ label, value, onChangeText, multiline = false }) {
         style={[styles.input, multiline && styles.multiline]}
         multiline={multiline}
         placeholder={label}
-        placeholderTextColor="#94a3b8"
       />
     </View>
   );

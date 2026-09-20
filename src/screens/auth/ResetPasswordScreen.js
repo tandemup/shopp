@@ -356,7 +356,6 @@ function EmailStep({
           value={email}
           onChangeText={setEmail}
           placeholder="nombre@correo.com"
-          placeholderTextColor="#8E96A3"
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
@@ -434,7 +433,6 @@ function CodeStep({
             setCode(value.replace(/[^0-9]/g, "").slice(0, 8))
           }
           placeholder="00000000"
-          placeholderTextColor="#8E96A3"
           keyboardType="number-pad"
           autoCapitalize="none"
           autoCorrect={false}
@@ -454,7 +452,6 @@ function CodeStep({
             value={newPassword}
             onChangeText={setNewPassword}
             placeholder="Nueva contraseña"
-            placeholderTextColor="#8E96A3"
             secureTextEntry={!showPassword}
             autoCapitalize="none"
             autoCorrect={false}
@@ -483,7 +480,6 @@ function CodeStep({
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           placeholder="Repite la contraseña"
-          placeholderTextColor="#8E96A3"
           secureTextEntry={!showPassword}
           autoCapitalize="none"
           autoCorrect={false}

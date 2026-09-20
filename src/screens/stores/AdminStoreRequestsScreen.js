@@ -134,9 +134,9 @@ export default function AdminStoreRequestsScreen() {
             <Text style={styles.details}>{request.city}, {request.provincia}{request.zipcode ? ` · ${request.zipcode}` : ""}</Text>
 
             <Text style={styles.label}>Latitud *</Text>
-            <TextInput value={values.latitude} onChangeText={(value) => updateCoordinate(request._id, "latitude", value)} keyboardType="decimal-pad" placeholder="43.5350" placeholderTextColor="#94a3b8" style={styles.input} />
+            <TextInput value={values.latitude} onChangeText={(value) => updateCoordinate(request._id, "latitude", value)} keyboardType="decimal-pad" placeholder="43.5350" style={styles.input} />
             <Text style={styles.label}>Longitud *</Text>
-            <TextInput value={values.longitude} onChangeText={(value) => updateCoordinate(request._id, "longitude", value)} keyboardType="decimal-pad" placeholder="-5.6615" placeholderTextColor="#94a3b8" style={styles.input} />
+            <TextInput value={values.longitude} onChangeText={(value) => updateCoordinate(request._id, "longitude", value)} keyboardType="decimal-pad" placeholder="-5.6615" style={styles.input} />
 
             <View style={styles.actions}>
               <Pressable disabled={busy} onPress={() => handleReject(request)} style={({ pressed }) => [styles.rejectButton, pressed && styles.pressed]}>

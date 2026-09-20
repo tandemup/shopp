@@ -291,7 +291,6 @@ export default function ShoppAdminContact({
         value={subject}
         onChangeText={setSubject}
         placeholder="Asunto del mensaje"
-        placeholderTextColor="#94a3b8"
         style={styles.input}
         maxLength={160}
         editable={!sending}
@@ -308,7 +307,6 @@ export default function ShoppAdminContact({
         value={message}
         onChangeText={setMessage}
         placeholder="Describe los hechos con claridad. No incluyas contraseñas ni datos bancarios."
-        placeholderTextColor="#94a3b8"
         style={styles.messageInput}
         multiline
         textAlignVertical="top"

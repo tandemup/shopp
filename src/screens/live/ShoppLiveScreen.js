@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
+import { COLORS } from "@/src/constants/colors";
 import { I18nText as Text } from "@/src/i18n";
 import {
   safeAlert,
@@ -158,7 +159,7 @@ function LiveChat({ channelId }) {
           value={text}
           onChangeText={setText}
           placeholder="Escribe un mensaje"
-          placeholderTextColor="#999"
+          placeholderTextColor={COLORS.textSoft}
           maxLength={280}
           onSubmitEditing={send}
           style={styles.composerInput}
@@ -237,7 +238,7 @@ function RtcDataPanel({ connected, messages, onSend }) {
           value={text}
           onChangeText={setText}
           placeholder="Mensaje P2P"
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={COLORS.textSoft}
           onSubmitEditing={sendText}
           style={styles.rtcInput}
         />
@@ -352,7 +353,7 @@ function ChannelEditor({ channel, onClose }) {
         value={form.title}
         onChangeText={(v) => setField("title", v)}
         placeholder="Título"
-        placeholderTextColor="#999"
+        placeholderTextColor={COLORS.textSoft}
 
         style={styles.field}
       />
@@ -360,14 +361,14 @@ function ChannelEditor({ channel, onClose }) {
         value={form.category}
         onChangeText={(v) => setField("category", v)}
         placeholder="Categoría"
-        placeholderTextColor="#999"
+        placeholderTextColor={COLORS.textSoft}
         style={styles.field}
       />
       <TextInput
         value={form.description}
         onChangeText={(v) => setField("description", v)}
         placeholder="Descripción"
-        placeholderTextColor="#999"
+        placeholderTextColor={COLORS.textSoft}
         multiline
         style={[styles.field, styles.multiline]}
       />
@@ -375,7 +376,7 @@ function ChannelEditor({ channel, onClose }) {
         value={form.playbackUrl}
         onChangeText={(v) => setField("playbackUrl", v)}
         placeholder="URL HTTPS de reproducción o iframe"
-        placeholderTextColor="#999"
+        placeholderTextColor={COLORS.textSoft}
         autoCapitalize="none"
         style={styles.field}
       />
@@ -383,7 +384,7 @@ function ChannelEditor({ channel, onClose }) {
         value={form.thumbnailUrl}
         onChangeText={(v) => setField("thumbnailUrl", v)}
         placeholder="URL HTTPS de portada (opcional)"
-        placeholderTextColor="#999"
+        placeholderTextColor={COLORS.textSoft}
         autoCapitalize="none"
         style={styles.field}
       />
