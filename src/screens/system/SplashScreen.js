@@ -12,7 +12,7 @@ import {
 //import splashImage from "@/assets/images/splash.png";
 import splashImage from "@/assets/images/splash-icon.png";
 
-const DISPLAY_TIME_MS = 1800;
+const DISPLAY_TIME_MS = 2800;
 
 export default function SplashScreen({ onFinish }) {
   const opacity = useRef(new Animated.Value(0)).current;
@@ -40,7 +40,9 @@ export default function SplashScreen({ onFinish }) {
             style={{ width: imageSize, height: imageSize }}
             resizeMode="contain"
           />
-          <Text style={[styles.name, { marginTop: -imageSize * 0.16 }]}>Shopp</Text>
+          <Text style={[styles.name, { marginTop: -imageSize * 0.16 }]}>
+            Shopp
+          </Text>
           <Text style={styles.subtitle}>Tu lista de la compra inteligente</Text>
         </View>
       </Animated.View>
@@ -63,17 +65,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   name: {
-    color: "#172033",
-    fontSize: 38,
+    color: "#0476E0",
+    fontSize: 40,
     fontWeight: "800",
-    letterSpacing: 1,
+    letterSpacing: 0.4,
+    textShadowColor: "rgba(4, 118, 224, 0.18)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 3,
     textAlign: "center",
   },
   subtitle: {
-    marginTop: 8,
-    color: "#667085",
-    fontSize: 16,
-    fontWeight: "500",
+    marginTop: 7,
+    color: "#475467",
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: 0.15,
     lineHeight: 23,
     textAlign: "center",
   },

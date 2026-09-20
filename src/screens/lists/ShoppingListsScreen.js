@@ -764,13 +764,6 @@ export default function ShoppingListsScreen() {
         />
       </View>
 
-      <QuickActions
-        archivedCount={archivedLists.length}
-        historyCount={purchaseHistory.length}
-        scannedCount={scannedCount}
-        isAdmin={isAdminUser(currentUser)}
-      />
-
       <View style={styles.listsSectionHeader}>
         <View>
           <Text style={styles.sectionTitle}>Mis listas</Text>
@@ -846,6 +839,14 @@ export default function ShoppingListsScreen() {
               renderItem={renderListItem}
               ListHeaderComponent={listHeader}
               ListEmptyComponent={emptyState}
+              ListFooterComponent={
+                <QuickActions
+                  archivedCount={archivedLists.length}
+                  historyCount={purchaseHistory.length}
+                  scannedCount={scannedCount}
+                  isAdmin={isAdminUser(currentUser)}
+                />
+              }
               contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
