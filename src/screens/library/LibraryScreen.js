@@ -1636,7 +1636,6 @@ export default function LibraryScreen({ navigation, route }) {
   const [newsSortModalVisible, setNewsSortModalVisible] = useState(false);
   const [searchPage, setSearchPage] = useState(0);
   const [browsePage, setBrowsePage] = useState(0);
-  const [browseCursors, setBrowseCursors] = useState([null]);
   const [slowTask, setSlowTask] = useState(null);
   const [resumeImportModalVisible, setResumeImportModalVisible] =
     useState(false);
@@ -1688,7 +1687,6 @@ export default function LibraryScreen({ navigation, route }) {
   useEffect(() => {
     setSearchPage(0);
     setBrowsePage(0);
-    setBrowseCursors([null]);
   }, [
     submittedSearch,
     selectedHashtagFilter,
@@ -1845,14 +1843,30 @@ export default function LibraryScreen({ navigation, route }) {
   const isSearchingLibrary = Boolean(submittedSearch || selectedHashtagFilter);
   const searchTotal = Number(libraryResult?.total || 0);
   const searchTotalPages = Number(libraryResult?.totalPages || 1);
-  const activeSearchPage = Number(libraryResult?.page || 0);
-  const showSearchPagination = isSearchingLibrary && searchTotalPages > 1;
-  const browseHasNextPage = Boolean(libraryResult?.continueCursor);
-  const showBrowsePagination =
-    !isSearchingLibrary && (browsePage > 0 || browseHasNextPage);
-  const showPagination = showSearchPagination || showBrowsePagination;
-  const activePage = isSearchingLibrary ? activeSearchPage : browsePage;
-  const displayedTotalPages = isSearchingLibrary ? searchTotalPages : null;
+  // La API local devuelve páginas numeradas para búsquedas y categorías.
+  // Usar sus metadatos evita que Periódicos parezca tener una sola página
+  // cuando en pantalla sólo se han cargado los primeros 50 resultados.
+  const activePage = isSearchingLibrary ? searchPage : browsePage;
+  const showPagination = searchTotalPages > 1;
+  const canGoToPreviousPage = activePage > 0;
+  const canGoToNextPage = activePage < searchTotalPages - 1;
+  const displayedTotalPages = searchTotalPages;
+  useEffect(() => {
+    if (libraryResult === undefined) return;
+    const lastAvailablePage = Math.max(0, searchTotalPages - 1);
+    if (isSearchingLibrary && searchPage > lastAvailablePage) {
+      setSearchPage(lastAvailablePage);
+    }
+    if (!isSearchingLibrary && browsePage > lastAvailablePage) {
+      setBrowsePage(lastAvailablePage);
+    }
+  }, [
+    libraryResult,
+    isSearchingLibrary,
+    searchPage,
+    browsePage,
+    searchTotalPages,
+  ]);
   const shownItemLabel = isSourceCatalog
     ? isBooksFolder
       ? shownItemCount === 1
@@ -4566,7 +4580,9 @@ export default function LibraryScreen({ navigation, route }) {
             <Text style={styles.shownItemsText} numberOfLines={1}>
               {isSearchingLibrary
                 ? `${shownItemCount} de ${searchTotal} coincidencias`
-                : `${shownItemCount} ${shownItemLabel}`}
+                : searchTotal > shownItemCount
+                  ? `${shownItemCount} de ${searchTotal} ${shownItemLabel}`
+                  : `${shownItemCount} ${shownItemLabel}`}
             </Text>
             {displayedPostsDateRange ? (
               <Text style={styles.shownItemsDateRange} numberOfLines={1}>
@@ -4601,19 +4617,17 @@ export default function LibraryScreen({ navigation, route }) {
                     setBrowsePage((page) => Math.max(0, page - 1));
                   }
                 }}
-                disabled={activePage === 0}
+                disabled={!canGoToPreviousPage}
                 style={[
                   styles.searchPaginationInlineButton,
-                  activePage === 0 && styles.buttonDisabled,
+                  !canGoToPreviousPage && styles.buttonDisabled,
                 ]}
                 accessibilityLabel="Página anterior"
               >
                 <Ionicons name="chevron-back" size={17} color="#2563eb" />
               </Pressable>
               <Text style={styles.searchPaginationInlineText}>
-                {displayedTotalPages
-                  ? `${activePage + 1}/${displayedTotalPages}`
-                  : activePage + 1}
+                {`${activePage + 1}/${displayedTotalPages}`}
               </Text>
               <Pressable
                 onPress={() => {
@@ -4623,26 +4637,14 @@ export default function LibraryScreen({ navigation, route }) {
                     );
                     return;
                   }
-                  const nextCursor = libraryResult?.continueCursor;
-                  if (!nextCursor) return;
-                  setBrowseCursors((current) => {
-                    const next = current.slice(0, browsePage + 1);
-                    next.push(nextCursor);
-                    return next;
-                  });
-                  setBrowsePage((page) => page + 1);
+                  setBrowsePage((page) =>
+                    Math.min(searchTotalPages - 1, page + 1),
+                  );
                 }}
-                disabled={
-                  isSearchingLibrary
-                    ? activeSearchPage >= searchTotalPages - 1
-                    : !browseHasNextPage
-                }
+                disabled={!canGoToNextPage}
                 style={[
                   styles.searchPaginationInlineButton,
-                  ((isSearchingLibrary &&
-                    activeSearchPage >= searchTotalPages - 1) ||
-                    (!isSearchingLibrary && !browseHasNextPage)) &&
-                    styles.buttonDisabled,
+                  !canGoToNextPage && styles.buttonDisabled,
                 ]}
                 accessibilityLabel="Página siguiente"
               >
@@ -4655,8 +4657,8 @@ export default function LibraryScreen({ navigation, route }) {
         <FlatList
           key={
             isSourceCatalog
-              ? `source-catalog-${libraryView}`
-              : `library-links-${libraryView}-${cardColumns}-${newsSort}-${searchPage}`
+              ? `source-catalog-${libraryView}-${activePage}`
+              : `library-links-${libraryView}-${cardColumns}-${newsSort}-${activePage}`
           }
           data={links || []}
           horizontal={isSourceCatalogCards}

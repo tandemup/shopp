@@ -1173,6 +1173,7 @@ export default function PlayListScreen() {
                         : "Mi playlist"
                 }
                 isTutorial={isTutorialStyle}
+                descriptiveTutorial={isTutorials}
                 dateLabel={formatDate(item.updatedAt)}
                 canEdit
                 canDelete
