@@ -22,6 +22,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import * as Clipboard from "expo-clipboard";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -1612,6 +1613,12 @@ export default function LibraryScreen({ navigation, route }) {
   const [exportNameVisible, setExportNameVisible] = useState(false);
   const [exportFilename, setExportFilename] = useState("");
   const [exportReview, setExportReview] = useState(null);
+  // Los navegadores no permiten conocer rutas locales, pero conservan un
+  // "handle" de escritura elegido por el usuario. Android devuelve la URI
+  // de una carpeta mediante el selector de almacenamiento del sistema.
+  const [exportDestination, setExportDestination] = useState(null);
+  const [selectingExportDestination, setSelectingExportDestination] =
+    useState(false);
   const [selectedExportCategoryKeys, setSelectedExportCategoryKeys] = useState(
     [],
   );
@@ -1629,6 +1636,7 @@ export default function LibraryScreen({ navigation, route }) {
   const [newsSortModalVisible, setNewsSortModalVisible] = useState(false);
   const [searchPage, setSearchPage] = useState(0);
   const [browsePage, setBrowsePage] = useState(0);
+  const [browseCursors, setBrowseCursors] = useState([null]);
   const [slowTask, setSlowTask] = useState(null);
   const [resumeImportModalVisible, setResumeImportModalVisible] =
     useState(false);
@@ -1680,6 +1688,7 @@ export default function LibraryScreen({ navigation, route }) {
   useEffect(() => {
     setSearchPage(0);
     setBrowsePage(0);
+    setBrowseCursors([null]);
   }, [
     submittedSearch,
     selectedHashtagFilter,
@@ -1843,9 +1852,7 @@ export default function LibraryScreen({ navigation, route }) {
     !isSearchingLibrary && (browsePage > 0 || browseHasNextPage);
   const showPagination = showSearchPagination || showBrowsePagination;
   const activePage = isSearchingLibrary ? activeSearchPage : browsePage;
-  // La API local siempre conoce el total. Mostrarlo también al navegar sin
-  // búsqueda evita que "10" se interprete como si solo hubiera una página.
-  const displayedTotalPages = Number(libraryResult?.totalPages || 1);
+  const displayedTotalPages = isSearchingLibrary ? searchTotalPages : null;
   const shownItemLabel = isSourceCatalog
     ? isBooksFolder
       ? shownItemCount === 1
@@ -2674,9 +2681,74 @@ export default function LibraryScreen({ navigation, route }) {
     updateMetadata,
   ]);
 
+  const selectExportDestination = useCallback(async () => {
+    const filename = normalizeBackupFilename(exportFilename);
+    if (!filename) {
+      safeAlert(
+        "Indica un nombre",
+        "Escribe primero el nombre del archivo JSON.",
+      );
+      return;
+    }
+
+    setSelectingExportDestination(true);
+    try {
+      if (
+        Platform.OS === "web" &&
+        typeof window !== "undefined" &&
+        typeof window.showSaveFilePicker === "function"
+      ) {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [
+            {
+              description: "Copia de Biblioteca (JSON)",
+              accept: { "application/json": [".json"] },
+            },
+          ],
+        });
+        setExportDestination({ kind: "web", handle, name: handle.name });
+        return;
+      }
+
+      if (
+        Platform.OS === "android" &&
+        FileSystem.StorageAccessFramework?.requestDirectoryPermissionsAsync
+      ) {
+        const permission =
+          await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (permission.granted && permission.directoryUri) {
+          setExportDestination({
+            kind: "android",
+            directoryUri: permission.directoryUri,
+            name: "Carpeta seleccionada",
+          });
+        }
+        return;
+      }
+
+      safeAlert(
+        "Elegir ubicación",
+        "Al exportar se abrirá el panel del sistema. En iPhone o iPad elige “Guardar en Archivos” y después la carpeta o unidad USB conectada.",
+      );
+    } catch (error) {
+      // Cerrar el selector de archivos no es un error de exportación.
+      if (String(error?.name || "") !== "AbortError") {
+        safeAlert(
+          "No se pudo elegir la ubicación",
+          error?.message || "Inténtalo de nuevo.",
+        );
+      }
+    } finally {
+      setSelectingExportDestination(false);
+    }
+  }, [exportFilename]);
+
   const performExportBackup = useCallback(async () => {
     const filename = normalizeBackupFilename(exportFilename);
     if (!exportReview || backupBusy || !filename) return;
+
+    const selectedDestination = exportDestination;
 
     const exportAll =
       exportReview.categories.length === 0 ||
@@ -2706,7 +2778,34 @@ export default function LibraryScreen({ navigation, route }) {
       };
       const json = JSON.stringify(payload, null, 2);
 
-      if (Platform.OS === "web" && typeof document !== "undefined") {
+      if (
+        selectedDestination?.kind === "web" &&
+        selectedDestination.handle?.createWritable
+      ) {
+        const writable = await selectedDestination.handle.createWritable();
+        await writable.write(json);
+        await writable.close();
+        safeAlert(
+          "Copia creada",
+          `Se ha guardado ${filename} en la ubicación seleccionada.`,
+        );
+      } else if (
+        selectedDestination?.kind === "android" &&
+        FileSystem.StorageAccessFramework?.createFileAsync
+      ) {
+        const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          selectedDestination.directoryUri,
+          filename,
+          "application/json",
+        );
+        await FileSystem.writeAsStringAsync(fileUri, json, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+        safeAlert(
+          "Copia creada",
+          `Se ha guardado ${filename} en la carpeta seleccionada.`,
+        );
+      } else if (Platform.OS === "web" && typeof document !== "undefined") {
         const blob = new Blob([json], {
           type: "application/json;charset=utf-8",
         });
@@ -2723,10 +2822,17 @@ export default function LibraryScreen({ navigation, route }) {
         await FileSystem.writeAsStringAsync(fileUri, json, {
           encoding: FileSystem.EncodingType.UTF8,
         });
-        safeAlert(
-          "Copia creada",
-          `Se ha guardado ${filename} en el almacenamiento de Shopp.\n\n${fileUri}`,
-        );
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(fileUri, {
+            mimeType: "application/json",
+            dialogTitle: "Guardar Biblioteca JSON",
+          });
+        } else {
+          safeAlert(
+            "Copia creada",
+            `Se ha guardado ${filename} en el almacenamiento de Shopp.\n\n${fileUri}`,
+          );
+        }
       }
     } catch (error) {
       safeAlert("No se pudo exportar", error?.message || "Inténtalo de nuevo.");
@@ -2734,11 +2840,18 @@ export default function LibraryScreen({ navigation, route }) {
       setBackupBusy(false);
       setSlowTask(null);
     }
-  }, [backupBusy, exportFilename, exportReview, selectedExportCategoryKeys]);
+  }, [
+    backupBusy,
+    exportDestination,
+    exportFilename,
+    exportReview,
+    selectedExportCategoryKeys,
+  ]);
 
   const handleExportBackup = useCallback(() => {
     if (backupBusy) return;
     setExportFilename(defaultBackupFilename());
+    setExportDestination(null);
     setBackupBusy(true);
     setSlowTask({
       kind: "prepare-export",
@@ -3372,6 +3485,7 @@ export default function LibraryScreen({ navigation, route }) {
     setExportNameVisible(false);
     setExportReview(null);
     setSelectedExportCategoryKeys([]);
+    setExportDestination(null);
   }, [backupBusy]);
 
   const toggleExportCategory = useCallback((categoryKey) => {
@@ -4497,7 +4611,9 @@ export default function LibraryScreen({ navigation, route }) {
                 <Ionicons name="chevron-back" size={17} color="#2563eb" />
               </Pressable>
               <Text style={styles.searchPaginationInlineText}>
-                {`Página ${activePage + 1} de ${displayedTotalPages}`}
+                {displayedTotalPages
+                  ? `${activePage + 1}/${displayedTotalPages}`
+                  : activePage + 1}
               </Text>
               <Pressable
                 onPress={() => {
@@ -4509,6 +4625,11 @@ export default function LibraryScreen({ navigation, route }) {
                   }
                   const nextCursor = libraryResult?.continueCursor;
                   if (!nextCursor) return;
+                  setBrowseCursors((current) => {
+                    const next = current.slice(0, browsePage + 1);
+                    next.push(nextCursor);
+                    return next;
+                  });
                   setBrowsePage((page) => page + 1);
                 }}
                 disabled={
@@ -5108,7 +5229,12 @@ export default function LibraryScreen({ navigation, route }) {
                 <Text style={styles.fieldLabel}>Nombre del archivo JSON</Text>
                 <TextInput
                   value={exportFilename}
-                  onChangeText={setExportFilename}
+                  onChangeText={(value) => {
+                    setExportFilename(value);
+                    // El selector puede haber asociado el nombre anterior a
+                    // la ubicación; obligamos a elegirla otra vez si cambia.
+                    setExportDestination(null);
+                  }}
                   placeholder="shopp-biblioteca.json"
                   style={styles.modalInput}
                   autoCorrect={false}
@@ -5121,6 +5247,50 @@ export default function LibraryScreen({ navigation, route }) {
                 <Text style={styles.fieldHelp}>
                   Si omites la extensión, se añadirá automáticamente .json.
                 </Text>
+
+                <Text style={styles.fieldLabel}>Ubicación de guardado</Text>
+                <Pressable
+                  onPress={selectExportDestination}
+                  disabled={selectingExportDestination || backupBusy}
+                  style={[
+                    styles.exportLocationButton,
+                    (selectingExportDestination || backupBusy) &&
+                      styles.buttonDisabled,
+                  ]}
+                >
+                  <Ionicons
+                    name="folder-open-outline"
+                    size={18}
+                    color="#1d4ed8"
+                  />
+                  <View style={styles.exportLocationTextWrap}>
+                    <Text style={styles.exportLocationButtonText}>
+                      {selectingExportDestination
+                        ? "Abriendo selector…"
+                        : exportDestination
+                          ? "Cambiar ubicación…"
+                          : "Seleccionar ubicación…"}
+                    </Text>
+                    <Text style={styles.exportLocationHelp}>
+                      {exportDestination
+                        ? `Preparada: ${exportDestination.name}`
+                        : Platform.OS === "web"
+                          ? "Elige una carpeta o una unidad USB conectada."
+                          : Platform.OS === "android"
+                            ? "Elige una carpeta o una unidad USB conectada."
+                            : "Al finalizar podrás elegir Guardar en Archivos."}
+                    </Text>
+                  </View>
+                </Pressable>
+                {Platform.OS === "web" &&
+                typeof window !== "undefined" &&
+                typeof window.showSaveFilePicker !== "function" ? (
+                  <Text style={styles.fieldHelp}>
+                    Este navegador usará su descarga habitual. Para elegir una
+                    unidad USB directamente, abre Shopp en Chrome o Edge de
+                    escritorio.
+                  </Text>
+                ) : null}
 
                 {importReview?.isHistoricalNewsArray ? (
                   <Text style={styles.fieldHelp}>
@@ -6274,6 +6444,23 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#1d4ed8",
   },
+  exportLocationButton: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 11,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#f8fbff",
+  },
+  exportLocationTextWrap: { flex: 1, gap: 2 },
+  exportLocationButtonText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#1d4ed8",
+  },
+  exportLocationHelp: { fontSize: 11, color: "#64748b" },
   integrityButton: {
     borderColor: "#a7f3d0",
     backgroundColor: "#ecfdf5",
