@@ -337,8 +337,8 @@ export default function PlaybackProvider({ children }) {
   // Evita que la cola quede limitada a cinco filas cuando el reproductor
   // dispone de más alto. El listado conserva su propio scroll al llenarse.
   const queueRowsMaxHeight = Math.max(
-    300,
-    height - insets.top - insets.bottom - (desktop ? 410 : 390),
+    220,
+    height - insets.top - insets.bottom - (desktop ? 670 : 620),
   );
   const bottom =
     Platform.OS === "web"
@@ -491,7 +491,13 @@ export default function PlaybackProvider({ children }) {
                 onPress={stop}
               />
             </View>
-            <View pointerEvents="none" style={styles.playerEngine}>
+            <View
+              pointerEvents={expanded ? "auto" : "none"}
+              style={[
+                styles.playerEngine,
+                expanded ? styles.playerEnginePreview : styles.playerEngineHidden,
+              ]}
+            >
               <YouTubeSurface
                 key={session.requestId}
                 ref={player}
@@ -1145,14 +1151,27 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   playerEngine: {
+    overflow: "hidden",
+    backgroundColor: "#000",
+  },
+  playerEnginePreview: {
+    width: "100%",
+    maxWidth: 640,
+    alignSelf: "center",
+    aspectRatio: 16 / 9,
+    marginTop: 14,
+    marginBottom: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#29292d",
+  },
+  playerEngineHidden: {
     position: "absolute",
-    width: 320,
-    height: 180,
-    left: 0,
+    width: 1,
+    height: 1,
+    left: -2,
     top: 52,
     opacity: 0.001,
-    zIndex: -1,
-    overflow: "hidden",
   },
   media: { flexGrow: 0, flexShrink: 1, width: "100%", minWidth: 0 },
   mediaContent: { alignItems: "center", paddingBottom: 14 },
