@@ -219,6 +219,11 @@ export default defineSchema({
         lyricsSize: v.optional(v.float64()),
       }),
     ),
+    // Fecha pública de publicación del vídeo de YouTube. En Noticias hay un
+    // único vídeo por registro, por lo que pertenece a la propia noticia.
+    youtubePublishedAt: v.optional(v.float64()),
+    // Evita volver a consultar YouTube si un vídeo no expone su fecha.
+    youtubePublishedCheckedAt: v.optional(v.float64()),
     createdAt: v.float64(),
     updatedAt: v.float64(),
   }).index("by_owner_updatedAt", ["ownerId", "updatedAt"]),

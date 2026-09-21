@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { I18nText as Text } from "@/src/i18n";
 import { usePlayback } from "@/src/components/playback/PlaybackProvider";
 
-export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, isTutorial = false }) {
+export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, isTutorial = false, isNews = false }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const playback = usePlayback();
   const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
@@ -57,7 +57,9 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
           {canEdit ? (
             <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setMenuOpen(false); onEdit?.(); }}>
               <Ionicons name="create-outline" size={18} color="#334155" />
-              <Text style={styles.menuText}>{isTutorial ? "Editar tutorial" : "Editar lista"}</Text>
+              <Text style={styles.menuText}>
+                {isNews ? "Editar" : isTutorial ? "Editar tutorial" : "Editar lista"}
+              </Text>
             </Pressable>
           ) : null}
           {onExport ? (

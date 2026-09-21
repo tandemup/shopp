@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 
 import {
   MAX_TUTORIAL_ITEMS,
@@ -10,6 +11,29 @@ import {
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const PLAYLIST_ID = /^[A-Za-z0-9_-]{10,80}$/;
+
+function extractYouTubePublishedAt(html) {
+  const match = String(html || "").match(
+    /["'](?:publishDate|uploadDate)["']\s*:\s*["'](\d{4}-\d{2}-\d{2})(?:T[^"']*)?["']/i,
+  );
+  if (!match?.[1]) return null;
+  const timestamp = Date.parse(`${match[1]}T00:00:00Z`);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+async function fetchYouTubePublishedAt(videoId) {
+  const response = await fetch(
+    `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
+    {
+      headers: {
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent": "Mozilla/5.0 (compatible; Shopp/1.0)",
+      },
+    },
+  );
+  if (!response.ok) return null;
+  return extractYouTubePublishedAt(await response.text());
+}
 const trackValidator = v.object({
   kind: v.union(v.literal("single"), v.literal("album")),
   videoId: v.optional(v.string()),
@@ -103,9 +127,16 @@ async function getTutorials(ctx, clientId, contentType) {
     .withIndex("by_owner_updatedAt", (q) => q.eq("ownerId", ownerId))
     .order("desc")
     .collect();
-  return tutorials.filter(
+  const matchingTutorials = tutorials.filter(
     (tutorial) =>
       normalizeContentType(tutorial.contentType) === expectedContentType,
+  );
+  if (expectedContentType !== "news") return matchingTutorials;
+  return matchingTutorials.sort(
+    (left, right) =>
+      Number(right.youtubePublishedAt || 0) -
+        Number(left.youtubePublishedAt || 0) ||
+      Number(right.updatedAt || 0) - Number(left.updatedAt || 0),
   );
 }
 
@@ -159,8 +190,18 @@ export const update = mutation({
         normalizeContentType(args.contentType)
     )
       throw new Error("No puedes editar este tutorial.");
+    const tutorial = normalizeTutorial(args.title, args.tracks);
+    const hasChangedNewsVideo =
+      normalizeContentType(args.contentType) === "news" &&
+      tutorial.tracks[0]?.videoId !== current.tracks[0]?.videoId;
     await ctx.db.patch(args.playlistId, {
-      ...normalizeTutorial(args.title, args.tracks),
+      ...tutorial,
+      ...(hasChangedNewsVideo
+        ? {
+            youtubePublishedAt: undefined,
+            youtubePublishedCheckedAt: undefined,
+          }
+        : {}),
       updatedAt: Date.now(),
     });
   },
@@ -183,6 +224,84 @@ export const remove = mutation({
     )
       throw new Error("No puedes borrar este tutorial.");
     await ctx.db.delete(args.playlistId);
+  },
+});
+
+export const getNewsMissingYouTubePublishedDates = internalQuery({
+  args: { ownerId: v.string() },
+  handler: async (ctx, args) =>
+    (
+      await ctx.db
+        .query("youtubeTutorials")
+        .withIndex("by_owner_updatedAt", (q) => q.eq("ownerId", args.ownerId))
+        .order("desc")
+        .collect()
+    )
+      .filter(
+        (item) =>
+          normalizeContentType(item.contentType) === "news" &&
+          !item.youtubePublishedCheckedAt &&
+          Boolean(item.tracks?.[0]?.videoId),
+      )
+      .slice(0, 12)
+      .map((item) => ({
+        playlistId: item._id,
+        videoId: item.tracks[0].videoId,
+      })),
+});
+
+export const setNewsYouTubePublishedDate = internalMutation({
+  args: {
+    playlistId: v.id("youtubeTutorials"),
+    ownerId: v.string(),
+    publishedAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const item = await ctx.db.get(args.playlistId);
+    if (
+      !item ||
+      item.ownerId !== args.ownerId ||
+      normalizeContentType(item.contentType) !== "news"
+    )
+      return;
+    await ctx.db.patch(args.playlistId, {
+      ...(args.publishedAt ? { youtubePublishedAt: args.publishedAt } : {}),
+      youtubePublishedCheckedAt: Date.now(),
+    });
+  },
+});
+
+// Consulta la fecha de publicación en lotes pequeños para no repetir llamadas
+// ni cargar el navegador. No requiere una clave de YouTube Data API.
+export const refreshNewsYouTubePublishedDates = action({
+  args: { clientId: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    const missing = await ctx.runQuery(
+      internal.tutorials.getNewsMissingYouTubePublishedDates,
+      { ownerId },
+    );
+    let updated = 0;
+    await Promise.all(
+      missing.map(async ({ playlistId, videoId }) => {
+        let publishedAt = null;
+        try {
+          publishedAt = await fetchYouTubePublishedAt(videoId);
+          if (publishedAt) updated += 1;
+        } catch (error) {
+          console.warn(
+            "[tutorials.refreshNewsYouTubePublishedDates] metadata fetch failed",
+            error,
+          );
+        }
+        await ctx.runMutation(internal.tutorials.setNewsYouTubePublishedDate, {
+          playlistId,
+          ownerId,
+          publishedAt: publishedAt || undefined,
+        });
+      }),
+    );
+    return { checked: missing.length, updated };
   },
 });
 

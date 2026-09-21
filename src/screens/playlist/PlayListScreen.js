@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -15,7 +15,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useRoute } from "@react-navigation/native";
 
 import { api } from "@/convex/_generated/api";
@@ -159,6 +159,58 @@ async function saveJsonFile(fileName, data) {
   });
 }
 
+function normalizeNewsImportPayload(value) {
+  const toNewsItem = (item, index) => {
+    const title = String(item?.title || `Noticia ${index + 1}`).trim();
+    const url = String(item?.url || item?.youtubeUrl || "").trim();
+    return {
+      version: 1,
+      type: "shopp-youtube-news-item",
+      title,
+      tracks: [
+        {
+          kind: "single",
+          title,
+          url,
+        },
+      ],
+    };
+  };
+
+  // Formato sencillo de lista: [{ title, url }].
+  if (Array.isArray(value)) {
+    return {
+      version: 1,
+      type: "shopp-youtube-news",
+      playlists: value.map(toNewsItem),
+    };
+  }
+
+  // Formato anterior: una única noticia contenía todos los vídeos. Cada vídeo
+  // pasa a ser una noticia independiente, que es el nuevo modelo de Noticias.
+  if (
+    value?.type === "shopp-youtube-news-item" &&
+    Array.isArray(value.tracks) &&
+    value.tracks.length > 1
+  ) {
+    return {
+      version: 1,
+      type: "shopp-youtube-news",
+      playlists: value.tracks.map((track, index) =>
+        toNewsItem(
+          {
+            title: track?.title || `Noticia ${index + 1}`,
+            url: track?.url,
+          },
+          index,
+        ),
+      ),
+    };
+  }
+
+  return value;
+}
+
 function parseImportedPayload(
   value,
   collectionType = "shopp-youtube-playlist",
@@ -236,7 +288,7 @@ export default function PlayListScreen() {
   const isClassical = route.name === ROUTES.CLASSICAL_MUSIC;
   const contentApi = isTutorialStyle ? api.tutorials : api.playlists;
   const collectionLabel = isNews
-    ? "colección de noticias"
+    ? "noticia"
     : isTutorials
       ? "tutorial"
       : isClassical
@@ -258,7 +310,9 @@ export default function PlayListScreen() {
         ? "shopp-youtube-classical-playlists"
         : "shopp-youtube-playlists";
   const minimumTracks = 1;
-  const maximumTracks = isTutorialStyle ? MAX_TUTORIAL_ITEMS : 20;
+  // Noticias se guarda como una noticia por registro: título descriptivo y
+  // un único enlace de YouTube. Tutoriales conserva sus colecciones.
+  const maximumTracks = isNews ? 1 : isTutorialStyle ? MAX_TUTORIAL_ITEMS : 20;
   const [transferVisible, setTransferVisible] = useState(false);
   const exportItemType = isNews
     ? "shopp-youtube-news-item"
@@ -279,6 +333,11 @@ export default function PlayListScreen() {
   const createPlaylist = useMutation(contentApi.create);
   const updatePlaylist = useMutation(contentApi.update);
   const removePlaylist = useMutation(contentApi.remove);
+  const refreshNewsYouTubePublishedDates = useAction(
+    api.tutorials.refreshNewsYouTubePublishedDates,
+  );
+  const refreshNewsDatesInFlight = useRef(false);
+  const [newsDatesRefreshCycle, setNewsDatesRefreshCycle] = useState(0);
   const generateUploadUrl = useMutation(contentApi.generateUploadUrl);
   const [editorVisible, setEditorVisible] = useState(false);
   const { width } = useWindowDimensions();
@@ -343,6 +402,39 @@ export default function PlayListScreen() {
   }, [isClassical, isNews, isTutorials]);
 
   useEffect(() => {
+    const hasPendingNewsDates = (playlists || []).some(
+      (item) => !item.youtubePublishedCheckedAt,
+    );
+    if (
+      !isNews ||
+      !clientId ||
+      !hasPendingNewsDates ||
+      refreshNewsDatesInFlight.current
+    )
+      return;
+
+    refreshNewsDatesInFlight.current = true;
+    refreshNewsYouTubePublishedDates({ clientId })
+      .then((result) => {
+        // Cada acción procesa como máximo doce vídeos. El ciclo continúa solo
+        // cuando se han encontrado registros pendientes.
+        if (result?.checked) setNewsDatesRefreshCycle((value) => value + 1);
+      })
+      .catch((error) =>
+        console.warn("No se pudieron actualizar las fechas de YouTube", error),
+      )
+      .finally(() => {
+        refreshNewsDatesInFlight.current = false;
+      });
+  }, [
+    clientId,
+    isNews,
+    newsDatesRefreshCycle,
+    playlists,
+    refreshNewsYouTubePublishedDates,
+  ]);
+
+  useEffect(() => {
     if (Platform.OS === "web" || clientId) return;
     let active = true;
     AsyncStorage.getItem(CLIENT_ID_KEY)
@@ -366,6 +458,7 @@ export default function PlayListScreen() {
       tracks.length <= maximumTracks &&
       tracks.every((track) => {
         const parsed = parseYouTubeUrl(track.url.trim());
+        if (isNews) return parsed.isValid && Boolean(parsed.videoId);
         return (
           parsed.isValid &&
           (track.kind === "album"
@@ -374,7 +467,7 @@ export default function PlayListScreen() {
         );
       }) &&
       !saving,
-    [minimumTracks, maximumTracks, saving, title, tracks],
+    [isNews, minimumTracks, maximumTracks, saving, title, tracks],
   );
 
   const openNew = useCallback(() => {
@@ -396,7 +489,11 @@ export default function PlayListScreen() {
   const openEdit = useCallback(
     async (item) => {
       setEditingId(item._id);
-      setTitle(item.title || "");
+      setTitle(
+        isNews
+          ? item.tracks?.[0]?.title || item.title || ""
+          : item.title || "",
+      );
       setClassicalDetails({
         composer: item.composer || "",
         performer: item.performer || "",
@@ -451,7 +548,7 @@ export default function PlayListScreen() {
       }
       setEditorVisible(true);
     },
-    [isTutorialStyle],
+    [isNews, isTutorialStyle],
   );
 
   const updateTrack = useCallback((index, field, value) => {
@@ -757,11 +854,11 @@ export default function PlayListScreen() {
         const parsed = parseYouTubeUrl(track.url.trim());
         const lyrics = await uploadLyrics(track.lyrics, index);
         normalizedTracks.push({
-          kind: track.kind === "album" ? "album" : "single",
+          kind: isNews ? "single" : track.kind === "album" ? "album" : "single",
           videoId: parsed.videoId || undefined,
           playlistId: parsed.playlistId || undefined,
           title:
-            track.title.trim() ||
+            (isNews ? title.trim() : track.title.trim()) ||
             `${track.kind === "album" ? "Álbum" : "Single"} ${index + 1}`,
           ...lyrics,
         });
@@ -785,7 +882,7 @@ export default function PlayListScreen() {
       setEditorVisible(false);
     } catch (error) {
       safeAlert(
-        `No se pudo guardar el ${collectionLabel}`,
+        isNews ? "No se pudo guardar la noticia" : `No se pudo guardar el ${collectionLabel}`,
         error?.message || "Revisa los enlaces de YouTube.",
       );
     } finally {
@@ -811,7 +908,9 @@ export default function PlayListScreen() {
     (item) =>
       safeConfirm(
         `Borrar ${collectionLabel}`,
-        `¿Quieres borrar «${item.title}» y todos sus elementos? Esta acción no se puede deshacer.`,
+        isNews
+          ? `¿Quieres borrar «${item.title}»? Esta acción no se puede deshacer.`
+          : `¿Quieres borrar «${item.title}» y todos sus elementos? Esta acción no se puede deshacer.`,
         async () => {
           setDeletingId(item._id);
           try {
@@ -965,8 +1064,9 @@ export default function PlayListScreen() {
       const asset = result.assets?.[0];
       if (result.canceled || !asset?.uri) return;
       const response = await fetch(asset.uri);
+      const payload = JSON.parse(await response.text());
       const imported = parseImportedPayload(
-        JSON.parse(await response.text()),
+        isNews ? normalizeNewsImportPayload(payload) : payload,
         exportItemType,
         exportType,
         minimumTracks,
@@ -1000,7 +1100,17 @@ export default function PlayListScreen() {
       }
       safeAlert(
         "Importación terminada",
-        `${added} ${isClassical ? "colección" : "playlist"}${added === 1 ? "" : isClassical ? "es" : "s"} importada${added === 1 ? "" : "s"}.${skipped ? ` ${skipped} duplicada${skipped === 1 ? "" : "s"} omitida${skipped === 1 ? "" : "s"}.` : ""}`,
+        `${added} ${
+          isNews ? "noticia" : isClassical ? "colección" : "playlist"
+        }${
+          added === 1 ? "" : isClassical ? "es" : "s"
+        } importada${added === 1 ? "" : "s"}.${
+          skipped
+            ? ` ${skipped} duplicada${
+                skipped === 1 ? "" : "s"
+              } omitida${skipped === 1 ? "" : "s"}.`
+            : ""
+        }`,
       );
     } catch (error) {
       safeAlert(
@@ -1073,7 +1183,9 @@ export default function PlayListScreen() {
       <Text style={styles.searchHint}>
         {isClassical
           ? "Busca por obra, compositor, intérprete, director, orquesta o periodo."
-          : "Busca en el título de la lista y de sus elementos."}
+          : isNews
+            ? "Busca por el título descriptivo."
+            : "Busca en el título de la lista y de sus elementos."}
       </Text>
       {playlists !== undefined ? (
         <Text style={styles.searchCount} accessibilityLiveRegion="polite">
@@ -1092,7 +1204,7 @@ export default function PlayListScreen() {
           <Text style={styles.heading}>{collectionTitle}</Text>
           <Text style={styles.subtitle}>
             {isNews
-              ? "Organiza vídeos y series de actualidad de YouTube."
+              ? "Guarda un enlace de YouTube con un título descriptivo. Se ordenan por fecha de publicación."
               : isTutorials
                 ? "Organiza vídeos y series de YouTube para aprender a tu ritmo."
                 : isClassical
@@ -1101,7 +1213,7 @@ export default function PlayListScreen() {
           </Text>
         </View>
         <View style={styles.headerActions}>
-          {isTutorialStyle ? (
+          {isTutorials ? (
             <Pressable
               onPress={() => setTransferVisible(true)}
               style={styles.secondaryButton}
@@ -1125,14 +1237,16 @@ export default function PlayListScreen() {
           {playlists?.length ? (
             <Pressable onPress={openExportAll} style={styles.secondaryButton}>
               <Ionicons name="share-outline" size={21} color="#2563eb" />
-              <Text style={styles.secondaryButtonText}>Exportar todo</Text>
+              <Text style={styles.secondaryButtonText}>
+                {isNews ? "Exportar" : "Exportar todo"}
+              </Text>
             </Pressable>
           ) : null}
           <Pressable onPress={openNew} style={styles.newButton}>
             <Ionicons name="add-circle-outline" size={20} color="#fff" />
             <Text style={styles.newButtonText}>
               {isNews
-                ? "Nueva colección"
+                ? "Añadir noticia"
                 : isTutorials
                   ? "Nuevo tutorial"
                   : isClassical
@@ -1173,7 +1287,10 @@ export default function PlayListScreen() {
                         : "Mi playlist"
                 }
                 isTutorial={isTutorialStyle}
-                dateLabel={formatDate(item.updatedAt)}
+                isNews={isNews}
+                dateLabel={formatDate(
+                  isNews ? item.youtubePublishedAt || item.updatedAt : item.updatedAt,
+                )}
                 canEdit
                 canDelete
                 deleting={deletingId === item._id}
@@ -1215,7 +1332,7 @@ export default function PlayListScreen() {
                 </Text>
                 <Text style={styles.emptyText}>
                   {isNews
-                    ? "Crea una colección con vídeos o series de actualidad de YouTube."
+                    ? "Añade una noticia con su título y enlace de YouTube, o importa una lista JSON."
                     : isTutorials
                       ? "Crea una colección con vídeos o series de YouTube."
                       : isClassical
@@ -1225,7 +1342,7 @@ export default function PlayListScreen() {
                 <Pressable onPress={openNew} style={styles.emptyButton}>
                   <Text style={styles.emptyButtonText}>
                     {isNews
-                      ? "Nueva colección"
+                      ? "Añadir noticia"
                       : isTutorials
                         ? "Nuevo tutorial"
                         : isClassical
@@ -1298,13 +1415,17 @@ export default function PlayListScreen() {
             <View style={styles.editorHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.editorTitle}>
-                  {editingId
-                    ? `Editar ${collectionLabel}`
-                    : `Nuevo ${collectionLabel}`}
+                  {isNews
+                    ? editingId
+                      ? "Editar noticia"
+                      : "Añadir noticia"
+                    : editingId
+                      ? `Editar ${collectionLabel}`
+                      : `Nuevo ${collectionLabel}`}
                 </Text>
                 <Text style={styles.editorSubtitle}>
                   {isNews
-                    ? "Añade vídeos y series de actualidad mediante enlaces de YouTube."
+                    ? "Pega el enlace de YouTube y escribe un título descriptivo."
                     : isTutorials
                       ? "Añade vídeos y series mediante sus enlaces de YouTube."
                       : isClassical
@@ -1319,7 +1440,7 @@ export default function PlayListScreen() {
                 <Ionicons name="close" size={24} color="#475569" />
               </Pressable>
             </View>
-            <View style={styles.tutorialTypeHelp}>
+            {!isNews ? <View style={styles.tutorialTypeHelp}>
               <View style={styles.tutorialTypeHelpItem}>
                 <Ionicons
                   name={
@@ -1370,7 +1491,7 @@ export default function PlayListScreen() {
                   </Text>
                 </View>
               </View>
-            </View>
+            </View> : null}
             {isClassical ? (
               <View style={styles.classicalSection}>
                 <Pressable
@@ -1454,6 +1575,26 @@ export default function PlayListScreen() {
                   </View>
                 ) : null}
               </View>
+            ) : isNews ? (
+              <View style={styles.newsEditorFields}>
+                <Text style={styles.label}>Título descriptivo</Text>
+                <TextInput
+                  value={title}
+                  onChangeText={setTitle}
+                  maxLength={120}
+                  placeholder="Ej.: Análisis de la actualidad económica"
+                  style={styles.titleInput}
+                />
+                <Text style={styles.label}>Enlace de YouTube</Text>
+                <TextInput
+                  value={tracks[0]?.url || ""}
+                  onChangeText={(value) => updateTrack(0, "url", value)}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder="https://youtu.be/..."
+                  style={styles.trackInput}
+                />
+              </View>
             ) : (
               <>
                 <Text style={styles.label}>
@@ -1478,7 +1619,7 @@ export default function PlayListScreen() {
                 />
               </>
             )}
-            <ScrollView
+            {!isNews ? <ScrollView
               style={styles.tracksScroll}
               keyboardShouldPersistTaps="handled"
             >
@@ -1716,10 +1857,10 @@ export default function PlayListScreen() {
                   <Text style={styles.addText}>Añadir elemento</Text>
                 </Pressable>
               ) : null}
-            </ScrollView>
-            <Text style={styles.editorSubtitle}>
+            </ScrollView> : null}
+            {!isNews ? <Text style={styles.editorSubtitle}>
               {tracks.length} / {maximumTracks} elementos
-            </Text>
+            </Text> : null}
             <View style={styles.actions}>
               <Pressable
                 onPress={() => setEditorVisible(false)}
@@ -1979,6 +2120,7 @@ const styles = StyleSheet.create({
   },
   editorTitle: { fontSize: 20, fontWeight: "900", color: "#111827" },
   editorSubtitle: { marginTop: 3, fontSize: 12, color: "#64748b" },
+  newsEditorFields: { gap: 8, paddingTop: 8, paddingBottom: 12 },
   tutorialTypeHelp: {
     flexDirection: "row",
     flexWrap: "wrap",
