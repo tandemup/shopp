@@ -3,30 +3,13 @@ import { Image, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { I18nText as Text } from "@/src/i18n";
 import { usePlayback } from "@/src/components/playback/PlaybackProvider";
-import TutorialCollectionCard from "./TutorialCollectionCard";
 
-export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, isTutorial = false, descriptiveTutorial = false }) {
+export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, isTutorial = false }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const playback = usePlayback();
   const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
   const activeTrack = tracks[0];
   if (!activeTrack) return null;
-  if (descriptiveTutorial) {
-    return (
-      <TutorialCollectionCard
-        playlist={playlist}
-        userName={userName}
-        dateLabel={dateLabel}
-        canDelete={canDelete}
-        canEdit={canEdit}
-        deleting={deleting}
-        onDelete={onDelete}
-        onEdit={onEdit}
-        onExport={onExport}
-        onOpen={() => playback.open(playlist, { isTutorial: true })}
-      />
-    );
-  }
   return (
     <View style={styles.card}>
       <Pressable onPress={() => playback.open(playlist, { isTutorial })} style={styles.summary}>
