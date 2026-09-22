@@ -133,8 +133,29 @@ function toExportedPlaylist(playlist, type = "shopp-youtube-playlist") {
 }
 
 async function saveJsonFile(fileName, data) {
-  const json = JSON.stringify(data, null, 2);
   if (Platform.OS === "web" && typeof document !== "undefined") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.showSaveFilePicker === "function"
+    ) {
+      // Se invoca desde el botón de exportar para conservar el permiso de
+      // usuario que Chrome exige al abrir el diálogo nativo de guardado.
+      const handle = await window.showSaveFilePicker({
+        suggestedName: fileName,
+        types: [
+          {
+            description: "Copia de playlist (JSON)",
+            accept: { "application/json": [".json"] },
+          },
+        ],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(JSON.stringify(data, null, 2));
+      await writable.close();
+      return;
+    }
+
+    const json = JSON.stringify(data, null, 2);
     const url = URL.createObjectURL(
       new Blob([json], { type: "application/json" }),
     );
@@ -147,6 +168,7 @@ async function saveJsonFile(fileName, data) {
     URL.revokeObjectURL(url);
     return;
   }
+  const json = JSON.stringify(data, null, 2);
   const FileSystem = await import("expo-file-system/legacy");
   const uri = `${FileSystem.cacheDirectory}${fileName}`;
   await FileSystem.writeAsStringAsync(uri, json, {
@@ -371,9 +393,6 @@ export default function PlayListScreen() {
   const [importing, setImporting] = useState(false);
   const [importModeVisible, setImportModeVisible] = useState(false);
   const [pendingImportAsset, setPendingImportAsset] = useState(null);
-  const [exportNameVisible, setExportNameVisible] = useState(false);
-  const [exportFileName, setExportFileName] = useState("");
-  const [exportTarget, setExportTarget] = useState(null);
   const [draggingIndex, setDraggingIndex] = useState(null);
   const [searchText, setSearchText] = useState("");
   const searchTerms = useMemo(
@@ -939,13 +958,14 @@ export default function PlayListScreen() {
   );
 
   const exportPlaylist = useCallback(
-    async (item, fileName) => {
+    async (item) => {
       try {
         await saveJsonFile(
-          jsonFileName(fileName, safeFileName(item.title)),
+          jsonFileName(item.title, safeFileName(item.title)),
           toExportedPlaylist(item, exportItemType),
         );
       } catch (error) {
+        if (String(error?.name || "") === "AbortError") return;
         safeAlert(
           "No se pudo exportar",
           error?.message || "Inténtalo de nuevo.",
@@ -964,9 +984,9 @@ export default function PlayListScreen() {
         : "Music playlist";
 
   const exportAll = useCallback(
-    async (fileName) => {
+    async () => {
       try {
-        await saveJsonFile(jsonFileName(fileName, defaultExportName), {
+        await saveJsonFile(jsonFileName(defaultExportName, "playlist"), {
           version: 1,
           type: exportType,
           exportedAt: new Date().toISOString(),
@@ -975,6 +995,7 @@ export default function PlayListScreen() {
           ),
         });
       } catch (error) {
+        if (String(error?.name || "") === "AbortError") return;
         safeAlert(
           "No se pudo exportar",
           error?.message || "Inténtalo de nuevo.",
@@ -985,27 +1006,12 @@ export default function PlayListScreen() {
   );
 
   const openExportAll = useCallback(() => {
-    setExportTarget(null);
-    setExportFileName(defaultExportName);
-    setExportNameVisible(true);
-  }, [defaultExportName]);
+    void exportAll();
+  }, [exportAll]);
 
   const openExportPlaylist = useCallback((item) => {
-    setExportTarget(item);
-    setExportFileName(item.title || "playlist");
-    setExportNameVisible(true);
-  }, []);
-
-  const confirmExport = useCallback(async () => {
-    const fileName = exportFileName.trim();
-    if (!fileName) {
-      safeAlert("Nombre requerido", "Escribe un nombre para el fichero JSON.");
-      return;
-    }
-    setExportNameVisible(false);
-    if (exportTarget) await exportPlaylist(exportTarget, fileName);
-    else await exportAll(fileName);
-  }, [exportAll, exportFileName, exportPlaylist, exportTarget]);
+    void exportPlaylist(item);
+  }, [exportPlaylist]);
   const reorderPlaylist = useCallback(
     async (item, nextTracks) => {
       try {
@@ -1477,46 +1483,6 @@ export default function PlayListScreen() {
                 style={styles.secondaryButton}
               >
                 <Text style={styles.secondaryButtonText}>Cancelar</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-      <Modal
-        visible={exportNameVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setExportNameVisible(false)}
-      >
-        <View style={styles.backdrop}>
-          <View style={styles.exportNameCard}>
-            <Text style={styles.editorTitle}>
-              {exportTarget
-                ? `Exportar «${exportTarget.title}»`
-                : "Nombre del fichero JSON"}
-            </Text>
-            <Text style={styles.editorSubtitle}>
-              Escribe el nombre del fichero. Se añadirá automáticamente la
-              extensión .json.
-            </Text>
-            <TextInput
-              value={exportFileName}
-              onChangeText={setExportFileName}
-              placeholder={defaultExportName}
-              autoFocus
-              selectTextOnFocus
-              style={styles.titleInput}
-            />
-            <View style={styles.exportNameActions}>
-              <Pressable
-                onPress={() => setExportNameVisible(false)}
-                style={styles.secondaryButton}
-              >
-                <Text style={styles.secondaryButtonText}>Cancelar</Text>
-              </Pressable>
-              <Pressable onPress={confirmExport} style={styles.newButton}>
-                <Ionicons name="share-outline" size={18} color="#fff" />
-                <Text style={styles.newButtonText}>Exportar</Text>
               </Pressable>
             </View>
           </View>
@@ -2392,15 +2358,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#cbd5e1",
   },
-  exportNameCard: {
-    width: 460,
-    maxWidth: "92%",
-    gap: 12,
-    padding: 18,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-  },
   importModeCard: {
     width: 520,
     maxWidth: "92%",
@@ -2431,12 +2388,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "flex-end",
     marginTop: 2,
-  },
-  exportNameActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    gap: 8,
   },
   lyricsTextArea: {
     minHeight: 360,
