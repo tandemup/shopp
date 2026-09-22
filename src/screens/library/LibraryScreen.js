@@ -1007,18 +1007,6 @@ function defaultBackupFilename() {
   return `shopp-biblioteca-${day}.json`;
 }
 
-function normalizeBackupFilename(value) {
-  const cleanName = String(value || "")
-    .trim()
-    .replace(/[\\/:*?"<>|]+/g, "-")
-    .replace(/\s+/g, " ");
-
-  if (!cleanName) return "";
-  return cleanName.toLowerCase().endsWith(".json")
-    ? cleanName
-    : `${cleanName}.json`;
-}
-
 function buildBackupFolders(folders) {
   const folderById = new Map(
     (Array.isArray(folders) ? folders : []).map((folder) => [
@@ -1611,14 +1599,7 @@ export default function LibraryScreen({ navigation, route }) {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupMode, setBackupMode] = useState(null);
   const [exportNameVisible, setExportNameVisible] = useState(false);
-  const [exportFilename, setExportFilename] = useState("");
   const [exportReview, setExportReview] = useState(null);
-  // Los navegadores no permiten conocer rutas locales, pero conservan un
-  // "handle" de escritura elegido por el usuario. Android devuelve la URI
-  // de una carpeta mediante el selector de almacenamiento del sistema.
-  const [exportDestination, setExportDestination] = useState(null);
-  const [selectingExportDestination, setSelectingExportDestination] =
-    useState(false);
   const [selectedExportCategoryKeys, setSelectedExportCategoryKeys] = useState(
     [],
   );
@@ -2695,74 +2676,62 @@ export default function LibraryScreen({ navigation, route }) {
     updateMetadata,
   ]);
 
-  const selectExportDestination = useCallback(async () => {
-    const filename = normalizeBackupFilename(exportFilename);
-    if (!filename) {
-      safeAlert(
-        "Indica un nombre",
-        "Escribe primero el nombre del archivo JSON.",
-      );
-      return;
+  const requestExportDestination = useCallback(async (filename) => {
+    if (
+      Platform.OS === "web" &&
+      typeof window !== "undefined" &&
+      typeof window.showSaveFilePicker === "function"
+    ) {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [
+          {
+            description: "Copia de Biblioteca (JSON)",
+            accept: { "application/json": [".json"] },
+          },
+        ],
+      });
+      return { kind: "web", handle, name: handle.name };
     }
 
-    setSelectingExportDestination(true);
-    try {
-      if (
-        Platform.OS === "web" &&
-        typeof window !== "undefined" &&
-        typeof window.showSaveFilePicker === "function"
-      ) {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: filename,
-          types: [
-            {
-              description: "Copia de Biblioteca (JSON)",
-              accept: { "application/json": [".json"] },
-            },
-          ],
-        });
-        setExportDestination({ kind: "web", handle, name: handle.name });
-        return;
-      }
-
-      if (
-        Platform.OS === "android" &&
-        FileSystem.StorageAccessFramework?.requestDirectoryPermissionsAsync
-      ) {
-        const permission =
-          await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-        if (permission.granted && permission.directoryUri) {
-          setExportDestination({
+    if (
+      Platform.OS === "android" &&
+      FileSystem.StorageAccessFramework?.requestDirectoryPermissionsAsync
+    ) {
+      const permission =
+        await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+      return permission.granted && permission.directoryUri
+        ? {
             kind: "android",
             directoryUri: permission.directoryUri,
             name: "Carpeta seleccionada",
-          });
-        }
-        return;
-      }
+          }
+        : { cancelled: true };
+    }
 
-      safeAlert(
-        "Elegir ubicación",
-        "Al exportar se abrirá el panel del sistema. En iPhone o iPad elige “Guardar en Archivos” y después la carpeta o unidad USB conectada.",
-      );
+    return null;
+  }, []);
+
+  const performExportBackup = useCallback(async () => {
+    const filename = defaultBackupFilename();
+    if (!exportReview || backupBusy) return;
+
+    let selectedDestination;
+    try {
+      // Debe ejecutarse directamente desde el toque/clic del botón para que
+      // Chrome conserve el permiso de abrir el diálogo nativo "Guardar como".
+      selectedDestination = await requestExportDestination(filename);
     } catch (error) {
-      // Cerrar el selector de archivos no es un error de exportación.
+      // Cerrar el diálogo de guardado no debe mostrar un error.
       if (String(error?.name || "") !== "AbortError") {
         safeAlert(
           "No se pudo elegir la ubicación",
           error?.message || "Inténtalo de nuevo.",
         );
       }
-    } finally {
-      setSelectingExportDestination(false);
+      return;
     }
-  }, [exportFilename]);
-
-  const performExportBackup = useCallback(async () => {
-    const filename = normalizeBackupFilename(exportFilename);
-    if (!exportReview || backupBusy || !filename) return;
-
-    const selectedDestination = exportDestination;
+    if (selectedDestination?.cancelled) return;
 
     const exportAll =
       exportReview.categories.length === 0 ||
@@ -2856,16 +2825,13 @@ export default function LibraryScreen({ navigation, route }) {
     }
   }, [
     backupBusy,
-    exportDestination,
-    exportFilename,
     exportReview,
+    requestExportDestination,
     selectedExportCategoryKeys,
   ]);
 
   const handleExportBackup = useCallback(() => {
     if (backupBusy) return;
-    setExportFilename(defaultBackupFilename());
-    setExportDestination(null);
     setBackupBusy(true);
     setSlowTask({
       kind: "prepare-export",
@@ -3499,7 +3465,6 @@ export default function LibraryScreen({ navigation, route }) {
     setExportNameVisible(false);
     setExportReview(null);
     setSelectedExportCategoryKeys([]);
-    setExportDestination(null);
   }, [backupBusy]);
 
   const toggleExportCategory = useCallback((categoryKey) => {
@@ -5228,71 +5193,10 @@ export default function LibraryScreen({ navigation, route }) {
               >
                 <Text style={styles.modalTitle}>Exportar Biblioteca</Text>
 
-                <Text style={styles.fieldLabel}>Nombre del archivo JSON</Text>
-                <TextInput
-                  value={exportFilename}
-                  onChangeText={(value) => {
-                    setExportFilename(value);
-                    // El selector puede haber asociado el nombre anterior a
-                    // la ubicación; obligamos a elegirla otra vez si cambia.
-                    setExportDestination(null);
-                  }}
-                  placeholder="shopp-biblioteca.json"
-                  style={styles.modalInput}
-                  autoCorrect={false}
-                  autoCapitalize="none"
-                  maxLength={120}
-                  autoFocus={exportNameVisible}
-                  selectTextOnFocus
-                  onSubmitEditing={performExportBackup}
-                />
                 <Text style={styles.fieldHelp}>
-                  Si omites la extensión, se añadirá automáticamente .json.
+                  Al pulsar «Exportar seleccionados» podrás elegir el nombre y
+                  la carpeta donde guardar el archivo JSON.
                 </Text>
-
-                <Text style={styles.fieldLabel}>Ubicación de guardado</Text>
-                <Pressable
-                  onPress={selectExportDestination}
-                  disabled={selectingExportDestination || backupBusy}
-                  style={[
-                    styles.exportLocationButton,
-                    (selectingExportDestination || backupBusy) &&
-                      styles.buttonDisabled,
-                  ]}
-                >
-                  <Ionicons
-                    name="folder-open-outline"
-                    size={18}
-                    color="#1d4ed8"
-                  />
-                  <View style={styles.exportLocationTextWrap}>
-                    <Text style={styles.exportLocationButtonText}>
-                      {selectingExportDestination
-                        ? "Abriendo selector…"
-                        : exportDestination
-                          ? "Cambiar ubicación…"
-                          : "Seleccionar ubicación…"}
-                    </Text>
-                    <Text style={styles.exportLocationHelp}>
-                      {exportDestination
-                        ? `Preparada: ${exportDestination.name}`
-                        : Platform.OS === "web"
-                          ? "Elige una carpeta o una unidad USB conectada."
-                          : Platform.OS === "android"
-                            ? "Elige una carpeta o una unidad USB conectada."
-                            : "Al finalizar podrás elegir Guardar en Archivos."}
-                    </Text>
-                  </View>
-                </Pressable>
-                {Platform.OS === "web" &&
-                typeof window !== "undefined" &&
-                typeof window.showSaveFilePicker !== "function" ? (
-                  <Text style={styles.fieldHelp}>
-                    Este navegador usará su descarga habitual. Para elegir una
-                    unidad USB directamente, abre Shopp en Chrome o Edge de
-                    escritorio.
-                  </Text>
-                ) : null}
 
                 {importReview?.isHistoricalNewsArray ? (
                   <Text style={styles.fieldHelp}>
@@ -5410,7 +5314,6 @@ export default function LibraryScreen({ navigation, route }) {
                   onPress={performExportBackup}
                   disabled={
                     backupBusy ||
-                    !normalizeBackupFilename(exportFilename) ||
                     (exportCategories.length > 0 &&
                       selectedExportCategoryKeys.length === 0)
                   }
@@ -5418,7 +5321,6 @@ export default function LibraryScreen({ navigation, route }) {
                     styles.saveButton,
                     styles.exportConfirmButton,
                     (backupBusy ||
-                      !normalizeBackupFilename(exportFilename) ||
                       (exportCategories.length > 0 &&
                         selectedExportCategoryKeys.length === 0)) &&
                       styles.buttonDisabled,
@@ -6446,23 +6348,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#1d4ed8",
   },
-  exportLocationButton: {
-    minHeight: 52,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-    paddingHorizontal: 11,
-    borderWidth: 1,
-    borderColor: "#bfdbfe",
-    backgroundColor: "#f8fbff",
-  },
-  exportLocationTextWrap: { flex: 1, gap: 2 },
-  exportLocationButtonText: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#1d4ed8",
-  },
-  exportLocationHelp: { fontSize: 11, color: "#64748b" },
   integrityButton: {
     borderColor: "#a7f3d0",
     backgroundColor: "#ecfdf5",
