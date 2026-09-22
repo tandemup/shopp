@@ -17,7 +17,7 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
   const activeTrack = tracks[0];
   if (!activeTrack) return null;
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isNews && styles.newsCard]}>
       <Pressable onPress={() => playback.open(playlist, { isTutorial })} style={styles.summary}>
         {activeTrack.videoId ? (
           <Image
@@ -89,12 +89,13 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
 
 const styles = StyleSheet.create({
   card: {
-    width: CARD_WIDTH,
+    width: 440,
     maxWidth: "100%",
     borderWidth: 1,
     borderColor: "#d1d5db",
     backgroundColor: "#fff",
   },
+  newsCard: { width: CARD_WIDTH },
   summary: {
     height: CARD_HEIGHT,
     flexDirection: "row",

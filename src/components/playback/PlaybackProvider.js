@@ -218,6 +218,7 @@ export default function PlaybackProvider({ children }) {
   const [session, setSession] = useState(null);
   const sessionRef = useRef(null);
   const [expanded, setExpanded] = useState(true);
+  const [playerStyle, setPlayerStyle] = useState("integrated");
   const [repeat, setRepeat] = useState(false);
   const [shuffle, setShuffle] = useState(false);
   const [volume, setVolume] = useState(100);
@@ -424,6 +425,51 @@ export default function PlaybackProvider({ children }) {
       setStatus((value) => ({ ...value, error: "No se pudo abrir YouTube." }));
     }
   };
+  const changePlayerStyle = (nextStyle) => {
+    if (nextStyle === playerStyle) return;
+    const current = sessionRef.current;
+    if (current) {
+      const currentStatus = statusRef.current;
+      const nextSession = {
+        ...current,
+        resumeTime: currentStatus.time || 0,
+        resumePlaylistIndex: currentStatus.playlistIndex || 0,
+        autoPlay: currentStatus.state === 1 || currentStatus.state === 3,
+      };
+      sessionRef.current = nextSession;
+      setSession(nextSession);
+    }
+    setPlayerStyle(nextStyle);
+  };
+  const renderPlayerSurface = (containerStyle, interactive = true) => (
+    <View
+      pointerEvents={interactive ? "auto" : "none"}
+      style={[styles.playerEngine, containerStyle]}
+    >
+      <YouTubeSurface
+        key={session.requestId}
+        ref={player}
+        track={track}
+        initialTime={session.resumeTime || 0}
+        initialPlaylistIndex={session.resumePlaylistIndex || 0}
+        autoPlay={Boolean(session.autoPlay)}
+        initialVolume={volume}
+        onStatus={(next) => {
+          if (sessionRef.current?.requestId !== session.requestId) return;
+          const mergedStatus = { ...statusRef.current, ...next };
+          statusRef.current = mergedStatus;
+          if (Number.isFinite(next.time)) {
+            rememberedPlayback.current.set(trackKey(track), {
+              time: mergedStatus.state === 0 ? 0 : mergedStatus.time || 0,
+              duration: mergedStatus.duration || 0,
+              playlistIndex: mergedStatus.playlistIndex || 0,
+            });
+          }
+          setStatus(mergedStatus);
+        }}
+      />
+    </View>
+  );
   return (
     <PlaybackContext.Provider value={context}>
       <View style={styles.root}>
@@ -464,6 +510,32 @@ export default function PlaybackProvider({ children }) {
                   {expanded ? session.title : currentTitle || session.title}
                 </Text>
               </Pressable>
+              {expanded ? (
+                <View style={styles.styleSelector}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: playerStyle === "classic" }}
+                    onPress={() => changePlayerStyle("classic")}
+                    style={[
+                      styles.styleSelectorButton,
+                      playerStyle === "classic" && styles.styleSelectorButtonActive,
+                    ]}
+                  >
+                    <Text style={styles.styleSelectorText}>Clásico</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: playerStyle === "integrated" }}
+                    onPress={() => changePlayerStyle("integrated")}
+                    style={[
+                      styles.styleSelectorButton,
+                      playerStyle === "integrated" && styles.styleSelectorButtonActive,
+                    ]}
+                  >
+                    <Text style={styles.styleSelectorText}>Integrado</Text>
+                  </Pressable>
+                </View>
+              ) : null}
               {!expanded ? (
                 <IconButton
                   name={playing ? "pause" : "play"}
@@ -491,38 +563,11 @@ export default function PlaybackProvider({ children }) {
                 onPress={stop}
               />
             </View>
-            <View
-              pointerEvents={expanded ? "auto" : "none"}
-              style={[
-                styles.playerEngine,
-                expanded ? styles.playerEnginePreview : styles.playerEngineHidden,
-              ]}
-            >
-              <YouTubeSurface
-                key={session.requestId}
-                ref={player}
-                track={track}
-                initialTime={session.resumeTime || 0}
-                initialPlaylistIndex={session.resumePlaylistIndex || 0}
-                autoPlay={Boolean(session.autoPlay)}
-                initialVolume={volume}
-                onStatus={(next) => {
-                  if (sessionRef.current?.requestId !== session.requestId)
-                    return;
-                  const mergedStatus = { ...statusRef.current, ...next };
-                  statusRef.current = mergedStatus;
-                  if (Number.isFinite(next.time)) {
-                    rememberedPlayback.current.set(trackKey(track), {
-                      time:
-                        mergedStatus.state === 0 ? 0 : mergedStatus.time || 0,
-                      duration: mergedStatus.duration || 0,
-                      playlistIndex: mergedStatus.playlistIndex || 0,
-                    });
-                  }
-                  setStatus(mergedStatus);
-                }}
-              />
-            </View>
+            {expanded && playerStyle === "classic"
+              ? renderPlayerSurface(styles.playerEnginePreview)
+              : !expanded
+                ? renderPlayerSurface(styles.playerEngineHidden, false)
+                : null}
             <View
               style={[
                 styles.body,
@@ -532,7 +577,14 @@ export default function PlaybackProvider({ children }) {
             >
               {expanded ? (
                 <ScrollView
-                  style={[styles.trackPane, desktop && styles.desktopTrackPane]}
+                  style={[
+                    styles.trackPane,
+                    desktop && styles.desktopTrackPane,
+                    desktop &&
+                      (playerStyle === "integrated"
+                        ? styles.desktopTrackPaneIntegrated
+                        : styles.desktopTrackPaneClassic),
+                  ]}
                   contentContainerStyle={[
                     styles.trackList,
                     desktop && styles.desktopTrackList,
@@ -606,49 +658,62 @@ export default function PlaybackProvider({ children }) {
                         key={index}
                         style={[
                           styles.track,
+                          desktop && styles.embeddedVideoTrack,
                           !wideTransport && styles.trackMobile,
                         ]}
                       >
-                        <Pressable
-                          onPress={() => select(index)}
-                          accessibilityRole="button"
-                          accessibilityLabel={tr(
-                            itemPlaying
-                              ? `Pausar ${item.title}`
-                              : `Reproducir ${item.title}`,
-                          )}
-                          accessibilityState={{ selected: active }}
-                          style={[
-                            styles.cardArtworkButton,
-                            !wideTransport && styles.cardArtworkButtonMobile,
-                          ]}
-                        >
-                          {imageId ? (
-                            <Image
-                              source={{
-                                uri: `https://i.ytimg.com/vi/${imageId}/mqdefault.jpg`,
-                              }}
-                              style={[
-                                styles.cardArtwork,
-                                !wideTransport && styles.cardArtworkMobile,
-                              ]}
-                            />
-                          ) : (
-                            <View
-                              style={[
-                                styles.cardArtwork,
-                                !wideTransport && styles.cardArtworkMobile,
-                                styles.fallback,
-                              ]}
-                            >
-                              <Ionicons
-                                name="albums-outline"
-                                size={34}
-                                color="#dc2626"
+                        {playerStyle === "integrated" ? (
+                          <View
+                            style={[
+                              styles.embeddedVideo,
+                              !desktop && styles.embeddedVideoMobile,
+                            ]}
+                          >
+                            {renderPlayerSurface(styles.playerEngineEmbedded)}
+                          </View>
+                        ) : (
+                          <Pressable
+                            onPress={() => select(index)}
+                            accessibilityRole="button"
+                            accessibilityLabel={tr(
+                              itemPlaying
+                                ? `Pausar ${item.title}`
+                                : `Reproducir ${item.title}`,
+                            )}
+                            accessibilityState={{ selected: active }}
+                            style={[
+                              styles.cardArtworkButton,
+                              !wideTransport && styles.cardArtworkButtonMobile,
+                            ]}
+                          >
+                            {imageId ? (
+                              <Image
+                                source={{
+                                  uri: `https://i.ytimg.com/vi/${imageId}/mqdefault.jpg`,
+                                }}
+                                style={[
+                                  styles.cardArtwork,
+                                  !wideTransport && styles.cardArtworkMobile,
+                                ]}
+                                resizeMode="contain"
                               />
-                            </View>
-                          )}
-                        </Pressable>
+                            ) : (
+                              <View
+                                style={[
+                                  styles.cardArtwork,
+                                  !wideTransport && styles.cardArtworkMobile,
+                                  styles.fallback,
+                                ]}
+                              >
+                                <Ionicons
+                                  name="albums-outline"
+                                  size={34}
+                                  color="#dc2626"
+                                />
+                              </View>
+                            )}
+                          </Pressable>
+                        )}
 
                         <View
                           style={[
@@ -909,8 +974,6 @@ export default function PlaybackProvider({ children }) {
                           : item.kind === "album"
                             ? "Álbum"
                             : "Single";
-                        const thumbnailId =
-                          active && status.videoId ? status.videoId : item.videoId;
                         return (
                           <Pressable
                             key={`${trackKey(item)}:${index}`}
@@ -938,28 +1001,6 @@ export default function PlaybackProvider({ children }) {
                                 />
                               ) : (
                                 <Text style={styles.queueRowIndexText}>{index + 1}</Text>
-                              )}
-                            </View>
-                            <View style={styles.queueThumbnail}>
-                              {thumbnailId ? (
-                                <Image
-                                  source={{
-                                    uri: `https://i.ytimg.com/vi/${thumbnailId}/mqdefault.jpg`,
-                                  }}
-                                  style={styles.queueThumbnailImage}
-                                />
-                              ) : (
-                                <View style={styles.queueThumbnailFallback}>
-                                  <Ionicons
-                                    name={
-                                      item.kind === "album"
-                                        ? "albums"
-                                        : "logo-youtube"
-                                    }
-                                    size={21}
-                                    color="#f8fafc"
-                                  />
-                                </View>
                               )}
                             </View>
                             <View style={styles.queueRowText}>
@@ -1053,6 +1094,19 @@ const styles = StyleSheet.create({
   },
   heading: { flex: 1, minWidth: 0, paddingLeft: 16 },
   title: { fontSize: 14, fontWeight: "800", color: "#f9fafb" },
+  styleSelector: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    marginRight: 4,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: "#3f3f46",
+    backgroundColor: "#18181b",
+  },
+  styleSelectorButton: { minHeight: 28, paddingHorizontal: 8, justifyContent: "center" },
+  styleSelectorButtonActive: { backgroundColor: "#ec1970" },
+  styleSelectorText: { fontSize: 10, fontWeight: "800", color: "#f9fafb" },
   iconButton: {
     width: 40,
     height: 44,
@@ -1070,12 +1124,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   desktopTrackPane: {
-    flex: 1,
-    width: "44%",
-    maxWidth: "44%",
-    minWidth: 440,
+    width: "100%",
+    minWidth: 0,
     alignSelf: "center",
   },
+  desktopTrackPaneClassic: { maxWidth: 440 },
+  desktopTrackPaneIntegrated: { maxWidth: 720 },
   desktopLyricsPanel: {
     flex: 0.92,
     minWidth: 340,
@@ -1173,6 +1227,7 @@ const styles = StyleSheet.create({
     top: 52,
     opacity: 0.001,
   },
+  playerEngineEmbedded: { width: "100%", height: "100%" },
   media: { flexGrow: 0, flexShrink: 1, width: "100%", minWidth: 0 },
   mediaContent: { alignItems: "center", paddingBottom: 14 },
   desktopMedia: {
@@ -1301,13 +1356,13 @@ const styles = StyleSheet.create({
   },
   queueRows: { gap: 6 },
   queueRow: {
-    minHeight: 64,
+    minHeight: 48,
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingVertical: 4,
     borderWidth: 1,
     borderColor: "#29292d",
     backgroundColor: "#151518",
@@ -1375,6 +1430,20 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     overflow: "hidden",
     ...Platform.select({ web: { touchAction: "pan-y" } }),
+  },
+  embeddedVideoTrack: { maxWidth: 720, aspectRatio: undefined },
+  embeddedVideo: {
+    width: 249,
+    height: "100%",
+    flexShrink: 0,
+    overflow: "hidden",
+    backgroundColor: "#000",
+  },
+  embeddedVideoMobile: {
+    width: 120,
+    height: 68,
+    alignSelf: "center",
+    marginHorizontal: 10,
   },
   cardArtworkButton: { height: "100%", aspectRatio: 1, flexShrink: 0 },
   cardArtwork: { width: "100%", height: "100%", backgroundColor: "#27272a" },

@@ -1197,7 +1197,7 @@ export default function PlayListScreen() {
   );
 
   const searchHeader = (
-    <View style={styles.searchSection}>
+    <View style={[styles.searchSection, isNews && styles.newsSearchSection]}>
       <View style={styles.searchBar}>
         <View style={styles.searchIcon}>
           <Ionicons name="search-outline" size={21} color="#64748b" />
@@ -2149,12 +2149,13 @@ const styles = StyleSheet.create({
   newButtonText: { fontWeight: "800", color: "#fff" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   searchSection: {
-    width: 560,
+    width: 440,
     maxWidth: "100%",
     alignSelf: "center",
     paddingBottom: 14,
     gap: 6,
   },
+  newsSearchSection: { width: 560 },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
