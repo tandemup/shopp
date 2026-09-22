@@ -82,6 +82,12 @@
           "isAccessMediaLocationEnabled": false
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permitir que Shopp seleccione las fotos del ticket."
+        }
+      ],
       "expo-web-browser",
       "expo-font",
       "expo-image",

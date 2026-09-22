@@ -12,6 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImageManipulator from "expo-image-manipulator";
+import * as ImagePicker from "expo-image-picker";
 import Slider from "@react-native-community/slider";
 import { captureRef } from "react-native-view-shot";
 
@@ -20,6 +21,7 @@ import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 const TARGET_WIDTH = 1400;
 const DEFAULT_OVERLAP = 0.35;
+const MAX_COMPOSED_HEIGHT = 30000;
 
 async function normalizePhoto(photo) {
   const width = Number(photo?.width) || TARGET_WIDTH;
@@ -32,6 +34,54 @@ async function normalizePhoto(photo) {
   );
 
   return { uri: result.uri, width: result.width, height: result.height };
+}
+
+function downloadWebImage(dataUri) {
+  const link = document.createElement("a");
+  link.href = dataUri;
+  link.download = `ticket-${Date.now()}.jpg`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function loadWebImage(uri) {
+  return new Promise((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("No se pudo leer una de las fotos."));
+    image.src = uri;
+  });
+}
+
+async function composeWebTicket(sections, height) {
+  const canvas = document.createElement("canvas");
+  canvas.width = TARGET_WIDTH;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("El navegador no permite crear la imagen.");
+
+  context.fillStyle = "#FFFFFF";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  let outputY = 0;
+  for (const section of sections) {
+    const image = await loadWebImage(section.uri);
+    context.drawImage(
+      image,
+      0,
+      section.cropTop,
+      section.width,
+      section.visibleHeight,
+      0,
+      outputY,
+      TARGET_WIDTH,
+      section.visibleHeight,
+    );
+    outputY += section.visibleHeight;
+  }
+
+  return canvas.toDataURL("image/jpeg", 0.96);
 }
 
 export default function TicketCaptureScreen() {
@@ -74,6 +124,31 @@ export default function TicketCaptureScreen() {
     setCameraVisible(true);
   }, [cameraPermission?.granted, requestCameraPermission]);
 
+  const addPhotos = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        quality: 1,
+        selectionLimit: 20,
+      });
+      if (result.canceled || !result.assets?.length) return;
+
+      const normalized = [];
+      for (const asset of result.assets) {
+        normalized.push(await normalizePhoto(asset));
+      }
+      setPhotos((current) => [...current, ...normalized]);
+    } catch (error) {
+      console.warn("[TicketCapture] image picker failed", error);
+      safeAlert("No se pudieron añadir las fotos", "Comprueba el permiso de Fotos y vuelve a intentarlo.");
+    } finally {
+      setBusy(false);
+    }
+  }, [busy]);
+
   const takePhoto = useCallback(async () => {
     if (!cameraRef.current || busy) return;
     setBusy(true);
@@ -94,20 +169,35 @@ export default function TicketCaptureScreen() {
   }, [busy]);
 
   const saveTicket = useCallback(async () => {
-    if (!compositionRef.current || sections.length === 0 || busy) return;
+    if (sections.length === 0 || busy) return;
+    if (composedHeight > MAX_COMPOSED_HEIGHT) {
+      safeAlert(
+        "Ticket demasiado largo",
+        "Quita alguna foto o aumenta el solape antes de generar la imagen.",
+      );
+      return;
+    }
     setBusy(true);
     try {
+      if (Platform.OS === "web") {
+        const dataUri = await composeWebTicket(sections, composedHeight);
+        downloadWebImage(dataUri);
+        safeAlert("Ticket descargado", "Se ha creado una sola imagen en alta calidad.");
+        return;
+      }
+
+      if (!compositionRef.current) {
+        throw new Error("La vista previa aún no está lista.");
+      }
       let MediaLibrary = null;
 
-      if (Platform.OS !== "web") {
-        // Carga diferida: expo-media-library es un módulo nativo y no debe
-        // evaluarse al arrancar la versión web de Shopp.
-        MediaLibrary = await import("expo-media-library");
-        const permission = await MediaLibrary.requestPermissionsAsync();
-        if (!permission.granted) {
-          safeAlert("Permiso necesario", "Activa Fotos para guardar el ticket.");
-          return;
-        }
+      // Carga diferida: expo-media-library es un módulo nativo y no debe
+      // evaluarse al arrancar la versión web de Shopp.
+      MediaLibrary = await import("expo-media-library");
+      const permission = await MediaLibrary.requestPermissionsAsync();
+      if (!permission.granted) {
+        safeAlert("Permiso necesario", "Activa Fotos para guardar el ticket.");
+        return;
       }
 
       const uri = await captureRef(compositionRef, {
@@ -115,17 +205,10 @@ export default function TicketCaptureScreen() {
         quality: 0.96,
         width: TARGET_WIDTH,
         height: composedHeight,
-        result: Platform.OS === "web" ? "data-uri" : "tmpfile",
+        result: "tmpfile",
       });
 
-      if (Platform.OS === "web") {
-        const link = document.createElement("a");
-        link.href = uri;
-        link.download = `ticket-${Date.now()}.jpg`;
-        link.click();
-      } else {
-        await MediaLibrary.saveToLibraryAsync(uri);
-      }
+      await MediaLibrary.saveToLibraryAsync(uri);
       safeAlert("Ticket guardado", "Se ha creado una sola imagen en alta calidad.");
     } catch (error) {
       console.warn("[TicketCapture] compose failed", error);
@@ -136,7 +219,7 @@ export default function TicketCaptureScreen() {
     } finally {
       setBusy(false);
     }
-  }, [busy, composedHeight, sections.length]);
+  }, [busy, composedHeight, sections]);
 
   if (cameraVisible) {
     return (
@@ -177,12 +260,20 @@ export default function TicketCaptureScreen() {
           </Text>
         </Pressable>
         <Pressable
+          disabled={busy}
+          style={[styles.photosButton, busy && styles.disabled]}
+          onPress={addPhotos}
+        >
+          <Ionicons name="images-outline" size={20} color="#1D4ED8" />
+          <Text style={styles.photosButtonText}>Añadir fotos</Text>
+        </Pressable>
+        <Pressable
           disabled={!photos.length || busy}
           style={[styles.saveButton, (!photos.length || busy) && styles.disabled]}
           onPress={saveTicket}
         >
           <Ionicons name="download-outline" size={20} color="#1D4ED8" />
-          <Text style={styles.saveButtonText}>Generar imagen</Text>
+          <Text style={styles.saveButtonText}>{Platform.OS === "web" ? "Descargar" : "Guardar"}</Text>
         </Pressable>
       </View>
 
@@ -251,6 +342,8 @@ const styles = StyleSheet.create({
   actionRow: { width: "100%", maxWidth: 720, flexDirection: "row", gap: 10, marginTop: 18 },
   primaryButton: { flex: 1, minHeight: 48, borderRadius: 12, backgroundColor: "#2563EB", flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" },
   primaryButtonText: { color: "#FFFFFF", fontWeight: "700" },
+  photosButton: { flex: 1, minHeight: 48, borderRadius: 12, borderWidth: 1, borderColor: "#93C5FD", backgroundColor: "#FFFFFF", flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" },
+  photosButtonText: { color: "#1D4ED8", fontWeight: "700" },
   saveButton: { flex: 1, minHeight: 48, borderRadius: 12, borderWidth: 1, borderColor: "#93C5FD", backgroundColor: "#FFFFFF", flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" },
   saveButtonText: { color: "#1D4ED8", fontWeight: "700" },
   disabled: { opacity: 0.45 },
