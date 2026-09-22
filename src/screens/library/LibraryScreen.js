@@ -1007,6 +1007,18 @@ function defaultBackupFilename() {
   return `shopp-biblioteca-${day}.json`;
 }
 
+function normalizeBackupFilename(value) {
+  const cleanName = String(value || "")
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ");
+
+  if (!cleanName) return "";
+  return cleanName.toLowerCase().endsWith(".json")
+    ? cleanName
+    : `${cleanName}.json`;
+}
+
 function buildBackupFolders(folders) {
   const folderById = new Map(
     (Array.isArray(folders) ? folders : []).map((folder) => [
@@ -1599,6 +1611,7 @@ export default function LibraryScreen({ navigation, route }) {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupMode, setBackupMode] = useState(null);
   const [exportNameVisible, setExportNameVisible] = useState(false);
+  const [exportFilename, setExportFilename] = useState("");
   const [exportReview, setExportReview] = useState(null);
   const [selectedExportCategoryKeys, setSelectedExportCategoryKeys] = useState(
     [],
@@ -2676,62 +2689,10 @@ export default function LibraryScreen({ navigation, route }) {
     updateMetadata,
   ]);
 
-  const requestExportDestination = useCallback(async (filename) => {
-    if (
-      Platform.OS === "web" &&
-      typeof window !== "undefined" &&
-      typeof window.showSaveFilePicker === "function"
-    ) {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: filename,
-        types: [
-          {
-            description: "Copia de Biblioteca (JSON)",
-            accept: { "application/json": [".json"] },
-          },
-        ],
-      });
-      return { kind: "web", handle, name: handle.name };
-    }
-
-    if (
-      Platform.OS === "android" &&
-      FileSystem.StorageAccessFramework?.requestDirectoryPermissionsAsync
-    ) {
-      const permission =
-        await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-      return permission.granted && permission.directoryUri
-        ? {
-            kind: "android",
-            directoryUri: permission.directoryUri,
-            name: "Carpeta seleccionada",
-          }
-        : { cancelled: true };
-    }
-
-    return null;
-  }, []);
-
   const performExportBackup = useCallback(async () => {
-    const filename = defaultBackupFilename();
+    const filename =
+      normalizeBackupFilename(exportFilename) || defaultBackupFilename();
     if (!exportReview || backupBusy) return;
-
-    let selectedDestination;
-    try {
-      // Debe ejecutarse directamente desde el toque/clic del botón para que
-      // Chrome conserve el permiso de abrir el diálogo nativo "Guardar como".
-      selectedDestination = await requestExportDestination(filename);
-    } catch (error) {
-      // Cerrar el diálogo de guardado no debe mostrar un error.
-      if (String(error?.name || "") !== "AbortError") {
-        safeAlert(
-          "No se pudo elegir la ubicación",
-          error?.message || "Inténtalo de nuevo.",
-        );
-      }
-      return;
-    }
-    if (selectedDestination?.cancelled) return;
 
     const exportAll =
       exportReview.categories.length === 0 ||
@@ -2761,45 +2722,68 @@ export default function LibraryScreen({ navigation, route }) {
       };
       const json = JSON.stringify(payload, null, 2);
 
-      if (
-        selectedDestination?.kind === "web" &&
-        selectedDestination.handle?.createWritable
-      ) {
-        const writable = await selectedDestination.handle.createWritable();
-        await writable.write(json);
-        await writable.close();
-        safeAlert(
-          "Copia creada",
-          `Se ha guardado ${filename} en la ubicación seleccionada.`,
-        );
-      } else if (
-        selectedDestination?.kind === "android" &&
-        FileSystem.StorageAccessFramework?.createFileAsync
-      ) {
-        const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
-          selectedDestination.directoryUri,
-          filename,
-          "application/json",
-        );
-        await FileSystem.writeAsStringAsync(fileUri, json, {
-          encoding: FileSystem.EncodingType.UTF8,
-        });
-        safeAlert(
-          "Copia creada",
-          `Se ha guardado ${filename} en la carpeta seleccionada.`,
-        );
-      } else if (Platform.OS === "web" && typeof document !== "undefined") {
-        const blob = new Blob([json], {
-          type: "application/json;charset=utf-8",
-        });
-        const objectUrl = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = objectUrl;
-        anchor.download = filename;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        URL.revokeObjectURL(objectUrl);
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        // Al pulsar “Exportar seleccionados” intentamos abrir directamente
+        // el selector de guardado. En Safari/iPadOS, donde showSaveFilePicker
+        // no está disponible, usamos el panel nativo para poder elegir
+        // “Guardar en Archivos” y después una unidad USB conectada.
+        let exported = false;
+
+        if (typeof window.showSaveFilePicker === "function") {
+          try {
+            const handle = await window.showSaveFilePicker({
+              suggestedName: filename,
+              types: [
+                {
+                  description: "Copia de Biblioteca (JSON)",
+                  accept: { "application/json": [".json"] },
+                },
+              ],
+            });
+            const writable = await handle.createWritable();
+            await writable.write(json);
+            await writable.close();
+            exported = true;
+          } catch (error) {
+            if (String(error?.name || "") === "AbortError") return;
+          }
+        }
+
+        if (!exported && typeof navigator !== "undefined" && typeof File !== "undefined") {
+          const file = new File([json], filename, {
+            type: "application/json",
+          });
+          const canShareFile =
+            typeof navigator.share === "function" &&
+            (typeof navigator.canShare !== "function" ||
+              navigator.canShare({ files: [file] }));
+
+          if (canShareFile) {
+            try {
+              await navigator.share({
+                files: [file],
+                title: filename,
+              });
+              exported = true;
+            } catch (error) {
+              if (String(error?.name || "") === "AbortError") return;
+            }
+          }
+        }
+
+        if (!exported && typeof document !== "undefined") {
+          const blob = new Blob([json], {
+            type: "application/json;charset=utf-8",
+          });
+          const objectUrl = URL.createObjectURL(blob);
+          const anchor = document.createElement("a");
+          anchor.href = objectUrl;
+          anchor.download = filename;
+          document.body.appendChild(anchor);
+          anchor.click();
+          anchor.remove();
+          URL.revokeObjectURL(objectUrl);
+        }
       } else {
         const fileUri = `${FileSystem.documentDirectory}${filename}`;
         await FileSystem.writeAsStringAsync(fileUri, json, {
@@ -2825,13 +2809,14 @@ export default function LibraryScreen({ navigation, route }) {
     }
   }, [
     backupBusy,
+    exportFilename,
     exportReview,
-    requestExportDestination,
     selectedExportCategoryKeys,
   ]);
 
   const handleExportBackup = useCallback(() => {
     if (backupBusy) return;
+    setExportFilename(defaultBackupFilename());
     setBackupBusy(true);
     setSlowTask({
       kind: "prepare-export",
@@ -3465,6 +3450,7 @@ export default function LibraryScreen({ navigation, route }) {
     setExportNameVisible(false);
     setExportReview(null);
     setSelectedExportCategoryKeys([]);
+    setExportDestination(null);
   }, [backupBusy]);
 
   const toggleExportCategory = useCallback((categoryKey) => {
@@ -5193,11 +5179,6 @@ export default function LibraryScreen({ navigation, route }) {
               >
                 <Text style={styles.modalTitle}>Exportar Biblioteca</Text>
 
-                <Text style={styles.fieldHelp}>
-                  Al pulsar «Exportar seleccionados» podrás elegir el nombre y
-                  la carpeta donde guardar el archivo JSON.
-                </Text>
-
                 {importReview?.isHistoricalNewsArray ? (
                   <Text style={styles.fieldHelp}>
                     Formato histórico detectado: se importará como Noticias,
@@ -6348,6 +6329,23 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#1d4ed8",
   },
+  exportLocationButton: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 11,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#f8fbff",
+  },
+  exportLocationTextWrap: { flex: 1, gap: 2 },
+  exportLocationButtonText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#1d4ed8",
+  },
+  exportLocationHelp: { fontSize: 11, color: "#64748b" },
   integrityButton: {
     borderColor: "#a7f3d0",
     backgroundColor: "#ecfdf5",
