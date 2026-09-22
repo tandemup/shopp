@@ -1576,7 +1576,11 @@ export default function PlayListScreen() {
                 ) : null}
               </View>
             ) : isNews ? (
-              <View style={styles.newsEditorFields}>
+              <ScrollView
+                style={styles.newsEditorScroll}
+                contentContainerStyle={styles.newsEditorFields}
+                keyboardShouldPersistTaps="handled"
+              >
                 <Text style={styles.label}>Título descriptivo</Text>
                 <TextInput
                   value={title}
@@ -1594,7 +1598,20 @@ export default function PlayListScreen() {
                   placeholder="https://youtu.be/..."
                   style={styles.trackInput}
                 />
-              </View>
+                <EditorVideoPreview
+                  track={tracks[0] || initialTracks()[0]}
+                  active={
+                    previewKey === `news:${tracks[0]?.url || ""}`
+                  }
+                  disabled={saving}
+                  onToggle={() => {
+                    const key = `news:${tracks[0]?.url || ""}`;
+                    setPreviewKey((current) =>
+                      current === key ? null : key,
+                    );
+                  }}
+                />
+              </ScrollView>
             ) : (
               <>
                 <Text style={styles.label}>
@@ -2120,6 +2137,7 @@ const styles = StyleSheet.create({
   },
   editorTitle: { fontSize: 20, fontWeight: "900", color: "#111827" },
   editorSubtitle: { marginTop: 3, fontSize: 12, color: "#64748b" },
+  newsEditorScroll: { flex: 1, minHeight: 0 },
   newsEditorFields: { gap: 8, paddingTop: 8, paddingBottom: 12 },
   tutorialTypeHelp: {
     flexDirection: "row",
