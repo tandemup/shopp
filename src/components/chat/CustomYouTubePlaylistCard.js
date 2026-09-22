@@ -4,6 +4,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { I18nText as Text } from "@/src/i18n";
 import { usePlayback } from "@/src/components/playback/PlaybackProvider";
 
+// La altura de la card no cambia. La miniatura usa 16:9 exacto para no
+// recortar ni deformar el fotograma que devuelve YouTube.
+const CARD_WIDTH = 560;
+const CARD_HEIGHT = 90;
+const VIDEO_THUMBNAIL_WIDTH = (CARD_HEIGHT * 16) / 9;
+
 export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, isTutorial = false, isNews = false }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const playback = usePlayback();
@@ -19,6 +25,7 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
               uri: `https://i.ytimg.com/vi/${activeTrack.videoId}/mqdefault.jpg`,
             }}
             style={styles.cover}
+            resizeMode="contain"
           />
         ) : (
           <View style={styles.coverFallback}>
@@ -82,27 +89,27 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
 
 const styles = StyleSheet.create({
   card: {
-    width: 440,
+    width: CARD_WIDTH,
     maxWidth: "100%",
     borderWidth: 1,
     borderColor: "#d1d5db",
     backgroundColor: "#fff",
   },
   summary: {
-    minHeight: 90,
+    height: CARD_HEIGHT,
     flexDirection: "row",
     alignItems: "stretch",
     overflow: "hidden",
   },
   cover: {
-    width: 160,
-    minHeight: 90,
+    width: VIDEO_THUMBNAIL_WIDTH,
+    height: CARD_HEIGHT,
     alignSelf: "stretch",
     backgroundColor: "#111827",
   },
   coverFallback: {
-    width: 160,
-    minHeight: 90,
+    width: VIDEO_THUMBNAIL_WIDTH,
+    height: CARD_HEIGHT,
     alignSelf: "stretch",
     alignItems: "center",
     justifyContent: "center",

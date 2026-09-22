@@ -2149,7 +2149,7 @@ const styles = StyleSheet.create({
   newButtonText: { fontWeight: "800", color: "#fff" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   searchSection: {
-    width: 440,
+    width: 560,
     maxWidth: "100%",
     alignSelf: "center",
     paddingBottom: 14,
