@@ -331,6 +331,7 @@ export default function PlayListScreen() {
       : "skip",
   );
   const createPlaylist = useMutation(contentApi.create);
+  const replacePlaylists = useMutation(contentApi.replaceMine);
   const updatePlaylist = useMutation(contentApi.update);
   const removePlaylist = useMutation(contentApi.remove);
   const refreshNewsYouTubePublishedDates = useAction(
@@ -368,6 +369,8 @@ export default function PlayListScreen() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [importModeVisible, setImportModeVisible] = useState(false);
+  const [pendingImportAsset, setPendingImportAsset] = useState(null);
   const [exportNameVisible, setExportNameVisible] = useState(false);
   const [exportFileName, setExportFileName] = useState("");
   const [exportTarget, setExportTarget] = useState(null);
@@ -1053,16 +1056,10 @@ export default function PlayListScreen() {
     [clientId, isClassical, isNews, isTutorialStyle, updatePlaylist],
   );
 
-  const importJson = useCallback(async () => {
+  const importJsonFile = useCallback(async (asset, importMode = "combine") => {
     setImporting(true);
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ["application/json", "text/json", "text/plain"],
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
-      const asset = result.assets?.[0];
-      if (result.canceled || !asset?.uri) return;
+      if (!asset?.uri) return;
       const response = await fetch(asset.uri);
       const payload = JSON.parse(await response.text());
       const imported = parseImportedPayload(
@@ -1074,6 +1071,32 @@ export default function PlayListScreen() {
         isNews ? ["shopp-youtube-tutorial"] : [],
         isNews ? ["shopp-youtube-tutorials"] : [],
       );
+
+      if (importMode === "replace") {
+        await replacePlaylists({
+          clientId,
+          ...(isTutorialStyle
+            ? { contentType: isNews ? "news" : "tutorial" }
+            : { collectionType: isClassical ? "classical" : "playlist" }),
+          items: imported,
+        });
+        safeAlert(
+          "Importación terminada",
+          `${imported.length} ${
+            isNews
+              ? "noticia"
+              : isTutorials
+                ? "tutorial"
+                : isClassical
+                  ? "colección"
+                  : "playlist"
+          }${
+            imported.length === 1 ? "" : isClassical ? "es" : "s"
+          } importada${imported.length === 1 ? "" : "s"}. Los elementos anteriores de esta utilidad se han reemplazado.`,
+        );
+        return;
+      }
+
       const existingSignatures = new Set(
         (playlists || []).map(
           (item) =>
@@ -1101,7 +1124,13 @@ export default function PlayListScreen() {
       safeAlert(
         "Importación terminada",
         `${added} ${
-          isNews ? "noticia" : isClassical ? "colección" : "playlist"
+          isNews
+            ? "noticia"
+            : isTutorials
+              ? "tutorial"
+              : isClassical
+                ? "colección"
+                : "playlist"
         }${
           added === 1 ? "" : isClassical ? "es" : "s"
         } importada${added === 1 ? "" : "s"}.${
@@ -1130,10 +1159,42 @@ export default function PlayListScreen() {
     isClassical,
     isNews,
     isTutorialStyle,
+    isTutorials,
     minimumTracks,
     maximumTracks,
     playlists,
+    replacePlaylists,
   ]);
+
+  const importJson = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/json", "text/json", "text/plain"],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset?.uri) return;
+
+      setPendingImportAsset(asset);
+      setImportModeVisible(true);
+    } catch (error) {
+      safeAlert(
+        "No se pudo importar",
+        error?.message || "Revisa el fichero seleccionado.",
+      );
+    }
+  }, []);
+
+  const chooseImportMode = useCallback(
+    async (importMode) => {
+      const asset = pendingImportAsset;
+      setImportModeVisible(false);
+      setPendingImportAsset(null);
+      await importJsonFile(asset, importMode);
+    },
+    [importJsonFile, pendingImportAsset],
+  );
 
   const searchHeader = (
     <View style={styles.searchSection}>
@@ -1365,6 +1426,63 @@ export default function PlayListScreen() {
         />
       ) : null}
       <Modal
+        visible={importModeVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!importing) {
+            setImportModeVisible(false);
+            setPendingImportAsset(null);
+          }
+        }}
+      >
+        <View style={styles.backdrop}>
+          <View style={styles.importModeCard}>
+            <Text style={styles.editorTitle}>Importar {collectionTitle}</Text>
+            <Text style={styles.editorSubtitle}>
+              Elige cómo incorporar el contenido del fichero JSON.
+            </Text>
+            <Pressable
+              onPress={() => chooseImportMode("combine")}
+              style={styles.importModeButton}
+            >
+              <Ionicons name="git-merge-outline" size={20} color="#2563eb" />
+              <View style={styles.importModeButtonText}>
+                <Text style={styles.importModeTitle}>Combinar</Text>
+                <Text style={styles.importModeDescription}>
+                  Conserva los elementos actuales y añade los nuevos. Los duplicados se omiten.
+                </Text>
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={() => chooseImportMode("replace")}
+              style={[styles.importModeButton, styles.importModeReplaceButton]}
+            >
+              <Ionicons name="trash-outline" size={20} color="#b91c1c" />
+              <View style={styles.importModeButtonText}>
+                <Text style={[styles.importModeTitle, styles.importModeReplaceTitle]}>
+                  Reescribir todo
+                </Text>
+                <Text style={styles.importModeDescription}>
+                  Elimina los elementos actuales de esta utilidad y los sustituye por los del fichero.
+                </Text>
+              </View>
+            </Pressable>
+            <View style={styles.importModeActions}>
+              <Pressable
+                onPress={() => {
+                  setImportModeVisible(false);
+                  setPendingImportAsset(null);
+                }}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonText}>Cancelar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
         visible={exportNameVisible}
         transparent
         animationType="fade"
@@ -1576,11 +1694,7 @@ export default function PlayListScreen() {
                 ) : null}
               </View>
             ) : isNews ? (
-              <ScrollView
-                style={styles.newsEditorScroll}
-                contentContainerStyle={styles.newsEditorFields}
-                keyboardShouldPersistTaps="handled"
-              >
+              <View style={styles.newsEditorFields}>
                 <Text style={styles.label}>Título descriptivo</Text>
                 <TextInput
                   value={title}
@@ -1598,20 +1712,7 @@ export default function PlayListScreen() {
                   placeholder="https://youtu.be/..."
                   style={styles.trackInput}
                 />
-                <EditorVideoPreview
-                  track={tracks[0] || initialTracks()[0]}
-                  active={
-                    previewKey === `news:${tracks[0]?.url || ""}`
-                  }
-                  disabled={saving}
-                  onToggle={() => {
-                    const key = `news:${tracks[0]?.url || ""}`;
-                    setPreviewKey((current) =>
-                      current === key ? null : key,
-                    );
-                  }}
-                />
-              </ScrollView>
+              </View>
             ) : (
               <>
                 <Text style={styles.label}>
@@ -2137,7 +2238,6 @@ const styles = StyleSheet.create({
   },
   editorTitle: { fontSize: 20, fontWeight: "900", color: "#111827" },
   editorSubtitle: { marginTop: 3, fontSize: 12, color: "#64748b" },
-  newsEditorScroll: { flex: 1, minHeight: 0 },
   newsEditorFields: { gap: 8, paddingTop: 8, paddingBottom: 12 },
   tutorialTypeHelp: {
     flexDirection: "row",
@@ -2299,6 +2399,37 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: "#cbd5e1",
+  },
+  importModeCard: {
+    width: 520,
+    maxWidth: "92%",
+    gap: 12,
+    padding: 18,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+  },
+  importModeButton: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    padding: 13,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+  importModeReplaceButton: {
+    borderColor: "#fecaca",
+    backgroundColor: "#fff7f7",
+  },
+  importModeButtonText: { flex: 1, minWidth: 0 },
+  importModeTitle: { fontSize: 14, fontWeight: "900", color: "#1d4ed8" },
+  importModeReplaceTitle: { color: "#b91c1c" },
+  importModeDescription: { marginTop: 3, fontSize: 12, color: "#475569" },
+  importModeActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 2,
   },
   exportNameActions: {
     flexDirection: "row",

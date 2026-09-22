@@ -334,6 +334,12 @@ export default function PlaybackProvider({ children }) {
   // tipografías e iconos no deben saltar a una escala desproporcionada.
   const wideTransport = false;
   const miniWidth = Math.min(360, Math.max(200, width - 16));
+  // Evita que la cola quede limitada a cinco filas cuando el reproductor
+  // dispone de más alto. El listado conserva su propio scroll al llenarse.
+  const queueRowsMaxHeight = Math.max(
+    220,
+    height - insets.top - insets.bottom - (desktop ? 670 : 620),
+  );
   const bottom =
     Platform.OS === "web"
       ? "calc(78px + env(safe-area-inset-bottom, 0px))"
@@ -873,6 +879,111 @@ export default function PlaybackProvider({ children }) {
                       </View>
                     );
                   })}
+                  <View style={styles.queueSection}>
+                    <View style={styles.queueSectionHeader}>
+                      <Text style={styles.queueSectionEyebrow}>LISTA DE PISTAS</Text>
+                      <Text style={styles.queueSectionCount}>
+                        {session.tracks.length} {session.tracks.length === 1 ? "pista" : "pistas"}
+                      </Text>
+                    </View>
+                    <ScrollView
+                      style={[
+                        styles.queueRowsScroll,
+                        { maxHeight: queueRowsMaxHeight },
+                      ]}
+                      contentContainerStyle={styles.queueRows}
+                      nestedScrollEnabled
+                      scrollEnabled={session.tracks.length > 5}
+                      showsVerticalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      {session.tracks.map((item, index) => {
+                        const active = index === session.index;
+                        const itemTitle =
+                          item.title ||
+                          `${session.isTutorial ? "Vídeo" : "Elemento"} ${index + 1}`;
+                        const kindLabel = session.isTutorial
+                          ? item.kind === "album"
+                            ? "Serie"
+                            : "Vídeo"
+                          : item.kind === "album"
+                            ? "Álbum"
+                            : "Single";
+                        const thumbnailId =
+                          active && status.videoId ? status.videoId : item.videoId;
+                        return (
+                          <Pressable
+                            key={`${trackKey(item)}:${index}`}
+                            accessibilityRole="button"
+                            accessibilityLabel={tr(
+                              active
+                                ? `${playing ? "Pausar" : "Reproducir"} ${itemTitle}`
+                                : `Reproducir ${itemTitle}`,
+                            )}
+                            accessibilityState={{ selected: active }}
+                            onPress={() => select(index)}
+                            style={[styles.queueRow, active && styles.queueRowActive]}
+                          >
+                            <View
+                              style={[
+                                styles.queueRowIndex,
+                                active && styles.queueRowIndexActive,
+                              ]}
+                            >
+                              {active ? (
+                                <Ionicons
+                                  name={playing ? "pause" : "musical-note"}
+                                  size={15}
+                                  color="#ec1970"
+                                />
+                              ) : (
+                                <Text style={styles.queueRowIndexText}>{index + 1}</Text>
+                              )}
+                            </View>
+                            <View style={styles.queueThumbnail}>
+                              {thumbnailId ? (
+                                <Image
+                                  source={{
+                                    uri: `https://i.ytimg.com/vi/${thumbnailId}/mqdefault.jpg`,
+                                  }}
+                                  style={styles.queueThumbnailImage}
+                                />
+                              ) : (
+                                <View style={styles.queueThumbnailFallback}>
+                                  <Ionicons
+                                    name={
+                                      item.kind === "album"
+                                        ? "albums"
+                                        : "logo-youtube"
+                                    }
+                                    size={21}
+                                    color="#f8fafc"
+                                  />
+                                </View>
+                              )}
+                            </View>
+                            <View style={styles.queueRowText}>
+                              <Text style={styles.queueRowTitle} numberOfLines={1}>
+                                {itemTitle}
+                              </Text>
+                              <Text style={styles.queueRowMeta}>
+                                {active
+                                  ? playing
+                                    ? "Reproduciendo"
+                                    : "Seleccionada"
+                                  : kindLabel}
+                              </Text>
+                            </View>
+                            <Ionicons
+                              name={active && playing ? "pause-circle" : "play-circle-outline"}
+                              size={24}
+                              color={active ? "#ec1970" : "#9ca3af"}
+                            />
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
                   {track.kind === "album" && ids.length > 0 ? (
                     <View style={styles.albumVideos}>
                       <Text style={styles.trackTitle}>
@@ -1156,6 +1267,100 @@ const styles = StyleSheet.create({
     color: "#f9fafb",
   },
   queueCount: { fontSize: 11, color: "#9ca3af" },
+  queueSection: {
+    width: "100%",
+    maxWidth: 900,
+    alignSelf: "center",
+    marginTop: 10,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#29292d",
+  },
+  queueSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 2,
+    paddingBottom: 8,
+  },
+  queueSectionEyebrow: {
+    fontSize: 9,
+    letterSpacing: 1.2,
+    fontWeight: "900",
+    color: "#ef4444",
+  },
+  queueSectionCount: { fontSize: 11, color: "#9ca3af" },
+  queueRowsScroll: {
+    ...Platform.select({
+      web: {
+        touchAction: "pan-y",
+        scrollbarWidth: "none",
+        msOverflowStyle: "none",
+      },
+    }),
+  },
+  queueRows: { gap: 6 },
+  queueRow: {
+    minHeight: 64,
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "#29292d",
+    backgroundColor: "#151518",
+    ...Platform.select({ web: { touchAction: "pan-y" } }),
+  },
+  queueRowActive: {
+    borderColor: "#ec1970",
+    backgroundColor: "#24131d",
+  },
+  queueRowIndex: {
+    width: 22,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  queueRowIndexActive: { backgroundColor: "#331323" },
+  queueRowIndexText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#9ca3af",
+    fontVariant: ["tabular-nums"],
+  },
+  queueRowText: { flex: 1, minWidth: 0 },
+  queueThumbnail: {
+    width: 76,
+    height: 43,
+    overflow: "hidden",
+    borderRadius: 4,
+    backgroundColor: "#27272a",
+  },
+  queueThumbnailImage: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#27272a",
+  },
+  queueThumbnailFallback: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#334155",
+  },
+  queueRowTitle: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+    color: "#f3f4f6",
+  },
+  queueRowMeta: {
+    marginTop: 2,
+    fontSize: 10,
+    lineHeight: 14,
+    color: "#9ca3af",
+  },
   track: {
     width: "100%",
     maxWidth: 900,

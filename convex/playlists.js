@@ -192,6 +192,69 @@ export const create = mutation({
   },
 });
 
+// Sustituye de una vez una familia de playlists del usuario. El tipo se recibe
+// por separado para impedir que una importación de música normal afecte a las
+// colecciones clásicas, o al revés.
+export const replaceMine = mutation({
+  args: {
+    clientId: v.optional(v.string()),
+    collectionType: v.optional(
+      v.union(v.literal("playlist"), v.literal("classical")),
+    ),
+    items: v.array(
+      v.object({
+        title: v.string(),
+        tracks: v.array(trackValidator),
+        ...detailArgs,
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    const collectionType =
+      args.collectionType === "classical" ? "classical" : "playlist";
+    const currentItems = await ctx.db
+      .query("youtubePlaylists")
+      .withIndex("by_owner_updatedAt", (q) => q.eq("ownerId", ownerId))
+      .collect();
+    const itemsToReplace = currentItems.filter(
+      (item) => (item.collectionType || "playlist") === collectionType,
+    );
+
+    for (const item of itemsToReplace) {
+      await ctx.db.delete(item._id);
+      for (const track of item.tracks) {
+        if (track.lyricsStorageId) {
+          try {
+            await ctx.storage.delete(track.lyricsStorageId);
+          } catch (error) {
+            console.warn(
+              "[playlists.replaceMine] No se pudo borrar un LRC",
+              error,
+            );
+          }
+        }
+      }
+    }
+
+    const now = Date.now();
+    for (const item of args.items) {
+      const playlist = normalizePlaylist(item.title, item.tracks, {
+        ...item,
+        collectionType,
+      });
+      await ctx.db.insert("youtubePlaylists", {
+        ownerId,
+        ...playlist,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return { replaced: itemsToReplace.length, added: args.items.length };
+  },
+});
+
 export const update = mutation({
   args: {
     playlistId: v.id("youtubePlaylists"),

@@ -172,6 +172,47 @@ export const create = mutation({
   },
 });
 
+// Reemplaza de forma atómica las noticias del usuario. Se mantiene separada de
+// `create` para que una importación no deje la colección a medio actualizar.
+export const replaceMine = mutation({
+  args: {
+    clientId: v.optional(v.string()),
+    contentType: contentTypeValidator,
+    items: v.array(
+      v.object({
+        title: v.string(),
+        tracks: v.array(trackValidator),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    const contentType = normalizeContentType(args.contentType);
+    const currentItems = await ctx.db
+      .query("youtubeTutorials")
+      .withIndex("by_owner_updatedAt", (q) => q.eq("ownerId", ownerId))
+      .collect();
+
+    const itemsToReplace = currentItems.filter(
+      (item) => normalizeContentType(item.contentType) === contentType,
+    );
+    for (const item of itemsToReplace) await ctx.db.delete(item._id);
+
+    const now = Date.now();
+    for (const item of args.items) {
+      await ctx.db.insert("youtubeTutorials", {
+        ownerId,
+        contentType,
+        ...normalizeTutorial(item.title, item.tracks),
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return { replaced: itemsToReplace.length, added: args.items.length };
+  },
+});
+
 export const update = mutation({
   args: {
     playlistId: v.id("youtubeTutorials"),
