@@ -43,7 +43,7 @@ export default function SplashScreen({ onFinish }) {
           <Text style={[styles.name, { marginTop: -imageSize * 0.16 }]}>
             Shopp
           </Text>
-          <Text style={styles.subtitle}>Tu lista de la compra inteligente</Text>
+          {/* <Text style={styles.subtitle}>Tu lista de la compra inteligente</Text> */}
         </View>
       </Animated.View>
     </View>
