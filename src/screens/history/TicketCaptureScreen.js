@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 17, fontWeight: "700", color: "#334155" },
   loader: { marginTop: 18 },
   cameraScreen: { flex: 1, backgroundColor: "#000000" },
-  alignmentGuide: { position: "absolute", left: 18, right: 18, bottom: 120, height: "35%", borderWidth: 2, borderStyle: "dashed", borderColor: "rgba(255,255,255,0.9)", backgroundColor: "rgba(37,99,235,0.16)", justifyContent: "center", alignItems: "center", padding: 12 },
+  alignmentGuide: { position: "absolute", left: 18, right: 18, top: 18, height: "35%", borderWidth: 2, borderStyle: "dashed", borderColor: "rgba(255,255,255,0.9)", backgroundColor: "rgba(37,99,235,0.16)", justifyContent: "center", alignItems: "center", padding: 12 },
   alignmentText: { color: "#FFFFFF", textAlign: "center", fontWeight: "700", textShadowColor: "#000000", textShadowRadius: 3 },
   cameraControls: { position: "absolute", left: 20, right: 20, bottom: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   cameraButtonSecondary: { width: 90, paddingVertical: 12, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center" },
