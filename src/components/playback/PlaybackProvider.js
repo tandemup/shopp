@@ -69,7 +69,7 @@ function IconButton({ name, label, onPress, disabled = false }) {
   );
 }
 
-function SyncedLyricLine({ track, uri, time, compact = false }) {
+function SyncedLyricLine({ track, uri, time, compact = false, fallback = null }) {
   const [lines, setLines] = useState([]);
   useEffect(() => {
     let cancelled = false;
@@ -102,13 +102,13 @@ function SyncedLyricLine({ track, uri, time, compact = false }) {
       cancelled = true;
     };
   }, [track?.videoId, track?.playlistId, track?.url, uri]);
-  if (!lines.length) return null;
+  if (!lines.length) return fallback ? <Text style={styles.phoneLyricEmpty}>{fallback}</Text> : null;
   let index = -1;
   lines.forEach((line, i) => {
     if (line.time <= time + 0.08) index = i;
   });
   const text = lines[index]?.text || lines[0]?.text;
-  if (!text) return null;
+  if (!text) return fallback ? <Text style={styles.phoneLyricEmpty}>{fallback}</Text> : null;
   return (
     <View style={styles.cardLyric}>
       <Ionicons name="musical-notes-outline" size={14} color="#dc2626" />
@@ -833,12 +833,64 @@ const active = index === session.index;
                           </Pressable>
                         )}
 
-                        <View
+                        {phoneCard ? (
+                          <View style={styles.phoneTransport}>
+                            <View style={styles.phoneTimeRow}>
+                              <Text style={styles.phoneTimeText}>{formatTime(elapsed)}</Text>
+                              <Text style={styles.phoneTimeText}>{duration ? formatTime(duration) : "—:—"}</Text>
+                            </View>
+                            <Slider
+                              style={styles.phoneTransportProgress}
+                              minimumValue={0}
+                              maximumValue={Math.max(duration || 0, 1)}
+                              value={Math.min(elapsed || 0, Math.max(duration || 0, 1))}
+                              disabled={!status.ready || !duration}
+                              onSlidingComplete={(value) => player.current?.seek(value)}
+                              minimumTrackTintColor="#ec1970"
+                              maximumTrackTintColor="#dff3ff"
+                              thumbTintColor="transparent"
+                            />
+                            <View style={styles.phoneLyricRow}>
+                              <SyncedLyricLine
+                                track={item}
+                                uri={lyricsUri}
+                                time={elapsed}
+                                compact
+                                fallback="Letra no disponible"
+                              />
+                            </View>
+                            <View style={styles.phoneTransportButtons}>
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel="Canción anterior"
+                                onPress={() => selectRelative(-1)}
+                                style={styles.phoneTransportButton}
+                              >
+                                <Ionicons name="play-skip-back" size={24} color="#202124" />
+                              </Pressable>
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel={tr(itemPlaying ? `Pausar ${item.title}` : `Reproducir ${item.title}`)}
+                                disabled={!status.ready || Boolean(status.error)}
+                                onPress={() => select(index)}
+                                style={styles.phoneTransportPlay}
+                              >
+                                <Ionicons name={itemPlaying ? "pause" : "play"} size={22} color="#202124" />
+                              </Pressable>
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel="Canción siguiente"
+                                onPress={() => selectRelative(1)}
+                                style={styles.phoneTransportButton}
+                              >
+                                <Ionicons name="play-skip-forward" size={24} color="#202124" />
+                              </Pressable>
+                            </View>
+                          </View>
+                        ) : <View
                           style={[
                             styles.cardRight,
                             !wideTransport && styles.cardRightMobile,
-                            phoneCard && styles.phoneCardControls,
-                            phoneCard && { height: phoneControlsHeight },
                             desktop && { height: integratedDimensions.height },
                           ]}
                         >
@@ -1061,7 +1113,7 @@ const active = index === session.index;
                               />
                             </Pressable>}
                           </View>
-                        </View>
+                        </View>}
                       </View>
                     );
                   })}
@@ -1534,7 +1586,35 @@ const styles = StyleSheet.create({
     width: "100%",
     marginHorizontal: 0,
   },
-  phoneCardControls: { width: "100%", flex: 0 },
+  phoneTransport: { width: "100%", height: 140, backgroundColor: "#fff" },
+  phoneTimeRow: {
+    height: 30,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  phoneTimeText: { color: "#65696e", fontSize: 13, fontVariant: ["tabular-nums"] },
+  phoneTransportProgress: { width: "100%", height: 8 },
+  phoneLyricRow: { height: 38, paddingHorizontal: 14, justifyContent: "center" },
+  phoneLyricEmpty: { color: "#85898f", fontSize: 12 },
+  phoneTransportButtons: {
+    height: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 18,
+  },
+  phoneTransportButton: { width: 42, height: 48, alignItems: "center", justifyContent: "center" },
+  phoneTransportPlay: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 2,
+    borderColor: "#202124",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   cardArtworkButton: { height: "100%", aspectRatio: 1, flexShrink: 0 },
   cardArtwork: { width: "100%", height: "100%", backgroundColor: "#27272a" },
   cardRight: { flex: 1, minWidth: 0, height: "100%", backgroundColor: "#fff" },
