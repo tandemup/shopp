@@ -231,6 +231,7 @@ export default function PlaybackProvider({ children }) {
   const player = useRef(null);
   const serial = useRef(0);
   const autoPlayAttempt = useRef(null);
+  const advancingTrack = useRef(false);
   const rememberedPlayback = useRef(new Map());
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -312,7 +313,7 @@ export default function PlaybackProvider({ children }) {
   }, [Boolean(session), expanded]);
   const track = session?.tracks[session.index];
   const lyricsUri = track?.lyricsUri || track?.lyricsUrl;
-  const select = (index) => {
+  const select = (index, restart = false) => {
     if (index === session.index) {
       playing ? player.current?.pause() : player.current?.play();
       return;
@@ -322,11 +323,31 @@ export default function PlaybackProvider({ children }) {
       trackKey(session.tracks[index]),
     );
     setVolume(trackVolumes.current.get(trackKey(session.tracks[index])) ?? 100);
+    const nextTrack = session.tracks[index];
+    const nextTime = restart ? 0 : remembered?.time || 0;
+    const nextPlaylistIndex = restart ? 0 : remembered?.playlistIndex || 0;
+    if (statusRef.current.ready && player.current?.loadTrack) {
+      advancingTrack.current = true;
+      const nextSession = {
+        ...session,
+        index,
+        resumeTime: nextTime,
+        resumePlaylistIndex: nextPlaylistIndex,
+        autoPlay: true,
+      };
+      sessionRef.current = nextSession;
+      autoPlayAttempt.current = nextSession.requestId;
+      statusRef.current = EMPTY_STATUS;
+      setStatus(EMPTY_STATUS);
+      setSession(nextSession);
+      player.current.loadTrack(nextTrack, nextTime, nextPlaylistIndex, true);
+      return;
+    }
     installSession({
       ...session,
       index,
-      resumeTime: remembered?.time || 0,
-      resumePlaylistIndex: remembered?.playlistIndex || 0,
+      resumeTime: nextTime,
+      resumePlaylistIndex: nextPlaylistIndex,
       autoPlay: true,
     });
   };
@@ -389,27 +410,31 @@ export default function PlaybackProvider({ children }) {
     statusRef.current = nextStatus;
     setStatus(nextStatus);
   }, []);
-  const selectRelative = (direction) => {
+  const selectRelative = (direction, restart = false) => {
     if (!session?.tracks?.length) return;
     if (shuffle && session.tracks.length > 1) {
       let next = session.index;
       while (next === session.index)
         next = Math.floor(Math.random() * session.tracks.length);
-      select(next);
+      select(next, restart);
       return;
     }
     select(
       (session.index + direction + session.tracks.length) %
         session.tracks.length,
+      restart,
     );
   };
   useEffect(() => {
-    if (!session || status.state !== 0) return;
+    if (!session || status.state !== 0 || advancingTrack.current) return;
+    advancingTrack.current = true;
     if (repeat) {
       player.current?.seek(0);
       player.current?.play();
     } else if (session.tracks.length > 1) {
-      selectRelative(1);
+      selectRelative(1, true);
+    } else {
+      advancingTrack.current = false;
     }
   }, [status.state]);
   const currentTitle =
@@ -533,9 +558,11 @@ const active = index === session.index;
         onStatus={(next) => {
           if (sessionRef.current?.requestId !== session.requestId) return;
           const mergedStatus = { ...statusRef.current, ...next };
+          if (mergedStatus.state === 1 || mergedStatus.state === 3) advancingTrack.current = false;
           statusRef.current = mergedStatus;
           if (Number.isFinite(next.time)) {
-            rememberedPlayback.current.set(trackKey(track), {
+            const currentTrack = sessionRef.current.tracks[sessionRef.current.index];
+            rememberedPlayback.current.set(trackKey(currentTrack), {
               time: mergedStatus.state === 0 ? 0 : mergedStatus.time || 0,
               duration: mergedStatus.duration || 0,
               playlistIndex: mergedStatus.playlistIndex || 0,
@@ -862,11 +889,20 @@ const active = index === session.index;
                             <View style={styles.phoneTransportButtons}>
                               <Pressable
                                 accessibilityRole="button"
+                                accessibilityLabel="Repetir canción"
+                                accessibilityState={{ selected: repeat }}
+                                onPress={() => setRepeat((value) => !value)}
+                                style={styles.phoneTransportButton}
+                              >
+                                <Ionicons name="repeat" size={20} color={repeat ? "#ec1970" : "#9aa0a6"} />
+                              </Pressable>
+                              <Pressable
+                                accessibilityRole="button"
                                 accessibilityLabel="Canción anterior"
                                 onPress={() => selectRelative(-1)}
                                 style={styles.phoneTransportButton}
                               >
-                                <Ionicons name="play-skip-back" size={24} color="#202124" />
+                                <Ionicons name="play-skip-back" size={22} color="#202124" />
                               </Pressable>
                               <Pressable
                                 accessibilityRole="button"
@@ -875,7 +911,16 @@ const active = index === session.index;
                                 onPress={() => select(index)}
                                 style={styles.phoneTransportPlay}
                               >
-                                <Ionicons name={itemPlaying ? "pause" : "play"} size={22} color="#202124" />
+                                <Ionicons name={itemPlaying ? "pause" : "play"} size={21} color="#202124" />
+                              </Pressable>
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel="Detener canción"
+                                disabled={!status.ready}
+                                onPress={stopCurrentTrack}
+                                style={[styles.phoneTransportButton, !status.ready && styles.trackStopButtonDisabled]}
+                              >
+                                <Ionicons name="stop" size={20} color="#202124" />
                               </Pressable>
                               <Pressable
                                 accessibilityRole="button"
@@ -883,7 +928,24 @@ const active = index === session.index;
                                 onPress={() => selectRelative(1)}
                                 style={styles.phoneTransportButton}
                               >
-                                <Ionicons name="play-skip-forward" size={24} color="#202124" />
+                                <Ionicons name="play-skip-forward" size={22} color="#202124" />
+                              </Pressable>
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel="Orden aleatorio"
+                                accessibilityState={{ selected: shuffle }}
+                                onPress={() => setShuffle((value) => !value)}
+                                style={styles.phoneTransportButton}
+                              >
+                                <Ionicons name="shuffle" size={20} color={shuffle ? "#ec1970" : "#9aa0a6"} />
+                              </Pressable>
+                              <Pressable
+                                accessibilityRole="link"
+                                accessibilityLabel={tr(`Abrir ${cardTitle} en YouTube`)}
+                                onPress={() => openTrackExternal(item, active)}
+                                style={styles.phoneTransportButton}
+                              >
+                                <Ionicons name="logo-youtube" size={22} color="#ff0000" />
                               </Pressable>
                             </View>
                           </View>
@@ -1603,9 +1665,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 18,
+    gap: 2,
+    paddingHorizontal: 6,
   },
-  phoneTransportButton: { width: 42, height: 48, alignItems: "center", justifyContent: "center" },
+  phoneTransportButton: { width: 38, height: 48, alignItems: "center", justifyContent: "center" },
   phoneTransportPlay: {
     width: 46,
     height: 46,

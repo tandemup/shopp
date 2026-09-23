@@ -50,6 +50,8 @@ export default forwardRef(function YouTubeSurface({
     pause: () => commands.current.pause?.(),
     seek: (time) => commands.current.seek?.(time),
     selectVideo: (index) => commands.current.selectVideo?.(index),
+    loadTrack: (nextTrack, time = 0, playlistIndex = 0, autoPlayNext = true) =>
+      commands.current.loadTrack?.(nextTrack, time, playlistIndex, autoPlayNext),
     setVolume: (value) => commands.current.setVolume?.(value),
   }), []);
   useEffect(() => {
@@ -121,6 +123,19 @@ export default forwardRef(function YouTubeSurface({
       play: () => requestPlay(), pause: () => suspend().catch(() => {}),
       seek: (time) => { if (ready) { player.seekTo(Math.max(0, time), true); emit(); } },
       selectVideo: (index) => requestPlay(index),
+      loadTrack: (nextTrack, time, playlistIndex, autoPlayNext) => {
+        if (!ready || !nextTrack) return;
+        action += 1;
+        player.mute();
+        const start = Math.max(0, time || 0);
+        if (nextTrack.kind === "album" && nextTrack.playlistId) {
+          player.loadPlaylist({ list: nextTrack.playlistId, index: Math.max(0, playlistIndex || 0), startSeconds: start });
+        } else if (nextTrack.videoId) {
+          player.loadVideoById({ videoId: nextTrack.videoId, startSeconds: start });
+        } else return;
+        if (autoPlayNext) requestPlay();
+        else { player.pauseVideo(); emit({ state: 2 }); }
+      },
       setVolume: (value) => { if (ready) player.setVolume(Math.max(0, Math.min(100, value))); },
     };
     emit();
@@ -179,13 +194,8 @@ export default forwardRef(function YouTubeSurface({
       try { player?.destroy(); } catch {}
       container.replaceChildren();
     };
-  }, [
-    track.videoId,
-    track.playlistId,
-    track.kind,
-    initialTime,
-    initialPlaylistIndex,
-    autoPlay,
-  ]);
+  // PlaybackProvider loads the next song through loadTrack on this iframe.
+  // The keyed component remounts only when opening another playlist.
+  }, []);
   return <div ref={host} style={{ width: "100%", height: "100%", background: "#000" }} />;
 });
