@@ -330,13 +330,15 @@ export default function PlaybackProvider({ children }) {
   const ids = status.videoIds || [];
   const albumIndex = status.playlistIndex || 0;
   const desktop = expanded && width >= 960;
+  const phonePlayer = expanded && width < 600;
+  const phoneIntegrated = phonePlayer && playerStyle === "integrated";
   // El reproductor compartido conserva controles compactos y de tamaño fijo.
   // El ancho de la columna puede crecer con la ventana, pero las imágenes,
   // tipografías e iconos no deben saltar a una escala desproporcionada.
   const wideTransport = false;
   const miniWidth = Math.min(360, Math.max(200, width - 16));
-  // Evita que la cola quede limitada a cinco filas cuando el reproductor
-  // dispone de más alto. El listado conserva su propio scroll al llenarse.
+  // En iPhone la lista comparte un único desplazamiento con el contenido.
+  // En pantallas más anchas se conserva la altura máxima de la cola.
   const queueRowsMaxHeight = Math.max(
     220,
     height - insets.top - insets.bottom - (desktop ? 670 : 620),
@@ -441,6 +443,68 @@ export default function PlaybackProvider({ children }) {
     }
     setPlayerStyle(nextStyle);
   };
+  const renderQueueRow = (item, index) => {
+const active = index === session.index;
+                        const itemTitle =
+                          item.title ||
+                          `${session.isTutorial ? "Vídeo" : "Elemento"} ${index + 1}`;
+                        const kindLabel = session.isTutorial
+                          ? item.kind === "album"
+                            ? "Serie"
+                            : "Vídeo"
+                          : item.kind === "album"
+                            ? "Álbum"
+                            : "Single";
+                        return (
+                          <Pressable
+                            key={`${trackKey(item)}:${index}`}
+                            accessibilityRole="button"
+                            accessibilityLabel={tr(
+                              active
+                                ? `${playing ? "Pausar" : "Reproducir"} ${itemTitle}`
+                                : `Reproducir ${itemTitle}`,
+                            )}
+                            accessibilityState={{ selected: active }}
+                            onPress={() => select(index)}
+                            style={[styles.queueRow, active && styles.queueRowActive]}
+                          >
+                            <View
+                              style={[
+                                styles.queueRowIndex,
+                                active && styles.queueRowIndexActive,
+                              ]}
+                            >
+                              {active ? (
+                                <Ionicons
+                                  name={playing ? "pause" : "musical-note"}
+                                  size={15}
+                                  color="#ec1970"
+                                />
+                              ) : (
+                                <Text style={styles.queueRowIndexText}>{index + 1}</Text>
+                              )}
+                            </View>
+                            <View style={styles.queueRowText}>
+                              <Text style={styles.queueRowTitle} numberOfLines={1}>
+                                {itemTitle}
+                              </Text>
+                              <Text style={styles.queueRowMeta}>
+                                {active
+                                  ? playing
+                                    ? "Reproduciendo"
+                                    : "Seleccionada"
+                                  : kindLabel}
+                              </Text>
+                            </View>
+                            <Ionicons
+                              name={active && playing ? "pause-circle" : "play-circle-outline"}
+                              size={24}
+                              color={active ? "#ec1970" : "#9ca3af"}
+                            />
+                          </Pressable>
+                        );
+  };
+
   const renderPlayerSurface = (containerStyle, interactive = true) => (
     <View
       pointerEvents={interactive ? "auto" : "none"}
@@ -587,6 +651,7 @@ export default function PlaybackProvider({ children }) {
                   ]}
                   contentContainerStyle={[
                     styles.trackList,
+                    phonePlayer && styles.phoneTrackList,
                     desktop && styles.desktopTrackList,
                   ]}
                   scrollEnabled
@@ -637,7 +702,7 @@ export default function PlaybackProvider({ children }) {
                   ) : null}
                   {session.tracks.map((item, index) => {
                     const active = index === session.index;
-                    if (!active) return null;
+                    if (!active || (phonePlayer && playerStyle === "classic")) return null;
                     const itemPlaying = active && playing;
                     const remembered = rememberedPlayback.current.get(
                       trackKey(item),
@@ -660,6 +725,7 @@ export default function PlaybackProvider({ children }) {
                           styles.track,
                           desktop && styles.embeddedVideoTrack,
                           !wideTransport && styles.trackMobile,
+                          phoneIntegrated && styles.phoneIntegratedTrack,
                         ]}
                       >
                         {playerStyle === "integrated" ? (
@@ -667,6 +733,7 @@ export default function PlaybackProvider({ children }) {
                             style={[
                               styles.embeddedVideo,
                               !desktop && styles.embeddedVideoMobile,
+                              phoneIntegrated && styles.phoneEmbeddedVideo,
                             ]}
                           >
                             {renderPlayerSurface(styles.playerEngineEmbedded)}
@@ -719,6 +786,7 @@ export default function PlaybackProvider({ children }) {
                           style={[
                             styles.cardRight,
                             !wideTransport && styles.cardRightMobile,
+                            phoneIntegrated && styles.phoneCardRight,
                           ]}
                         >
                           <View
@@ -811,7 +879,7 @@ export default function PlaybackProvider({ children }) {
                               !wideTransport && styles.cardLowerHalfMobile,
                             ]}
                           >
-                            <Pressable
+                            {!phoneIntegrated && <Pressable
                               accessibilityRole="button"
                               accessibilityLabel="Repetir canción"
                               onPress={() => setRepeat((value) => !value)}
@@ -825,7 +893,7 @@ export default function PlaybackProvider({ children }) {
                                 size={22}
                                 color={repeat ? "#ec1970" : "#9aa0a6"}
                               />
-                            </Pressable>
+                            </Pressable>}
                             <View style={styles.playbackButtons}>
                               <Pressable
                                 accessibilityRole="button"
@@ -868,7 +936,7 @@ export default function PlaybackProvider({ children }) {
                                   color="#202124"
                                 />
                               </Pressable>
-                              <Pressable
+                              {!phoneIntegrated && <Pressable
                                 accessibilityRole="button"
                                 accessibilityLabel="Detener canción"
                                 disabled={!active || !status.ready}
@@ -888,7 +956,7 @@ export default function PlaybackProvider({ children }) {
                                   size={wideTransport ? 24 : 19}
                                   color="#202124"
                                 />
-                              </Pressable>
+                              </Pressable>}
                               <Pressable
                                 accessibilityRole="button"
                                 accessibilityLabel="Canción siguiente"
@@ -905,7 +973,7 @@ export default function PlaybackProvider({ children }) {
                                 />
                               </Pressable>
                             </View>
-                            <Pressable
+                            {!phoneIntegrated && <Pressable
                               accessibilityRole="button"
                               accessibilityLabel="Orden aleatorio"
                               onPress={() => setShuffle((value) => !value)}
@@ -919,8 +987,8 @@ export default function PlaybackProvider({ children }) {
                                 size={22}
                                 color={shuffle ? "#ec1970" : "#9aa0a6"}
                               />
-                            </Pressable>
-                            <Pressable
+                            </Pressable>}
+                            {!phoneIntegrated && <Pressable
                               accessibilityRole="link"
                               accessibilityLabel={tr(
                                 `Abrir ${cardTitle} en YouTube`,
@@ -938,92 +1006,34 @@ export default function PlaybackProvider({ children }) {
                                 size={wideTransport ? 30 : 22}
                                 color="#ff0000"
                               />
-                            </Pressable>
+                            </Pressable>}
                           </View>
                         </View>
                       </View>
                     );
                   })}
-                  <View style={styles.queueSection}>
+                  <View style={[styles.queueSection, phonePlayer && styles.phoneQueueSection]}>
                     <View style={styles.queueSectionHeader}>
                       <Text style={styles.queueSectionEyebrow}>LISTA DE PISTAS</Text>
                       <Text style={styles.queueSectionCount}>
                         {session.tracks.length} {session.tracks.length === 1 ? "pista" : "pistas"}
                       </Text>
                     </View>
-                    <ScrollView
+                    {phonePlayer ? <View style={styles.queueRows}>
+                      {session.tracks.map(renderQueueRow)}
+                    </View> : <ScrollView
                       style={[
                         styles.queueRowsScroll,
                         { maxHeight: queueRowsMaxHeight },
                       ]}
                       contentContainerStyle={styles.queueRows}
                       nestedScrollEnabled
-                      scrollEnabled={session.tracks.length > 5}
+                      scrollEnabled={session.tracks.length > 1}
                       showsVerticalScrollIndicator={false}
                       keyboardShouldPersistTaps="handled"
                     >
-                      {session.tracks.map((item, index) => {
-                        const active = index === session.index;
-                        const itemTitle =
-                          item.title ||
-                          `${session.isTutorial ? "Vídeo" : "Elemento"} ${index + 1}`;
-                        const kindLabel = session.isTutorial
-                          ? item.kind === "album"
-                            ? "Serie"
-                            : "Vídeo"
-                          : item.kind === "album"
-                            ? "Álbum"
-                            : "Single";
-                        return (
-                          <Pressable
-                            key={`${trackKey(item)}:${index}`}
-                            accessibilityRole="button"
-                            accessibilityLabel={tr(
-                              active
-                                ? `${playing ? "Pausar" : "Reproducir"} ${itemTitle}`
-                                : `Reproducir ${itemTitle}`,
-                            )}
-                            accessibilityState={{ selected: active }}
-                            onPress={() => select(index)}
-                            style={[styles.queueRow, active && styles.queueRowActive]}
-                          >
-                            <View
-                              style={[
-                                styles.queueRowIndex,
-                                active && styles.queueRowIndexActive,
-                              ]}
-                            >
-                              {active ? (
-                                <Ionicons
-                                  name={playing ? "pause" : "musical-note"}
-                                  size={15}
-                                  color="#ec1970"
-                                />
-                              ) : (
-                                <Text style={styles.queueRowIndexText}>{index + 1}</Text>
-                              )}
-                            </View>
-                            <View style={styles.queueRowText}>
-                              <Text style={styles.queueRowTitle} numberOfLines={1}>
-                                {itemTitle}
-                              </Text>
-                              <Text style={styles.queueRowMeta}>
-                                {active
-                                  ? playing
-                                    ? "Reproduciendo"
-                                    : "Seleccionada"
-                                  : kindLabel}
-                              </Text>
-                            </View>
-                            <Ionicons
-                              name={active && playing ? "pause-circle" : "play-circle-outline"}
-                              size={24}
-                              color={active ? "#ec1970" : "#9ca3af"}
-                            />
-                          </Pressable>
-                        );
-                      })}
-                    </ScrollView>
+                      {session.tracks.map(renderQueueRow)}
+                    </ScrollView>}
                   </View>
                   {track.kind === "album" && ids.length > 0 ? (
                     <View style={styles.albumVideos}>
@@ -1291,6 +1301,8 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
     ...Platform.select({ web: { touchAction: "pan-y" } }),
   },
+  phoneTrackList: { flexGrow: 1, paddingHorizontal: 10, paddingBottom: 12 },
+  phoneQueueSection: { flexGrow: 1, marginTop: 6 },
   desktopTrackList: {
     width: "100%",
     maxWidth: 900,
@@ -1354,7 +1366,7 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  queueRows: { gap: 6 },
+  queueRows: { gap: 6, paddingBottom: 12 },
   queueRow: {
     minHeight: 48,
     width: "100%",
@@ -1445,6 +1457,18 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginHorizontal: 10,
   },
+  phoneIntegratedTrack: {
+    height: undefined,
+    aspectRatio: undefined,
+    flexDirection: "column",
+  },
+  phoneEmbeddedVideo: {
+    width: "100%",
+    height: undefined,
+    aspectRatio: 16 / 9,
+    marginHorizontal: 0,
+  },
+  phoneCardRight: { width: "100%", height: 112, flex: 0 },
   cardArtworkButton: { height: "100%", aspectRatio: 1, flexShrink: 0 },
   cardArtwork: { width: "100%", height: "100%", backgroundColor: "#27272a" },
   cardRight: { flex: 1, minWidth: 0, height: "100%", backgroundColor: "#fff" },
