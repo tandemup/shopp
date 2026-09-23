@@ -61,6 +61,10 @@ export default forwardRef(function YouTubeSurface({
     let ready = false;
     let granted = false;
     let action = 0;
+    // loadVideoById puede provocar que llegue, con retraso, el evento ENDED
+    // del vídeo anterior. Mientras la nueva pista está entrando en buffer no
+    // debe interpretarse como un fin real de la lista.
+    let loadingTrack = false;
     let timer;
     const node = document.createElement("div");
     const container = host.current;
@@ -68,10 +72,13 @@ export default forwardRef(function YouTubeSurface({
     const emit = (extra = {}) => {
       if (disposed) return;
       const data = ready ? player.getVideoData?.() || {} : {};
+      const playerState = ready ? player.getPlayerState?.() : -1;
       statusCallback.current?.({
         ready, time: ready ? player.getCurrentTime?.() || 0 : 0,
         duration: ready ? player.getDuration?.() || 0 : 0,
-        state: ready ? player.getPlayerState?.() : -1,
+        // No expongas el ENDED residual de la pista anterior durante la
+        // sustitución: PlaybackProvider lo interpretaría como otro avance.
+        state: loadingTrack && playerState === 0 ? 3 : playerState,
         videoId: data.video_id || "", videoTitle: data.title || "",
         videoIds: ready ? player.getPlaylist?.() || [] : [],
         playlistIndex: ready ? Math.max(0, player.getPlaylistIndex?.() || 0) : 0,
@@ -126,6 +133,7 @@ export default forwardRef(function YouTubeSurface({
       loadTrack: (nextTrack, time, playlistIndex, autoPlayNext) => {
         if (!ready || !nextTrack) return;
         action += 1;
+        loadingTrack = true;
         player.mute();
         const start = Math.max(0, time || 0);
         if (nextTrack.kind === "album" && nextTrack.playlistId) {
@@ -133,7 +141,15 @@ export default forwardRef(function YouTubeSurface({
         } else if (nextTrack.videoId) {
           player.loadVideoById({ videoId: nextTrack.videoId, startSeconds: start });
         } else return;
-        if (autoPlayNext) requestPlay();
+        if (autoPlayNext) {
+          requestPlay();
+          // Algunos WebKit entregan primero el estado ENDED de la pista que
+          // acaba de finalizar. Una segunda orden, ya con el nuevo vídeo
+          // cargado, evita que quede esperando un toque manual.
+          setTimeout(() => {
+            if (!disposed && loadingTrack) requestPlay();
+          }, 280);
+        }
         else { player.pauseVideo(); emit({ state: 2 }); }
       },
       setVolume: (value) => { if (ready) player.setVolume(Math.max(0, Math.min(100, value))); },
@@ -173,6 +189,12 @@ export default forwardRef(function YouTubeSurface({
           },
           onStateChange: ({ data }) => {
             if (disposed || !ready) return;
+            if (data === 0 && loadingTrack) {
+              // Es el ENDED tardío de la pista anterior; esperamos al estado
+              // BUFFERING/PLAYING de la pista solicitada.
+              return;
+            }
+            if (data === 1 || data === 3) loadingTrack = false;
             // A paused iframe is muted before it can be started again using YouTube's controls.
             if (data === 1 && (!granted || !exclusivePlayback.owns(id))) {
               player.mute(); requestPlay();

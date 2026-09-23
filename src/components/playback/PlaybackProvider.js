@@ -336,7 +336,10 @@ export default function PlaybackProvider({ children }) {
         autoPlay: true,
       };
       sessionRef.current = nextSession;
-      autoPlayAttempt.current = nextSession.requestId;
+      // La misma superficie de YouTube se conserva al cambiar de pista. No
+      // marques el autoarranque como atendido: al recibir el primer estado de
+      // la nueva carga el efecto de respaldo puede volver a pedir play.
+      autoPlayAttempt.current = null;
       statusRef.current = EMPTY_STATUS;
       setStatus(EMPTY_STATUS);
       setSession(nextSession);
@@ -558,10 +561,22 @@ const active = index === session.index;
         onStatus={(next) => {
           if (sessionRef.current?.requestId !== session.requestId) return;
           const mergedStatus = { ...statusRef.current, ...next };
-          if (mergedStatus.state === 1 || mergedStatus.state === 3) advancingTrack.current = false;
+          // El iframe/WebView puede emitir el último estado de la pista
+          // anterior justo después de loadTrack(). Solo la nueva pista debe
+          // dar por terminada la transición automática.
+          const currentTrack = sessionRef.current.tracks[sessionRef.current.index];
+          const isCurrentVideo =
+            currentTrack?.kind === "album" ||
+            !next.videoId ||
+            next.videoId === currentTrack?.videoId;
+          if (
+            isCurrentVideo &&
+            (mergedStatus.state === 1 || mergedStatus.state === 3)
+          ) {
+            advancingTrack.current = false;
+          }
           statusRef.current = mergedStatus;
           if (Number.isFinite(next.time)) {
-            const currentTrack = sessionRef.current.tracks[sessionRef.current.index];
             rememberedPlayback.current.set(trackKey(currentTrack), {
               time: mergedStatus.state === 0 ? 0 : mergedStatus.time || 0,
               duration: mergedStatus.duration || 0,
