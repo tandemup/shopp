@@ -65,6 +65,8 @@ export default forwardRef(function YouTubeSurface({
     // del vídeo anterior. Mientras la nueva pista está entrando en buffer no
     // debe interpretarse como un fin real de la lista.
     let loadingTrack = false;
+    let pendingAutoStart = null;
+    const retryTimers = new Set();
     let timer;
     const node = document.createElement("div");
     const container = host.current;
@@ -126,6 +128,29 @@ export default forwardRef(function YouTubeSurface({
         if (!disposed) { suspend().catch(() => {}); emit({ error: "No se pudo pausar el otro reproductor. Inténtalo de nuevo." }); }
       }
     };
+    const hasLoadedPendingTrack = () => {
+      if (!pendingAutoStart) return false;
+      if (pendingAutoStart.kind === "album") {
+        return (player.getPlaylist?.() || []).length > 0;
+      }
+      return player.getVideoData?.()?.video_id === pendingAutoStart.videoId;
+    };
+    const tryPendingAutoStart = (attempt = 0) => {
+      if (disposed || !pendingAutoStart || !ready) return;
+      if (player.getPlayerState?.() === 1) {
+        pendingAutoStart = null;
+        loadingTrack = false;
+        return;
+      }
+      if (hasLoadedPendingTrack()) requestPlay();
+      if (pendingAutoStart && attempt < 3) {
+        const retryTimer = setTimeout(() => {
+          retryTimers.delete(retryTimer);
+          tryPendingAutoStart(attempt + 1);
+        }, [260, 700, 1400][attempt]);
+        retryTimers.add(retryTimer);
+      }
+    };
     commands.current = {
       play: () => requestPlay(), pause: () => suspend().catch(() => {}),
       seek: (time) => { if (ready) { player.seekTo(Math.max(0, time), true); emit(); } },
@@ -134,6 +159,7 @@ export default forwardRef(function YouTubeSurface({
         if (!ready || !nextTrack) return;
         action += 1;
         loadingTrack = true;
+        pendingAutoStart = autoPlayNext ? nextTrack : null;
         player.mute();
         const start = Math.max(0, time || 0);
         if (nextTrack.kind === "album" && nextTrack.playlistId) {
@@ -142,13 +168,10 @@ export default forwardRef(function YouTubeSurface({
           player.loadVideoById({ videoId: nextTrack.videoId, startSeconds: start });
         } else return;
         if (autoPlayNext) {
-          requestPlay();
-          // Algunos WebKit entregan primero el estado ENDED de la pista que
-          // acaba de finalizar. Una segunda orden, ya con el nuevo vídeo
-          // cargado, evita que quede esperando un toque manual.
-          setTimeout(() => {
-            if (!disposed && loadingTrack) requestPlay();
-          }, 280);
+          // Espera a que la API confirme que el vídeo cargado es el nuevo.
+          // En Safari, playVideo() llamado antes de esa confirmación se aplica
+          // a la pista anterior y la nueva queda pausada al finalizar.
+          tryPendingAutoStart();
         }
         else { player.pauseVideo(); emit({ state: 2 }); }
       },
@@ -194,7 +217,16 @@ export default forwardRef(function YouTubeSurface({
               // BUFFERING/PLAYING de la pista solicitada.
               return;
             }
-            if (data === 1 || data === 3) loadingTrack = false;
+            if (data === 1) {
+              pendingAutoStart = null;
+              loadingTrack = false;
+            } else if (data === 3 || data === 5) {
+              tryPendingAutoStart();
+            } else if (data === 2 && pendingAutoStart && hasLoadedPendingTrack()) {
+              // Pausa solicitada por la persona usuaria durante una carga.
+              pendingAutoStart = null;
+              loadingTrack = false;
+            }
             // A paused iframe is muted before it can be started again using YouTube's controls.
             if (data === 1 && (!granted || !exclusivePlayback.owns(id))) {
               player.mute(); requestPlay();
@@ -214,6 +246,8 @@ export default forwardRef(function YouTubeSurface({
       clearInterval(timer);
       commands.current = {};
       try { player?.destroy(); } catch {}
+      retryTimers.forEach((retryTimer) => clearTimeout(retryTimer));
+      retryTimers.clear();
       container.replaceChildren();
     };
   // PlaybackProvider loads the next song through loadTrack on this iframe.

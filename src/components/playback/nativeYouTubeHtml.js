@@ -60,11 +60,16 @@ window.shoppCommand=function(command,value,requestId){
       player.unMute();
       player.playVideo();
       // En iOS puede recibirse primero el evento de finalización del vídeo
-      // anterior. Reitera play cuando el nuevo vídeo ya está en buffer.
+      // anterior. Reintenta hasta que YouTube informe PLAYING; cada intento
+      // se invalida si la persona pausa o se solicita otra pista.
       var loadRevision=revision;
-      setTimeout(function(){
-        if(ready&&authorized&&revision===loadRevision){player.playVideo();player.unMute();}
-      },280);
+      function ensureNextTrackPlays(attempt){
+        if(!ready||!authorized||revision!==loadRevision)return;
+        if(player.getPlayerState()===1){loadingTrack=false;return;}
+        player.playVideo();player.unMute();
+        if(attempt<3)setTimeout(function(){ensureNextTrackPlays(attempt+1);},[260,700,1400][attempt]);
+      }
+      setTimeout(function(){ensureNextTrackPlays(0);},0);
     }else player.pauseVideo();
     status({state:value.autoPlay!==false?1:2});
   }
