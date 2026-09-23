@@ -388,8 +388,11 @@ export default function ScannedHistoryScreen({ navigation, route }) {
 
   const handleImportHistory = async () => {
     try {
+      // Algunos JSON recién guardados en macOS Chrome no se asocian a un MIME
+      // compatible y el selector los muestra desactivados. Se valida el
+      // contenido después de seleccionarlo.
       const result = await DocumentPicker.getDocumentAsync({
-        type: ["application/json", "text/json", "text/plain"],
+        type: "*/*",
         copyToCacheDirectory: true,
         multiple: false,
       });

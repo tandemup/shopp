@@ -130,7 +130,47 @@ export default function StoresHomeScreen() {
         2,
       );
 
-      if (Platform.OS === "web" && typeof document !== "undefined") {
+      if (
+        Platform.OS === "web" &&
+        typeof window !== "undefined" &&
+        typeof window.showSaveFilePicker === "function"
+      ) {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [
+            {
+              description: "Tiendas de Shopp (JSON)",
+              accept: { "application/json": [".json"] },
+            },
+          ],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(json);
+        await writable.close();
+        safeAlert(
+          "Exportación completada",
+          `Se ha guardado ${handle.name} en la carpeta seleccionada.`,
+        );
+      } else if (
+        Platform.OS === "android" &&
+        FileSystem.StorageAccessFramework?.requestDirectoryPermissionsAsync
+      ) {
+        const permission =
+          await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (!permission.granted || !permission.directoryUri) return;
+        const uri = await FileSystem.StorageAccessFramework.createFileAsync(
+          permission.directoryUri,
+          filename,
+          "application/json",
+        );
+        await FileSystem.writeAsStringAsync(uri, json, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+        safeAlert(
+          "Exportación completada",
+          `Se ha guardado ${filename} en la carpeta seleccionada.`,
+        );
+      } else if (Platform.OS === "web" && typeof document !== "undefined") {
         const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
         const anchor = document.createElement("a");
         anchor.href = url;
@@ -147,7 +187,9 @@ export default function StoresHomeScreen() {
         await Share.share({ title: filename, url: uri });
       }
     } catch (error) {
-      safeAlert("No se pudo exportar", error?.message || "Inténtalo de nuevo.");
+      if (String(error?.name || "") !== "AbortError") {
+        safeAlert("No se pudo exportar", error?.message || "Inténtalo de nuevo.");
+      }
     } finally {
       setTransferBusy(null);
     }
@@ -246,16 +288,17 @@ export default function StoresHomeScreen() {
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.title}>Tiendas</Text>
+          <View style={styles.transferHeader}>
+            <View style={styles.transferHeaderText}>
+              <Text style={styles.title}>Tiendas</Text>
 
-          <Text style={styles.subtitle}>
-            Explora tiendas, consulta tus favoritas o busca establecimientos
-            cercanos.
-          </Text>
+              <Text style={styles.subtitle}>
+                Explora tiendas, consulta tus favoritas o busca establecimientos
+                cercanos.
+              </Text>
+            </View>
 
-          {isAdmin ? (
-            <View style={styles.transferSection}>
-              <Text style={styles.transferTitle}>Datos de tiendas</Text>
+            {isAdmin ? (
               <View style={styles.transferRow}>
                 <Pressable
                   disabled={transferBusy !== null}
@@ -287,8 +330,8 @@ export default function StoresHomeScreen() {
                   </Text>
                 </Pressable>
               </View>
-            </View>
-          ) : null}
+            ) : null}
+          </View>
 
           <View style={styles.actions}>
             <MenuItem
@@ -376,37 +419,43 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: "#6B7280",
-    marginBottom: 24,
   },
 
-  transferSection: {
-    marginBottom: 20,
+  transferHeader: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: 16,
+    paddingBottom: 16,
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
   },
 
-  transferTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#334155",
-    marginBottom: 9,
+  transferHeaderText: {
+    flex: 1,
+    minWidth: 230,
   },
 
   transferRow: {
     flexDirection: "row",
     gap: 10,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
   },
 
   transferButton: {
-    flex: 1,
-    minHeight: 44,
-    paddingHorizontal: 10,
-    borderRadius: 11,
+    minWidth: 160,
+    minHeight: 48,
+    borderRadius: 0,
     borderWidth: 1,
-    borderColor: "#bfdbfe",
-    backgroundColor: "#eff6ff",
+    borderColor: "#BFDBFE",
+    backgroundColor: "#EFF6FF",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 8,
   },
 
   transferButtonDisabled: {
@@ -414,8 +463,8 @@ const styles = StyleSheet.create({
   },
 
   transferText: {
-    color: "#1d4ed8",
-    fontSize: 13,
+    color: "#2563EB",
+    fontSize: 15,
     fontWeight: "800",
   },
 

@@ -36,6 +36,7 @@ import {
   saveScannedHistory,
 } from "@/src/services/scannerHistory";
 import { normalizeScannedProduct } from "@/src/utils/scannedProductModel";
+import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 const SCANNER_JSON_FORMAT = "shopp-scanner-products";
 
@@ -46,6 +47,29 @@ function normalizedProducts(items) {
     if (product.barcode) byBarcode.set(product.barcode, product);
   });
   return Array.from(byBarcode.values());
+}
+
+function combineProducts(currentItems, importedItems) {
+  const byBarcode = new Map();
+  normalizedProducts(currentItems).forEach((product) => {
+    byBarcode.set(product.barcode, product);
+  });
+
+  normalizedProducts(importedItems).forEach((product) => {
+    // Combinar conserva el producto que ya estaba en el dispositivo.
+    if (!byBarcode.has(product.barcode)) byBarcode.set(product.barcode, product);
+  });
+
+  return Array.from(byBarcode.values());
+}
+
+function normalizeJsonFilename(value) {
+  const cleaned = String(value || "")
+    .trim()
+    .replace(/[\\/:*?\"<>|]+/g, "-")
+    .replace(/\s+/g, " ");
+  const base = cleaned || "shopp-scanner-products";
+  return base.toLowerCase().endsWith(".json") ? base : `${base}.json`;
 }
 
 function getEnabledBarcodeTypes(settings) {
@@ -79,10 +103,14 @@ export default function ScannerTabScreen({ navigation }) {
   );
   const [manualBarcodeError, setManualBarcodeError] = useState("");
   const [transferModal, setTransferModal] = useState(null);
+  const [importDraft, setImportDraft] = useState(null);
 
   const exportProductsNow = async () => {
     const products = normalizedProducts(await getScannedHistory());
-    if (!products.length) return;
+    if (!products.length) {
+      safeAlert("Exportar escaneos", "No hay productos escaneados para exportar.");
+      return;
+    }
     const json = JSON.stringify({
       app: "Shopp",
       format: SCANNER_JSON_FORMAT,
@@ -90,7 +118,48 @@ export default function ScannerTabScreen({ navigation }) {
       exportedAt: new Date().toISOString(),
       data: { products },
     }, null, 2);
-    const filename = `shopp-scanner-products-${Date.now()}.json`;
+    const filename = normalizeJsonFilename(
+      `shopp-scanner-products-${Date.now()}.json`,
+    );
+
+    if (
+      Platform.OS === "web" &&
+      typeof window !== "undefined" &&
+      typeof window.showSaveFilePicker === "function"
+    ) {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{
+          description: "Historial de escaneos (JSON)",
+          accept: { "application/json": [".json"] },
+        }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(json);
+      await writable.close();
+      safeAlert("Exportación completada", `Se ha guardado ${handle.name} en la carpeta seleccionada.`);
+      return;
+    }
+
+    if (
+      Platform.OS === "android" &&
+      FileSystem.StorageAccessFramework?.requestDirectoryPermissionsAsync
+    ) {
+      const permission =
+        await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+      if (!permission.granted || !permission.directoryUri) return;
+      const uri = await FileSystem.StorageAccessFramework.createFileAsync(
+        permission.directoryUri,
+        filename,
+        "application/json",
+      );
+      await FileSystem.writeAsStringAsync(uri, json, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+      safeAlert("Exportación completada", `Se ha guardado ${filename} en la carpeta seleccionada.`);
+      return;
+    }
+
     if (Platform.OS === "web") {
       const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
       const anchor = document.createElement("a");
@@ -102,10 +171,18 @@ export default function ScannerTabScreen({ navigation }) {
     await Share.share({ title: filename, url: uri, message: Platform.OS === "android" ? json : undefined });
   };
 
-  const importProductsNow = async () => {
-    const result = await DocumentPicker.getDocumentAsync({ type: ["application/json", "text/json", "text/plain"], copyToCacheDirectory: true });
+  const selectImportFile = async () => {
+    // En macOS Chrome algunos JSON exportados por el propio navegador aparecen
+    // desactivados cuando se filtra por MIME. Permitimos elegir el archivo y
+    // comprobamos estrictamente su formato justo después de leerlo.
+    const result = await DocumentPicker.getDocumentAsync({
+      type: "*/*",
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
     if (result.canceled) return;
     const asset = result.assets?.[0];
+    if (!asset?.uri) throw new Error("No se pudo leer el fichero seleccionado.");
     const text = Platform.OS === "web" && asset?.file
       ? await asset.file.text()
       : await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.UTF8 });
@@ -113,12 +190,52 @@ export default function ScannerTabScreen({ navigation }) {
     if (parsed?.format !== SCANNER_JSON_FORMAT || parsed?.version !== 1 || !Array.isArray(parsed?.data?.products)) {
       throw new Error("El fichero no es compatible con el scanner.");
     }
-    const current = normalizedProducts(await getScannedHistory());
-    await saveScannedHistory(normalizedProducts([...current, ...parsed.data.products]));
+    setImportDraft({
+      filename: asset.name || "archivo JSON",
+      products: normalizedProducts(parsed.data.products),
+    });
+    setTransferModal("import-mode");
   };
 
-  const exportProducts = () => setTransferModal("export");
-  const importProducts = () => setTransferModal("import");
+  const applyImport = async (mode) => {
+    if (!importDraft) return;
+    const importedProducts = importDraft.products;
+    const nextProducts =
+      mode === "replace"
+        ? importedProducts
+        : combineProducts(await getScannedHistory(), importedProducts);
+    await saveScannedHistory(nextProducts);
+    setImportDraft(null);
+    setTransferModal(null);
+    safeAlert(
+      "Importación completada",
+      mode === "replace"
+        ? `Se han sustituido los productos por los ${importedProducts.length} del fichero.`
+        : `Se han combinado los ${importedProducts.length} productos del fichero sin duplicar códigos de barras.`,
+    );
+  };
+
+  const exportProducts = async () => {
+    try {
+      await exportProductsNow();
+    } catch (error) {
+      if (String(error?.name || "") !== "AbortError") {
+        safeAlert("No se pudo exportar", error?.message || "Inténtalo de nuevo.");
+      }
+    }
+  };
+  const importProducts = async () => {
+    try {
+      await selectImportFile();
+    } catch (error) {
+      safeAlert(
+        "Fichero no válido",
+        error?.name === "SyntaxError"
+          ? "El fichero seleccionado no contiene JSON válido."
+          : error?.message || "Selecciona una exportación válida.",
+      );
+    }
+  };
 
   const headerConfig = useMemo(
     () =>
@@ -220,21 +337,25 @@ export default function ScannerTabScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.title}>Scanner</Text>
-          <Text style={styles.description}>
-            Escanea nuevos productos o consulta el historial de códigos
-            escaneados.
-          </Text>
+          <View style={styles.transferHeader}>
+            <View style={styles.transferHeaderText}>
+              <Text style={styles.title}>Scanner</Text>
+              <Text style={styles.description}>
+                Escanea nuevos productos o consulta el historial de códigos
+                escaneados.
+              </Text>
+            </View>
 
-          <View style={styles.transferRow}>
-            <Pressable style={styles.transferButton} onPress={importProducts}>
-              <Ionicons name="download-outline" size={18} color="#2563EB" />
-              <Text style={styles.transferText}>Importar JSON</Text>
-            </Pressable>
-            <Pressable style={styles.transferButton} onPress={exportProducts}>
-              <Ionicons name="cloud-upload-outline" size={18} color="#2563EB" />
-              <Text style={styles.transferText}>Exportar JSON</Text>
-            </Pressable>
+            <View style={styles.transferRow}>
+              <Pressable style={styles.transferButton} onPress={importProducts}>
+                <Ionicons name="download-outline" size={20} color="#2563EB" />
+                <Text style={styles.transferText}>Importar JSON</Text>
+              </Pressable>
+              <Pressable style={styles.transferButton} onPress={exportProducts}>
+                <Ionicons name="cloud-upload-outline" size={20} color="#2563EB" />
+                <Text style={styles.transferText}>Exportar JSON</Text>
+              </Pressable>
+            </View>
           </View>
 
           <View style={styles.actions}>
@@ -419,30 +540,30 @@ export default function ScannerTabScreen({ navigation }) {
         </ScrollView>
       </SafeAreaView>
 
-      <Modal transparent visible={Boolean(transferModal)} animationType="fade" onRequestClose={() => setTransferModal(null)}>
+      <Modal transparent visible={Boolean(transferModal)} animationType="fade" onRequestClose={() => { setTransferModal(null); setImportDraft(null); }}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              {transferModal === "import" ? "Importar productos" : "Exportar productos"}
-            </Text>
+            <Text style={styles.modalTitle}>Importar mis escaneos</Text>
             <Text style={styles.modalDescription}>
-              {transferModal === "import"
-                ? "Selecciona un fichero JSON de productos escaneados. Se normalizará y se combinará sin duplicar códigos de barras."
-                : "Se exportarán los productos escaneados con sus datos normalizados en formato JSON."}
+              Elige cómo incorporar el contenido del fichero JSON.
             </Text>
+            <Pressable style={styles.importModeCombine} onPress={() => applyImport("merge")}>
+              <Ionicons name="git-merge-outline" size={25} color="#2563EB" />
+              <View style={styles.importModeText}>
+                <Text style={styles.importModeTitle}>Combinar</Text>
+                <Text style={styles.importModeDescription}>Conserva los productos actuales y añade los nuevos. Los códigos repetidos se omiten.</Text>
+              </View>
+            </Pressable>
+            <Pressable style={styles.importModeReplace} onPress={() => applyImport("replace")}>
+              <Ionicons name="trash-outline" size={25} color="#B91C1C" />
+              <View style={styles.importModeText}>
+                <Text style={styles.importModeReplaceTitle}>Reescribir todo</Text>
+                <Text style={styles.importModeDescription}>Elimina los productos actuales del historial y los sustituye por los del fichero.</Text>
+              </View>
+            </Pressable>
             <View style={styles.modalActions}>
-              <Pressable style={styles.modalCancelButton} onPress={() => setTransferModal(null)}>
+              <Pressable style={styles.modalCancelButton} onPress={() => { setTransferModal(null); setImportDraft(null); }}>
                 <Text style={styles.modalCancelText}>Cancelar</Text>
-              </Pressable>
-              <Pressable
-                style={styles.modalConfirmButton}
-                onPress={async () => {
-                  const action = transferModal === "import" ? importProductsNow : exportProductsNow;
-                  setTransferModal(null);
-                  try { await action(); } catch (error) { console.warn("Scanner JSON transfer error", error); }
-                }}
-              >
-                <Text style={styles.modalConfirmText}>Continuar</Text>
               </Pressable>
             </View>
           </View>
@@ -485,50 +606,73 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "800",
     color: "#111827",
-    marginBottom: 8,
+    marginBottom: 4,
   },
 
   description: {
     fontSize: 15,
     lineHeight: 22,
     color: TEXT_SECONDARY,
+  },
+
+  transferHeader: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: 16,
+    paddingBottom: 16,
     marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+
+  transferHeaderText: {
+    flex: 1,
+    minWidth: 230,
   },
 
   transferRow: {
     flexDirection: "row",
     gap: 10,
-    marginBottom: 16,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
   },
 
   transferButton: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: 12,
+    minWidth: 160,
+    minHeight: 48,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: "#BFDBFE",
     backgroundColor: "#EFF6FF",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    gap: 7,
+    gap: 8,
   },
 
   transferText: {
     color: "#2563EB",
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "800",
   },
 
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", alignItems: "center", justifyContent: "center", padding: 20 },
-  modalCard: { width: "100%", maxWidth: 430, borderRadius: 18, padding: 22, backgroundColor: "#FFFFFF" },
-  modalTitle: { color: TEXT_PRIMARY, fontSize: 20, fontWeight: "800", marginBottom: 8 },
-  modalDescription: { color: TEXT_SECONDARY, fontSize: 14, lineHeight: 21, marginBottom: 20 },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.48)", alignItems: "center", justifyContent: "center", padding: 20 },
+  modalCard: { width: "100%", maxWidth: 700, borderRadius: 0, padding: 26, backgroundColor: "#FFFFFF" },
+  modalTitle: { color: TEXT_PRIMARY, fontSize: 26, fontWeight: "800", marginBottom: 14 },
+  modalDescription: { color: "#64748B", fontSize: 15, lineHeight: 22, marginBottom: 18 },
   modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10 },
-  modalCancelButton: { paddingHorizontal: 15, paddingVertical: 11, borderRadius: 10, backgroundColor: "#F3F4F6" },
-  modalCancelText: { color: TEXT_PRIMARY, fontWeight: "700" },
+  modalCancelButton: { paddingHorizontal: 20, paddingVertical: 13, borderRadius: 0, borderWidth: 1, borderColor: "#BFDBFE", backgroundColor: "#EFF6FF" },
+  modalCancelText: { color: "#2563EB", fontWeight: "800", fontSize: 16 },
   modalConfirmButton: { paddingHorizontal: 15, paddingVertical: 11, borderRadius: 10, backgroundColor: "#2563EB" },
   modalConfirmText: { color: "#FFFFFF", fontWeight: "700" },
+  importModeCombine: { flexDirection: "row", alignItems: "flex-start", gap: 14, borderWidth: 2, borderColor: "#2563EB", backgroundColor: "#EFF6FF", borderRadius: 0, padding: 20, marginBottom: 16 },
+  importModeReplace: { flexDirection: "row", alignItems: "flex-start", gap: 14, borderWidth: 1, borderColor: "#FCA5A5", backgroundColor: "#FEF2F2", borderRadius: 0, padding: 18, marginBottom: 20 },
+  importModeText: { flex: 1 },
+  importModeTitle: { color: "#1D4ED8", fontSize: 19, fontWeight: "800", marginBottom: 5 },
+  importModeReplaceTitle: { color: "#B91C1C", fontSize: 19, fontWeight: "800", marginBottom: 5 },
+  importModeDescription: { color: "#475569", fontSize: 15, lineHeight: 21 },
 
   actions: {
     gap: 12,

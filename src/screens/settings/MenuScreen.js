@@ -12,6 +12,7 @@ import { I18nText as Text, useI18n } from "@/src/i18n";
 import { useFocusEffect } from "@react-navigation/native";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useMutation, useQuery } from "convex/react";
@@ -237,6 +238,45 @@ function buildExportFilename() {
   return `shopp-user-export-${yyyy}${mm}${dd}-${hh}${min}.json`;
 }
 
+function normalizeExportFilename(value) {
+  const cleaned = String(value || "")
+    .trim()
+    .replace(/[\\/:*?\"<>|]+/g, "-")
+    .replace(/\s+/g, " ");
+  const base = cleaned || buildExportFilename().replace(/\.json$/i, "");
+  return base.toLowerCase().endsWith(".json") ? base : `${base}.json`;
+}
+
+async function requestExportDestination(filename) {
+  if (
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    typeof window.showSaveFilePicker === "function"
+  ) {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: filename,
+      types: [{
+        description: "Datos de Shopp (JSON)",
+        accept: { "application/json": [".json"] },
+      }],
+    });
+    return { kind: "web", handle };
+  }
+
+  if (
+    Platform.OS === "android" &&
+    FileSystem.StorageAccessFramework?.requestDirectoryPermissionsAsync
+  ) {
+    const permission =
+      await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+    return permission.granted && permission.directoryUri
+      ? { kind: "android", directoryUri: permission.directoryUri }
+      : { cancelled: true };
+  }
+
+  return null;
+}
+
 function downloadJsonOnWeb(filename, jsonString) {
   if (typeof document === "undefined") {
     throw new Error("document is not available");
@@ -265,6 +305,8 @@ async function exportUserDataToJsonFile({
   archivedLists,
   purchaseHistory,
   getScannedHistory,
+  filename: requestedFilename,
+  destination,
 }) {
   const scanHistory = await getScannedHistory();
   const profile = currentUser?.profile ?? null;
@@ -303,8 +345,27 @@ async function exportUserDataToJsonFile({
     },
   };
 
-  const filename = buildExportFilename();
+  const filename = normalizeExportFilename(requestedFilename);
   const jsonString = JSON.stringify(exportData, null, 2);
+
+  if (destination?.kind === "web" && destination.handle?.createWritable) {
+    const writable = await destination.handle.createWritable();
+    await writable.write(jsonString);
+    await writable.close();
+    return { ok: true, filename: destination.handle.name, platform: "web", selectedFolder: true };
+  }
+
+  if (destination?.kind === "android" && destination.directoryUri) {
+    const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+      destination.directoryUri,
+      filename,
+      "application/json",
+    );
+    await FileSystem.writeAsStringAsync(fileUri, jsonString, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+    return { ok: true, filename, platform: "android", selectedFolder: true };
+  }
 
   if (Platform.OS === "web") {
     downloadJsonOnWeb(filename, jsonString);
@@ -323,6 +384,13 @@ async function exportUserDataToJsonFile({
   await FileSystem.writeAsStringAsync(fileUri, jsonString, {
     encoding: FileSystem.EncodingType.UTF8,
   });
+
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(fileUri, {
+      mimeType: "application/json",
+      dialogTitle: "Guardar datos de Shopp",
+    });
+  }
 
   return {
     ok: true,
@@ -1017,6 +1085,11 @@ export default function MenuScreen({ navigation }) {
     if (exportingUserData) return;
 
     try {
+      // Se solicita la ubicación antes de preparar los datos para conservar el
+      // gesto del usuario requerido por el selector nativo del navegador.
+      const filename = buildExportFilename();
+      const destination = await requestExportDestination(filename);
+      if (destination?.cancelled) return;
       setExportingUserData(true);
 
       const result = await exportUserDataToJsonFile({
@@ -1025,21 +1098,25 @@ export default function MenuScreen({ navigation }) {
         archivedLists,
         purchaseHistory,
         getScannedHistory: scanHistoryStorage.getScannedHistory,
+        filename,
+        destination,
       });
-      const exportMessage = result.shared
-        ? `Se ha generado el fichero ${result.filename}.`
+      const exportMessage = result.selectedFolder
+        ? `Se ha guardado el fichero ${result.filename} en la carpeta seleccionada.`
         : result.platform === "web"
           ? `Se ha descargado el fichero ${result.filename}.`
-          : `Se ha guardado el fichero ${result.filename} en el almacenamiento local de la app.`;
+          : `Se ha preparado el fichero ${result.filename}. Elige la carpeta en Archivos.`;
 
       safeAlert("Exportación completada", exportMessage);
     } catch (error) {
       console.warn("[MenuScreen] export user data error", error);
 
-      safeAlert(
-        "Error al exportar",
-        "No se pudieron exportar los datos del usuario y el historial de compras.",
-      );
+      if (String(error?.name || "") !== "AbortError") {
+        safeAlert(
+          "Error al exportar",
+          "No se pudieron exportar los datos del usuario y el historial de compras.",
+        );
+      }
     } finally {
       setExportingUserData(false);
     }
@@ -1516,6 +1593,7 @@ export default function MenuScreen({ navigation }) {
           <View style={styles.footerSpace} />
         </ScrollView>
       </SafeAreaView>
+
     </View>
   );
 }
