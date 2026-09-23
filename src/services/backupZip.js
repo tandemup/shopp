@@ -11,7 +11,7 @@ const IMAGE_PREFIX = "@shopping/product-images/";
 const AVATAR_PREFIX = "shopp.avatar.";
 const encoder = new TextEncoder();
 
-function filenameForNow() {
+export function buildCompleteBackupFilename() {
   const date = new Date();
   const part = (value) => String(value).padStart(2, "0");
   return `shopp-backup-${date.getFullYear()}${part(date.getMonth() + 1)}${part(date.getDate())}-${part(date.getHours())}${part(date.getMinutes())}.zip`;
@@ -83,28 +83,58 @@ async function readAssetBytes(asset) {
   return base64ToBytes(base64);
 }
 
-export async function exportCompleteBackup({ user = null, scanHistory = [] } = {}) {
+async function readStoredMediaBytes(stored) {
+  if (stored?.blob?.arrayBuffer) {
+    return new Uint8Array(await stored.blob.arrayBuffer());
+  }
+
+  if (stored?.uri) {
+    const base64 = await FileSystem.readAsStringAsync(stored.uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return base64ToBytes(base64);
+  }
+
+  return null;
+}
+
+function getMediaKeys(keys) {
+  return [...new Set(
+    keys
+      .map((key) => key.endsWith(".__meta") ? key.slice(0, -".__meta".length) : key)
+      .filter(isMediaKey),
+  )].sort();
+}
+
+export async function exportCompleteBackup({
+  user = null,
+  scanHistory = [],
+  filename: requestedFilename,
+  destination,
+} = {}) {
   const keys = (await storage.getAllKeys()).map(String).sort();
   const records = [];
   const mediaFiles = [];
 
   for (const key of keys) {
-    if (isMediaKey(key)) {
-      const stored = await storage.getFile(key);
-      if (!stored?.blob || !(stored.blob instanceof Blob)) continue;
-      const bytes = new Uint8Array(await stored.blob.arrayBuffer());
-      const variant = stored.metadata?.variant || key.split("/").pop() || "image";
-      const productId = key.startsWith(IMAGE_PREFIX)
-        ? key.slice(IMAGE_PREFIX.length).split("/")[0]
-        : key.slice(AVATAR_PREFIX.length);
-      const mimeType = stored.metadata?.mimeType || stored.blob.type || "image/jpeg";
-      const extension = mimeType === "image/png" ? "png" : "jpeg";
-      const owner = key.startsWith(AVATAR_PREFIX) ? `avatar-${productId}` : productId;
-      const path = `images/${safePart(owner)}-${safePart(variant)}.${extension}`;
-      mediaFiles.push({ key, path, bytes, mimeType, metadata: stored.metadata || {}, sha256: await sha256(bytes) });
-    } else if (isDataKey(key)) {
+    if (isDataKey(key)) {
       records.push({ key, value: await storage.getRawValue(key) });
     }
+  }
+
+  for (const key of getMediaKeys(keys)) {
+    const stored = await storage.getFile(key);
+    const bytes = await readStoredMediaBytes(stored);
+    if (!bytes) continue;
+    const variant = stored.metadata?.variant || key.split("/").pop() || "image";
+    const productId = key.startsWith(IMAGE_PREFIX)
+      ? key.slice(IMAGE_PREFIX.length).split("/")[0]
+      : key.slice(AVATAR_PREFIX.length);
+    const mimeType = stored.metadata?.mimeType || stored?.blob?.type || "image/jpeg";
+    const extension = mimeType === "image/png" ? "png" : "jpeg";
+    const owner = key.startsWith(AVATAR_PREFIX) ? `avatar-${productId}` : productId;
+    const path = `images/${safePart(owner)}-${safePart(variant)}.${extension}`;
+    mediaFiles.push({ key, path, bytes, mimeType, metadata: stored.metadata || {}, sha256: await sha256(bytes) });
   }
 
   const dataBytes = encoder.encode(JSON.stringify({
@@ -130,7 +160,37 @@ export async function exportCompleteBackup({ user = null, scanHistory = [] } = {
     { name: "data.json", data: dataBytes },
     ...mediaFiles.map(({ path, bytes }) => ({ name: path, data: bytes })),
   ]);
-  const filename = filenameForNow();
+  const filename = requestedFilename || buildCompleteBackupFilename();
+
+  if (destination?.kind === "web" && destination.handle?.createWritable) {
+    const writable = await destination.handle.createWritable();
+    await writable.write(zipBytes);
+    await writable.close();
+    return {
+      filename: destination.handle.name,
+      mediaCount: mediaFiles.length,
+      recordCount: records.length,
+      selectedFolder: true,
+    };
+  }
+
+  if (destination?.kind === "android" && destination.directoryUri) {
+    const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+      destination.directoryUri,
+      filename,
+      "application/zip",
+    );
+    await FileSystem.writeAsStringAsync(fileUri, bytesToBase64(zipBytes), {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return {
+      filename,
+      fileUri,
+      mediaCount: mediaFiles.length,
+      recordCount: records.length,
+      selectedFolder: true,
+    };
+  }
 
   if (Platform.OS === "web") {
     const url = URL.createObjectURL(new Blob([zipBytes], { type: "application/zip" }));
@@ -141,12 +201,12 @@ export async function exportCompleteBackup({ user = null, scanHistory = [] } = {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    return { filename, mediaCount: mediaFiles.length, recordCount: records.length };
+    return { filename, mediaCount: mediaFiles.length, recordCount: records.length, selectedFolder: false };
   }
 
   const fileUri = `${FileSystem.documentDirectory}${filename}`;
   await FileSystem.writeAsStringAsync(fileUri, bytesToBase64(zipBytes), { encoding: FileSystem.EncodingType.Base64 });
-  return { filename, fileUri, mediaCount: mediaFiles.length, recordCount: records.length };
+  return { filename, fileUri, mediaCount: mediaFiles.length, recordCount: records.length, selectedFolder: false };
 }
 
 export async function restoreCompleteBackup(asset, { mode = "merge" } = {}) {

@@ -93,8 +93,14 @@ export function ListsProvider({ children }) {
   const activeLists = useMemo(() => lists.filter((l) => !l.archived), [lists]);
 
   /* -------------------------------------------------
-     Helpers
+   Helpers
   -------------------------------------------------- */
+  const reloadLists = async () => {
+    const data = await loadLists(userStorageKey);
+    setLists(data);
+    return data;
+  };
+
   const generateId = () =>
     Date.now().toString(36) + Math.random().toString(36).slice(2);
 
@@ -245,6 +251,7 @@ export function ListsProvider({ children }) {
       archivedLists,
       purchaseHistory,
       isReady,
+      reloadLists,
 
       createList,
       updateList,
@@ -261,7 +268,7 @@ export function ListsProvider({ children }) {
       updateItem,
       deleteItem,
     }),
-    [lists, activeLists, archivedLists, purchaseHistory, isReady],
+    [lists, activeLists, archivedLists, purchaseHistory, isReady, userStorageKey],
   );
 
   return (

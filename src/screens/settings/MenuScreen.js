@@ -11,6 +11,7 @@ import { I18nText as Text, useI18n } from "@/src/i18n";
 
 import { useFocusEffect } from "@react-navigation/native";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
@@ -41,6 +42,11 @@ import {
 import { useScannedHistoryStorage } from "@/src/hooks/useScannedHistoryStorage";
 import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
+import {
+  buildCompleteBackupFilename,
+  exportCompleteBackup,
+  restoreCompleteBackup,
+} from "@/src/services/backupZip";
 import {
   DEFAULT_SEARCH_SETTINGS,
   getSearchSettings,
@@ -247,7 +253,14 @@ function normalizeExportFilename(value) {
   return base.toLowerCase().endsWith(".json") ? base : `${base}.json`;
 }
 
-async function requestExportDestination(filename) {
+async function requestExportDestination(
+  filename,
+  {
+    description = "Datos de Shopp (JSON)",
+    mimeType = "application/json",
+    extension = ".json",
+  } = {},
+) {
   if (
     Platform.OS === "web" &&
     typeof window !== "undefined" &&
@@ -256,8 +269,8 @@ async function requestExportDestination(filename) {
     const handle = await window.showSaveFilePicker({
       suggestedName: filename,
       types: [{
-        description: "Datos de Shopp (JSON)",
-        accept: { "application/json": [".json"] },
+        description,
+        accept: { [mimeType]: [extension] },
       }],
     });
     return { kind: "web", handle };
@@ -772,6 +785,7 @@ export default function MenuScreen({ navigation }) {
 
   const [locationPermission, setLocationPermission] = useState(null);
   const [exportingUserData, setExportingUserData] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
   const [importingItems, setImportingItems] = useState(false);
   const [productSearchEngineSubtitle, setProductSearchEngineSubtitle] =
     useState("Motor activo: Google");
@@ -780,6 +794,7 @@ export default function MenuScreen({ navigation }) {
     activeLists,
     archivedLists,
     purchaseHistory,
+    reloadLists,
     clearActiveListsState,
     clearArchivedListsState,
     clearAllListsState,
@@ -1119,6 +1134,127 @@ export default function MenuScreen({ navigation }) {
       }
     } finally {
       setExportingUserData(false);
+    }
+  };
+
+  const handleExportCompleteBackup = async () => {
+    if (backupBusy) return;
+
+    try {
+      const filename = buildCompleteBackupFilename();
+      const destination = await requestExportDestination(filename, {
+        description: "Copia de seguridad de Shopp (ZIP)",
+        mimeType: "application/zip",
+        extension: ".zip",
+      });
+      if (destination?.cancelled) return;
+
+      setBackupBusy(true);
+      const result = await exportCompleteBackup({
+        user: {
+          id: currentUser?._id ? String(currentUser._id) : null,
+          username:
+            currentUser?.profile?.alias ??
+            currentUser?.name ??
+            currentUser?.email ??
+            null,
+          name: currentUser?.name ?? null,
+          email: currentUser?.email ?? null,
+          profile: currentUser?.profile ?? null,
+        },
+        scanHistory: await scanHistoryStorage.getScannedHistory(),
+        filename,
+        destination,
+      });
+
+      if (
+        !result.selectedFolder &&
+        result.fileUri &&
+        (await Sharing.isAvailableAsync())
+      ) {
+        await Sharing.shareAsync(result.fileUri, {
+          mimeType: "application/zip",
+          dialogTitle: "Guardar copia de seguridad de Shopp",
+        });
+      }
+
+      safeAlert(
+        "Copia creada",
+        result.selectedFolder
+          ? `Se ha guardado ${result.filename} en la carpeta seleccionada.`
+          : `Se ha preparado ${result.filename}. Elige dónde guardarlo. Incluye ${result.recordCount} grupos de datos y ${result.mediaCount} imágenes.`,
+      );
+    } catch (error) {
+      if (String(error?.name || "") !== "AbortError") {
+        safeAlert(
+          "No se pudo crear la copia",
+          error?.message || "Inténtalo de nuevo.",
+        );
+      }
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const applyCompleteBackup = async (asset, mode) => {
+    try {
+      setBackupBusy(true);
+      const result = await restoreCompleteBackup(asset, { mode });
+      await reloadLists();
+      safeAlert(
+        "Restauración completada",
+        mode === "replace"
+          ? `Se han restaurado ${result.recordCount} grupos de datos y ${result.mediaCount} imágenes. Las listas ya se han actualizado.`
+          : `Se han combinado ${result.recordCount} grupos de datos y ${result.mediaCount} imágenes sin borrar los datos actuales.`,
+      );
+    } catch (error) {
+      safeAlert(
+        "No se pudo restaurar la copia",
+        error?.message || "Selecciona una copia ZIP válida de Shopp.",
+      );
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const handleRestoreCompleteBackup = async () => {
+    if (backupBusy) return;
+
+    try {
+      // Permitimos elegir cualquier archivo porque algunos navegadores no
+      // habilitan correctamente ZIP creados por la propia aplicación. El
+      // contenido se valida estrictamente antes de restaurarlo.
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      if (!asset) throw new Error("No se pudo leer el fichero seleccionado.");
+
+      safeAlert(
+        "Restaurar copia de seguridad",
+        `Fichero seleccionado: ${asset.name || "copia ZIP"}. Elige cómo incorporar su contenido.`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Combinar",
+            onPress: () => applyCompleteBackup(asset, "merge"),
+          },
+          {
+            text: "Reescribir todo",
+            style: "destructive",
+            onPress: () => applyCompleteBackup(asset, "replace"),
+          },
+        ],
+      );
+    } catch (error) {
+      safeAlert(
+        "Fichero no válido",
+        error?.message || "Selecciona una copia ZIP válida de Shopp.",
+      );
     }
   };
 
@@ -1484,6 +1620,24 @@ export default function MenuScreen({ navigation }) {
               badge={exportingUserData ? "..." : "JSON"}
               disabled={exportingUserData}
               onPress={handleExportUserData}
+            />
+
+            <SettingsCard
+              icon="archive-outline"
+              title="Crear copia de seguridad"
+              subtitle="Genera un ZIP con los datos locales, historial de escaneos e imágenes guardadas"
+              badge={backupBusy ? "..." : "ZIP"}
+              disabled={backupBusy}
+              onPress={handleExportCompleteBackup}
+            />
+
+            <SettingsCard
+              icon="folder-open-outline"
+              title="Restaurar copia de seguridad"
+              subtitle="Selecciona una copia ZIP de Shopp para combinarla o reescribir los datos locales"
+              badge={backupBusy ? "..." : "ZIP"}
+              disabled={backupBusy}
+              onPress={handleRestoreCompleteBackup}
             />
           </View>
 
