@@ -220,6 +220,7 @@ export default function PlaybackProvider({ children }) {
   const [expanded, setExpanded] = useState(true);
   const [playerStyle, setPlayerStyle] = useState("integrated");
   const [mobilePlayerStyle, setMobilePlayerStyle] = useState("classic");
+  const [phoneCardWidth, setPhoneCardWidth] = useState(0);
   const [integratedSize, setIntegratedSize] = useState("medium");
   const [repeat, setRepeat] = useState(false);
   const [shuffle, setShuffle] = useState(false);
@@ -335,6 +336,8 @@ export default function PlaybackProvider({ children }) {
   const phonePlayer = expanded && width < 600;
   const visiblePlayerStyle = phonePlayer ? mobilePlayerStyle : playerStyle;
   const phoneCard = phonePlayer && visiblePlayerStyle === "integrated";
+  const phoneVideoHeight = Math.round((phoneCardWidth || Math.max(240, width - 24)) * 9 / 16);
+  const phoneControlsHeight = 140;
   const integratedDimensions = {
     small: { card: 720, video: 320, height: 180 },
     medium: { card: 800, video: 400, height: 225 },
@@ -753,11 +756,18 @@ const active = index === session.index;
                     return (
                       <View
                         key={index}
+                        onLayout={phoneCard ? (event) => {
+                          const measuredWidth = event.nativeEvent.layout.width;
+                          if (measuredWidth > 0 && Math.abs(measuredWidth - phoneCardWidth) > 1) {
+                            setPhoneCardWidth(measuredWidth);
+                          }
+                        } : undefined}
                         style={[
                           styles.track,
                           desktop && styles.embeddedVideoTrack,
                           !wideTransport && styles.trackMobile,
                           phoneCard && styles.phoneVideoCard,
+                          phoneCard && { height: phoneVideoHeight + phoneControlsHeight },
                           desktop && {
                             maxWidth: integratedDimensions.card,
                             height: integratedDimensions.height,
@@ -770,6 +780,7 @@ const active = index === session.index;
                               styles.embeddedVideo,
                               !desktop && styles.embeddedVideoMobile,
                               phoneCard && styles.phoneCardVideo,
+                              phoneCard && { height: phoneVideoHeight },
                               desktop && {
                                 width: integratedDimensions.video,
                                 height: integratedDimensions.height,
@@ -827,6 +838,7 @@ const active = index === session.index;
                             styles.cardRight,
                             !wideTransport && styles.cardRightMobile,
                             phoneCard && styles.phoneCardControls,
+                            phoneCard && { height: phoneControlsHeight },
                             desktop && { height: integratedDimensions.height },
                           ]}
                         >
@@ -1516,17 +1528,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
   },
   phoneVideoCard: {
-    height: undefined,
-    aspectRatio: undefined,
     flexDirection: "column",
   },
   phoneCardVideo: {
     width: "100%",
-    height: undefined,
-    aspectRatio: 16 / 9,
     marginHorizontal: 0,
   },
-  phoneCardControls: { width: "100%", height: 116, flex: 0 },
+  phoneCardControls: { width: "100%", flex: 0 },
   cardArtworkButton: { height: "100%", aspectRatio: 1, flexShrink: 0 },
   cardArtwork: { width: "100%", height: "100%", backgroundColor: "#27272a" },
   cardRight: { flex: 1, minWidth: 0, height: "100%", backgroundColor: "#fff" },
