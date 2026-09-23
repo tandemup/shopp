@@ -1080,7 +1080,221 @@ Object.assign(EN, {
   "Detener y cerrar reproductor": "Stop and close player",
 });
 
+Object.assign(EN, {
+  "¿Quieres archivar esta lista y guardar solo los productos marcados en el historial de compras?":
+    "Do you want to archive this list and keep only checked products in the purchase history?",
+  "¿Quieres eliminar definitivamente la ficha global de Convex y este elemento del historial local? Esta acción afectará a todos los dispositivos y no se puede deshacer.":
+    "Do you want to permanently delete the global Convex record and this local history item? This affects all devices and cannot be undone.",
+  "¿Quieres eliminar este producto del historial local? Esta acción no eliminará el registro global de Convex.":
+    "Do you want to delete this product from local history? This will not delete the global Convex record.",
+  "¿Seguro? Esta acción no se puede deshacer.": "Are you sure? This action cannot be undone.",
+  "🏷️ Sin categoría": "🏷️ No category",
+  Alérgenos: "Allergens",
+  "Alérgenos declarados": "Declared allergens",
+  "Añadir tramo": "Add section",
+  Año: "Year",
+  "Año de publicación": "Year of publication",
+  "Calle y número": "Street and number",
+  "Cámara no disponible": "Camera unavailable",
+  "Catálogo de supermercados": "Supermarket catalogue",
+  "Categoría del alimento": "Food category",
+  "Categoría del producto": "Product category",
+  "Categoría: legumbres, verduras…": "Category: legumes, vegetables…",
+  "Código postal": "Postcode",
+  "Comparte una oferta encontrada al comprar. Se publicará después de revisarla.":
+    "Share an offer found while shopping. It will be published after review.",
+  "Completa los campos y envía la propuesta para revisión.":
+    "Complete the fields and send the proposal for review.",
+  "Comprobando la cámara...": "Checking the camera...",
+  "Comprueba que el navegador o la aplicación tienen permiso para utilizar la cámara.":
+    "Check that the browser or app has permission to use the camera.",
+  "Crea y reproduce música de YouTube": "Create and play YouTube music",
+  "Datos no válidos": "Invalid data",
+  "Descripción de la oferta *": "Offer description *",
+  "Dirección *": "Address *",
+  Discográfica: "Record label",
+  económica: "budget",
+  Económica: "Budget",
+  "Edición manual": "Manual editing",
+  "Ej. libro en inglés, matemáticas, edición académica…":
+    "E.g. English book, mathematics, academic edition…",
+  "Ej. marca, modelo, color, talla o características…":
+    "E.g. brand, model, colour, size or features…",
+  "Ej. música clásica, Mozart, edición remasterizada…":
+    "E.g. classical music, Mozart, remastered edition…",
+  "Ej. Órgano": "E.g. Organ",
+  "El fichero no contiene productos con código de barras.":
+    "The file contains no products with barcodes.",
+  "El fichero no contiene una lista válida de productos.":
+    "The file does not contain a valid product list.",
+  "El fichero no corresponde a una exportación de tiendas de Shopp.":
+    "The file does not belong to a Shopp stores export.",
+  "El fichero no es una exportación compatible del historial de escaneos.":
+    "The file is not a compatible scan-history export.",
+  "El fichero no es una exportación del scanner compatible.":
+    "The file is not a compatible scanner export.",
+  "El fichero seleccionado no contiene JSON válido.":
+    "The selected file does not contain valid JSON.",
+  "El navegador ha bloqueado la cámara. Activa el permiso de cámara para este sitio y vuelve a intentarlo.":
+    "The browser has blocked the camera. Enable camera permission for this site and try again.",
+  "El navegador ha bloqueado la pestaña del buscador. Permite las ventanas emergentes para esta página e inténtalo de nuevo.":
+    "The browser has blocked the search tab. Allow pop-ups for this page and try again.",
+  "El nombre del producto no puede estar vacío.": "The product name cannot be empty.",
+  "El permiso está bloqueado en el navegador. Para cambiarlo, pulsa el icono de permisos junto a la URL y habilita el acceso desde los ajustes del sitio.":
+    "Permission is blocked in the browser. To change it, select the permissions icon next to the URL and allow access in the site settings.",
+  "El permiso está bloqueado para Shopp. Para cambiarlo, abre los ajustes del sistema y habilita el permiso manualmente.":
+    "Permission is blocked for Shopp. To change it, open the system settings and allow it manually.",
+  "El permiso ya está concedido. Android/iOS no permiten anularlo desde la app para volver a mostrar el diálogo del sistema. Puedes revocarlo manualmente desde Ajustes y después volver a tocar esta opción.":
+    "Permission is already granted. Android and iOS do not allow it to be revoked from the app in order to show the system dialog again. You can revoke it in Settings and then select this option again.",
+  "El permiso ya está concedido. Para volver a preguntar, revócalo desde los permisos del sitio: pulsa el icono junto a la URL, cambia el permiso a bloquear o preguntar, y recarga la página.":
+    "Permission is already granted. To ask again, revoke it in the site permissions: select the icon next to the URL, change the permission to Block or Ask, and reload the page.",
+  "El portapapeles no contiene una imagen. Copia primero una portada o fotografía.":
+    "The clipboard does not contain an image. Copy a cover image or photo first.",
+  "El redimensionado de imágenes solo está disponible en Web.":
+    "Image resizing is only available on the web.",
+  "El texto pegado no es un JSON válido. Copia únicamente el objeto JSON.":
+    "The pasted text is not valid JSON. Copy only the JSON object.",
+  "Enlace no válido": "Invalid link",
+  "Envía una solicitud comercial. Shopp verificará al propietario antes de publicar la promoción.":
+    "Send a commercial request. Shopp will verify the owner before publishing the promotion.",
+  "Envía una tienda para que la revise la administración":
+    "Send a store for the administration to review",
+  "Enviar a revisión": "Send for review",
+  "Error al buscar el código de barras:": "Error while searching for the barcode:",
+  "Esta función está en desarrollo y solo está disponible para administradores.":
+    "This feature is under development and is only available to administrators.",
+  "Este navegador no permite leer imágenes del portapapeles. Usa Importar imagen.":
+    "This browser cannot read images from the clipboard. Use Import image.",
+  "Fichero no válido": "Invalid file",
+  "Genera un ZIP con los datos locales, historial de escaneos e imágenes guardadas":
+    "Create a ZIP containing local data, scan history and saved images",
+  "Crear copia de seguridad": "Create backup",
+  "Restaurar copia de seguridad": "Restore backup",
+  "Selecciona una copia ZIP de Shopp para combinarla o reescribir los datos locales":
+    "Select a Shopp ZIP backup to merge it or overwrite local data",
+  "Copia creada": "Backup created",
+  "No se pudo crear la copia": "The backup could not be created",
+  "No se pudo restaurar la copia": "The backup could not be restored",
+  "Gracias. La oferta se comprobará antes de compartirse.":
+    "Thank you. The offer will be checked before it is shared.",
+  "Guarda y reproduce vídeos de actualidad": "Save and play current-affairs videos",
+  "Historial local con sincronización opcional": "Local history with optional synchronisation",
+  "Identifica la edición y devuelve los datos bibliográficos":
+    "Identify the edition and return bibliographic data",
+  "Identifica la edición y devuelve sus datos": "Identify the edition and return its details",
+  "Importación terminada": "Import finished",
+  "Indica el nombre y la dirección de la tienda.": "Enter the store name and address.",
+  "Indica latitud y longitud, o deja ambos campos vacíos.":
+    "Enter latitude and longitude, or leave both fields empty.",
+  "Información adicional del producto": "Additional product information",
+  "Información adicional opcional: marca, autor, intérprete…":
+    "Optional additional information: brand, author, performer…",
+  "Información adicional para la búsqueda": "Additional search information",
+  "Inténtalo de nuevo.": "Try again.",
+  "Introduce o escanea un código de barras primero": "Enter or scan a barcode first",
+  "Introduce un código de entre 8 y 14 dígitos.": "Enter a code containing 8 to 14 digits.",
+  "Introduce un vídeo o una playlist de YouTube válida.":
+    "Enter a valid YouTube video or playlist.",
+  "Introduce una latitud y una longitud válidas antes de publicar la tienda.":
+    "Enter a valid latitude and longitude before publishing the store.",
+  "ISBN de 13 dígitos": "13-digit ISBN",
+  "La promoción se revisará antes de publicarse.":
+    "The promotion will be reviewed before publication.",
+  "La propuesta queda pendiente de validación por un administrador. No se publicará hasta ser aprobada.":
+    "The request is awaiting administrator validation. It will not be published until approved.",
+  "La selección de imagen desde archivo está habilitada en la PWA web.":
+    "Selecting an image from a file is available in the web PWA.",
+  "La tienda ya está publicada en el catálogo.": "The store is already published in the catalogue.",
+  "La URL no devolvió una imagen.": "The URL did not return an image.",
+  "La vista previa aún no está lista.": "The preview is not ready yet.",
+  "Las coordenadas y el código postal deben ser números.":
+    "Coordinates and postcode must be numbers.",
+  "Necesario para retransmisiones y vídeo con audio.":
+    "Required for broadcasts and video with audio.",
+  "No ha sido posible acceder a la cámara de este dispositivo.":
+    "It was not possible to access this device's camera.",
+  "No hay código de barras para asociar la imagen.": "There is no barcode to associate with the image.",
+  "No hay código de barras para buscar.": "There is no barcode to search for.",
+  "No hay código de barras para eliminar.": "There is no barcode to delete.",
+  "No hay código de barras para guardar.": "There is no barcode to save.",
+  "No se encontró información. Puedes introducirla manualmente.":
+    "No information was found. You can enter it manually.",
+  "No se encontró la ruta de retorno:": "Return route not found:",
+  "No se ha recibido ningún código de barras.": "No barcode was received.",
+  "No se pudieron añadir las fotos": "The photos could not be added",
+  "No se pudo abrir el motor de búsqueda.": "The search engine could not be opened.",
+  "No se pudo consultar la información del producto.":
+    "Product information could not be retrieved.",
+  "No se pudo enviar la propuesta a revisión.": "The request could not be sent for review.",
+  "No se pudo guardar la información del producto.":
+    "Product information could not be saved.",
+  "No se pudo procesar el código escaneado": "The scanned code could not be processed",
+  "Número de discos": "Number of discs",
+  "Número de páginas": "Number of pages",
+  "Oferta no válida": "Invalid offer",
+  "Organiza enlaces por categorías": "Organise links by category",
+  "Organiza obras, conciertos e intérpretes": "Organise works, concerts and performers",
+  "País de origen": "Country of origin",
+  "Para unidades (u) la cantidad debe ser un número entero":
+    "For units (u), the quantity must be a whole number",
+  "Pega primero el JSON obtenido en la búsqueda.":
+    "Paste the JSON obtained from the search first.",
+  "Peticiones de creación de tiendas": "Store creation requests",
+  "Previsualización del mapa": "Map preview",
+  "Prueba con menos fotografías o reduce el solape.":
+    "Try fewer photos or reduce the overlap.",
+  "Respuesta generada a partir del código": "Response generated from the code",
+  "Restauración completada": "Restore completed",
+  "Se detectó el código, pero no se pudo regresar al producto.":
+    "The code was detected, but it was not possible to return to the product.",
+  "Se eliminarán los cambios locales en tiendas y se volverán a cargar desde los datos iniciales. ¿Continuar?":
+    "Local changes to stores will be deleted and the initial data will be loaded again. Continue?",
+  "Selecciona un JSON de tiendas válido.": "Select a valid stores JSON file.",
+  "Selecciona una copia ZIP válida de Shopp.": "Select a valid Shopp ZIP backup.",
+  "Selecciona una exportación válida del historial.": "Select a valid history export.",
+  "Selecciona una exportación válida.": "Select a valid export.",
+  "Sello discográfico": "Record label",
+  "Shopp necesita acceso a la cámara.": "Shopp needs camera access.",
+  "Sin categoría": "No category",
+  "Sin código": "No code",
+  "Sin subcategoría": "No subcategory",
+  "Sin vídeo": "No video",
+  "Subcategoría del alimento": "Food subcategory",
+  "Subcategoría del producto": "Product subcategory",
+  Título: "Title",
+  "Título de la obra o álbum": "Work or album title",
+  "Título del libro": "Book title",
+  "Título requerido": "Title required",
+  "Todavía no tienes listas activas": "You do not have any active lists yet",
+  "Tu propuesta quedará pendiente hasta que un administrador la revise.":
+    "Your request will remain pending until an administrator reviews it.",
+  "Tu ubicación": "Your location",
+});
+
 const DYNAMIC_EN = [
+  [
+    /^Se ha guardado (.+) en la carpeta seleccionada\.$/,
+    (_, filename) => `${filename} has been saved in the selected folder.`,
+  ],
+  [
+    /^Se ha preparado (.+)\. Elige dónde guardarlo\. Incluye (\d+) grupos de datos y (\d+) imágenes\.$/,
+    (_, filename, records, images) =>
+      `${filename} is ready. Choose where to save it. It includes ${records} data groups and ${images} images.`,
+  ],
+  [
+    /^Fichero seleccionado: (.+)\. Elige cómo incorporar su contenido\.$/,
+    (_, filename) => `Selected file: ${filename}. Choose how to incorporate its contents.`,
+  ],
+  [
+    /^Se han restaurado (\d+) grupos de datos y (\d+) imágenes\. Las listas ya se han actualizado\.$/,
+    (_, records, images) =>
+      `${records} data groups and ${images} images have been restored. Lists have been updated.`,
+  ],
+  [
+    /^Se han combinado (\d+) grupos de datos y (\d+) imágenes sin borrar los datos actuales\.$/,
+    (_, records, images) =>
+      `${records} data groups and ${images} images have been merged without deleting current data.`,
+  ],
   [/^Editar (tutorial|playlist)$/, (_, type) => `Edit ${type}`],
   [/^Nuevo (tutorial|playlist)$/, (_, type) => `New ${type}`],
   [/^Crear (tutorial|playlist)$/, (_, type) => `Create ${type}`],
