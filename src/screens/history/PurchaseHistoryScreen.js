@@ -23,6 +23,11 @@ import {
 } from "@/src/utils/queries/products";
 
 import { formatCurrency } from "@/src/utils/store/formatters";
+import { safeAlert } from "@/src/components/ui/alert/safeAlert";
+import {
+  exportArchivedLists,
+  pickArchivedListsImport,
+} from "@/src/services/archivedListsTransfer";
 
 /* -------------------------------------------------
    Helpers
@@ -374,7 +379,7 @@ export default function PurchaseHistoryScreen() {
 
   const lists = useLists();
 
-  const { purchaseHistory = [] } = lists;
+  const { purchaseHistory = [], archivedLists = [], mergeArchivedLists } = lists;
 
   const { getStoreById } = useStores();
 
@@ -384,6 +389,25 @@ export default function PurchaseHistoryScreen() {
 
   const [expandedClassificationId, setExpandedClassificationId] =
     useState(null);
+
+  const handleExport = async () => {
+    try {
+      await exportArchivedLists(archivedLists);
+    } catch (error) {
+      safeAlert("Exportar historial de compras", error?.message || "No se pudo exportar el historial de compras.");
+    }
+  };
+
+  const handleImport = async () => {
+    try {
+      const imported = await pickArchivedListsImport();
+      if (!imported) return;
+      mergeArchivedLists(imported);
+      safeAlert("Importación terminada", "El historial de compras se ha actualizado a partir de las listas archivadas importadas.");
+    } catch (error) {
+      safeAlert("Importar historial de compras", error?.message || "No se pudo importar el fichero.");
+    }
+  };
 
   const sourceProducts = useMemo(() => {
     return purchaseHistory;
@@ -443,12 +467,25 @@ export default function PurchaseHistoryScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <View style={styles.content}>
-        <Text style={styles.title}>Historial de compras</Text>
-
-        <Text style={styles.subtitle}>
-          Consulta los productos comprados agrupados por categoría, subcategoría
-          y supermercado.
-        </Text>
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Historial de compras</Text>
+            <Text style={styles.subtitle}>
+              Consulta los productos comprados agrupados por categoría, subcategoría
+              y supermercado.
+            </Text>
+          </View>
+          <View style={styles.headerActions}>
+            <Pressable onPress={handleImport} style={styles.secondaryButton}>
+              <Ionicons name="download-outline" size={21} color="#2563eb" />
+              <Text style={styles.secondaryButtonText}>Importar</Text>
+            </Pressable>
+            <Pressable onPress={handleExport} style={styles.secondaryButton}>
+              <Ionicons name="share-outline" size={21} color="#2563eb" />
+              <Text style={styles.secondaryButtonText}>Exportar</Text>
+            </Pressable>
+          </View>
+        </View>
 
         <SearchBar
           value={search}
@@ -511,6 +548,23 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
 
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    marginBottom: 20,
+  },
+  headerText: { flex: 1, minWidth: 220 },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 7,
+    flexWrap: "wrap",
+  },
+
   title: {
     marginBottom: 8,
     color: "#111827",
@@ -519,11 +573,24 @@ const styles = StyleSheet.create({
   },
 
   subtitle: {
-    marginBottom: 20,
+    marginBottom: 0,
     color: "#6B7280",
     fontSize: 15,
     lineHeight: 22,
   },
+
+  secondaryButton: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+  secondaryButtonText: { color: "#2563eb", fontWeight: "800", fontSize: 13 },
 
   searchBar: {
     marginBottom: 16,

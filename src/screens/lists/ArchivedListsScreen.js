@@ -14,6 +14,11 @@ import { ROUTES } from "@/src/navigation/ROUTES";
 import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
 import { normalizePriceInfo } from "@/src/utils/core/defaultItem";
+import { safeAlert } from "@/src/components/ui/alert/safeAlert";
+import {
+  exportArchivedLists,
+  pickArchivedListsImport,
+} from "@/src/services/archivedListsTransfer";
 
 const HeaderRow = ({ title, expanded, onToggle }) => (
   <View style={styles.topRow}>
@@ -184,10 +189,29 @@ const ArchivedListCard = ({
 ──────────────────────────────────────────────── */
 
 export default function ArchivedListsScreen({ navigation }) {
-  const { archivedLists } = useLists();
+  const { archivedLists, mergeArchivedLists } = useLists();
   const { getStoreById } = useStores();
   const [expandedListId, setExpandedListId] = useState(null);
   const [search, setSearch] = useState("");
+
+  const handleExport = async () => {
+    try {
+      await exportArchivedLists(archivedLists);
+    } catch (error) {
+      safeAlert("Exportar listas archivadas", error?.message || "No se pudieron exportar las listas archivadas.");
+    }
+  };
+
+  const handleImport = async () => {
+    try {
+      const imported = await pickArchivedListsImport();
+      if (!imported) return;
+      mergeArchivedLists(imported);
+      safeAlert("Importación terminada", `${imported.length} ${imported.length === 1 ? "lista archivada se ha añadido o actualizado." : "listas archivadas se han añadido o actualizado."}`);
+    } catch (error) {
+      safeAlert("Importar listas archivadas", error?.message || "No se pudo importar el fichero.");
+    }
+  };
 
   const sortedLists = useMemo(() => {
     return [...(archivedLists ?? [])].sort(
@@ -269,12 +293,25 @@ export default function ArchivedListsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <View style={styles.content}>
-        <Text style={styles.title}>Listas archivadas</Text>
-
-        <Text style={styles.subtitle}>
-          Consulta las listas ya pagadas, revisa sus productos y accede al
-          detalle de cada compra archivada.
-        </Text>
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Listas archivadas</Text>
+            <Text style={styles.subtitle}>
+              Consulta las listas ya pagadas, revisa sus productos y accede al
+              detalle de cada compra archivada.
+            </Text>
+          </View>
+          <View style={styles.headerActions}>
+            <Pressable onPress={handleImport} style={styles.secondaryButton}>
+              <Ionicons name="download-outline" size={21} color="#2563eb" />
+              <Text style={styles.secondaryButtonText}>Importar</Text>
+            </Pressable>
+            <Pressable onPress={handleExport} style={styles.secondaryButton}>
+              <Ionicons name="share-outline" size={21} color="#2563eb" />
+              <Text style={styles.secondaryButtonText}>Exportar</Text>
+            </Pressable>
+          </View>
+        </View>
 
         <SearchBar
           value={search}
@@ -324,6 +361,23 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
 
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    marginBottom: 20,
+  },
+  headerText: { flex: 1, minWidth: 220 },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 7,
+    flexWrap: "wrap",
+  },
+
   title: {
     fontSize: 28,
     fontWeight: "800",
@@ -335,8 +389,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: "#6B7280",
-    marginBottom: 20,
+    marginBottom: 0,
   },
+
+  secondaryButton: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+  secondaryButtonText: { color: "#2563eb", fontWeight: "800", fontSize: 13 },
 
   searchBar: {
     marginBottom: 16,

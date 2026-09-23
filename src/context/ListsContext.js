@@ -93,14 +93,8 @@ export function ListsProvider({ children }) {
   const activeLists = useMemo(() => lists.filter((l) => !l.archived), [lists]);
 
   /* -------------------------------------------------
-   Helpers
+     Helpers
   -------------------------------------------------- */
-  const reloadLists = async () => {
-    const data = await loadLists(userStorageKey);
-    setLists(data);
-    return data;
-  };
-
   const generateId = () =>
     Date.now().toString(36) + Math.random().toString(36).slice(2);
 
@@ -177,6 +171,37 @@ export function ListsProvider({ children }) {
   const clearAllListsState = () => {
     setLists([]);
   };
+
+  const mergeArchivedLists = (incomingLists = []) => {
+    const normalized = Array.isArray(incomingLists)
+      ? incomingLists.filter((list) => list && typeof list === "object")
+      : [];
+
+    setLists((previous) => {
+      const positions = new Map();
+      previous.forEach((list, index) => {
+        if (list?.id) positions.set(String(list.id), index);
+      });
+      const next = [...previous];
+      normalized.forEach((list) => {
+        const imported = {
+          ...list,
+          id: String(list.id || generateId()),
+          items: Array.isArray(list.items) ? list.items : [],
+          archived: true,
+          archivedAt: list.archivedAt || list.createdAt || Date.now(),
+        };
+        const position = positions.get(imported.id);
+        if (position === undefined) {
+          positions.set(imported.id, next.length);
+          next.push(imported);
+        } else {
+          next[position] = { ...next[position], ...imported };
+        }
+      });
+      return next;
+    });
+  };
   /* -------------------------------------------------
      API pública — Items
   -------------------------------------------------- */
@@ -251,7 +276,6 @@ export function ListsProvider({ children }) {
       archivedLists,
       purchaseHistory,
       isReady,
-      reloadLists,
 
       createList,
       updateList,
@@ -263,12 +287,13 @@ export function ListsProvider({ children }) {
       clearActiveListsState,
       clearArchivedListsState,
       clearAllListsState,
+      mergeArchivedLists,
 
       addItem,
       updateItem,
       deleteItem,
     }),
-    [lists, activeLists, archivedLists, purchaseHistory, isReady, userStorageKey],
+    [lists, activeLists, archivedLists, purchaseHistory, isReady],
   );
 
   return (
