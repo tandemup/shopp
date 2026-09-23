@@ -219,6 +219,7 @@ export default function PlaybackProvider({ children }) {
   const sessionRef = useRef(null);
   const [expanded, setExpanded] = useState(true);
   const [playerStyle, setPlayerStyle] = useState("integrated");
+  const [mobilePlayerStyle, setMobilePlayerStyle] = useState("classic");
   const [integratedSize, setIntegratedSize] = useState("medium");
   const [repeat, setRepeat] = useState(false);
   const [shuffle, setShuffle] = useState(false);
@@ -332,7 +333,8 @@ export default function PlaybackProvider({ children }) {
   const albumIndex = status.playlistIndex || 0;
   const desktop = expanded && width >= 960;
   const phonePlayer = expanded && width < 600;
-  const visiblePlayerStyle = phonePlayer ? "classic" : playerStyle;
+  const visiblePlayerStyle = phonePlayer ? mobilePlayerStyle : playerStyle;
+  const phoneCard = phonePlayer && visiblePlayerStyle === "integrated";
   const integratedDimensions = {
     small: { card: 720, video: 320, height: 180 },
     medium: { card: 800, video: 400, height: 225 },
@@ -434,7 +436,7 @@ export default function PlaybackProvider({ children }) {
     }
   };
   const changePlayerStyle = (nextStyle) => {
-    if (nextStyle === playerStyle) return;
+    if (nextStyle === (phonePlayer ? mobilePlayerStyle : playerStyle)) return;
     const current = sessionRef.current;
     if (current) {
       const currentStatus = statusRef.current;
@@ -447,7 +449,8 @@ export default function PlaybackProvider({ children }) {
       sessionRef.current = nextSession;
       setSession(nextSession);
     }
-    setPlayerStyle(nextStyle);
+    if (phonePlayer) setMobilePlayerStyle(nextStyle);
+    else setPlayerStyle(nextStyle);
   };
   const renderQueueRow = (item, index) => {
 const active = index === session.index;
@@ -580,29 +583,29 @@ const active = index === session.index;
                   {expanded ? session.title : currentTitle || session.title}
                 </Text>
               </Pressable>
-              {expanded && !phonePlayer ? (
+              {expanded ? (
                 <View style={styles.styleSelector}>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityState={{ selected: playerStyle === "classic" }}
+                    accessibilityState={{ selected: visiblePlayerStyle === "classic" }}
                     onPress={() => changePlayerStyle("classic")}
                     style={[
                       styles.styleSelectorButton,
-                      playerStyle === "classic" && styles.styleSelectorButtonActive,
+                      visiblePlayerStyle === "classic" && styles.styleSelectorButtonActive,
                     ]}
                   >
-                    <Text style={styles.styleSelectorText}>Clásico</Text>
+                    <Text style={styles.styleSelectorText}>{phonePlayer ? "Vídeo" : "Clásico"}</Text>
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityState={{ selected: playerStyle === "integrated" }}
+                    accessibilityState={{ selected: visiblePlayerStyle === "integrated" }}
                     onPress={() => changePlayerStyle("integrated")}
                     style={[
                       styles.styleSelectorButton,
-                      playerStyle === "integrated" && styles.styleSelectorButtonActive,
+                      visiblePlayerStyle === "integrated" && styles.styleSelectorButtonActive,
                     ]}
                   >
-                    <Text style={styles.styleSelectorText}>Integrado</Text>
+                    <Text style={styles.styleSelectorText}>{phonePlayer ? "Card" : "Integrado"}</Text>
                   </Pressable>
                 </View>
               ) : null}
@@ -731,7 +734,7 @@ const active = index === session.index;
                   ) : null}
                   {session.tracks.map((item, index) => {
                     const active = index === session.index;
-                    if (!active || phonePlayer || visiblePlayerStyle === "classic") return null;
+                    if (!active || visiblePlayerStyle === "classic") return null;
                     const itemPlaying = active && playing;
                     const remembered = rememberedPlayback.current.get(
                       trackKey(item),
@@ -754,6 +757,7 @@ const active = index === session.index;
                           styles.track,
                           desktop && styles.embeddedVideoTrack,
                           !wideTransport && styles.trackMobile,
+                          phoneCard && styles.phoneVideoCard,
                           desktop && {
                             maxWidth: integratedDimensions.card,
                             height: integratedDimensions.height,
@@ -765,6 +769,7 @@ const active = index === session.index;
                             style={[
                               styles.embeddedVideo,
                               !desktop && styles.embeddedVideoMobile,
+                              phoneCard && styles.phoneCardVideo,
                               desktop && {
                                 width: integratedDimensions.video,
                                 height: integratedDimensions.height,
@@ -821,6 +826,7 @@ const active = index === session.index;
                           style={[
                             styles.cardRight,
                             !wideTransport && styles.cardRightMobile,
+                            phoneCard && styles.phoneCardControls,
                             desktop && { height: integratedDimensions.height },
                           ]}
                         >
@@ -914,7 +920,7 @@ const active = index === session.index;
                               !wideTransport && styles.cardLowerHalfMobile,
                             ]}
                           >
-                            <Pressable
+                            {!phoneCard && <Pressable
                               accessibilityRole="button"
                               accessibilityLabel="Repetir canción"
                               onPress={() => setRepeat((value) => !value)}
@@ -928,7 +934,7 @@ const active = index === session.index;
                                 size={22}
                                 color={repeat ? "#ec1970" : "#9aa0a6"}
                               />
-                            </Pressable>
+                            </Pressable>}
                             <View style={styles.playbackButtons}>
                               <Pressable
                                 accessibilityRole="button"
@@ -971,7 +977,7 @@ const active = index === session.index;
                                   color="#202124"
                                 />
                               </Pressable>
-                              <Pressable
+                              {!phoneCard && <Pressable
                                 accessibilityRole="button"
                                 accessibilityLabel="Detener canción"
                                 disabled={!active || !status.ready}
@@ -991,7 +997,7 @@ const active = index === session.index;
                                   size={wideTransport ? 24 : 19}
                                   color="#202124"
                                 />
-                              </Pressable>
+                              </Pressable>}
                               <Pressable
                                 accessibilityRole="button"
                                 accessibilityLabel="Canción siguiente"
@@ -1008,7 +1014,7 @@ const active = index === session.index;
                                 />
                               </Pressable>
                             </View>
-                            <Pressable
+                            {!phoneCard && <Pressable
                               accessibilityRole="button"
                               accessibilityLabel="Orden aleatorio"
                               onPress={() => setShuffle((value) => !value)}
@@ -1022,8 +1028,8 @@ const active = index === session.index;
                                 size={22}
                                 color={shuffle ? "#ec1970" : "#9aa0a6"}
                               />
-                            </Pressable>
-                            <Pressable
+                            </Pressable>}
+                            {!phoneCard && <Pressable
                               accessibilityRole="link"
                               accessibilityLabel={tr(
                                 `Abrir ${cardTitle} en YouTube`,
@@ -1041,7 +1047,7 @@ const active = index === session.index;
                                 size={wideTransport ? 30 : 22}
                                 color="#ff0000"
                               />
-                            </Pressable>
+                            </Pressable>}
                           </View>
                         </View>
                       </View>
@@ -1509,6 +1515,18 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginHorizontal: 10,
   },
+  phoneVideoCard: {
+    height: undefined,
+    aspectRatio: undefined,
+    flexDirection: "column",
+  },
+  phoneCardVideo: {
+    width: "100%",
+    height: undefined,
+    aspectRatio: 16 / 9,
+    marginHorizontal: 0,
+  },
+  phoneCardControls: { width: "100%", height: 116, flex: 0 },
   cardArtworkButton: { height: "100%", aspectRatio: 1, flexShrink: 0 },
   cardArtwork: { width: "100%", height: "100%", backgroundColor: "#27272a" },
   cardRight: { flex: 1, minWidth: 0, height: "100%", backgroundColor: "#fff" },
