@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { requireFeature } from "./lib/auth";
 
 const P2P_PLAYLIST_EXCHANGE = "p2pPlaylistExchange";
@@ -9,6 +10,24 @@ const PAIRING_MS = 5 * 60 * 1000;
 const MAX_SIGNAL_LENGTH = 20000;
 
 const clean = (value, max) => String(value || "").trim().slice(0, max);
+
+// Las consultas se montan al abrir la pantalla. Si una sesión antigua apunta
+// a un usuario ya eliminado (o el perfil todavía se está creando), una query
+// nunca debe romper la pantalla. Las mutaciones sí mantienen requireFeature,
+// que es la autorización definitiva.
+async function getP2PViewer(ctx) {
+  const userId = await getAuthUserId(ctx);
+  if (!userId) return null;
+
+  const user = await ctx.db.get(userId);
+  if (!user || user.status === "blocked") return null;
+
+  const allowed =
+    user.role === "admin" ||
+    user.isAdmin === true ||
+    user.permissions?.[P2P_PLAYLIST_EXCHANGE] === true;
+  return allowed ? user : null;
+}
 
 async function deleteExpired(ctx) {
   const now = Date.now();
@@ -86,7 +105,8 @@ export const disablePresence = mutation({
 export const getMyPresence = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
+    const user = await getP2PViewer(ctx);
+    if (!user) return null;
     const item = await ctx.db
       .query("nearbySharePresence")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
@@ -98,9 +118,13 @@ export const getMyPresence = query({
 export const listVisiblePeers = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
+    const user = await getP2PViewer(ctx);
+    if (!user) return [];
     const now = Date.now();
-    const rows = await ctx.db.query("nearbySharePresence").collect();
+    const rows = await ctx.db
+      .query("nearbySharePresence")
+      .withIndex("by_expiresAt", (q) => q.gt("expiresAt", now))
+      .take(50);
     return rows
       .filter((item) => item.userId !== user._id && item.expiresAt > now)
       .map((item) => ({
@@ -169,7 +193,8 @@ export const respondToPairing = mutation({
 export const listPairings = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
+    const user = await getP2PViewer(ctx);
+    if (!user) return [];
     const now = Date.now();
     const [outgoing, incoming] = await Promise.all([
       ctx.db

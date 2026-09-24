@@ -79,9 +79,17 @@ export default function P2PPlaylistExchangeScreen() {
   const [connection, setConnection] = useState("idle");
   const [receivedPlaylist, setReceivedPlaylist] = useState(null);
 
-  const myPresence = useQuery(api.nearbyShare.getMyPresence);
-  const peers = useQuery(api.nearbyShare.listVisiblePeers);
-  const pairings = useQuery(api.nearbyShare.listPairings);
+  const currentUser = useQuery(api.users.current);
+  const hasP2PAccess =
+    currentUser?.isAdmin === true ||
+    currentUser?.permissions?.p2pPlaylistExchange === true;
+  const p2pQueryArgs = hasP2PAccess ? {} : "skip";
+
+  // No se consulta presencia hasta que Convex haya confirmado una sesión y
+  // el permiso. Así una cookie antigua no deja la PWA en blanco.
+  const myPresence = useQuery(api.nearbyShare.getMyPresence, p2pQueryArgs);
+  const peers = useQuery(api.nearbyShare.listVisiblePeers, p2pQueryArgs);
+  const pairings = useQuery(api.nearbyShare.listPairings, p2pQueryArgs);
   const activePairing = useMemo(
     () => pairings?.find((item) => item.status === "accepted") || null,
     [pairings],
@@ -101,6 +109,7 @@ export default function P2PPlaylistExchangeScreen() {
   const peerRef = useRef(null);
   const dataChannelRef = useRef(null);
   const appliedSignalsRef = useRef(new Set());
+  const queuedIceCandidatesRef = useRef([]);
   const offerStartedForRef = useRef(null);
 
   const closePeer = useCallback(() => {
@@ -109,6 +118,7 @@ export default function P2PPlaylistExchangeScreen() {
     dataChannelRef.current = null;
     peerRef.current = null;
     appliedSignalsRef.current.clear();
+    queuedIceCandidatesRef.current = [];
     offerStartedForRef.current = null;
     setConnection("idle");
   }, []);
@@ -181,6 +191,14 @@ export default function P2PPlaylistExchangeScreen() {
     if (!activePairing || !signals) return;
     let disposed = false;
     const processSignals = async () => {
+      const applyQueuedIceCandidates = async (peer) => {
+        const queued = queuedIceCandidatesRef.current;
+        queuedIceCandidatesRef.current = [];
+        for (const payload of queued) {
+          await peer.addIceCandidate(JSON.parse(payload));
+        }
+      };
+
       for (const signal of signals) {
         if (disposed || appliedSignalsRef.current.has(signal._id)) continue;
         try {
@@ -189,6 +207,7 @@ export default function P2PPlaylistExchangeScreen() {
             setConnection("connecting");
             const receiver = createPeer(activePairing, false);
             await receiver.setRemoteDescription(JSON.parse(signal.payload));
+            await applyQueuedIceCandidates(receiver);
             const answer = await receiver.createAnswer();
             await receiver.setLocalDescription(answer);
             await sendSignal({
@@ -203,9 +222,15 @@ export default function P2PPlaylistExchangeScreen() {
           ) {
             appliedSignalsRef.current.add(signal._id);
             await peerRef.current.setRemoteDescription(JSON.parse(signal.payload));
+            await applyQueuedIceCandidates(peerRef.current);
           } else if (signal.type === "ice" && peerRef.current?.remoteDescription) {
             appliedSignalsRef.current.add(signal._id);
             await peerRef.current.addIceCandidate(JSON.parse(signal.payload));
+          } else if (signal.type === "ice") {
+            // WebRTC puede recibir ICE antes de la oferta/respuesta. Se guarda
+            // y se aplica justo después de establecer la descripción remota.
+            appliedSignalsRef.current.add(signal._id);
+            queuedIceCandidatesRef.current.push(signal.payload);
           }
         } catch (error) {
           setConnection("failed");
@@ -282,6 +307,14 @@ export default function P2PPlaylistExchangeScreen() {
 
   if (Platform.OS !== "web") {
     return <View style={styles.center}><Ionicons name="desktop-outline" size={42} color="#64748b" /><Text style={styles.centerTitle}>Prueba P2P para la PWA</Text><Text style={styles.centerText}>Ábrela desde Safari en el iPhone y desde el navegador del Mac/PC.</Text></View>;
+  }
+
+  if (currentUser === undefined) {
+    return <View style={styles.center}><ActivityIndicator size="large" color="#2563eb" /></View>;
+  }
+
+  if (!hasP2PAccess) {
+    return <View style={styles.center}><Ionicons name="lock-closed-outline" size={42} color="#64748b" /><Text style={styles.centerTitle}>Intercambio P2P no disponible</Text><Text style={styles.centerText}>Inicia sesión de nuevo o pide al administrador que active la utilidad P2P para tu cuenta.</Text></View>;
   }
 
   const pendingIncoming = pairings?.filter((item) => item.status === "pending" && !item.isInitiator) || [];

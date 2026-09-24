@@ -268,6 +268,9 @@ const EN = {
   "No se pudo responder.": "Could not respond.",
   "La conexión todavía no está lista.": "The connection is not ready yet.",
   "Prueba P2P para la PWA": "P2P test for the PWA",
+  "Intercambio P2P no disponible": "P2P exchange unavailable",
+  "Inicia sesión de nuevo o pide al administrador que active la utilidad P2P para tu cuenta.":
+    "Sign in again or ask the administrator to enable the P2P utility for your account.",
   "Ábrela desde Safari en el iPhone y desde el navegador del Mac/PC.":
     "Open it from Safari on the iPhone and from the browser on the Mac/PC.",
   "Intercambio P2P · prueba": "P2P exchange · test",

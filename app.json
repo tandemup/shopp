@@ -3,7 +3,6 @@
     "name": "Shopp",
     "slug": "shopp",
     "version": "1.0.0",
-    "orientation": "portrait",
     "scheme": "shopp",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/images/icon.png",
@@ -51,8 +50,7 @@
       "themeColor": "#FFFBF3",
       "backgroundColor": "#FFFBF3",
       "startUrl": "/",
-      "scope": "/",
-      "orientation": "portrait-primary"
+      "scope": "/"
     },
     "runtimeVersion": {
       "policy": "appVersion"
