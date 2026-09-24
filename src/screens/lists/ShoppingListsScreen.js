@@ -23,7 +23,7 @@ import { DEFAULT_CURRENCY } from "@/src/constants/currency";
 import { useLists } from "@/src/context/ListsContext";
 import { ROUTES } from "@/src/navigation/ROUTES";
 import { buildHeaderConfig } from "@/src/utils/layout/headerStyles";
-import { isAdminUser } from "@/src/utils/featureAccess";
+import { APP_FEATURES, hasFeatureAccess } from "@/src/utils/featureAccess";
 
 const COLORS = {
   background: "#F4F7FB",
@@ -93,16 +93,17 @@ function QuickAction({
   iconBackground,
   badge = 0,
   badgeLabel,
-  requiresAdmin = false,
-  isAdmin = false,
+  requiresFeature,
+  adminOnly = false,
+  hasAccess = true,
   onPress,
 }) {
-  const isLocked = requiresAdmin && !isAdmin;
+  const isLocked = (Boolean(requiresFeature) && !hasAccess) || (adminOnly && !hasAccess);
   const handlePress = () => {
     if (isLocked) {
       safeAlert(
-        "Funcionalidad DEV",
-        "Esta función está en desarrollo y solo está disponible para administradores.",
+        "Acceso no concedido",
+        "El administrador debe concederte esta utilidad desde Administrar usuarios.",
       );
       return;
     }
@@ -162,10 +163,11 @@ function QuickAction({
 function QuickActions({
   archivedCount = 0,
   historyCount = 0,
-  isAdmin = false,
+  currentUser,
 }) {
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
+  const isAdmin = currentUser?.isAdmin === true || currentUser?.role === "admin";
 
   const contentWidth = Math.max(0, Math.min(width, 920) - 32);
   const isWide = contentWidth >= 720;
@@ -239,7 +241,7 @@ function QuickActions({
         iconColor: COLORS.cyan,
         iconBackground: COLORS.cyanSoft,
         badgeLabel: "DEV",
-        requiresAdmin: true,
+        requiresFeature: APP_FEATURES.SCANNER,
         // El acceso rápido debe abrir el tab Scanner completo para
         // centralizar allí todas sus acciones, en lugar de saltar
         // directamente a una pantalla interna como el historial.
@@ -253,7 +255,7 @@ function QuickActions({
         iconColor: COLORS.purple,
         iconBackground: COLORS.purpleSoft,
         badgeLabel: "DEV",
-        requiresAdmin: true,
+        requiresFeature: APP_FEATURES.CHAT,
         onPress: () =>
           navigateToNestedRoute(ROUTES.CHAT_TAB, ROUTES.CHAT_SCREEN),
       },
@@ -265,7 +267,7 @@ function QuickActions({
         iconColor: COLORS.green,
         iconBackground: COLORS.greenSoft,
         badgeLabel: "DEV",
-        requiresAdmin: true,
+        requiresFeature: APP_FEATURES.PARKING,
         onPress: () =>
           navigateToNestedRoute(ROUTES.CHAT_TAB, ROUTES.PARKING_SCREEN),
       },
@@ -277,7 +279,7 @@ function QuickActions({
         iconColor: COLORS.primary,
         iconBackground: COLORS.primarySoft,
         badgeLabel: "DEV",
-        requiresAdmin: true,
+        requiresFeature: APP_FEATURES.ENGLISH_TUTOR,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.ENGLISH_TUTOR),
       },
@@ -289,7 +291,7 @@ function QuickActions({
         iconColor: COLORS.cyan,
         iconBackground: COLORS.cyanSoft,
         badgeLabel: "DEV",
-        requiresAdmin: true,
+        requiresFeature: APP_FEATURES.LIBRARY,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.LIBRARY),
       },
@@ -300,6 +302,7 @@ function QuickActions({
         icon: "musical-notes-outline",
         iconColor: COLORS.red,
         iconBackground: COLORS.redSoft,
+        requiresFeature: APP_FEATURES.MUSIC_PLAYLIST,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.PLAY_LIST),
       },
@@ -311,7 +314,7 @@ function QuickActions({
         iconColor: COLORS.green,
         iconBackground: COLORS.greenSoft,
         badgeLabel: "DEV",
-        requiresAdmin: true,
+        requiresFeature: APP_FEATURES.INVESTMENTS,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.INVESTMENTS),
       },
@@ -323,7 +326,7 @@ function QuickActions({
         iconColor: COLORS.purple,
         iconBackground: COLORS.purpleSoft,
         badgeLabel: "DEV",
-        requiresAdmin: true,
+        requiresFeature: APP_FEATURES.CLASSICAL_MUSIC,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.CLASSICAL_MUSIC),
       },
@@ -335,7 +338,7 @@ function QuickActions({
         iconColor: COLORS.primary,
         iconBackground: COLORS.primarySoft,
         badgeLabel: "DEV",
-        requiresAdmin: true,
+        requiresFeature: APP_FEATURES.TUTORIALS,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.TUTORIALS),
       },
@@ -347,7 +350,7 @@ function QuickActions({
         iconColor: COLORS.primary,
         iconBackground: COLORS.primarySoft,
         badgeLabel: "DEV",
-        requiresAdmin: true,
+        requiresFeature: APP_FEATURES.NEWS,
         onPress: () => navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.NEWS),
       },
       {
@@ -358,23 +361,9 @@ function QuickActions({
         iconColor: COLORS.red,
         iconBackground: COLORS.redSoft,
         badgeLabel: "DEV",
-        requiresAdmin: true,
+        requiresFeature: APP_FEATURES.SHOPP_LIVE,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.SHOPP_LIVE),
-      },
-      {
-        key: "p2pPlaylistExchange",
-        label: "Intercambio P2P",
-        description: "Prueba compartir playlists con un amigo",
-        icon: "people-outline",
-        iconColor: COLORS.primary,
-        iconBackground: COLORS.primarySoft,
-        badgeLabel: "PRUEBA",
-        onPress: () =>
-          navigateToNestedRoute(
-            ROUTES.SHOPPING_TAB,
-            ROUTES.P2P_PLAYLIST_EXCHANGE,
-          ),
       },
       {
         key: "chatPrototype",
@@ -384,7 +373,7 @@ function QuickActions({
         iconColor: COLORS.orange,
         iconBackground: COLORS.orangeSoft,
         badgeLabel: "DEV",
-        requiresAdmin: true,
+        adminOnly: true,
         onPress: () =>
           navigateToNestedRoute(ROUTES.CHAT_TAB, ROUTES.CHAT_PROTOTYPE),
       },
@@ -396,7 +385,7 @@ function QuickActions({
         iconColor: COLORS.red,
         iconBackground: COLORS.redSoft,
         badgeLabel: "DEV",
-        requiresAdmin: true,
+        requiresFeature: APP_FEATURES.FIRE_ALARM,
         onPress: () =>
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.WEBRTC_FIRE_ALARM),
       },
@@ -408,7 +397,7 @@ function QuickActions({
         iconColor: COLORS.orange,
         iconBackground: COLORS.orangeSoft,
         badgeLabel: "DEV",
-        requiresAdmin: true,
+        adminOnly: true,
         onPress: () =>
           navigateToNestedRoute(ROUTES.CHAT_TAB, ROUTES.PARKING_GPS_DEBUG),
       },
@@ -416,7 +405,7 @@ function QuickActions({
     [
       archivedCount,
       historyCount,
-      isAdmin,
+      currentUser,
       navigateToNestedRoute,
       navigation,
     ],
@@ -435,11 +424,13 @@ function QuickActions({
       </View>
 
       <View style={styles.quickGrid}>
-        {actions.map(({ key, ...actionProps }) => (
+        {actions.map(({ key, requiresFeature, adminOnly, ...actionProps }) => (
           <QuickAction
             key={key}
             width={cardWidth}
-            isAdmin={isAdmin}
+            requiresFeature={requiresFeature}
+            adminOnly={adminOnly}
+            hasAccess={adminOnly ? isAdmin : (!requiresFeature || hasFeatureAccess(currentUser, requiresFeature))}
             {...actionProps}
           />
         ))}
@@ -836,7 +827,7 @@ export default function ShoppingListsScreen() {
                 <QuickActions
                   archivedCount={archivedLists.length}
                   historyCount={purchaseHistory.length}
-                  isAdmin={isAdminUser(currentUser)}
+                  currentUser={currentUser}
                 />
               }
               contentContainerStyle={styles.listContent}

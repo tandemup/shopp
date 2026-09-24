@@ -1540,7 +1540,7 @@ export default function MenuScreen({ navigation }) {
                 <SettingsCard
                   icon="shield-checkmark-outline"
                   title="Administrar usuarios"
-                  subtitle="Consultar usuarios y asignar roles"
+                  subtitle="Asignar roles, bloquear cuentas y conceder utilidades"
                   badge="ADMIN"
                   onPress={goToAdminUsers}
                 />

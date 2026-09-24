@@ -285,6 +285,89 @@ export const upsertStores = mutation({
   },
 });
 
+// Exportación e importación del catálogo completa, reservadas a administradores.
+// Se mantienen separadas de `upsertStores` para que el cliente pueda ofrecer los
+// modos "Combinar" y "Reemplazar todo" de forma explícita.
+export const exportCatalogForAdmin = query({
+  args: {},
+
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const stores = await ctx.db.query("stores").collect();
+
+    // Devolvemos únicamente el formato portable del catálogo; los campos
+    // internos de Convex (_id, _creationTime) no deben incluirse en el JSON.
+    return sortStoresByName(stores).map((store) => normalizeStore(store));
+  },
+});
+
+export const importCatalogForAdmin = mutation({
+  args: {
+    stores: v.array(storeValidator),
+    mode: v.union(v.literal("merge"), v.literal("replace")),
+  },
+
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    const stores = args.stores.map(normalizeStore);
+    const importedIds = new Set();
+
+    for (const store of stores) {
+      if (importedIds.has(store.id)) {
+        throw new Error(`El fichero contiene la tienda duplicada: ${store.id}.`);
+      }
+      importedIds.add(store.id);
+    }
+
+    let inserted = 0;
+    let updated = 0;
+
+    if (args.mode === "replace") {
+      const currentStores = await ctx.db.query("stores").collect();
+
+      for (const store of currentStores) {
+        await ctx.db.delete(store._id);
+      }
+
+      for (const store of stores) {
+        await ctx.db.insert("stores", store);
+        inserted += 1;
+      }
+
+      // No se eliminan las listas de compra. Solo se retiran favoritos que
+      // ya no pueden apuntar a una tienda del catálogo reemplazado.
+      const favorites = await ctx.db.query("userStoreFavorites").collect();
+      for (const favorite of favorites) {
+        if (!importedIds.has(favorite.storeId)) {
+          await ctx.db.delete(favorite._id);
+        }
+      }
+    } else {
+      for (const store of stores) {
+        const existing = await getStoreByPublicId(ctx, store.id);
+
+        if (existing) {
+          await ctx.db.patch(existing._id, store);
+          updated += 1;
+        } else {
+          await ctx.db.insert("stores", store);
+          inserted += 1;
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      mode: args.mode,
+      inserted,
+      updated,
+      skipped: 0,
+      total: stores.length,
+    };
+  },
+});
+
 export const setStoreFavorite = mutation({
   args: {
     id: v.string(),

@@ -24,31 +24,33 @@ import LibraryScreen from "@/src/screens/library/LibraryScreen";
 import PlayListScreen from "@/src/screens/playlist/PlayListScreen";
 import RecipesScreen from "@/src/screens/recipes/RecipesScreen";
 import ShoppLiveScreen from "@/src/screens/live/ShoppLiveScreen";
-import P2PPlaylistExchangeScreen from "@/src/screens/playlist/P2PPlaylistExchangeScreen";
 import InvestmentsScreen from "@/src/screens/investments/InvestmentsScreen";
-import { adminOnly } from "@/src/components/access/AdminOnlyFeature";
+import { featureOnly } from "@/src/components/access/AdminOnlyFeature";
+import { APP_FEATURES } from "@/src/utils/featureAccess";
 
 const Stack = createNativeStackNavigator();
 
-const DevStoresScreen = adminOnly(StoresScreen, "Tiendas");
-const DevStoreMapScreen = adminOnly(StoreMapScreen, "Mapa de tiendas");
-const DevScannedHistoryScreen = adminOnly(
+const DevStoresScreen = featureOnly(StoresScreen, APP_FEATURES.STORES, "Tiendas");
+const DevStoreMapScreen = featureOnly(StoreMapScreen, APP_FEATURES.STORES, "Mapa de tiendas");
+const DevScannedHistoryScreen = featureOnly(
   ScannedHistoryScreen,
+  APP_FEATURES.SCANNER,
   "Historial de escaneos",
 );
-const DevEditScannedItemScreen = adminOnly(
+const DevEditScannedItemScreen = featureOnly(
   EditScannedItemScreen,
+  APP_FEATURES.SCANNER,
   "Edición de escaneos",
 );
-const DevFireAlarmScreen = adminOnly(WebRtcFireAlarmScreen, "Fire Alarm");
-const DevEnglishTutorScreen = adminOnly(EnglishTutorScreen, "Tutor de Inglés");
-const DevLibraryScreen = adminOnly(LibraryScreen, "Biblioteca");
-const DevClassicalMusicScreen = adminOnly(PlayListScreen, "Música clásica");
-const DevTutorialsScreen = adminOnly(PlayListScreen, "Tutoriales");
-const DevNewsScreen = adminOnly(PlayListScreen, "Noticias");
-const DevShoppLiveScreen = adminOnly(ShoppLiveScreen, "Shopp Live");
-const DevInvestmentsScreen = adminOnly(InvestmentsScreen, "Inversiones");
-const DevPlayListScreen = adminOnly(PlayListScreen, "Playlists musicales");
+const DevFireAlarmScreen = featureOnly(WebRtcFireAlarmScreen, APP_FEATURES.FIRE_ALARM, "Fire Alarm");
+const DevEnglishTutorScreen = featureOnly(EnglishTutorScreen, APP_FEATURES.ENGLISH_TUTOR, "Tutor de Inglés");
+const DevLibraryScreen = featureOnly(LibraryScreen, APP_FEATURES.LIBRARY, "Biblioteca");
+const DevClassicalMusicScreen = featureOnly(PlayListScreen, APP_FEATURES.CLASSICAL_MUSIC, "Música clásica");
+const DevTutorialsScreen = featureOnly(PlayListScreen, APP_FEATURES.TUTORIALS, "Tutoriales");
+const DevNewsScreen = featureOnly(PlayListScreen, APP_FEATURES.NEWS, "Noticias");
+const DevShoppLiveScreen = featureOnly(ShoppLiveScreen, APP_FEATURES.SHOPP_LIVE, "Shopp Live");
+const DevInvestmentsScreen = featureOnly(InvestmentsScreen, APP_FEATURES.INVESTMENTS, "Inversiones");
+const DevPlayListScreen = featureOnly(PlayListScreen, APP_FEATURES.MUSIC_PLAYLIST, "Playlists musicales");
 
 export default function ShoppingStack() {
   useI18n();
@@ -134,11 +136,6 @@ export default function ShoppingStack() {
         name={ROUTES.SHOPP_LIVE}
         component={DevShoppLiveScreen}
         options={{ title: "Shopp Live" }}
-      />
-      <Stack.Screen
-        name={ROUTES.P2P_PLAYLIST_EXCHANGE}
-        component={P2PPlaylistExchangeScreen}
-        options={{ title: "Intercambio P2P · prueba" }}
       />
       <Stack.Screen
         name={ROUTES.INVESTMENTS}

@@ -62,7 +62,7 @@ export default function MenuStack() {
       <Stack.Screen
         name={ROUTES.ADMIN_STORE_CATALOG}
         component={AdminStoreCatalogScreen}
-        options={{ title: tr("Catálogo de supermercados") }}
+        options={{ title: "Catálogo de supermercados" }}
       />
 
       <Stack.Screen

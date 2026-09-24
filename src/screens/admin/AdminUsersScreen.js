@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
+  Text,
   View
 } from "react-native";
-import { I18nText as Text } from "@/src/i18n";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
@@ -14,7 +16,26 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
-function UserCard({ user, busy, onChangeRole, onChangeBlocked }) {
+const FEATURE_OPTIONS = [
+  { key: "scanner", label: "Escáner", icon: "barcode-outline" },
+  { key: "stores", label: "Tiendas", icon: "storefront-outline" },
+  { key: "chat", label: "Chat", icon: "chatbubble-ellipses-outline" },
+  { key: "parking", label: "Aparcamiento", icon: "car-outline" },
+  { key: "englishTutor", label: "Tutor de inglés", icon: "language-outline" },
+  { key: "library", label: "Biblioteca", icon: "library-outline" },
+  { key: "musicPlaylist", label: "Lista de música", icon: "musical-notes-outline" },
+  { key: "classicalMusic", label: "Lista de música clásica", icon: "musical-notes-outline" },
+  { key: "tutorials", label: "Tutoriales", icon: "school-outline" },
+  { key: "news", label: "Noticias", icon: "newspaper-outline" },
+  { key: "shoppLive", label: "Shopp en directo", icon: "radio-outline" },
+  { key: "fireAlarm", label: "Alarma de incendios", icon: "flame-outline" },
+  { key: "investments", label: "Inversiones", icon: "trending-up-outline" },
+];
+
+const emptyPermissions = () =>
+  Object.fromEntries(FEATURE_OPTIONS.map(({ key }) => [key, false]));
+
+function UserCard({ user, busy, onChangeRole, onChangeBlocked, onManagePermissions }) {
   const isAdmin = user.role === "admin";
   const isBlocked = user.status === "blocked";
   const label = user.email || user.name || String(user._id);
@@ -29,51 +50,63 @@ function UserCard({ user, busy, onChangeRole, onChangeBlocked }) {
         />
       </View>
 
-      <View style={styles.userInfo}>
-        <Text style={styles.userName} numberOfLines={1}>
-          {label}
-        </Text>
-        {user.name && user.email ? (
-          <Text style={styles.userEmail} numberOfLines={1}>
-            {user.name}
+      <View style={styles.userDetails}>
+        <View style={styles.userInfo}>
+          <Text style={styles.userName} numberOfLines={1}>
+            {label}
           </Text>
-        ) : null}
-        <Text style={styles.userId} numberOfLines={1}>
-          {String(user._id)}
-        </Text>
-        {isBlocked ? <Text style={styles.blockText}>Bloqueado</Text> : null}
-      </View>
+          {user.name && user.email ? (
+            <Text style={styles.userEmail} numberOfLines={1}>
+              {user.name}
+            </Text>
+          ) : null}
+          <Text style={styles.userId} numberOfLines={1}>
+            {String(user._id)}
+          </Text>
+          {isBlocked ? <Text style={styles.blockText}>Bloqueado</Text> : null}
+        </View>
 
-      <View style={styles.actions}>
-      <Pressable
-        accessibilityRole="button"
-        disabled={busy}
-        onPress={() => onChangeRole(user)}
-        style={({ pressed }) => [
-          styles.roleButton,
-          isAdmin ? styles.adminButton : styles.userButton,
-          pressed && styles.pressed,
-          busy && styles.disabled,
-        ]}
-      >
-        {busy ? (
-          <ActivityIndicator size="small" color="#0f172a" />
-        ) : (
-          <Text style={isAdmin ? styles.adminText : styles.userText}>
-            {isAdmin ? "Admin" : "Usuario"}
+        <View style={styles.actions}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={busy}
+          onPress={() => onChangeRole(user)}
+          style={({ pressed }) => [
+            styles.roleButton,
+            isAdmin ? styles.adminButton : styles.userButton,
+            pressed && styles.pressed,
+            busy && styles.disabled,
+          ]}
+        >
+          {busy ? (
+            <ActivityIndicator size="small" color="#0f172a" />
+          ) : (
+            <Text style={isAdmin ? styles.adminText : styles.userText}>
+              {isAdmin ? "Admin" : "Usuario"}
+            </Text>
+          )}
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          disabled={busy}
+          onPress={() => onChangeBlocked(user)}
+          style={({ pressed }) => [styles.roleButton, isBlocked ? styles.adminButton : styles.blockButton, pressed && styles.pressed, busy && styles.disabled]}
+        >
+          <Text style={isBlocked ? styles.adminText : styles.blockText}>
+            {isBlocked ? "Desbloquear" : "Bloquear"}
           </Text>
-        )}
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        disabled={busy}
-        onPress={() => onChangeBlocked(user)}
-        style={({ pressed }) => [styles.roleButton, isBlocked ? styles.adminButton : styles.blockButton, pressed && styles.pressed, busy && styles.disabled]}
-      >
-        <Text style={isBlocked ? styles.adminText : styles.blockText}>
-          {isBlocked ? "Desbloquear" : "Bloquear"}
-        </Text>
-      </Pressable>
+        </Pressable>
+        {!isAdmin ? (
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy}
+            onPress={() => onManagePermissions(user)}
+            style={({ pressed }) => [styles.permissionsButton, pressed && styles.pressed, busy && styles.disabled]}
+          >
+            <Text style={styles.permissionsButtonText}>Utilidades</Text>
+          </Pressable>
+        ) : null}
+        </View>
       </View>
     </View>
   );
@@ -87,7 +120,10 @@ export default function AdminUsersScreen() {
   );
   const setRole = useMutation(api.users.setRole);
   const setBlocked = useMutation(api.users.setBlocked);
+  const setPermissions = useMutation(api.users.setPermissions);
   const [busyUserId, setBusyUserId] = useState(null);
+  const [permissionsUser, setPermissionsUser] = useState(null);
+  const [draftPermissions, setDraftPermissions] = useState(emptyPermissions);
 
   const changeRole = (user) => {
     const nextRole = user.role === "admin" ? "user" : "admin";
@@ -145,6 +181,31 @@ export default function AdminUsersScreen() {
     );
   };
 
+  const openPermissions = (user) => {
+    setPermissionsUser(user);
+    setDraftPermissions({ ...emptyPermissions(), ...(user.permissions || {}) });
+  };
+
+  const savePermissions = async () => {
+    if (!permissionsUser) return;
+
+    try {
+      setBusyUserId(permissionsUser._id);
+      await setPermissions({
+        userId: permissionsUser._id,
+        permissions: draftPermissions,
+      });
+      setPermissionsUser(null);
+    } catch (error) {
+      safeAlert(
+        "No se pudieron guardar las utilidades",
+        error?.message || "Se ha producido un error.",
+      );
+    } finally {
+      setBusyUserId(null);
+    }
+  };
+
   if (currentUser === undefined || (currentUser?.isAdmin && users === undefined)) {
     return (
       <View style={styles.center}>
@@ -167,6 +228,7 @@ export default function AdminUsersScreen() {
   }
 
   return (
+    <>
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
@@ -186,9 +248,63 @@ export default function AdminUsersScreen() {
           busy={busyUserId === user._id}
           onChangeRole={changeRole}
           onChangeBlocked={changeBlocked}
+          onManagePermissions={openPermissions}
         />
       ))}
     </ScrollView>
+    <Modal
+      visible={Boolean(permissionsUser)}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setPermissionsUser(null)}
+    >
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeading}>
+              <Text style={styles.modalTitle}>Utilidades permitidas</Text>
+              <Text style={styles.modalSubtitle} numberOfLines={1}>
+                {permissionsUser?.email || permissionsUser?.name || "Usuario"}
+              </Text>
+            </View>
+            <Pressable onPress={() => setPermissionsUser(null)} hitSlop={10}>
+              <Ionicons name="close" size={24} color="#475569" />
+            </Pressable>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.permissionsList}>
+            {FEATURE_OPTIONS.map(({ key, label, icon }) => (
+              <View key={key} style={styles.permissionRow}>
+                <View style={styles.permissionIcon}>
+                  <Ionicons name={icon} size={19} color="#2563eb" />
+                </View>
+                <Text style={styles.permissionLabel}>{label}</Text>
+                <Switch
+                  value={draftPermissions[key] === true}
+                  onValueChange={(value) => setDraftPermissions((current) => ({ ...current, [key]: value }))}
+                  trackColor={{ false: "#cbd5e1", true: "#93c5fd" }}
+                  thumbColor={draftPermissions[key] ? "#2563eb" : "#f8fafc"}
+                />
+              </View>
+            ))}
+          </ScrollView>
+
+          <View style={styles.modalActions}>
+            <Pressable onPress={() => setPermissionsUser(null)} style={styles.cancelButton}>
+              <Text style={styles.cancelButtonText}>Cancelar</Text>
+            </Pressable>
+            <Pressable
+              onPress={savePermissions}
+              disabled={busyUserId === permissionsUser?._id}
+              style={({ pressed }) => [styles.saveButton, pressed && styles.pressed, busyUserId === permissionsUser?._id && styles.disabled]}
+            >
+              <Text style={styles.saveButtonText}>Guardar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -215,7 +331,7 @@ const styles = StyleSheet.create({
   summaryText: { marginTop: 3, color: "#1d4ed8" },
   card: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 12,
     padding: 14,
     borderWidth: 1,
@@ -231,8 +347,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#f1f5f9",
   },
-  userInfo: { flex: 1, minWidth: 0 },
-  actions: { alignItems: "flex-end", gap: 6 },
+  userDetails: { flex: 1, minWidth: 0 },
+  userInfo: { minWidth: 0 },
+  actions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 10 },
   userName: { fontSize: 15, fontWeight: "800", color: "#0f172a" },
   userEmail: { marginTop: 2, fontSize: 13, color: "#475569" },
   userId: { marginTop: 3, fontSize: 11, color: "#94a3b8" },
@@ -248,9 +365,71 @@ const styles = StyleSheet.create({
   adminButton: { borderColor: "#86efac", backgroundColor: "#dcfce7" },
   userButton: { borderColor: "#cbd5e1", backgroundColor: "#f8fafc" },
   blockButton: { borderColor: "#fecaca", backgroundColor: "#fef2f2" },
+  permissionsButton: {
+    minHeight: 34,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    borderRadius: 999,
+    backgroundColor: "#eff6ff",
+  },
+  permissionsButtonText: { fontSize: 12, fontWeight: "800", color: "#1d4ed8" },
   blockText: { fontWeight: "700", color: "#b91c1c" },
   adminText: { fontWeight: "800", color: "#15803d" },
   userText: { fontWeight: "700", color: "#475569" },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.55 },
+  modalBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 620,
+    maxHeight: "82%",
+    padding: 20,
+    paddingBottom: 24,
+    borderRadius: 24,
+    backgroundColor: "#ffffff",
+  },
+  modalHeader: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 14 },
+  modalHeading: { flex: 1 },
+  modalTitle: { fontSize: 20, fontWeight: "800", color: "#0f172a" },
+  modalSubtitle: { marginTop: 4, color: "#64748b" },
+  permissionsList: { gap: 8, paddingBottom: 12 },
+  permissionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minHeight: 54,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: "#f8fafc",
+  },
+  permissionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#dbeafe",
+  },
+  permissionLabel: { flex: 1, fontWeight: "700", color: "#1e293b" },
+  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 8 },
+  cancelButton: { minHeight: 44, paddingHorizontal: 16, alignItems: "center", justifyContent: "center" },
+  cancelButtonText: { fontWeight: "700", color: "#475569" },
+  saveButton: {
+    minHeight: 44,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    backgroundColor: "#2563eb",
+  },
+  saveButtonText: { fontWeight: "800", color: "#ffffff" },
 });

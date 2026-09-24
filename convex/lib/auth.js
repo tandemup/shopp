@@ -31,3 +31,20 @@ export async function requireAdmin(ctx) {
 
   return user;
 }
+
+// Úsalo en las mutaciones o consultas de una utilidad que tenga datos en
+// Convex. La interfaz también comprueba el permiso, pero la autorización
+// definitiva debe permanecer en el servidor.
+export async function requireFeature(ctx, feature) {
+  const user = await requireUser(ctx);
+
+  if (user.role === "admin" || user.isAdmin === true) {
+    return user;
+  }
+
+  if (user.permissions?.[feature] === true) {
+    return user;
+  }
+
+  throw new Error("No tienes acceso a esta utilidad.");
+}

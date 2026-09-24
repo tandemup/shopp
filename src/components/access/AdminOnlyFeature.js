@@ -5,35 +5,46 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { api } from "@/convex/_generated/api";
 import { I18nText as Text } from "@/src/i18n";
-import { isAdminUser } from "@/src/utils/featureAccess";
+import { hasFeatureAccess, isAdminUser } from "@/src/utils/featureAccess";
+
+function AccessDenied({ title, description }) {
+  return (
+    <View style={styles.centered}>
+      <View style={styles.iconBox}>
+        <Ionicons name="lock-closed-outline" size={30} color="#C2410C" />
+      </View>
+      <View style={styles.badge}>
+        <Text style={styles.badgeText}>ACCESO</Text>
+      </View>
+      <Text style={styles.title}>{title}</Text>
+      <Text style={styles.description}>{description}</Text>
+    </View>
+  );
+}
+
+export function FeatureAccess({ children, feature, title = "Funcionalidad en desarrollo" }) {
+  const currentUser = useQuery(api.users.current);
+
+  if (currentUser === undefined) {
+    return <View style={styles.centered}><ActivityIndicator size="large" color="#2563EB" /></View>;
+  }
+
+  if (!hasFeatureAccess(currentUser, feature)) {
+    return <AccessDenied title={title} description="El administrador debe concederte acceso a esta utilidad desde la gestión de usuarios." />;
+  }
+
+  return children;
+}
 
 export function AdminOnlyFeature({ children, title = "Funcionalidad en desarrollo" }) {
   const currentUser = useQuery(api.users.current);
 
   if (currentUser === undefined) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#2563EB" />
-      </View>
-    );
+    return <View style={styles.centered}><ActivityIndicator size="large" color="#2563EB" /></View>;
   }
 
   if (!isAdminUser(currentUser)) {
-    return (
-      <View style={styles.centered}>
-        <View style={styles.iconBox}>
-          <Ionicons name="construct-outline" size={30} color="#C2410C" />
-        </View>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>DEV</Text>
-        </View>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.description}>
-          Esta función está en desarrollo y, por el momento, solo está
-          disponible para administradores.
-        </Text>
-      </View>
-    );
+    return <AccessDenied title={title} description="Esta función está en desarrollo y solo está disponible para administradores." />;
   }
 
   return children;
@@ -50,6 +61,19 @@ export function adminOnly(Component, title) {
 
   AdminOnlyScreen.displayName = `AdminOnly(${Component.displayName || Component.name || "Screen"})`;
   return AdminOnlyScreen;
+}
+
+export function featureOnly(Component, feature, title) {
+  function FeatureOnlyScreen(props) {
+    return (
+      <FeatureAccess feature={feature} title={title}>
+        <Component {...props} />
+      </FeatureAccess>
+    );
+  }
+
+  FeatureOnlyScreen.displayName = `FeatureOnly(${Component.displayName || Component.name || "Screen"})`;
+  return FeatureOnlyScreen;
 }
 
 const styles = StyleSheet.create({
@@ -92,4 +116,3 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
-

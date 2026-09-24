@@ -14,13 +14,17 @@ import ScannedHistoryScreen from "@/src/screens/scanner/ScannedHistoryScreen";
 import SearchEngines from "@/src/screens/settings/SearchEngines";
 import BarcodeSettingsScreen from "@/src/screens/settings/BarcodeSettingsScreen";
 import AdminProductReviewsScreen from "@/src/screens/admin/AdminProductReviewsScreen";
+import { adminOnly, FeatureAccess } from "@/src/components/access/AdminOnlyFeature";
+import { APP_FEATURES } from "@/src/utils/featureAccess";
 
 const Stack = createNativeStackNavigator();
+const AdminProductReviews = adminOnly(AdminProductReviewsScreen, "Productos pendientes de revisión");
 
 export default function ScannerStack() {
   useI18n();
   return (
-    <Stack.Navigator
+    <FeatureAccess feature={APP_FEATURES.SCANNER} title="Scanner">
+      <Stack.Navigator
       initialRouteName={ROUTES.SCANNER_HOME}
       screenOptions={DEFAULT_HEADER_OPTIONS}
     >
@@ -76,11 +80,12 @@ export default function ScannerStack() {
 
       <Stack.Screen
         name="AdminProductReviews"
-        component={AdminProductReviewsScreen}
+        component={AdminProductReviews}
         options={{
           title: tr("Productos pendientes de revisión"),
         }}
       />
-    </Stack.Navigator>
+      </Stack.Navigator>
+    </FeatureAccess>
   );
 }

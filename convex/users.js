@@ -3,6 +3,34 @@ import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { requireAdmin } from "./lib/auth";
 
+const PERMISSION_FIELDS = [
+  "scanner", "stores", "chat", "parking", "englishTutor", "library",
+  "musicPlaylist", "classicalMusic", "tutorials", "news", "shoppLive",
+  "fireAlarm", "investments",
+];
+
+const permissionsValidator = v.object({
+  scanner: v.optional(v.boolean()),
+  stores: v.optional(v.boolean()),
+  chat: v.optional(v.boolean()),
+  parking: v.optional(v.boolean()),
+  englishTutor: v.optional(v.boolean()),
+  library: v.optional(v.boolean()),
+  musicPlaylist: v.optional(v.boolean()),
+  classicalMusic: v.optional(v.boolean()),
+  tutorials: v.optional(v.boolean()),
+  news: v.optional(v.boolean()),
+  shoppLive: v.optional(v.boolean()),
+  fireAlarm: v.optional(v.boolean()),
+  investments: v.optional(v.boolean()),
+});
+
+function normalizePermissions(permissions = {}) {
+  return Object.fromEntries(
+    PERMISSION_FIELDS.map((feature) => [feature, permissions[feature] === true]),
+  );
+}
+
 function cleanText(value) {
   return String(value || "").trim();
 }
@@ -81,6 +109,7 @@ export const current = query({
       role: user.role ?? "user",
       isAdmin: user.role === "admin" || user.isAdmin === true,
       status: user.status ?? "active",
+      permissions: normalizePermissions(user.permissions),
 
       profile: profile
         ? {
@@ -117,6 +146,7 @@ export const listForAdmin = query({
         role: user.role ?? "user",
         isAnonymous: user.isAnonymous ?? false,
         status: user.status ?? "active",
+        permissions: normalizePermissions(user.permissions),
         blockedAt: user.blockedAt ?? null,
         blockReason: user.blockReason ?? null,
       }))
@@ -170,6 +200,29 @@ export const setBlocked = mutation({
     await ctx.db.patch(userId, blocked
       ? { status: "blocked", blockedAt: Date.now(), blockedBy: admin._id, blockReason: normalizedReason || undefined }
       : { status: "active", blockedAt: undefined, blockedBy: undefined, blockReason: undefined });
+    return { ok: true };
+  },
+});
+
+export const setPermissions = mutation({
+  args: {
+    userId: v.id("users"),
+    permissions: permissionsValidator,
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    const targetUser = await ctx.db.get(args.userId);
+    if (!targetUser) throw new Error("Usuario no encontrado.");
+
+    if (targetUser.role === "admin" || targetUser.isAdmin === true) {
+      throw new Error("Los administradores ya tienen acceso a todas las utilidades.");
+    }
+
+    await ctx.db.patch(args.userId, {
+      permissions: normalizePermissions(args.permissions),
+    });
+
     return { ok: true };
   },
 });

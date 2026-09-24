@@ -17,6 +17,25 @@ export default defineSchema({
     phoneVerificationTime: v.optional(v.float64()),
     isAnonymous: v.optional(v.boolean()),
     role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
+    // Los permisos son independientes del rol. Un administrador los tiene
+    // implícitamente todos; a un usuario normal se le pueden conceder uno a uno.
+    permissions: v.optional(
+      v.object({
+        scanner: v.optional(v.boolean()),
+        stores: v.optional(v.boolean()),
+        chat: v.optional(v.boolean()),
+        parking: v.optional(v.boolean()),
+        englishTutor: v.optional(v.boolean()),
+        library: v.optional(v.boolean()),
+        musicPlaylist: v.optional(v.boolean()),
+        classicalMusic: v.optional(v.boolean()),
+        tutorials: v.optional(v.boolean()),
+        news: v.optional(v.boolean()),
+        shoppLive: v.optional(v.boolean()),
+        fireAlarm: v.optional(v.boolean()),
+        investments: v.optional(v.boolean()),
+      }),
+    ),
     status: v.optional(v.union(v.literal("active"), v.literal("blocked"))),
     blockedAt: v.optional(v.float64()),
     blockedBy: v.optional(v.id("users")),
@@ -1173,46 +1192,4 @@ export default defineSchema({
     candidate: v.string(),
     createdAt: v.float64(),
   }).index("by_session_side", ["sessionId", "side"]),
-
-  // Laboratorio de intercambio P2P. Estos registros únicamente coordinan la
-  // conexión WebRTC; no contienen playlists ni vídeo y caducan rápidamente.
-  nearbySharePresence: defineTable({
-    userId: v.id("users"),
-    displayName: v.string(),
-    expiresAt: v.float64(),
-    createdAt: v.float64(),
-    updatedAt: v.float64(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_expiresAt", ["expiresAt"]),
-
-  nearbySharePairings: defineTable({
-    initiatorId: v.id("users"),
-    recipientId: v.id("users"),
-    initiatorName: v.string(),
-    recipientName: v.string(),
-    confirmCode: v.string(),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("accepted"),
-      v.literal("rejected"),
-    ),
-    expiresAt: v.float64(),
-    createdAt: v.float64(),
-    updatedAt: v.float64(),
-  })
-    .index("by_initiator_updatedAt", ["initiatorId", "updatedAt"])
-    .index("by_recipient_updatedAt", ["recipientId", "updatedAt"])
-    .index("by_expiresAt", ["expiresAt"]),
-
-  nearbyShareSignals: defineTable({
-    pairingId: v.id("nearbySharePairings"),
-    senderId: v.id("users"),
-    type: v.union(v.literal("offer"), v.literal("answer"), v.literal("ice")),
-    payload: v.string(),
-    expiresAt: v.float64(),
-    createdAt: v.float64(),
-  })
-    .index("by_pairing_createdAt", ["pairingId", "createdAt"])
-    .index("by_expiresAt", ["expiresAt"]),
 });

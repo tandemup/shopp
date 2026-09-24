@@ -11,21 +11,28 @@ import ParkingScreen from "@/src/screens/parking/ParkingScreen";
 import ParkingSettingsScreen from "@/src/screens/parking/ParkingSettingsScreen";
 import ParkingGpsDebugScreen from "@/src/screens/parking/ParkingGpsDebugScreen";
 import ChatPrototypeScreen from "@/src/screens/chat/ChatPrototypeScreen";
-import { AdminOnlyFeature } from "@/src/components/access/AdminOnlyFeature";
+import { adminOnly, featureOnly } from "@/src/components/access/AdminOnlyFeature";
+import { APP_FEATURES } from "@/src/utils/featureAccess";
 
 const Stack = createNativeStackNavigator();
+const SharedChatScreen = featureOnly(ChatScreen, APP_FEATURES.CHAT, "Chat");
+const SharedChatResponsiveScreen = featureOnly(ChatScreenResponsive, APP_FEATURES.CHAT, "Chat responsive");
+const SharedYesterdayNewsScreen = featureOnly(YesterdayNewsScreen, APP_FEATURES.CHAT, "Yesterday News");
+const SharedParkingScreen = featureOnly(ParkingScreen, APP_FEATURES.PARKING, "Parking");
+const SharedParkingSettingsScreen = featureOnly(ParkingSettingsScreen, APP_FEATURES.PARKING, "Ajustes de parking");
+const DevGpsScreen = adminOnly(ParkingGpsDebugScreen, "GPS Debug");
+const DevChatPrototypeScreen = adminOnly(ChatPrototypeScreen, "Chat prototipo");
 
 export default function ChatStack() {
   useI18n();
   return (
-    <AdminOnlyFeature title="Chat y Parking">
       <Stack.Navigator
       initialRouteName={ROUTES.CHAT_SCREEN}
       screenOptions={DEFAULT_HEADER_OPTIONS}
     >
       <Stack.Screen
         name={ROUTES.CHAT_SCREEN}
-        component={ChatScreen}
+        component={SharedChatScreen}
         options={{
           title: "Chat",
           headerShown: false,
@@ -34,7 +41,7 @@ export default function ChatStack() {
 
       <Stack.Screen
         name={ROUTES.CHAT_SCREEN_RESPONSIVE}
-        component={ChatScreenResponsive}
+        component={SharedChatResponsiveScreen}
         options={{
           title: "Chat responsive",
           headerShown: false,
@@ -43,7 +50,7 @@ export default function ChatStack() {
 
       <Stack.Screen
         name={ROUTES.YESTERDAY_NEWS_SCREEN}
-        component={YesterdayNewsScreen}
+        component={SharedYesterdayNewsScreen}
         options={{
           title: "Yesterday News",
         }}
@@ -51,7 +58,7 @@ export default function ChatStack() {
 
       <Stack.Screen
         name={ROUTES.PARKING_SCREEN}
-        component={ParkingScreen}
+        component={SharedParkingScreen}
         options={{
           title: tr("Parking"),
           headerShown: false,
@@ -60,7 +67,7 @@ export default function ChatStack() {
 
       <Stack.Screen
         name={ROUTES.PARKING_SETTINGS}
-        component={ParkingSettingsScreen}
+        component={SharedParkingSettingsScreen}
         options={{
           title: tr("Ajustes de parking"),
           presentation: "card",
@@ -72,7 +79,7 @@ export default function ChatStack() {
       />
       <Stack.Screen
         name={ROUTES.PARKING_GPS_DEBUG}
-        component={ParkingGpsDebugScreen}
+        component={DevGpsScreen}
         options={{
           title: "GPS Debug",
           headerShown: false,
@@ -80,12 +87,11 @@ export default function ChatStack() {
       />
       <Stack.Screen
         name={ROUTES.CHAT_PROTOTYPE}
-        component={ChatPrototypeScreen}
+        component={DevChatPrototypeScreen}
         options={{
           title: tr("Chat de compras"),
         }}
       />
       </Stack.Navigator>
-    </AdminOnlyFeature>
   );
 }

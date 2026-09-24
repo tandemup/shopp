@@ -13,6 +13,7 @@ import ChatStack from "@/src/navigation/ChatStack";
 import ScannerStack from "@/src/navigation/ScannerStack";
 import MenuStack from "@/src/navigation/MenuStack";
 import { api } from "@/convex/_generated/api";
+import { APP_FEATURES, hasFeatureAccess } from "@/src/utils/featureAccess";
 
 const Tab = createBottomTabNavigator();
 
@@ -26,7 +27,10 @@ const WEB_TAB_BAR_HEIGHT = `calc(${TAB_BAR_CONTENT_HEIGHT}px + env(safe-area-ins
 export default function MainTabs() {
   useI18n();
   const currentUser = useQuery(api.users.current);
-  const isAdmin = currentUser?.role === "admin" || currentUser?.isAdmin === true;
+  const canUseStores = hasFeatureAccess(currentUser, APP_FEATURES.STORES);
+  const canUseScanner = hasFeatureAccess(currentUser, APP_FEATURES.SCANNER);
+  const canUseChat = hasFeatureAccess(currentUser, APP_FEATURES.CHAT);
+  const canUseParking = hasFeatureAccess(currentUser, APP_FEATURES.PARKING);
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_PADDING);
   const tabBarHeight =
@@ -103,7 +107,7 @@ export default function MainTabs() {
         }}
       />
 
-      {isAdmin ? <Tab.Screen
+      {canUseStores ? <Tab.Screen
         name={ROUTES.STORES_TAB}
         component={StoresStack}
         listeners={({ navigation }) => ({
@@ -128,7 +132,7 @@ export default function MainTabs() {
         }}
       /> : null}
 
-      {isAdmin ? <Tab.Screen
+      {canUseChat || canUseParking ? <Tab.Screen
         name={ROUTES.CHAT_TAB}
         component={ChatStack}
         listeners={({ navigation }) => ({
@@ -136,7 +140,7 @@ export default function MainTabs() {
             event.preventDefault();
 
             navigation.navigate(ROUTES.CHAT_TAB, {
-              screen: ROUTES.CHAT_SCREEN,
+              screen: canUseChat ? ROUTES.CHAT_SCREEN : ROUTES.PARKING_SCREEN,
             });
           },
         })}
@@ -153,7 +157,7 @@ export default function MainTabs() {
         }}
       /> : null}
 
-      {isAdmin ? <Tab.Screen
+      {canUseScanner ? <Tab.Screen
         name={ROUTES.SCANNER_TAB}
         component={ScannerStack}
         listeners={({ navigation }) => ({
