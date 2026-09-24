@@ -20,6 +20,7 @@ export const ROUTES = {
   TUTORIALS: "Tutoriales",
   NEWS: "Noticias",
   SHOPP_LIVE: "Shopp Live",
+  P2P_PLAYLIST_EXCHANGE: "P2P Playlist Exchange",
   INVESTMENTS: "Inversiones",
 
   // Stores stack

@@ -24,6 +24,7 @@ import LibraryScreen from "@/src/screens/library/LibraryScreen";
 import PlayListScreen from "@/src/screens/playlist/PlayListScreen";
 import RecipesScreen from "@/src/screens/recipes/RecipesScreen";
 import ShoppLiveScreen from "@/src/screens/live/ShoppLiveScreen";
+import P2PPlaylistExchangeScreen from "@/src/screens/playlist/P2PPlaylistExchangeScreen";
 import InvestmentsScreen from "@/src/screens/investments/InvestmentsScreen";
 import { adminOnly } from "@/src/components/access/AdminOnlyFeature";
 
@@ -133,6 +134,11 @@ export default function ShoppingStack() {
         name={ROUTES.SHOPP_LIVE}
         component={DevShoppLiveScreen}
         options={{ title: "Shopp Live" }}
+      />
+      <Stack.Screen
+        name={ROUTES.P2P_PLAYLIST_EXCHANGE}
+        component={P2PPlaylistExchangeScreen}
+        options={{ title: "Intercambio P2P · prueba" }}
       />
       <Stack.Screen
         name={ROUTES.INVESTMENTS}

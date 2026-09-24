@@ -363,6 +363,20 @@ function QuickActions({
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.SHOPP_LIVE),
       },
       {
+        key: "p2pPlaylistExchange",
+        label: "Intercambio P2P",
+        description: "Prueba compartir playlists con un amigo",
+        icon: "people-outline",
+        iconColor: COLORS.primary,
+        iconBackground: COLORS.primarySoft,
+        badgeLabel: "PRUEBA",
+        onPress: () =>
+          navigateToNestedRoute(
+            ROUTES.SHOPPING_TAB,
+            ROUTES.P2P_PLAYLIST_EXCHANGE,
+          ),
+      },
+      {
         key: "chatPrototype",
         label: "Chat prototipo",
         description: "Prueba el nuevo chat de compras",
