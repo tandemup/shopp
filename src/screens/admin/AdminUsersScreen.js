@@ -6,9 +6,9 @@ import {
   ScrollView,
   StyleSheet,
   Switch,
-  Text,
   View
 } from "react-native";
+import { I18nText as Text, useI18n } from "@/src/i18n";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
@@ -113,6 +113,7 @@ function UserCard({ user, busy, onChangeRole, onChangeBlocked, onManagePermissio
 }
 
 export default function AdminUsersScreen() {
+  const { t } = useI18n();
   const currentUser = useQuery(api.users.current);
   const users = useQuery(
     api.users.listForAdmin,
@@ -130,22 +131,22 @@ export default function AdminUsersScreen() {
     const label = user.email || user.name || "este usuario";
 
     safeAlert(
-      nextRole === "admin" ? "Conceder permisos" : "Retirar permisos",
+      t(nextRole === "admin" ? "Conceder permisos" : "Retirar permisos"),
       nextRole === "admin"
-        ? `¿Quieres convertir a ${label} en administrador?`
-        : `¿Quieres convertir a ${label} en usuario normal?`,
+        ? t(`¿Quieres convertir a ${label} en administrador?`)
+        : t(`¿Quieres convertir a ${label} en usuario normal?`),
       [
-        { text: "Cancelar", style: "cancel" },
+        { text: t("Cancelar"), style: "cancel" },
         {
-          text: "Confirmar",
+          text: t("Confirmar"),
           onPress: async () => {
             try {
               setBusyUserId(user._id);
               await setRole({ userId: user._id, role: nextRole });
             } catch (error) {
               safeAlert(
-                "No se pudo cambiar el rol",
-                error?.message || "Se ha producido un error.",
+                t("No se pudo cambiar el rol"),
+                error?.message || t("Se ha producido un error."),
               );
             } finally {
               setBusyUserId(null);
@@ -160,18 +161,18 @@ export default function AdminUsersScreen() {
     const blocked = user.status !== "blocked";
     const label = user.email || user.name || "este usuario";
     safeAlert(
-      blocked ? "Bloquear usuario" : "Desbloquear usuario",
-      blocked ? `¿Quieres bloquear a ${label}?` : `¿Quieres desbloquear a ${label}?`,
+      t(blocked ? "Bloquear usuario" : "Desbloquear usuario"),
+      blocked ? t(`¿Quieres bloquear a ${label}?`) : t(`¿Quieres desbloquear a ${label}?`),
       [
-        { text: "Cancelar", style: "cancel" },
+        { text: t("Cancelar"), style: "cancel" },
         {
-          text: "Confirmar",
+          text: t("Confirmar"),
           onPress: async () => {
             try {
               setBusyUserId(user._id);
               await setBlocked({ userId: user._id, blocked });
             } catch (error) {
-              safeAlert("No se pudo actualizar el estado", error?.message || "Se ha producido un error.");
+              safeAlert(t("No se pudo actualizar el estado"), error?.message || t("Se ha producido un error."));
             } finally {
               setBusyUserId(null);
             }
@@ -198,8 +199,8 @@ export default function AdminUsersScreen() {
       setPermissionsUser(null);
     } catch (error) {
       safeAlert(
-        "No se pudieron guardar las utilidades",
-        error?.message || "Se ha producido un error.",
+        t("No se pudieron guardar las utilidades"),
+        error?.message || t("Se ha producido un error."),
       );
     } finally {
       setBusyUserId(null);

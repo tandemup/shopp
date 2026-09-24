@@ -6,9 +6,9 @@ import {
   Pressable,
   Share,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { I18nText as Text } from "@/src/i18n";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import { useConvex, useMutation } from "convex/react";

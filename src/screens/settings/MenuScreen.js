@@ -1515,7 +1515,7 @@ export default function MenuScreen({ navigation }) {
           <View style={styles.header}>
             <View>
               <Text style={styles.headerEyebrow}>Shopp</Text>
-              <Text style={styles.headerTitle}>Settings</Text>
+              <Text style={styles.headerTitle}>Ajustes</Text>
             </View>
 
             <View style={styles.headerIconBox}>
