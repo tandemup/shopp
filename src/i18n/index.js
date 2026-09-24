@@ -318,6 +318,9 @@ const EN = {
 };
 
 Object.assign(EN, {
+  "Gira el móvil en vertical": "Rotate your phone upright",
+  "Shopp se usa solo en posición vertical.":
+    "Shopp can only be used in portrait orientation.",
   ACCIONES: "ACTIONS",
   ADMINISTRACIÓN: "ADMINISTRATION",
   "Abre el código de barras en un buscador externo.":
