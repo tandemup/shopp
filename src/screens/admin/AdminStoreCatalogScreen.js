@@ -123,40 +123,32 @@ export default function AdminStoreCatalogScreen() {
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.title}>Catálogo de supermercados</Text>
-      <Text style={styles.subtitle}>
-        Exporta el catálogo actual o importa el mismo formato JSON. Solo los
-        administradores pueden modificarlo.
-      </Text>
-      <View style={styles.card}>
-        <Pressable
-          style={styles.button}
-          disabled={busy}
-          onPress={exportCatalog}
-        >
-          <Ionicons name="cloud-upload-outline" size={23} color="#2563EB" />
-          <View style={styles.buttonText}>
-            <Text style={styles.buttonTitle}>Exportar JSON</Text>
-            <Text style={styles.buttonSubtitle}>
-              Descargar todos los supermercados
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={21} color="#9CA3AF" />
-        </Pressable>
-        <Pressable
-          style={styles.button}
-          disabled={busy}
-          onPress={requestImport}
-        >
-          <Ionicons name="cloud-download-outline" size={23} color="#2563EB" />
-          <View style={styles.buttonText}>
-            <Text style={styles.buttonTitle}>Importar JSON</Text>
-            <Text style={styles.buttonSubtitle}>
-              Combinar o reemplazar el catálogo
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={21} color="#9CA3AF" />
-        </Pressable>
+      <View style={styles.header}>
+        <View style={styles.headerText}>
+          <Text style={styles.title}>Catálogo de supermercados</Text>
+          <Text style={styles.subtitle}>
+            Exporta el catálogo actual o importa el mismo formato JSON. Solo
+            los administradores pueden modificarlo.
+          </Text>
+        </View>
+        <View style={styles.headerActions}>
+          <Pressable
+            style={styles.secondaryButton}
+            disabled={busy}
+            onPress={requestImport}
+          >
+            <Ionicons name="download-outline" size={21} color="#2563EB" />
+            <Text style={styles.secondaryButtonText}>Importar JSON</Text>
+          </Pressable>
+          <Pressable
+            style={styles.secondaryButton}
+            disabled={busy}
+            onPress={exportCatalog}
+          >
+            <Ionicons name="share-outline" size={21} color="#2563EB" />
+            <Text style={styles.secondaryButtonText}>Exportar JSON</Text>
+          </Pressable>
+        </View>
       </View>
       {busy ? (
         <View style={styles.busy}>
@@ -176,33 +168,42 @@ export default function AdminStoreCatalogScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#F9FAFB", padding: 20 },
-  title: { fontSize: 27, fontWeight: "800", color: "#111827", marginBottom: 8 },
-  subtitle: {
-    color: "#6B7280",
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 22,
-  },
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 16,
-    overflow: "hidden",
-  },
-  button: {
-    minHeight: 78,
-    paddingHorizontal: 16,
+  screen: { flex: 1, backgroundColor: "#F9FAFB" },
+  header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 13,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#E5E7EB",
+    gap: 12,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+    backgroundColor: "#fff",
+    flexWrap: "wrap",
   },
-  buttonText: { flex: 1 },
-  buttonTitle: { fontSize: 16, fontWeight: "700", color: "#111827" },
-  buttonSubtitle: { color: "#6B7280", marginTop: 3 },
+  headerText: { flex: 1, minWidth: 220 },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    flexWrap: "wrap",
+  },
+  title: { fontSize: 22, fontWeight: "900", color: "#111827" },
+  subtitle: {
+    color: "#6B7280",
+    fontSize: 12,
+    marginTop: 3,
+  },
+  secondaryButton: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+  secondaryButtonText: { fontSize: 13, fontWeight: "800", color: "#2563eb" },
   busy: {
     flexDirection: "row",
     justifyContent: "center",
@@ -217,7 +218,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFBEB",
     borderRadius: 12,
     padding: 14,
-    marginTop: 22,
+    margin: 20,
   },
   noticeText: { flex: 1, color: "#92400E", lineHeight: 19 },
 });
