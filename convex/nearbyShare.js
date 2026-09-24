@@ -1,6 +1,8 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { requireUser } from "./lib/auth";
+import { requireFeature } from "./lib/auth";
+
+const P2P_PLAYLIST_EXCHANGE = "p2pPlaylistExchange";
 
 const PRESENCE_MS = 2 * 60 * 1000;
 const PAIRING_MS = 5 * 60 * 1000;
@@ -43,7 +45,7 @@ async function getPairingForUser(ctx, pairingId, userId) {
 export const enablePresence = mutation({
   args: { displayName: v.string() },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
     await deleteExpired(ctx);
     const displayName = clean(args.displayName, 30);
     if (!displayName) throw new Error("Escribe un alias para la prueba.");
@@ -72,7 +74,7 @@ export const enablePresence = mutation({
 export const disablePresence = mutation({
   args: {},
   handler: async (ctx) => {
-    const user = await requireUser(ctx);
+    const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
     const rows = await ctx.db
       .query("nearbySharePresence")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
@@ -84,7 +86,7 @@ export const disablePresence = mutation({
 export const getMyPresence = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireUser(ctx);
+    const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
     const item = await ctx.db
       .query("nearbySharePresence")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
@@ -96,7 +98,7 @@ export const getMyPresence = query({
 export const listVisiblePeers = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireUser(ctx);
+    const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
     const now = Date.now();
     const rows = await ctx.db.query("nearbySharePresence").collect();
     return rows
@@ -112,7 +114,7 @@ export const listVisiblePeers = query({
 export const requestPairing = mutation({
   args: { recipientId: v.id("users"), confirmCode: v.string() },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
     await deleteExpired(ctx);
     if (args.recipientId === user._id) throw new Error("Elige otro dispositivo.");
     const recipientPresence = await ctx.db
@@ -151,7 +153,7 @@ export const requestPairing = mutation({
 export const respondToPairing = mutation({
   args: { pairingId: v.id("nearbySharePairings"), accept: v.boolean() },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
     const pairing = await getPairingForUser(ctx, args.pairingId, user._id);
     if (pairing.recipientId !== user._id || pairing.status !== "pending") {
       throw new Error("Esta solicitud ya no se puede responder.");
@@ -167,7 +169,7 @@ export const respondToPairing = mutation({
 export const listPairings = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireUser(ctx);
+    const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
     const now = Date.now();
     const [outgoing, incoming] = await Promise.all([
       ctx.db
@@ -197,7 +199,7 @@ export const sendSignal = mutation({
     payload: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
     const pairing = await getPairingForUser(ctx, args.pairingId, user._id);
     if (pairing.status !== "accepted") throw new Error("Falta aceptar la invitación.");
     const payload = clean(args.payload, MAX_SIGNAL_LENGTH);
@@ -216,7 +218,7 @@ export const sendSignal = mutation({
 export const listSignals = query({
   args: { pairingId: v.id("nearbySharePairings") },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
     await getPairingForUser(ctx, args.pairingId, user._id);
     const signals = await ctx.db
       .query("nearbyShareSignals")
@@ -229,7 +231,7 @@ export const listSignals = query({
 export const closePairing = mutation({
   args: { pairingId: v.id("nearbySharePairings") },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
     const pairing = await getPairingForUser(ctx, args.pairingId, user._id);
     const signals = await ctx.db
       .query("nearbyShareSignals")

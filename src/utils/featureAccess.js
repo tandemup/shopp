@@ -13,6 +13,7 @@ export const APP_FEATURES = Object.freeze({
   TUTORIALS: "tutorials",
   NEWS: "news",
   SHOPP_LIVE: "shoppLive",
+  P2P_PLAYLIST_EXCHANGE: "p2pPlaylistExchange",
   FIRE_ALARM: "fireAlarm",
   INVESTMENTS: "investments",
 });

@@ -22,6 +22,7 @@ import WebRtcFireAlarmScreen from "@/src/screens/webRtcFireAlarm/WebRtcFireAlarm
 import EnglishTutorScreen from "@/src/screens/chat/EnglishTutorScreen";
 import LibraryScreen from "@/src/screens/library/LibraryScreen";
 import PlayListScreen from "@/src/screens/playlist/PlayListScreen";
+import P2PPlaylistExchangeScreen from "@/src/screens/playlist/P2PPlaylistExchangeScreen";
 import RecipesScreen from "@/src/screens/recipes/RecipesScreen";
 import ShoppLiveScreen from "@/src/screens/live/ShoppLiveScreen";
 import InvestmentsScreen from "@/src/screens/investments/InvestmentsScreen";
@@ -49,6 +50,11 @@ const DevClassicalMusicScreen = featureOnly(PlayListScreen, APP_FEATURES.CLASSIC
 const DevTutorialsScreen = featureOnly(PlayListScreen, APP_FEATURES.TUTORIALS, "Tutoriales");
 const DevNewsScreen = featureOnly(PlayListScreen, APP_FEATURES.NEWS, "Noticias");
 const DevShoppLiveScreen = featureOnly(ShoppLiveScreen, APP_FEATURES.SHOPP_LIVE, "Shopp Live");
+const DevP2PPlaylistExchangeScreen = featureOnly(
+  P2PPlaylistExchangeScreen,
+  APP_FEATURES.P2P_PLAYLIST_EXCHANGE,
+  "Intercambio P2P",
+);
 const DevInvestmentsScreen = featureOnly(InvestmentsScreen, APP_FEATURES.INVESTMENTS, "Inversiones");
 const DevPlayListScreen = featureOnly(PlayListScreen, APP_FEATURES.MUSIC_PLAYLIST, "Playlists musicales");
 
@@ -136,6 +142,11 @@ export default function ShoppingStack() {
         name={ROUTES.SHOPP_LIVE}
         component={DevShoppLiveScreen}
         options={{ title: "Shopp Live" }}
+      />
+      <Stack.Screen
+        name={ROUTES.P2P_PLAYLIST_EXCHANGE}
+        component={DevP2PPlaylistExchangeScreen}
+        options={{ title: "Intercambio P2P" }}
       />
       <Stack.Screen
         name={ROUTES.INVESTMENTS}

@@ -28,9 +28,19 @@ const FEATURE_OPTIONS = [
   { key: "tutorials", label: "Tutoriales", icon: "school-outline" },
   { key: "news", label: "Noticias", icon: "newspaper-outline" },
   { key: "shoppLive", label: "Shopp en directo", icon: "radio-outline" },
+  { key: "p2pPlaylistExchange", label: "Intercambio P2P", icon: "people-outline" },
   { key: "fireAlarm", label: "Alarma de incendios", icon: "flame-outline" },
   { key: "investments", label: "Inversiones", icon: "trending-up-outline" },
 ];
+
+const DEFAULT_ACCESS_PROFILE = Object.freeze({
+  stores: true,
+  scanner: true,
+  musicPlaylist: true,
+  classicalMusic: true,
+  tutorials: true,
+  p2pPlaylistExchange: true,
+});
 
 const emptyPermissions = () =>
   Object.fromEntries(FEATURE_OPTIONS.map(({ key }) => [key, false]));
@@ -187,6 +197,13 @@ export default function AdminUsersScreen() {
     setDraftPermissions({ ...emptyPermissions(), ...(user.permissions || {}) });
   };
 
+  const applyDefaultAccessProfile = () => {
+    setDraftPermissions({
+      ...emptyPermissions(),
+      ...DEFAULT_ACCESS_PROFILE,
+    });
+  };
+
   const savePermissions = async () => {
     if (!permissionsUser) return;
 
@@ -274,6 +291,29 @@ export default function AdminUsersScreen() {
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.permissionsList}>
+            <View style={styles.profilesSection}>
+              <Text style={styles.profilesTitle}>Perfiles predefinidos</Text>
+              <Text style={styles.profilesDescription}>
+                Aplica un conjunto inicial y, si lo necesitas, ajusta después las utilidades.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("Aplicar perfil Acceso inicial")}
+                onPress={applyDefaultAccessProfile}
+                style={({ pressed }) => [styles.profileCard, pressed && styles.pressed]}
+              >
+                <View style={styles.profileIcon}>
+                  <Ionicons name="sparkles-outline" size={20} color="#1d4ed8" />
+                </View>
+                <View style={styles.profileText}>
+                  <Text style={styles.profileTitle}>Acceso inicial</Text>
+                  <Text style={styles.profileDescription}>
+                    Tiendas, Scanner, Música, Música clásica, Tutoriales y P2P
+                  </Text>
+                </View>
+                <Text style={styles.profileAction}>Aplicar</Text>
+              </Pressable>
+            </View>
             {FEATURE_OPTIONS.map(({ key, label, icon }) => (
               <View key={key} style={styles.permissionRow}>
                 <View style={styles.permissionIcon}>
@@ -403,6 +443,38 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: "800", color: "#0f172a" },
   modalSubtitle: { marginTop: 4, color: "#64748b" },
   permissionsList: { gap: 8, paddingBottom: 12 },
+  profilesSection: {
+    gap: 8,
+    marginBottom: 6,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: "#eff6ff",
+  },
+  profilesTitle: { fontSize: 15, fontWeight: "800", color: "#1e3a8a" },
+  profilesDescription: { color: "#475569", fontSize: 13, lineHeight: 18 },
+  profileCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 64,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    borderRadius: 13,
+    backgroundColor: "#ffffff",
+  },
+  profileIcon: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 11,
+    backgroundColor: "#dbeafe",
+  },
+  profileText: { flex: 1 },
+  profileTitle: { fontWeight: "800", color: "#172554" },
+  profileDescription: { marginTop: 2, color: "#64748b", fontSize: 12, lineHeight: 16 },
+  profileAction: { color: "#1d4ed8", fontSize: 13, fontWeight: "800" },
   permissionRow: {
     flexDirection: "row",
     alignItems: "center",

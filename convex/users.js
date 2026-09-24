@@ -6,7 +6,7 @@ import { requireAdmin } from "./lib/auth";
 const PERMISSION_FIELDS = [
   "scanner", "stores", "chat", "parking", "englishTutor", "library",
   "musicPlaylist", "classicalMusic", "tutorials", "news", "shoppLive",
-  "fireAlarm", "investments",
+  "p2pPlaylistExchange", "fireAlarm", "investments",
 ];
 
 const permissionsValidator = v.object({
@@ -21,6 +21,7 @@ const permissionsValidator = v.object({
   tutorials: v.optional(v.boolean()),
   news: v.optional(v.boolean()),
   shoppLive: v.optional(v.boolean()),
+  p2pPlaylistExchange: v.optional(v.boolean()),
   fireAlarm: v.optional(v.boolean()),
   investments: v.optional(v.boolean()),
 });

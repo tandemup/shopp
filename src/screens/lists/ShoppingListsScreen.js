@@ -307,6 +307,21 @@ function QuickActions({
           navigateToNestedRoute(ROUTES.SHOPPING_TAB, ROUTES.PLAY_LIST),
       },
       {
+        key: "p2pPlaylistExchange",
+        label: "Intercambio P2P",
+        description: "Comparte playlists con amigos cercanos",
+        icon: "people-outline",
+        iconColor: COLORS.cyan,
+        iconBackground: COLORS.cyanSoft,
+        badgeLabel: "PRUEBA",
+        requiresFeature: APP_FEATURES.P2P_PLAYLIST_EXCHANGE,
+        onPress: () =>
+          navigateToNestedRoute(
+            ROUTES.SHOPPING_TAB,
+            ROUTES.P2P_PLAYLIST_EXCHANGE,
+          ),
+      },
+      {
         key: "investments",
         label: "Inversiones",
         description: "Acciones y criptomonedas",

@@ -214,6 +214,14 @@ const EN = {
   usuarios: "users",
   "Utilidades permitidas": "Allowed utilities",
   Utilidades: "Utilities",
+  "Perfiles predefinidos": "Preset profiles",
+  "Aplica un conjunto inicial y, si lo necesitas, ajusta después las utilidades.":
+    "Apply an initial set, then adjust the utilities if needed.",
+  "Aplicar perfil Acceso inicial": "Apply Initial access profile",
+  "Acceso inicial": "Initial access",
+  "Tiendas, Scanner, Música, Música clásica, Tutoriales y P2P":
+    "Stores, Scanner, Music, Classical music, Tutorials and P2P",
+  Aplicar: "Apply",
   Bloquear: "Block",
   Desbloquear: "Unblock",
   Confirmar: "Confirm",
@@ -233,6 +241,9 @@ const EN = {
   "Tutor de inglés": "English tutor",
   "Lista de música": "Music playlist",
   "Lista de música clásica": "Classical playlist",
+  "Intercambio P2P": "P2P exchange",
+  "Comparte playlists con amigos cercanos":
+    "Share playlists with nearby friends",
   "Shopp en directo": "Shopp Live",
   "Alarma de incendios": "Fire alarm",
   "Asignar roles, bloquear cuentas y conceder utilidades":

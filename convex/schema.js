@@ -32,6 +32,7 @@ export default defineSchema({
         tutorials: v.optional(v.boolean()),
         news: v.optional(v.boolean()),
         shoppLive: v.optional(v.boolean()),
+        p2pPlaylistExchange: v.optional(v.boolean()),
         fireAlarm: v.optional(v.boolean()),
         investments: v.optional(v.boolean()),
       }),
