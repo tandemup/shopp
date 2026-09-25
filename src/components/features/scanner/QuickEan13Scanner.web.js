@@ -236,6 +236,8 @@ export default function QuickEan13ScannerWeb({
   initialTorchEnabled = false,
 
   showControls = true,
+  simplified = false,
+  musicQrOnly = false,
 }) {
   const isFocused = useIsFocused();
 
@@ -477,7 +479,12 @@ export default function QuickEan13ScannerWeb({
     setErrorMessage("");
 
     try {
-      const enabledFormats = await getEnabledZxingFormats();
+      const enabledFormats = musicQrOnly
+        ? [BarcodeFormat.QR_CODE]
+        : (await getEnabledZxingFormats()).filter(
+            (format) => format !== BarcodeFormat.QR_CODE,
+          );
+      if (!enabledFormats.length) enabledFormats.push(BarcodeFormat.EAN_13);
 
       const stream = await navigator.mediaDevices.getUserMedia(
         buildCameraConstraints(),
@@ -570,7 +577,7 @@ export default function QuickEan13ScannerWeb({
         setCameraStarting(false);
       }
     }
-  }, [configureCameraCapabilities, notifyDetectedBarcode, stopCamera]);
+  }, [configureCameraCapabilities, notifyDetectedBarcode, stopCamera, musicQrOnly]);
 
   const applyZoomIndex = useCallback(
     async (nextZoomIndex) => {
@@ -711,9 +718,9 @@ export default function QuickEan13ScannerWeb({
         zoomAvailable={zoomSupported}
         torchAvailable={torchSupported}
         showControls={showControls}
-        hint="Apunta al código de barras"
-        title="Leer código de barras"
-        subtitle="Mantén el código dentro del marco. El número se copiará automáticamente cuando sea detectado."
+        hint={musicQrOnly ? "Apunta al QR de la tarjeta musical" : simplified ? "Apunta al código de barras" : "Apunta al código de barras"}
+        title={simplified ? "" : "Leer código de barras"}
+        subtitle={simplified ? "" : "Mantén el código dentro del marco. El número se copiará automáticamente cuando sea detectado."}
         starting={cameraStarting}
         errorMessage={errorMessage}
         onRetry={startCamera}

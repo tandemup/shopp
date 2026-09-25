@@ -119,9 +119,9 @@ export default function ScannerOverlay({
 
       {/* Área inferior */}
       <View style={styles.bottomPanel} pointerEvents="box-none">
-        <Text style={styles.title}>{title}</Text>
+        {title ? <Text style={styles.title}>{title}</Text> : null}
 
-        <Text style={styles.subtitle}>{subtitle}</Text>
+        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
 
         <Pressable
           style={styles.cancelButton}

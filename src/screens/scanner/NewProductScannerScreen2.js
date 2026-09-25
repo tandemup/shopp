@@ -93,10 +93,21 @@ function normalizeBarcodeTypes(value) {
 const SCANNER_PRODUCT_TYPE_STORAGE_KEY = "@shopping/scanner-product-type";
 
 function ProductTypeSelector({ value, onChange }) {
+  const [expanded, setExpanded] = useState(false);
+  const current = PRODUCT_SEARCH_TYPES.find((option) => option.value === value);
   return (
     <View style={styles.productTypeSelector} pointerEvents="box-none">
-      <Text style={styles.productTypeTitle}>¿Qué quieres buscar?</Text>
-      <View style={styles.productTypeOptions}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Tipo de producto: ${current?.label || value}. Cambiar tipo`}
+        accessibilityState={{ expanded }}
+        style={styles.productTypeToggle}
+        onPress={() => setExpanded((open) => !open)}
+      >
+        <Text style={styles.productTypeToggleText}>Producto: {current?.label || value}</Text>
+        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color="#FFFFFF" />
+      </Pressable>
+      {expanded ? <View style={styles.productTypeOptions}>
         {PRODUCT_SEARCH_TYPES.map((option) => {
           const selected = value === option.value;
           return (
@@ -110,7 +121,10 @@ function ProductTypeSelector({ value, onChange }) {
                 selected && styles.productTypeOptionSelected,
                 pressed && styles.productTypeOptionPressed,
               ]}
-              onPress={() => onChange(option.value)}
+              onPress={() => {
+                onChange(option.value);
+                setExpanded(false);
+              }}
             >
               <Ionicons
                 name={option.icon}
@@ -121,7 +135,7 @@ function ProductTypeSelector({ value, onChange }) {
             </Pressable>
           );
         })}
-      </View>
+      </View> : null}
     </View>
   );
 }
@@ -223,6 +237,7 @@ export default function NewProductScannerScreen2() {
 
     showStatusBadges = true,
   } = route.params || {};
+  const isMusicQr = captureMode === "music-qr";
 
   const routeInitialZoom =
     Number.isInteger(initialZoomIndex) &&
@@ -302,15 +317,15 @@ export default function NewProductScannerScreen2() {
   const isManualBarcodeInput = __DEV__ && captureMode === "manual-barcode";
 
   const barcodeTypes = useMemo(() => {
-    return normalizeBarcodeTypes(routeBarcodeTypes);
-  }, [routeBarcodeTypes]);
+    return isMusicQr ? ["qr"] : normalizeBarcodeTypes(routeBarcodeTypes);
+  }, [routeBarcodeTypes, isMusicQr]);
 
   const headerConfig = useMemo(() => {
     return buildHeaderConfig({
-      title: "Escanear producto",
+      title: isMusicQr ? "Escanear QR de música" : "Escanear producto",
       preset: "light",
     });
-  }, []);
+  }, [isMusicQr]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -686,6 +701,16 @@ export default function NewProductScannerScreen2() {
       return;
     }
 
+    if (isMusicQr) {
+      scannedRef.current = true;
+      handlingScanRef.current = true;
+      setLocked(true);
+      safeAlert("QR no compatible", "Este QR no contiene un enlace de música de YouTube.", [
+        { key: "retry", text: "Escanear otro", onPress: resetScannerForNextScan },
+      ]);
+      return;
+    }
+
     const barcode = normalizeBarcode(code);
 
     if (!barcode) {
@@ -842,6 +867,8 @@ export default function NewProductScannerScreen2() {
 
         <QuickEan13Scanner
           key={`web-scanner-session-${scannerSession}`}
+          simplified
+          musicQrOnly={isMusicQr}
           onDetected={handleWebDetected}
           onCancel={handleCancel}
           initialZoomIndex={getScannerZoomIndex(zoom)}
@@ -855,10 +882,10 @@ export default function NewProductScannerScreen2() {
           showStatusBadges={showStatusBadges}
         />
 
-        <ProductTypeSelector
+        {!isMusicQr ? <ProductTypeSelector
           value={selectedProductType}
           onChange={handleProductTypeChange}
-        />
+        /> : null}
       </View>
     );
   }
@@ -871,6 +898,7 @@ export default function NewProductScannerScreen2() {
       zoom={zoom}
       torchEnabled={torchEnabled}
       showControls={showControls}
+      isMusicQr={isMusicQr}
       productType={selectedProductType}
       onChangeProductType={handleProductTypeChange}
       headerConfig={headerConfig}
@@ -890,6 +918,7 @@ function NativeProductScannerCamera({
   zoom,
   torchEnabled,
   showControls,
+  isMusicQr,
   productType,
   onChangeProductType,
   headerConfig,
@@ -980,15 +1009,15 @@ function NativeProductScannerCamera({
           torchAvailable
           showControls={showControls}
           processing={locked}
-          hint="Apunta al código de barras"
-          title="Leer código de barras"
-          subtitle="El número se procesará automáticamente cuando sea detectado."
+          hint={isMusicQr ? "Apunta al QR de la tarjeta musical" : "Apunta al código de barras"}
+          title=""
+          subtitle=""
         />
 
-        <ProductTypeSelector
+        {!isMusicQr ? <ProductTypeSelector
           value={productType}
           onChange={onChangeProductType}
-        />
+        /> : null}
       </View>
     </SafeAreaView>
   );
@@ -1066,12 +1095,26 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 16,
     left: 12,
-    right: 12,
+    right: 76,
     zIndex: 30,
 
-    padding: 10,
+    padding: 8,
     borderRadius: 16,
     backgroundColor: "rgba(7, 17, 31, 0.88)",
+  },
+
+  productTypeToggle: {
+    minHeight: 36,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 10,
+  },
+  productTypeToggleText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
   },
 
   productTypeTitle: {

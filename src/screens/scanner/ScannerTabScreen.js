@@ -282,12 +282,19 @@ export default function ScannerTabScreen({ navigation }) {
   );
 
   const enabledBarcodeTypes = getEnabledBarcodeTypes(barcodeSettings);
-  const enabledFormatsLabel = enabledBarcodeTypes.join(", ");
+  const enabledFormatsLabel = enabledBarcodeTypes.filter((type) => type !== "qr").join(", ");
 
   const goToScanner2 = () => {
     navigation.navigate(ROUTES.NEW_PRODUCT_SCANNER2, {
       saveToHistory: true,
-      barcodeTypes: enabledBarcodeTypes,
+      barcodeTypes: enabledBarcodeTypes.filter((type) => type !== "qr"),
+    });
+  };
+
+  const goToMusicQrScanner = () => {
+    navigation.navigate(ROUTES.NEW_PRODUCT_SCANNER2, {
+      captureMode: "music-qr",
+      barcodeTypes: ["qr"],
     });
   };
 
@@ -341,8 +348,7 @@ export default function ScannerTabScreen({ navigation }) {
             <View style={styles.transferHeaderText}>
               <Text style={styles.title}>Scanner</Text>
               <Text style={styles.description}>
-                Escanea nuevos productos o consulta el historial de códigos
-                escaneados.
+                Escanea productos o tarjetas musicales con QR.
               </Text>
             </View>
 
@@ -382,6 +388,22 @@ export default function ScannerTabScreen({ navigation }) {
                 </Text>
               </View>
 
+              <Ionicons name="chevron-forward" size={22} color="#9CA3AF" />
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+              onPress={goToMusicQrScanner}
+            >
+              <View style={styles.iconBox}>
+                <Ionicons name="musical-notes-outline" size={26} color="#111827" />
+              </View>
+              <View style={styles.cardText}>
+                <Text style={styles.cardTitle}>Escanear QR de música</Text>
+                <Text style={styles.cardSubtitle}>
+                  Lee una tarjeta musical y reproduce su canción.
+                </Text>
+              </View>
               <Ionicons name="chevron-forward" size={22} color="#9CA3AF" />
             </Pressable>
 
