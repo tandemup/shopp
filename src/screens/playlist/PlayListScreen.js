@@ -1418,17 +1418,9 @@ export default function PlayListScreen() {
                 onEdit={() => openEdit(item)}
                 onDelete={() => confirmRemove(item)}
                 onExport={() => openExportPlaylist(item)}
+                onCreateCard={!isTutorialStyle ? () => navigation.navigate(ROUTES.PRINT_MUSIC_CARD, { playlist: item, isClassical }) : undefined}
                 onReorder={(nextTracks) => reorderPlaylist(item, nextTracks)}
               />
-              {!isTutorialStyle ? (
-                <Pressable
-                  onPress={() => navigation.navigate(ROUTES.PRINT_MUSIC_CARD, { playlist: item, isClassical })}
-                  style={styles.printCardButton}
-                >
-                  <Ionicons name="print-outline" size={19} color="#2563eb" />
-                  <Text style={styles.printCardButtonText}>Crear tarjeta</Text>
-                </Pressable>
-              ) : null}
             </View>
           )}
           ListEmptyComponent={
