@@ -37,7 +37,7 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
             <Text style={styles.user} numberOfLines={1}>
               {userName}
             </Text>
-            <Text style={styles.date}>{dateLabel}</Text>
+            <Text style={styles.trackCount}>{tracks.length} items</Text>
             {(canEdit || canDelete || onExport) ? (
               <Pressable
                 accessibilityRole="button"
@@ -53,9 +53,6 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
           </View>
           <Text style={styles.title} numberOfLines={2}>
             {playlist.title}
-          </Text>
-          <Text style={styles.count}>
-            {tracks.length} elementos{isTutorial ? "" : " · Singles y álbumes"}
           </Text>
         </View>
       </Pressable>
@@ -116,10 +113,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#dc2626",
   },
-  summaryText: { flex: 1, minWidth: 0, padding: 9 },
+  summaryText: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 9,
+    paddingTop: 2,
+    paddingBottom: 5,
+  },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   user: { flex: 1, fontSize: 11, fontWeight: "800", color: "#2563eb" },
-  date: { fontSize: 10, color: "#64748b" },
+  trackCount: {
+    flexShrink: 0,
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: "700",
+    color: "#64748b",
+  },
   menuButton: {
     width: 36,
     height: 36,
@@ -134,15 +143,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 14,
     lineHeight: 18,
-    fontWeight: "900",
+    fontWeight: "400",
     color: "#111827",
-  },
-  count: {
-    marginTop: 4,
-    fontSize: 10,
-    lineHeight: 14,
-    fontWeight: "700",
-    color: "#dc2626",
-    flexShrink: 1,
   },
 });
