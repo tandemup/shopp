@@ -20,6 +20,7 @@ let writeQueue = Promise.resolve();
 const NON_NEWS_DOMAINS = new Set([
   "editor.pascal.app",
   "ejoish.co",
+  "ejosh.co",
   "englishuniversity.eu",
   "fgbueno.es",
   "github.com",
@@ -33,6 +34,7 @@ const NON_NEWS_DOMAINS = new Set([
 
 const TECHNICAL_DOMAIN_SUFFIXES = [
   "github.com",
+  "ejosh.co",
   "react.dev",
   "reactjs.org",
   "peerjs.com",
@@ -52,6 +54,18 @@ function cleanDomain(value) {
 
 function domainMatches(domain, suffix) {
   return domain === suffix || domain.endsWith(`.${suffix}`);
+}
+
+// Algunos enlaces de newsletters usan un host de seguimiento distinto del
+// dominio editorial. Conservamos la URL real, pero agrupamos la fuente bajo
+// el dominio canónico para no crear un "periódico" artificial por subdominio.
+const NEWS_SOURCE_DOMAIN_ALIASES = new Map([
+  ["messaging-custom-newsletters.nytimes.com", "nytimes.com"],
+]);
+
+function canonicalNewsSourceDomain(value) {
+  const domain = cleanDomain(value);
+  return NEWS_SOURCE_DOMAIN_ALIASES.get(domain) || domain;
 }
 
 function isKnownNonNewsDomain(value) {
@@ -790,31 +804,106 @@ export const libraryJsonApi = {
         }
         return folder;
       };
+      const newsFolder = ensureFolder(
+        "Noticias",
+        "newspaper-outline",
+        "#dc2626",
+      );
       const computerFolder = ensureFolder(
         "Informática",
         "laptop-outline",
         "#2563eb",
       );
+
       let correctedPosts = 0;
+      let created = 0;
+
+      // 1) Reclasifica dominios que no son prensa y corrige aliases de prensa.
       database.links.forEach((link) => {
-        // hostname/url son la identidad real del enlace. sourceDomain puede
-        // contener un valor antiguo o incorrecto procedente de una importación.
-        const domain = cleanDomain(link.hostname || link.url);
+        const realDomain = cleanDomain(link.hostname || link.url);
+        if (!realDomain) return;
+
         if (
-          !["newsArticle", "newsSource"].includes(link.linkType) ||
-          !isKnownNonNewsDomain(domain)
-        )
+          ["newsArticle", "newsSource"].includes(link.linkType) &&
+          isKnownNonNewsDomain(realDomain)
+        ) {
+          link.linkType = "general";
+          link.sourceDomain = undefined;
+          link.folderId = isTechnicalDomain(realDomain)
+            ? computerFolder._id
+            : undefined;
+          link.status = link.folderId ? "reviewed" : "pending";
+          link.updatedAt = Date.now();
+          correctedPosts += 1;
           return;
-        link.linkType = "general";
-        link.sourceDomain = undefined;
-        link.folderId = isTechnicalDomain(domain)
-          ? computerFolder._id
-          : undefined;
-        link.status = link.folderId ? "reviewed" : "pending";
-        link.updatedAt = Date.now();
-        correctedPosts += 1;
+        }
+
+        if (link.linkType === "newsArticle") {
+          const canonicalDomain = canonicalNewsSourceDomain(
+            link.sourceDomain || realDomain,
+          );
+          if (canonicalDomain && link.sourceDomain !== canonicalDomain) {
+            link.sourceDomain = canonicalDomain;
+            link.updatedAt = Date.now();
+            correctedPosts += 1;
+          }
+        }
       });
-      return { correctedPosts, created: 0, processed: database.links.length };
+
+      // 2) Crea una fuente para cada dominio editorial que tenga noticias.
+      const sourceDomains = new Set(
+        database.links
+          .filter((link) => link.linkType === "newsSource")
+          .map((link) => canonicalNewsSourceDomain(link.sourceDomain || link.hostname || link.url))
+          .filter(Boolean),
+      );
+      const articleDomains = new Set(
+        database.links
+          .filter((link) => link.linkType === "newsArticle")
+          .map((link) => canonicalNewsSourceDomain(link.sourceDomain || link.hostname || link.url))
+          .filter((domain) => domain && !isKnownNonNewsDomain(domain)),
+      );
+
+      articleDomains.forEach((domain) => {
+        if (sourceDomains.has(domain)) return;
+        const homepage = normalizeUrl(`https://${domain}/`);
+        if (!homepage) return;
+
+        const existingHomepage = database.links.find(
+          (link) => link.normalizedUrl === homepage.normalizedUrl || link.url === homepage.normalizedUrl,
+        );
+        if (existingHomepage) {
+          existingHomepage.folderId = newsFolder._id;
+          existingHomepage.linkType = "newsSource";
+          existingHomepage.sourceDomain = domain;
+          existingHomepage.status = "reviewed";
+          existingHomepage.updatedAt = Date.now();
+        } else {
+          const now = Date.now();
+          database.links.push({
+            _id: id("link"),
+            url: homepage.normalizedUrl,
+            normalizedUrl: homepage.normalizedUrl,
+            hostname: homepage.hostname,
+            username: "Biblioteca",
+            folderId: newsFolder._id,
+            linkType: "newsSource",
+            sourceDomain: domain,
+            favorite: false,
+            status: "reviewed",
+            createdAt: now,
+            updatedAt: now,
+          });
+          created += 1;
+        }
+        sourceDomains.add(domain);
+      });
+
+      return {
+        correctedPosts,
+        created,
+        processed: database.links.length,
+      };
     });
   },
   reset() {

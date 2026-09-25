@@ -357,16 +357,22 @@ function getHostnameFromUrl(value) {
 }
 
 function isYouTubeDomain(domain) {
-  return [
-    "youtube.com",
-    "m.youtube.com",
-    "music.youtube.com",
-    "youtu.be",
-  ].includes(
-    String(domain || "")
-      .replace(/^www\./i, "")
-      .toLowerCase(),
+  const hostname = String(domain || "")
+    .replace(/^www\./i, "")
+    .trim()
+    .toLowerCase();
+  return (
+    hostname === "youtu.be" ||
+    hostname === "youtube.com" ||
+    hostname.endsWith(".youtube.com")
   );
+}
+
+// Para clasificación e integridad todas las variantes de YouTube pertenecen
+// al mismo proveedor. La URL original se conserva; solo canonizamos el dominio.
+function getCanonicalLinkDomain(link) {
+  const domain = getLinkDomain(link);
+  return isYouTubeDomain(domain) ? "youtube.com" : domain;
 }
 
 function isYouTubeLink(link) {
@@ -548,7 +554,7 @@ function getPreviewTitleCandidate(preview, domain, previewMode = "default") {
     ? ""
     : String(preview?.title || "").trim();
   const isYouTube =
-    ["youtube.com", "youtu.be"].includes(String(domain || "").toLowerCase()) ||
+    isYouTubeDomain(domain) ||
     String(preview?.siteName || "").toLowerCase() === "youtube";
 
   // Para noticias, el título debe proceder de <title>, Open Graph o JSON-LD.
@@ -570,7 +576,7 @@ function getPreviewSubtitleCandidate(
   previewTitle = "",
 ) {
   const isYouTube =
-    ["youtube.com", "youtu.be"].includes(String(domain || "").toLowerCase()) ||
+    isYouTubeDomain(domain) ||
     String(preview?.siteName || "").toLowerCase() === "youtube";
   if (!isYouTube && previewMode !== "document") return "";
 
@@ -652,12 +658,14 @@ function buildLibraryIntegrityReport(links, folders) {
   const newsSources = safeLinks.filter(
     (link) => link?.linkType === "newsSource",
   );
-  const sourceDomains = new Set(newsSources.map(getLinkDomain).filter(Boolean));
+  const sourceDomains = new Set(newsSources.map(getCanonicalLinkDomain).filter(Boolean));
   const missingSourceDomains = [
     ...new Set(
       newsArticles
-        .map(getLinkDomain)
-        .filter((domain) => domain && !sourceDomains.has(domain)),
+        .map(getCanonicalLinkDomain)
+        .filter((domain) =>
+          domain && !isYouTubeDomain(domain) && !sourceDomains.has(domain),
+        ),
     ),
   ];
   const categoryCounts = new Map();
@@ -667,7 +675,7 @@ function buildLibraryIntegrityReport(links, folders) {
       : null;
     const category =
       link?.linkType === "newsArticle"
-        ? `Noticia · ${getLinkDomain(link) || "sin dominio"}`
+        ? `${isYouTubeLink(link) ? "YouTube" : "Noticia"} · ${getCanonicalLinkDomain(link) || "sin dominio"}`
         : folderName || "Sin clasificar";
     categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1);
   });
@@ -885,7 +893,7 @@ function repairBackupLocally(backup) {
       link.folderKey = bookFolderKey;
     } else if (
       linkType === "newsSource" &&
-      /^(m\.)?youtube\.com$/i.test(link.hostname)
+      isYouTubeDomain(link.hostname)
     ) {
       linkType = "general";
     }

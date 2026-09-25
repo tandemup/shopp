@@ -1406,6 +1406,7 @@ export const ensureNewsSources = mutation({
         [
           "editor.pascal.app",
           "ejoish.co",
+          "ejosh.co",
           "englishuniversity.eu",
           "fgbueno.es",
           "github.com",

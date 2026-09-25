@@ -11,6 +11,7 @@ const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",
   "m.youtube.com",
+  "music.youtube.com",
   "youtu.be",
 ]);
 
