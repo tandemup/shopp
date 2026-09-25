@@ -44,7 +44,7 @@ export const DEFAULT_BARCODE_SETTINGS = {
     ean8: true,
     upc_a: true,
     upc_e: true,
-    qr: false,
+    qr: true,
     code128: false,
   },
 };

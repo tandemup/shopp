@@ -41,6 +41,8 @@ import { ROUTES } from "@/src/navigation/ROUTES";
 import { buildHeaderConfig } from "@/src/utils/layout/headerStyles";
 
 import { safeAlert, safeMenu } from "@/src/components/ui/alert/safeAlert";
+import { parseYouTubeUrl } from "@/src/services/urlSafety";
+import { usePlayback } from "@/src/components/playback/PlaybackProvider";
 
 import { useProductLookupWithCache } from "@/src/hooks/useProductLookupWithCache";
 import { useScannedHistoryStorage } from "@/src/hooks/useScannedHistoryStorage";
@@ -61,9 +63,9 @@ import {
   saveScannerZoom,
 } from "@/src/utils/scannerZoomStorage";
 
-const DEFAULT_BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e"];
+const DEFAULT_BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e", "qr"];
 
-const ALLOWED_BARCODE_TYPES = new Set(["ean13", "ean8", "upc_a", "upc_e"]);
+const ALLOWED_BARCODE_TYPES = new Set(["ean13", "ean8", "upc_a", "upc_e", "qr"]);
 
 function normalizeBarcodeTypes(value) {
   if (Array.isArray(value)) {
@@ -184,6 +186,7 @@ async function requestWebCameraAccess() {
 export default function NewProductScannerScreen2() {
   const navigation = useNavigation();
   const route = useRoute();
+  const playback = usePlayback();
 
   const scannedRef = useRef(false);
   const handlingScanRef = useRef(false);
@@ -642,6 +645,44 @@ export default function NewProductScannerScreen2() {
 
   function handleDetectedBarcode(code) {
     if (locked || scannedRef.current || handlingScanRef.current) {
+      return;
+    }
+
+    // Las tarjetas musicales contienen una URL de YouTube. Se procesa antes
+    // de normalizar el valor como código de producto para no perder la URL.
+    const youtube = parseYouTubeUrl(String(code || "").trim());
+    if (youtube.isValid) {
+      scannedRef.current = true;
+      handlingScanRef.current = true;
+      setLocked(true);
+      setTorchEnabled(false);
+
+      const track = youtube.videoId
+        ? {
+            kind: "single",
+            title: "Tarjeta musical",
+            url: youtube.playableUrl,
+            videoId: youtube.videoId,
+            playlistId: youtube.playlistId || undefined,
+          }
+        : {
+            kind: "playlist",
+            title: "Playlist de YouTube",
+            url: youtube.playableUrl,
+            playlistId: youtube.playlistId,
+          };
+
+      playback.open(
+        {
+          _id: `qr-${youtube.videoId || youtube.playlistId}`,
+          title: youtube.videoId ? "Tarjeta musical" : "Playlist escaneada",
+          tracks: [track],
+        },
+        { autoPlay: true },
+      );
+
+      // Volvemos a la pantalla Scanner dejando abierto el reproductor global.
+      navigation.goBack();
       return;
     }
 

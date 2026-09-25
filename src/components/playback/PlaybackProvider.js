@@ -257,7 +257,7 @@ export default function PlaybackProvider({ children }) {
     });
   }, []);
   const open = useCallback(
-    (playlist, { isTutorial = false } = {}) => {
+    (playlist, { isTutorial = false, autoPlay = false } = {}) => {
       const tracks = (playlist?.tracks || [])
         .map(normalizeTrack)
         .filter(Boolean);
@@ -278,7 +278,7 @@ export default function PlaybackProvider({ children }) {
           sourceKey,
           resumeTime: remembered?.time || 0,
           resumePlaylistIndex: remembered?.playlistIndex || 0,
-          autoPlay: false,
+          autoPlay: Boolean(autoPlay),
         });
       }
       setExpanded(true);
