@@ -16,7 +16,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { useRoute } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 
 import { api } from "@/convex/_generated/api";
 import CustomYouTubePlaylistPlayer from "@/src/components/chat/CustomYouTubePlaylistPlayer";
@@ -337,6 +337,7 @@ function parseImportedPayload(
 
 export default function PlayListScreen() {
   const route = useRoute();
+  const navigation = useNavigation();
   const isTutorials = route.name === ROUTES.TUTORIALS;
   const isNews = route.name === ROUTES.NEWS;
   const isTutorialStyle = isTutorials || isNews;
@@ -1419,6 +1420,15 @@ export default function PlayListScreen() {
                 onExport={() => openExportPlaylist(item)}
                 onReorder={(nextTracks) => reorderPlaylist(item, nextTracks)}
               />
+              {!isTutorialStyle ? (
+                <Pressable
+                  onPress={() => navigation.navigate(ROUTES.PRINT_MUSIC_CARD, { playlist: item, isClassical })}
+                  style={styles.printCardButton}
+                >
+                  <Ionicons name="print-outline" size={19} color="#2563eb" />
+                  <Text style={styles.printCardButtonText}>Crear tarjeta</Text>
+                </Pressable>
+              ) : null}
             </View>
           )}
           ListEmptyComponent={
@@ -2577,4 +2587,19 @@ const styles = StyleSheet.create({
   },
   disabled: { opacity: 0.4 },
   saveText: { fontWeight: "900", color: "#fff" },
+
+  printCardButton: {
+    marginTop: 8,
+    alignSelf: "flex-end",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    borderRadius: 8,
+    backgroundColor: "#eff6ff",
+  },
+  printCardButtonText: { color: "#2563eb", fontWeight: "600" },
 });

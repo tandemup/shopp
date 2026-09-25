@@ -22,6 +22,7 @@ import WebRtcFireAlarmScreen from "@/src/screens/webRtcFireAlarm/WebRtcFireAlarm
 import EnglishTutorScreen from "@/src/screens/chat/EnglishTutorScreen";
 import LibraryScreen from "@/src/screens/library/LibraryScreen";
 import PlayListScreen from "@/src/screens/playlist/PlayListScreen";
+import PrintMusicCardScreen from "@/src/screens/playlist/PrintMusicCardScreen";
 import P2PPlaylistExchangeScreen from "@/src/screens/playlist/P2PPlaylistExchangeScreen";
 import RecipesScreen from "@/src/screens/recipes/RecipesScreen";
 import ShoppLiveScreen from "@/src/screens/live/ShoppLiveScreen";
@@ -117,6 +118,11 @@ export default function ShoppingStack() {
         name={ROUTES.PLAY_LIST}
         component={DevPlayListScreen}
         options={{ title: "Play List" }}
+      />
+      <Stack.Screen
+        name={ROUTES.PRINT_MUSIC_CARD}
+        component={PrintMusicCardScreen}
+        options={{ title: "Imprimir tarjeta" }}
       />
       <Stack.Screen
         name={ROUTES.RECIPES}
