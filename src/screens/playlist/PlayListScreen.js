@@ -29,6 +29,10 @@ import TutorialTransferScreen from "./TutorialTransferScreen";
 import EditorVideoPreview from "./EditorVideoPreview";
 import { MAX_TUTORIAL_ITEMS } from "@/convex/lib/tutorialItems";
 import {
+  MIN_PLAYLIST_ITEMS,
+  MAX_PLAYLIST_ITEMS,
+} from "@/convex/lib/playlistItems";
+import {
   getLocalLyrics,
   saveLocalLyrics,
   removeLocalLyrics,
@@ -266,8 +270,8 @@ function parseImportedPayload(
   value,
   collectionType = "shopp-youtube-playlist",
   collectionListType = "shopp-youtube-playlists",
-  minimumTracks = 1,
-  maximumTracks = 20,
+  minimumTracks = MIN_PLAYLIST_ITEMS,
+  maximumTracks = MAX_PLAYLIST_ITEMS,
   compatibleItemTypes = [],
   compatibleListTypes = [],
 ) {
@@ -360,10 +364,14 @@ export default function PlayListScreen() {
       : isClassical
         ? "shopp-youtube-classical-playlists"
         : "shopp-youtube-playlists";
-  const minimumTracks = 1;
+  const minimumTracks = MIN_PLAYLIST_ITEMS;
   // Noticias se guarda como una noticia por registro: título descriptivo y
   // un único enlace de YouTube. Tutoriales conserva sus colecciones.
-  const maximumTracks = isNews ? 1 : isTutorialStyle ? MAX_TUTORIAL_ITEMS : 20;
+  const maximumTracks = isNews
+    ? 1
+    : isTutorialStyle
+      ? MAX_TUTORIAL_ITEMS
+      : MAX_PLAYLIST_ITEMS;
   const [transferVisible, setTransferVisible] = useState(false);
   const exportItemType = isNews
     ? "shopp-youtube-news-item"

@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { MIN_PLAYLIST_ITEMS, MAX_PLAYLIST_ITEMS } from "./lib/playlistItems";
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const PLAYLIST_ID = /^[A-Za-z0-9_-]{10,80}$/;
@@ -44,10 +45,12 @@ function normalizePlaylist(titleValue, trackValues, details = {}) {
   if (!title) throw new Error("Escribe el nombre de la playlist.");
   if (
     !Array.isArray(trackValues) ||
-    trackValues.length < 1 ||
-    trackValues.length > 20
+    trackValues.length < MIN_PLAYLIST_ITEMS ||
+    trackValues.length > MAX_PLAYLIST_ITEMS
   ) {
-    throw new Error("La playlist debe contener entre 1 y 20 elementos.");
+    throw new Error(
+      `La playlist debe contener entre ${MIN_PLAYLIST_ITEMS} y ${MAX_PLAYLIST_ITEMS} elementos.`,
+    );
   }
   const seen = new Set();
   const tracks = trackValues.map((track, index) => {
