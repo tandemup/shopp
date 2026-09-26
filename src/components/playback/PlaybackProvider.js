@@ -390,10 +390,12 @@ export default function PlaybackProvider({ children }) {
         }[integratedSize]
       : tabletPortrait
         ? {
-            // En iPad vertical el vídeo debe ser todavía más compacto.
-            small: { card: 680, video: 250 },
-            medium: { card: 680, video: 300 },
-            large: { card: 680, video: 350 },
+            // En iPad vertical mantenemos el ancho total de Card/tracklist,
+            // pero damos más presencia al vídeo y aumentamos la altura total
+            // de la Card conservando la relación 16:9 del reproductor.
+            small: { card: 680, video: 300 },
+            medium: { card: 680, video: 350 },
+            large: { card: 680, video: 400 },
           }[integratedSize]
         : {
             small: { card: 900, video: 320 },
@@ -408,7 +410,7 @@ export default function PlaybackProvider({ children }) {
   );
   const integratedVideoWidth = Math.min(
     integratedPreset.video,
-    Math.max(tabletPortrait ? 250 : 280, Math.round(integratedCardWidth * (tabletPortrait ? 0.42 : 0.46))),
+    Math.max(tabletPortrait ? 300 : 280, Math.round(integratedCardWidth * (tabletPortrait ? 0.46 : 0.46))),
   );
   const integratedDimensions = {
     card: integratedCardWidth,
