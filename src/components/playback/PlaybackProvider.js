@@ -393,9 +393,9 @@ export default function PlaybackProvider({ children }) {
             // En iPad vertical mantenemos el ancho total de Card/tracklist,
             // pero damos más presencia al vídeo y aumentamos la altura total
             // de la Card conservando la relación 16:9 del reproductor.
-            small: { card: 680, video: 300 },
-            medium: { card: 680, video: 350 },
-            large: { card: 680, video: 400 },
+            small: { card: 680, video: 360 },
+            medium: { card: 680, video: 400 },
+            large: { card: 680, video: 440 },
           }[integratedSize]
         : {
             small: { card: 900, video: 320 },
