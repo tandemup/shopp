@@ -830,6 +830,12 @@ const active = index === session.index;
                     widePlayer && styles.desktopTrackList,
                     tabletPlayer && styles.desktopTrackListTablet,
                     splitWideLayout && styles.splitTrackList,
+                    tabletPortrait &&
+                      visiblePlayerStyle === "integrated" && {
+                        width: integratedDimensions.card,
+                        maxWidth: integratedDimensions.card,
+                        alignSelf: "center",
+                      },
                     widePlayer &&
                       !splitWideLayout &&
                       visiblePlayerStyle === "classic" && {
@@ -1327,6 +1333,11 @@ const active = index === session.index;
                       styles.queueSection,
                       tabletPlayer && styles.queueSectionTablet,
                       phonePlayer && styles.phoneQueueSection,
+                      tabletPortrait &&
+                        visiblePlayerStyle === "integrated" && {
+                          width: integratedDimensions.card,
+                          maxWidth: integratedDimensions.card,
+                        },
                       widePlayer &&
                         !splitWideLayout &&
                         visiblePlayerStyle === "classic" && { maxWidth: classicVideoWidth },
