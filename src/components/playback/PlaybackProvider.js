@@ -362,17 +362,34 @@ export default function PlaybackProvider({ children }) {
   const widePlayer = expanded && width >= 700;
   const desktop = expanded && width >= 1100;
   const phonePlayer = expanded && width < 600;
+  // iPad/tablet: en estas pantallas prima que la lista de pistas sea visible
+  // sin necesidad de desplazar primero un reproductor de gran altura. En web
+  // usamos capacidad táctil para no aplicar este perfil a un portátil que tenga
+  // una ventana con dimensiones similares a las de un iPad.
+  const touchTablet =
+    expanded &&
+    Math.min(width, height) >= 700 &&
+    Math.max(width, height) <= 1400 &&
+    (Platform.OS !== "web" ||
+      (typeof navigator !== "undefined" && navigator.maxTouchPoints > 1));
   const visiblePlayerStyle = phonePlayer ? mobilePlayerStyle : playerStyle;
   const phoneCard = phonePlayer && visiblePlayerStyle === "integrated";
   const phoneVideoHeight = Math.round((phoneCardWidth || Math.max(240, width - 24)) * 9 / 16);
   const phoneControlsHeight = 140;
-  const integratedPreset = {
-    // En desktop la Card mantiene siempre el mismo ancho que la sección
-    // de pistas. El selector solo cambia el ancho reservado al vídeo.
-    small: { card: 900, video: 320 },
-    medium: { card: 900, video: 400 },
-    large: { card: 900, video: 480 },
-  }[integratedSize];
+  const integratedPreset = (touchTablet
+    ? {
+        // iPad: card más baja para dejar visibles varias pistas.
+        small: { card: 900, video: 240 },
+        medium: { card: 900, video: 280 },
+        large: { card: 900, video: 320 },
+      }
+    : {
+        // Desktop: la Card mantiene siempre el mismo ancho que la sección
+        // de pistas. El selector solo cambia el ancho reservado al vídeo.
+        small: { card: 900, video: 320 },
+        medium: { card: 900, video: 400 },
+        large: { card: 900, video: 480 },
+      })[integratedSize];
   // En tablets estrechas reducimos el vídeo de forma proporcional para que
   // siempre quede una columna útil para título, tiempos y controles.
   const integratedCardWidth = Math.min(
@@ -390,11 +407,18 @@ export default function PlaybackProvider({ children }) {
   };
   // El mismo selector de tamaño se usa también en el modo Clásico.
   // En ese modo controla el ancho del reproductor 16:9 completo.
-  const classicPresetWidth = {
-    small: 640,
-    medium: 860,
-    large: 1080,
-  }[integratedSize];
+  const classicPresetWidth = (touchTablet
+    ? {
+        // iPad: 16:9 compacto. Alturas aproximadas: 259 / 304 / 349 px.
+        small: 460,
+        medium: 540,
+        large: 620,
+      }
+    : {
+        small: 640,
+        medium: 860,
+        large: 1080,
+      })[integratedSize];
   const classicVideoWidth = Math.min(
     classicPresetWidth,
     Math.max(320, width - (widePlayer ? 48 : 24)),
@@ -717,6 +741,7 @@ const active = index === session.index;
               ? renderPlayerSurface([
                   styles.playerEnginePreview,
                   widePlayer && { width: classicVideoWidth, maxWidth: classicVideoWidth },
+                  touchTablet && styles.tabletPlayerEnginePreview,
                 ])
               : !expanded
                 ? renderPlayerSurface(styles.playerEngineHidden, false)
@@ -748,6 +773,7 @@ const active = index === session.index;
                     styles.trackList,
                     phonePlayer && styles.phoneTrackList,
                     widePlayer && styles.desktopTrackList,
+                    touchTablet && styles.tabletTrackList,
                     widePlayer &&
                       visiblePlayerStyle === "classic" && {
                         maxWidth: classicVideoWidth,
@@ -766,7 +792,7 @@ const active = index === session.index;
                   keyboardDismissMode="on-drag"
                   scrollEventThrottle={16}
                 >
-                  <View style={styles.queueHeader}>
+                  <View style={[styles.queueHeader, touchTablet && styles.tabletQueueHeader]}>
                     <View style={styles.queueHeading}>
                       <Text style={styles.queueEyebrow}>
                         {session.isTutorial ? "TUTORIALES" : "PLAY LIST"}
@@ -779,7 +805,7 @@ const active = index === session.index;
                     </Text>
                   </View>
                   {widePlayer ? (
-                    <View style={styles.videoSizeSelector}>
+                    <View style={[styles.videoSizeSelector, touchTablet && styles.tabletVideoSizeSelector]}>
                       <Text style={styles.videoSizeLabel}>TAMAÑO DEL VÍDEO</Text>
                       {[
                         ["small", "Pequeño"],
@@ -1463,6 +1489,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#29292d",
   },
+  tabletPlayerEnginePreview: {
+    marginTop: 8,
+    marginBottom: 2,
+  },
   playerEngineHidden: {
     position: "absolute",
     width: 1,
@@ -1545,6 +1575,10 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     gap: 10,
   },
+  tabletTrackList: {
+    paddingTop: 8,
+    gap: 6,
+  },
   queueHeader: {
     width: "100%",
     minHeight: 72,
@@ -1554,6 +1588,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3,
     paddingBottom: 8,
   },
+  tabletQueueHeader: {
+    minHeight: 52,
+    paddingBottom: 2,
+  },
   videoSizeSelector: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1561,6 +1599,10 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     gap: 8,
     paddingBottom: 12,
+  },
+  tabletVideoSizeSelector: {
+    gap: 6,
+    paddingBottom: 6,
   },
   videoSizeLabel: { color: "#9ca3af", fontSize: 10, fontWeight: "800", marginRight: 4 },
   videoSizeButton: {
