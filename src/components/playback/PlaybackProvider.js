@@ -386,6 +386,17 @@ export default function PlaybackProvider({ children }) {
     video: integratedVideoWidth,
     height: Math.round((integratedVideoWidth * 9) / 16),
   };
+  // El mismo selector de tamaño se usa también en el modo Clásico.
+  // En ese modo controla el ancho del reproductor 16:9 completo.
+  const classicPresetWidth = {
+    small: 640,
+    medium: 860,
+    large: 1080,
+  }[integratedSize];
+  const classicVideoWidth = Math.min(
+    classicPresetWidth,
+    Math.max(320, width - (widePlayer ? 48 : 24)),
+  );
   // El reproductor compartido conserva controles compactos y de tamaño fijo.
   // El ancho de la columna puede crecer con la ventana, pero las imágenes,
   // tipografías e iconos no deben saltar a una escala desproporcionada.
@@ -701,7 +712,10 @@ const active = index === session.index;
               />
             </View>
             {expanded && visiblePlayerStyle === "classic"
-              ? renderPlayerSurface(styles.playerEnginePreview)
+              ? renderPlayerSurface([
+                  styles.playerEnginePreview,
+                  widePlayer && { width: classicVideoWidth },
+                ])
               : !expanded
                 ? renderPlayerSurface(styles.playerEngineHidden, false)
                 : null}
@@ -752,7 +766,7 @@ const active = index === session.index;
                       {session.tracks.length === 1 ? "pista" : "pistas"}
                     </Text>
                   </View>
-                  {widePlayer && visiblePlayerStyle === "integrated" ? (
+                  {widePlayer ? (
                     <View style={styles.videoSizeSelector}>
                       <Text style={styles.videoSizeLabel}>TAMAÑO DEL VÍDEO</Text>
                       {[
