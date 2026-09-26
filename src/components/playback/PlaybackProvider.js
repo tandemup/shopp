@@ -364,6 +364,9 @@ export default function PlaybackProvider({ children }) {
   const tabletPlayer = expanded && width >= 700 && width < 1100;
   const tabletLandscape = tabletPlayer && width > height;
   const tabletPortrait = tabletPlayer && !tabletLandscape;
+  // En desktop e iPad horizontal usamos una composición 50/50:
+  // reproductor a la izquierda y lista desplazable a la derecha.
+  const splitWideLayout = expanded && (desktop || tabletLandscape);
   const phonePlayer = expanded && width < 600;
   const visiblePlayerStyle = phonePlayer ? mobilePlayerStyle : playerStyle;
   const phoneCard = phonePlayer && visiblePlayerStyle === "integrated";
@@ -440,6 +443,13 @@ export default function PlaybackProvider({ children }) {
   const classicVideoWidth = Math.min(
     classicPresetWidth,
     Math.max(tabletPortrait ? 360 : 320, width - (widePlayer ? 48 : 24)),
+  );
+  const splitVideoPresetWidth = desktop
+    ? { small: 420, medium: 520, large: 640 }[integratedSize]
+    : { small: 340, medium: 410, large: 480 }[integratedSize];
+  const splitVideoWidth = Math.min(
+    splitVideoPresetWidth,
+    Math.max(300, Math.floor(width * 0.5) - 48),
   );
   // El reproductor compartido conserva controles compactos y de tamaño fijo.
   // El ancho de la columna puede crecer con la ventana, pero las imágenes,
@@ -712,7 +722,7 @@ const active = index === session.index;
                   {expanded ? session.title : currentTitle || session.title}
                 </Text>
               </Pressable>
-              {expanded ? (
+              {expanded && !splitWideLayout ? (
                 <View style={styles.styleSelector}>
                   <Pressable
                     accessibilityRole="button"
@@ -765,32 +775,49 @@ const active = index === session.index;
                 onPress={stop}
               />
             </View>
-            {expanded && visiblePlayerStyle === "classic"
-              ? renderPlayerSurface([
-                  styles.playerEnginePreview,
-                  tabletPlayer && styles.playerEnginePreviewTablet,
-                  widePlayer && { width: classicVideoWidth, maxWidth: classicVideoWidth },
-                ])
-              : !expanded
-                ? renderPlayerSurface(styles.playerEngineHidden, false)
-                : null}
             <View
               style={[
-                styles.body,
-                expanded && styles.expandedBody,
-                widePlayer && styles.desktopBody,
+                styles.playerContent,
+                splitWideLayout && styles.playerContentSplit,
               ]}
             >
+              {splitWideLayout ? (
+                <View style={styles.splitVideoPane}>
+                  {renderPlayerSurface([
+                    styles.playerEnginePreview,
+                    styles.playerEnginePreviewSplit,
+                    { width: splitVideoWidth, maxWidth: splitVideoWidth },
+                  ])}
+                </View>
+              ) : expanded && visiblePlayerStyle === "classic"
+                ? renderPlayerSurface([
+                    styles.playerEnginePreview,
+                    tabletPlayer && styles.playerEnginePreviewTablet,
+                    widePlayer && { width: classicVideoWidth, maxWidth: classicVideoWidth },
+                  ])
+                : !expanded
+                  ? renderPlayerSurface(styles.playerEngineHidden, false)
+                  : null}
+              <View
+                style={[
+                  styles.body,
+                  expanded && styles.expandedBody,
+                  widePlayer && styles.desktopBody,
+                  splitWideLayout && styles.splitTrackBody,
+                ]}
+              >
               {expanded ? (
                 <ScrollView
                   style={[
                     styles.trackPane,
                     widePlayer && styles.desktopTrackPane,
+                    splitWideLayout && styles.splitTrackPane,
                     widePlayer &&
                       (visiblePlayerStyle === "integrated"
                         ? styles.desktopTrackPaneIntegrated
                         : styles.desktopTrackPaneClassic),
                     widePlayer &&
+                      !splitWideLayout &&
                       visiblePlayerStyle === "classic" && {
                         width: classicVideoWidth,
                         maxWidth: classicVideoWidth,
@@ -802,7 +829,9 @@ const active = index === session.index;
                     phonePlayer && styles.phoneTrackList,
                     widePlayer && styles.desktopTrackList,
                     tabletPlayer && styles.desktopTrackListTablet,
+                    splitWideLayout && styles.splitTrackList,
                     widePlayer &&
+                      !splitWideLayout &&
                       visiblePlayerStyle === "classic" && {
                         maxWidth: classicVideoWidth,
                       },
@@ -878,7 +907,7 @@ const active = index === session.index;
                   ) : null}
                   {session.tracks.map((item, index) => {
                     const active = index === session.index;
-                    if (!active || visiblePlayerStyle === "classic") return null;
+                    if (!active || visiblePlayerStyle === "classic" || splitWideLayout) return null;
                     const itemPlaying = active && playing;
                     const remembered = rememberedPlayback.current.get(
                       trackKey(item),
@@ -1299,6 +1328,7 @@ const active = index === session.index;
                       tabletPlayer && styles.queueSectionTablet,
                       phonePlayer && styles.phoneQueueSection,
                       widePlayer &&
+                        !splitWideLayout &&
                         visiblePlayerStyle === "classic" && { maxWidth: classicVideoWidth },
                     ]}
                   >
@@ -1313,7 +1343,11 @@ const active = index === session.index;
                     </View> : <ScrollView
                       style={[
                         styles.queueRowsScroll,
-                        { maxHeight: queueRowsMaxHeight },
+                        {
+                          maxHeight: splitWideLayout
+                            ? Math.max(260, height - insets.top - insets.bottom - 235)
+                            : queueRowsMaxHeight,
+                        },
                       ]}
                       contentContainerStyle={styles.queueRows}
                       nestedScrollEnabled
@@ -1358,6 +1392,7 @@ const active = index === session.index;
                   ) : null}
                 </ScrollView>
               ) : null}
+              </View>
             </View>
           </View>
         ) : null}
@@ -1413,6 +1448,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   disabled: { opacity: 0.35 },
+  playerContent: { flex: 1, minHeight: 0 },
+  playerContentSplit: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    width: "100%",
+    minHeight: 0,
+  },
+  splitVideoPane: {
+    width: "50%",
+    minWidth: 0,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    borderRightWidth: 1,
+    borderRightColor: "#29292d",
+    backgroundColor: "#0b0b0c",
+  },
   body: { minHeight: 0, flexShrink: 1 },
   expandedBody: { flex: 1, backgroundColor: "#0b0b0c" },
   desktopBody: {
@@ -1422,10 +1475,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 24,
   },
+  splitTrackBody: {
+    width: "50%",
+    maxWidth: "50%",
+    flex: 1,
+    alignSelf: "stretch",
+    alignItems: "stretch",
+    paddingHorizontal: 16,
+  },
   desktopTrackPane: {
     width: "100%",
     minWidth: 0,
     alignSelf: "center",
+  },
+  splitTrackPane: {
+    flex: 1,
+    width: "100%",
+    maxWidth: "100%",
+    alignSelf: "stretch",
   },
   desktopTrackPaneClassic: { maxWidth: 900 },
   desktopTrackPaneIntegrated: { maxWidth: 900 },
@@ -1522,6 +1589,10 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 4,
   },
+  playerEnginePreviewSplit: {
+    marginTop: 0,
+    marginBottom: 0,
+  },
   playerEngineHidden: {
     position: "absolute",
     width: 1,
@@ -1606,6 +1677,12 @@ const styles = StyleSheet.create({
   },
   desktopTrackListTablet: {
     paddingTop: 10,
+    gap: 8,
+  },
+  splitTrackList: {
+    maxWidth: "100%",
+    paddingTop: 12,
+    paddingBottom: 16,
     gap: 8,
   },
   queueHeader: {
