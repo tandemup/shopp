@@ -367,8 +367,10 @@ export default function PlaybackProvider({ children }) {
   const phoneVideoHeight = Math.round((phoneCardWidth || Math.max(240, width - 24)) * 9 / 16);
   const phoneControlsHeight = 140;
   const integratedPreset = {
-    small: { card: 720, video: 320 },
-    medium: { card: 800, video: 400 },
+    // En desktop la Card mantiene siempre el mismo ancho que la sección
+    // de pistas. El selector solo cambia el ancho reservado al vídeo.
+    small: { card: 900, video: 320 },
+    medium: { card: 900, video: 400 },
     large: { card: 900, video: 480 },
   }[integratedSize];
   // En tablets estrechas reducimos el vídeo de forma proporcional para que
@@ -714,7 +716,7 @@ const active = index === session.index;
             {expanded && visiblePlayerStyle === "classic"
               ? renderPlayerSurface([
                   styles.playerEnginePreview,
-                  widePlayer && { width: classicVideoWidth },
+                  widePlayer && { width: classicVideoWidth, maxWidth: classicVideoWidth },
                 ])
               : !expanded
                 ? renderPlayerSurface(styles.playerEngineHidden, false)
@@ -735,11 +737,21 @@ const active = index === session.index;
                       (visiblePlayerStyle === "integrated"
                         ? styles.desktopTrackPaneIntegrated
                         : styles.desktopTrackPaneClassic),
+                    widePlayer &&
+                      visiblePlayerStyle === "classic" && {
+                        width: classicVideoWidth,
+                        maxWidth: classicVideoWidth,
+                        alignSelf: "center",
+                      },
                   ]}
                   contentContainerStyle={[
                     styles.trackList,
                     phonePlayer && styles.phoneTrackList,
                     widePlayer && styles.desktopTrackList,
+                    widePlayer &&
+                      visiblePlayerStyle === "classic" && {
+                        maxWidth: classicVideoWidth,
+                      },
                   ]}
                   scrollEnabled
                   showsVerticalScrollIndicator={false}
@@ -1227,7 +1239,14 @@ const active = index === session.index;
                       </View>
                     );
                   })}
-                  <View style={[styles.queueSection, phonePlayer && styles.phoneQueueSection]}>
+                  <View
+                    style={[
+                      styles.queueSection,
+                      phonePlayer && styles.phoneQueueSection,
+                      widePlayer &&
+                        visiblePlayerStyle === "classic" && { maxWidth: classicVideoWidth },
+                    ]}
+                  >
                     <View style={styles.queueSectionHeader}>
                       <Text style={styles.queueSectionEyebrow}>LISTA DE PISTAS</Text>
                       <Text style={styles.queueSectionCount}>
