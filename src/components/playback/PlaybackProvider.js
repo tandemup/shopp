@@ -356,17 +356,36 @@ export default function PlaybackProvider({ children }) {
   };
   const ids = status.videoIds || [];
   const albumIndex = status.playlistIndex || 0;
-  const desktop = expanded && width >= 960;
+  // A partir de 700 px hay anchura suficiente para usar el reproductor
+  // horizontal (vídeo + controles), también en iPad/tablets. No detectamos
+  // el dispositivo: el layout responde únicamente al ancho disponible.
+  const widePlayer = expanded && width >= 700;
+  const desktop = expanded && width >= 1100;
   const phonePlayer = expanded && width < 600;
   const visiblePlayerStyle = phonePlayer ? mobilePlayerStyle : playerStyle;
   const phoneCard = phonePlayer && visiblePlayerStyle === "integrated";
   const phoneVideoHeight = Math.round((phoneCardWidth || Math.max(240, width - 24)) * 9 / 16);
   const phoneControlsHeight = 140;
-  const integratedDimensions = {
-    small: { card: 720, video: 320, height: 180 },
-    medium: { card: 800, video: 400, height: 225 },
-    large: { card: 900, video: 480, height: 270 },
+  const integratedPreset = {
+    small: { card: 720, video: 320 },
+    medium: { card: 800, video: 400 },
+    large: { card: 900, video: 480 },
   }[integratedSize];
+  // En tablets estrechas reducimos el vídeo de forma proporcional para que
+  // siempre quede una columna útil para título, tiempos y controles.
+  const integratedCardWidth = Math.min(
+    integratedPreset.card,
+    Math.max(620, width - (widePlayer ? 48 : 28)),
+  );
+  const integratedVideoWidth = Math.min(
+    integratedPreset.video,
+    Math.max(280, Math.round(integratedCardWidth * 0.46)),
+  );
+  const integratedDimensions = {
+    card: integratedCardWidth,
+    video: integratedVideoWidth,
+    height: Math.round((integratedVideoWidth * 9) / 16),
+  };
   // El reproductor compartido conserva controles compactos y de tamaño fijo.
   // El ancho de la columna puede crecer con la ventana, pero las imágenes,
   // tipografías e iconos no deben saltar a una escala desproporcionada.
@@ -375,8 +394,8 @@ export default function PlaybackProvider({ children }) {
   // En iPhone la lista comparte un único desplazamiento con el contenido.
   // En pantallas más anchas se conserva la altura máxima de la cola.
   const queueRowsMaxHeight = Math.max(
-    220,
-    height - insets.top - insets.bottom - (desktop ? 670 : 620),
+    widePlayer ? 320 : 220,
+    height - insets.top - insets.bottom - (widePlayer ? 440 : 620),
   );
   const bottom =
     Platform.OS === "web"
@@ -690,15 +709,15 @@ const active = index === session.index;
               style={[
                 styles.body,
                 expanded && styles.expandedBody,
-                desktop && styles.desktopBody,
+                widePlayer && styles.desktopBody,
               ]}
             >
               {expanded ? (
                 <ScrollView
                   style={[
                     styles.trackPane,
-                    desktop && styles.desktopTrackPane,
-                    desktop &&
+                    widePlayer && styles.desktopTrackPane,
+                    widePlayer &&
                       (visiblePlayerStyle === "integrated"
                         ? styles.desktopTrackPaneIntegrated
                         : styles.desktopTrackPaneClassic),
@@ -706,7 +725,7 @@ const active = index === session.index;
                   contentContainerStyle={[
                     styles.trackList,
                     phonePlayer && styles.phoneTrackList,
-                    desktop && styles.desktopTrackList,
+                    widePlayer && styles.desktopTrackList,
                   ]}
                   scrollEnabled
                   showsVerticalScrollIndicator={false}
@@ -733,7 +752,7 @@ const active = index === session.index;
                       {session.tracks.length === 1 ? "pista" : "pistas"}
                     </Text>
                   </View>
-                  {desktop && visiblePlayerStyle === "integrated" ? (
+                  {widePlayer && visiblePlayerStyle === "integrated" ? (
                     <View style={styles.videoSizeSelector}>
                       <Text style={styles.videoSizeLabel}>TAMAÑO DEL VÍDEO</Text>
                       {[
@@ -806,11 +825,11 @@ const active = index === session.index;
                         } : undefined}
                         style={[
                           styles.track,
-                          desktop && styles.embeddedVideoTrack,
+                          widePlayer && styles.embeddedVideoTrack,
                           !wideTransport && styles.trackMobile,
                           phoneCard && styles.phoneVideoCard,
                           phoneCard && { height: phoneVideoHeight + phoneControlsHeight },
-                          desktop && {
+                          widePlayer && {
                             maxWidth: integratedDimensions.card,
                             height: integratedDimensions.height,
                           },
@@ -820,10 +839,10 @@ const active = index === session.index;
                           <View
                             style={[
                               styles.embeddedVideo,
-                              !desktop && styles.embeddedVideoMobile,
+                              !widePlayer && styles.embeddedVideoMobile,
                               phoneCard && styles.phoneCardVideo,
                               phoneCard && { height: phoneVideoHeight },
-                              desktop && {
+                              widePlayer && {
                                 width: integratedDimensions.video,
                                 height: integratedDimensions.height,
                               },
@@ -968,7 +987,7 @@ const active = index === session.index;
                           style={[
                             styles.cardRight,
                             !wideTransport && styles.cardRightMobile,
-                            desktop && { height: integratedDimensions.height },
+                            widePlayer && { height: integratedDimensions.height },
                           ]}
                         >
                           <View
