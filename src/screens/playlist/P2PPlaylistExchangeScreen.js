@@ -21,6 +21,11 @@ const RTC_CONFIG = {
 
 const P2P_CHUNK_SIZE = 48 * 1024;
 
+// Los mensajes del RTCDataChannel se codifican explícitamente como UTF-8.
+// Así evitamos que Safari/iPad interprete á, é, í, ó, ú, ñ, ü como Latin-1.
+const UTF8_ENCODER = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
+const UTF8_DECODER = typeof TextDecoder !== "undefined" ? new TextDecoder("utf-8") : null;
+
 const TEST_PLAYLIST = {
   version: 1,
   type: "shopp-youtube-playlist",
@@ -55,6 +60,38 @@ function safeJson(value) {
   }
 }
 
+function encodeP2PMessage(value) {
+  const text = safeJson(value);
+  return UTF8_ENCODER ? UTF8_ENCODER.encode(text) : text;
+}
+
+async function decodeP2PMessage(data) {
+  if (typeof data === "string") return data;
+
+  let bytes = null;
+  if (data instanceof ArrayBuffer) {
+    bytes = new Uint8Array(data);
+  } else if (ArrayBuffer.isView(data)) {
+    bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  } else if (typeof Blob !== "undefined" && data instanceof Blob) {
+    bytes = new Uint8Array(await data.arrayBuffer());
+  }
+
+  if (bytes) {
+    if (UTF8_DECODER) return UTF8_DECODER.decode(bytes);
+    // Fallback para runtimes antiguos sin TextDecoder.
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+    return decodeURIComponent(escape(binary));
+  }
+
+  return String(data ?? "");
+}
+
+function sendP2PJson(channel, value) {
+  channel.send(encodeP2PMessage(value));
+}
+
 function getOrCreateDeviceId() {
   if (Platform.OS !== "web" || typeof window === "undefined") return "native-device";
   const key = "shopp-p2p-device-id";
@@ -72,7 +109,7 @@ function downloadJson(payload) {
     safeAlert("Playlist recibida", "La prueba ha recibido el JSON correctamente.");
     return;
   }
-  const blob = new Blob([text], { type: "application/json" });
+  const blob = new Blob([text], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -148,21 +185,21 @@ export default function P2PPlaylistExchangeScreen() {
     const snapshot = await libraryJsonApi.getSyncSnapshot();
     const payload = JSON.stringify(snapshot);
     const totalChunks = Math.max(1, Math.ceil(payload.length / P2P_CHUNK_SIZE));
-    channel.send(safeJson({
+    sendP2PJson(channel, {
       type: "LIBRARY_SYNC_START",
       syncId,
       phase,
       totalChunks,
       linkCount: snapshot.links.length,
       folderCount: snapshot.folders.length,
-    }));
+    });
     for (let index = 0; index < totalChunks; index += 1) {
       const chunk = payload.slice(index * P2P_CHUNK_SIZE, (index + 1) * P2P_CHUNK_SIZE);
-      channel.send(safeJson({ type: "LIBRARY_SYNC_CHUNK", syncId, phase, index, chunk }));
+      sendP2PJson(channel, { type: "LIBRARY_SYNC_CHUNK", syncId, phase, index, chunk });
       // Deja respirar al DataChannel y evita llenar su buffer con bibliotecas grandes.
       if (index % 8 === 7) await new Promise((resolve) => setTimeout(resolve, 20));
     }
-    channel.send(safeJson({ type: "LIBRARY_SYNC_END", syncId, phase }));
+    sendP2PJson(channel, { type: "LIBRARY_SYNC_END", syncId, phase });
     setLibrarySync((current) => ({
       ...(current || {}),
       syncId,
@@ -227,9 +264,11 @@ export default function P2PPlaylistExchangeScreen() {
     channel.onopen = () => setConnection("connected");
     channel.onclose = () => setConnection("closed");
     channel.onerror = () => setConnection("failed");
+    channel.binaryType = "arraybuffer";
     channel.onmessage = async (event) => {
       try {
-        const message = JSON.parse(event.data);
+        const messageText = await decodeP2PMessage(event.data);
+        const message = JSON.parse(messageText);
         if (await handleLibraryMessage(message)) return;
         if (message?.type === "PLAYLIST" && message.playlist?.tracks) {
           setReceivedPlaylist(message.playlist);
@@ -396,7 +435,7 @@ export default function P2PPlaylistExchangeScreen() {
       safeAlert("Intercambio P2P", "La conexión todavía no está lista.");
       return;
     }
-    channel.send(safeJson({ type: "PLAYLIST", playlist: TEST_PLAYLIST }));
+    sendP2PJson(channel, { type: "PLAYLIST", playlist: TEST_PLAYLIST });
   };
 
   const syncLibrary = async () => {
