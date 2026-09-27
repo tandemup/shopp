@@ -33,7 +33,7 @@ import CachedLinkImage from "@/src/components/chat/CachedLinkImage";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 const CLIENT_ID_KEY = "shopp-chat-client-id";
-const LIBRARY_SETUP_KEY = "shopp-library-setup-v4-instagram-folder";
+const LIBRARY_SETUP_KEY = "shopp-library-setup-v5-ciencia-entrevistas";
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
 const CATALOG_SOURCES_IMPORT_KEY = "__catalog_sources__";
 const IMPORT_BATCH_SIZE = 250;
@@ -5184,6 +5184,7 @@ export default function LibraryScreen({ navigation, route }) {
                 style={styles.importModalScroll}
                 contentContainerStyle={styles.importModalContent}
                 showsVerticalScrollIndicator
+                keyboardShouldPersistTaps="handled"
               >
                 <Text style={styles.modalTitle}>Exportar Biblioteca</Text>
 
@@ -5233,6 +5234,25 @@ export default function LibraryScreen({ navigation, route }) {
                     </Text>
                   </View>
                 </View>
+
+                <Text style={styles.fieldLabel}>Nombre del archivo</Text>
+                <TextInput
+                  value={exportFilename}
+                  onChangeText={setExportFilename}
+                  placeholder={defaultBackupFilename()}
+                  placeholderTextColor="#94a3b8"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  selectTextOnFocus={false}
+                  style={[
+                    styles.modalInput,
+                    Platform.OS === "web" && styles.webInputNoOutline,
+                  ]}
+                />
+                <Text style={styles.fieldHelp}>
+                  Puedes cambiar el nombre antes de guardar. Si omites la
+                  extensión, Shopp añadirá .json automáticamente.
+                </Text>
 
                 <Text style={styles.fieldLabel}>Categorías a exportar</Text>
                 <Text style={styles.fieldHelp}>

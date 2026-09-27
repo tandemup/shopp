@@ -11,6 +11,8 @@ const DEFAULT_FOLDERS = [
   ["Política", "business-outline", "#7c3aed"],
   ["Ingeniería", "construct-outline", "#ea580c"],
   ["Música", "musical-notes-outline", "#db2777"],
+  ["Ciencia", "flask-outline", "#0891b2"],
+  ["Entrevistas", "mic-outline", "#9333ea"],
   ["Instagram", "logo-instagram", "#E1306C"],
 ];
 
@@ -323,25 +325,29 @@ export const libraryJsonApi = {
   getSnapshot: read,
   ensureDefaultFolders() {
     return update((database) => {
-      const [name, icon, color] = DEFAULT_FOLDERS.find(
-        ([folderName]) => folderName === "Instagram",
-      );
-      const existing = database.folders.find(
-        (folder) => text(folder.name) === text(name) && !folder.parentFolderId,
-      );
-      if (existing) {
-        return { created: 0, duplicateMigrationPending: false, migratedBooks: 0 };
+      let created = 0;
+      const now = Date.now();
+
+      for (const [name, icon, color] of DEFAULT_FOLDERS) {
+        const existing = database.folders.find(
+          (folder) =>
+            text(folder.name) === text(name) && !folder.parentFolderId,
+        );
+        if (existing) continue;
+
+        database.folders.push({
+          _id: id("folder"),
+          key: folderSegment(name),
+          name,
+          icon,
+          color,
+          order: database.folders.length,
+          createdAt: now,
+        });
+        created += 1;
       }
-      database.folders.push({
-        _id: id("folder"),
-        key: folderSegment(name),
-        name,
-        icon,
-        color,
-        order: database.folders.length,
-        createdAt: Date.now(),
-      });
-      return { created: 1, duplicateMigrationPending: false, migratedBooks: 0 };
+
+      return { created, duplicateMigrationPending: false, migratedBooks: 0 };
     });
   },
   async listFolders() {
