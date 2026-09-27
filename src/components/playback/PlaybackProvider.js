@@ -69,7 +69,7 @@ function IconButton({ name, label, onPress, disabled = false }) {
   );
 }
 
-function SyncedLyricLine({ track, uri, time, compact = false, fallback = null }) {
+function SyncedLyricLine({ track, uri, time, compact = false }) {
   const [lines, setLines] = useState([]);
   useEffect(() => {
     let cancelled = false;
@@ -102,13 +102,13 @@ function SyncedLyricLine({ track, uri, time, compact = false, fallback = null })
       cancelled = true;
     };
   }, [track?.videoId, track?.playlistId, track?.url, uri]);
-  if (!lines.length) return fallback ? <Text style={styles.phoneLyricEmpty}>{fallback}</Text> : null;
+  if (!lines.length) return null;
   let index = -1;
   lines.forEach((line, i) => {
     if (line.time <= time + 0.08) index = i;
   });
   const text = lines[index]?.text || lines[0]?.text;
-  if (!text) return fallback ? <Text style={styles.phoneLyricEmpty}>{fallback}</Text> : null;
+  if (!text) return null;
   return (
     <View style={styles.cardLyric}>
       <Ionicons name="musical-notes-outline" size={14} color="#dc2626" />
@@ -218,10 +218,10 @@ export default function PlaybackProvider({ children }) {
   const [session, setSession] = useState(null);
   const sessionRef = useRef(null);
   const [expanded, setExpanded] = useState(true);
-  const [playerStyle, setPlayerStyle] = useState("integrated");
-  const [mobilePlayerStyle, setMobilePlayerStyle] = useState("classic");
-  const [phoneCardWidth, setPhoneCardWidth] = useState(0);
-  const [integratedSize, setIntegratedSize] = useState("medium");
+  // Desktop layout: one vertical column or two side-by-side columns.
+  const [desktopColumns, setDesktopColumns] = useState(2);
+  // Tamaño del vídeo cuando usamos el layout de una sola columna.
+  const [desktopVideoSize, setDesktopVideoSize] = useState("medium");
   const [repeat, setRepeat] = useState(false);
   const [shuffle, setShuffle] = useState(false);
   const [volume, setVolume] = useState(100);
@@ -231,7 +231,6 @@ export default function PlaybackProvider({ children }) {
   const player = useRef(null);
   const serial = useRef(0);
   const autoPlayAttempt = useRef(null);
-  const advancingTrack = useRef(false);
   const rememberedPlayback = useRef(new Map());
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -257,7 +256,7 @@ export default function PlaybackProvider({ children }) {
     });
   }, []);
   const open = useCallback(
-    (playlist, { isTutorial = false, autoPlay = false } = {}) => {
+    (playlist, { isTutorial = false } = {}) => {
       const tracks = (playlist?.tracks || [])
         .map(normalizeTrack)
         .filter(Boolean);
@@ -278,7 +277,7 @@ export default function PlaybackProvider({ children }) {
           sourceKey,
           resumeTime: remembered?.time || 0,
           resumePlaylistIndex: remembered?.playlistIndex || 0,
-          autoPlay: Boolean(autoPlay),
+          autoPlay: false,
         });
       }
       setExpanded(true);
@@ -313,7 +312,7 @@ export default function PlaybackProvider({ children }) {
   }, [Boolean(session), expanded]);
   const track = session?.tracks[session.index];
   const lyricsUri = track?.lyricsUri || track?.lyricsUrl;
-  const select = (index, restart = false) => {
+  const select = (index) => {
     if (index === session.index) {
       playing ? player.current?.pause() : player.current?.play();
       return;
@@ -323,158 +322,51 @@ export default function PlaybackProvider({ children }) {
       trackKey(session.tracks[index]),
     );
     setVolume(trackVolumes.current.get(trackKey(session.tracks[index])) ?? 100);
-    const nextTrack = session.tracks[index];
-    const nextTime = restart ? 0 : remembered?.time || 0;
-    const nextPlaylistIndex = restart ? 0 : remembered?.playlistIndex || 0;
-    if (statusRef.current.ready && player.current?.loadTrack) {
-      advancingTrack.current = true;
-      const nextSession = {
-        ...session,
-        index,
-        resumeTime: nextTime,
-        resumePlaylistIndex: nextPlaylistIndex,
-        autoPlay: true,
-      };
-      sessionRef.current = nextSession;
-      // La misma superficie de YouTube se conserva al cambiar de pista. No
-      // marques el autoarranque como atendido: al recibir el primer estado de
-      // la nueva carga el efecto de respaldo puede volver a pedir play.
-      autoPlayAttempt.current = null;
-      statusRef.current = EMPTY_STATUS;
-      setStatus(EMPTY_STATUS);
-      setSession(nextSession);
-      player.current.loadTrack(nextTrack, nextTime, nextPlaylistIndex, true);
-      return;
-    }
     installSession({
       ...session,
       index,
-      resumeTime: nextTime,
-      resumePlaylistIndex: nextPlaylistIndex,
+      resumeTime: remembered?.time || 0,
+      resumePlaylistIndex: remembered?.playlistIndex || 0,
       autoPlay: true,
     });
   };
   const ids = status.videoIds || [];
   const albumIndex = status.playlistIndex || 0;
-  // A partir de 700 px hay anchura suficiente para usar el reproductor
-  // horizontal (vídeo + controles), también en iPad/tablets. No detectamos
-  // el dispositivo: el layout responde únicamente al ancho disponible.
-  const widePlayer = expanded && width >= 700;
-  const desktop = expanded && width >= 1100;
-  const tabletPlayer = expanded && width >= 700 && width < 1100;
-  const tabletLandscape = tabletPlayer && width > height;
-  const tabletPortrait = tabletPlayer && !tabletLandscape;
-  // En desktop e iPad horizontal usamos una composición 50/50:
-  // reproductor a la izquierda y lista desplazable a la derecha.
-  const splitWideLayout = expanded && (desktop || tabletLandscape);
-  const phonePlayer = expanded && width < 600;
-  const visiblePlayerStyle = phonePlayer ? mobilePlayerStyle : playerStyle;
-  const phoneCard = phonePlayer && visiblePlayerStyle === "integrated";
-  const phoneVideoHeight = Math.round((phoneCardWidth || Math.max(240, width - 24)) * 9 / 16);
-  const phoneControlsHeight = 140;
-  const integratedPreset = desktop
-    ? {
-        // En desktop la Card mantiene siempre el mismo ancho que la sección
-        // de pistas. El selector solo cambia el ancho reservado al vídeo.
-        small: { card: 900, video: 320 },
-        medium: { card: 900, video: 400 },
-        large: { card: 900, video: 480 },
-      }[integratedSize]
-    : tabletLandscape
-      ? {
-          // En iPad horizontal reducimos el bloque superior para dejar más
-          // altura libre a la lista de pistas.
-          small: { card: 820, video: 300 },
-          medium: { card: 820, video: 360 },
-          large: { card: 820, video: 420 },
-        }[integratedSize]
-      : tabletPortrait
-        ? {
-            // En iPad vertical mantenemos el ancho total de Card/tracklist,
-            // pero damos más presencia al vídeo y aumentamos la altura total
-            // de la Card conservando la relación 16:9 del reproductor.
-            small: { card: 680, video: 400 },
-            medium: { card: 680, video: 440 },
-            large: { card: 680, video: 480 },
-          }[integratedSize]
-        : {
-            small: { card: 900, video: 320 },
-            medium: { card: 900, video: 400 },
-            large: { card: 900, video: 480 },
-          }[integratedSize];
-  // En tablets reducimos el vídeo de forma proporcional para que siempre
-  // quede una zona visible de la lista de pistas sin hacer scroll.
-  const integratedCardWidth = Math.min(
-    integratedPreset.card,
-    Math.max(tabletPortrait ? 620 : 640, width - (widePlayer ? 48 : 28)),
-  );
-  const integratedVideoWidth = tabletPortrait
-    ? integratedPreset.video
-    : Math.min(
-        integratedPreset.video,
-        Math.max(280, Math.round(integratedCardWidth * 0.46)),
-      );
-  const integratedDimensions = {
-    card: integratedCardWidth,
-    video: integratedVideoWidth,
-    height: Math.round((integratedVideoWidth * 9) / 16),
-  };
-  // El mismo selector de tamaño se usa también en el modo Clásico.
-  // En ese modo controla el ancho del reproductor 16:9 completo.
-  const classicPresetWidth = desktop
-    ? {
-        small: 640,
-        medium: 860,
-        large: 1080,
-      }[integratedSize]
-    : tabletLandscape
-      ? {
-          small: 500,
-          medium: 620,
-          large: 740,
-        }[integratedSize]
-      : tabletPortrait
-        ? {
-            small: 420,
-            medium: 520,
-            large: 620,
-          }[integratedSize]
-        : {
-            small: 640,
-            medium: 860,
-            large: 1080,
-          }[integratedSize];
-  const classicVideoWidth = Math.min(
-    classicPresetWidth,
-    Math.max(tabletPortrait ? 360 : 320, width - (widePlayer ? 48 : 24)),
-  );
-  const splitVideoPresetWidth = desktop
-    ? { small: 420, medium: 520, large: 640 }[integratedSize]
-    : { small: 340, medium: 410, large: 480 }[integratedSize];
-  const splitVideoWidth = Math.min(
-    splitVideoPresetWidth,
-    Math.max(300, Math.floor(width * 0.5) - 48),
-  );
+  const desktop = expanded && width >= 960;
+  const oneColumnDesktop = desktop && desktopColumns === 1;
+  const twoColumnDesktop = desktop && desktopColumns === 2;
   // El reproductor compartido conserva controles compactos y de tamaño fijo.
   // El ancho de la columna puede crecer con la ventana, pero las imágenes,
   // tipografías e iconos no deben saltar a una escala desproporcionada.
   const wideTransport = false;
   const miniWidth = Math.min(360, Math.max(200, width - 16));
-  // En iPhone la lista comparte un único desplazamiento con el contenido.
-  // En tablets restamos menos altura al bloque superior para que siempre se
-  // vea parte de la lista de pistas en portrait y landscape.
-  const wideReservedHeight = desktop
-    ? 440
-    : visiblePlayerStyle === "classic"
-      ? tabletPortrait
-        ? 320
-        : 340
-      : tabletPortrait
-        ? 280
-        : 300;
-  const queueRowsMaxHeight = Math.max(
-    widePlayer ? (tabletPlayer ? 260 : 320) : 220,
-    height - insets.top - insets.bottom - (widePlayer ? wideReservedHeight : 620),
+  // Evita que la cola quede limitada a cinco filas cuando el reproductor
+  // dispone de más alto. El listado conserva su propio scroll al llenarse.
+  // Altura útil de la lista. En 2 columnas dejamos que la lista aproveche
+  // prácticamente toda la altura disponible de la ventana; en 1 columna
+  // limitamos algo más la lista porque comparte el eje vertical con el vídeo.
+  const queueRowsMaxHeight = twoColumnDesktop
+    ? Math.max(320, height - insets.top - insets.bottom - 118)
+    : oneColumnDesktop
+      ? Math.max(260, height - insets.top - insets.bottom - 500)
+      : Math.max(220, height - insets.top - insets.bottom - 620);
+
+  // En una sola columna el usuario puede elegir el tamaño del vídeo.
+  // El ancho se usa también para centrar y dimensionar la lista de pistas,
+  // de forma que vídeo y ScrollView queden visualmente alineados.
+  const oneColumnVideoSizeMap = {
+    small: { factor: 0.46, min: 500, max: 620 },
+    medium: { factor: 0.56, min: 580, max: 760 },
+    large: { factor: 0.66, min: 660, max: 900 },
+  };
+  const oneColumnVideoConfig =
+    oneColumnVideoSizeMap[desktopVideoSize] || oneColumnVideoSizeMap.medium;
+  const oneColumnVideoWidth = Math.min(
+    oneColumnVideoConfig.max,
+    Math.max(
+      oneColumnVideoConfig.min,
+      Math.min(width - 96, width * oneColumnVideoConfig.factor),
+    ),
   );
   const bottom =
     Platform.OS === "web"
@@ -511,31 +403,27 @@ export default function PlaybackProvider({ children }) {
     statusRef.current = nextStatus;
     setStatus(nextStatus);
   }, []);
-  const selectRelative = (direction, restart = false) => {
+  const selectRelative = (direction) => {
     if (!session?.tracks?.length) return;
     if (shuffle && session.tracks.length > 1) {
       let next = session.index;
       while (next === session.index)
         next = Math.floor(Math.random() * session.tracks.length);
-      select(next, restart);
+      select(next);
       return;
     }
     select(
       (session.index + direction + session.tracks.length) %
         session.tracks.length,
-      restart,
     );
   };
   useEffect(() => {
-    if (!session || status.state !== 0 || advancingTrack.current) return;
-    advancingTrack.current = true;
+    if (!session || status.state !== 0) return;
     if (repeat) {
       player.current?.seek(0);
       player.current?.play();
     } else if (session.tracks.length > 1) {
-      selectRelative(1, true);
-    } else {
-      advancingTrack.current = false;
+      selectRelative(1);
     }
   }, [status.state]);
   const currentTitle =
@@ -564,128 +452,30 @@ export default function PlaybackProvider({ children }) {
       setStatus((value) => ({ ...value, error: "No se pudo abrir YouTube." }));
     }
   };
-  const changePlayerStyle = (nextStyle) => {
-    if (nextStyle === (phonePlayer ? mobilePlayerStyle : playerStyle)) return;
-    const current = sessionRef.current;
-    if (current) {
-      const currentStatus = statusRef.current;
-      const nextSession = {
-        ...current,
-        resumeTime: currentStatus.time || 0,
-        resumePlaylistIndex: currentStatus.playlistIndex || 0,
-        autoPlay: currentStatus.state === 1 || currentStatus.state === 3,
-      };
-      sessionRef.current = nextSession;
-      setSession(nextSession);
-    }
-    if (phonePlayer) setMobilePlayerStyle(nextStyle);
-    else setPlayerStyle(nextStyle);
-  };
-  const renderQueueRow = (item, index) => {
-const active = index === session.index;
-                        const itemTitle =
-                          item.title ||
-                          `${session.isTutorial ? "Vídeo" : "Elemento"} ${index + 1}`;
-                        const kindLabel = session.isTutorial
-                          ? item.kind === "album"
-                            ? "Serie"
-                            : "Vídeo"
-                          : item.kind === "album"
-                            ? "Álbum"
-                            : "Single";
-                        return (
-                          <Pressable
-                            key={`${trackKey(item)}:${index}`}
-                            accessibilityRole="button"
-                            accessibilityLabel={tr(
-                              active
-                                ? `${playing ? "Pausar" : "Reproducir"} ${itemTitle}`
-                                : `Reproducir ${itemTitle}`,
-                            )}
-                            accessibilityState={{ selected: active }}
-                            onPress={() => select(index)}
-                            style={[styles.queueRow, active && styles.queueRowActive]}
-                          >
-                            <View
-                              style={[
-                                styles.queueRowIndex,
-                                active && styles.queueRowIndexActive,
-                              ]}
-                            >
-                              {active ? (
-                                <Ionicons
-                                  name={playing ? "pause" : "musical-note"}
-                                  size={15}
-                                  color="#ec1970"
-                                />
-                              ) : (
-                                <Text style={styles.queueRowIndexText}>{index + 1}</Text>
-                              )}
-                            </View>
-                            <View style={styles.queueRowText}>
-                              <Text style={styles.queueRowTitle} numberOfLines={1}>
-                                {itemTitle}
-                              </Text>
-                              <Text style={styles.queueRowMeta}>
-                                {active
-                                  ? playing
-                                    ? "Reproduciendo"
-                                    : "Seleccionada"
-                                  : kindLabel}
-                              </Text>
-                            </View>
-                            <Ionicons
-                              name={active && playing ? "pause-circle" : "play-circle-outline"}
-                              size={24}
-                              color={active ? "#ec1970" : "#9ca3af"}
-                            />
-                          </Pressable>
-                        );
-  };
-
-  const renderPlayerSurface = (containerStyle, interactive = true) => (
-    <View
-      pointerEvents={interactive ? "auto" : "none"}
-      style={[styles.playerEngine, containerStyle]}
-    >
-      <YouTubeSurface
-        key={session.requestId}
-        ref={player}
-        track={track}
-        initialTime={session.resumeTime || 0}
-        initialPlaylistIndex={session.resumePlaylistIndex || 0}
-        autoPlay={Boolean(session.autoPlay)}
-        initialVolume={volume}
-        onStatus={(next) => {
+  const playerSurfaceProps = session
+    ? {
+        ref: player,
+        track,
+        initialTime: status.time || session.resumeTime || 0,
+        initialPlaylistIndex:
+          status.playlistIndex || session.resumePlaylistIndex || 0,
+        autoPlay: Boolean(session.autoPlay),
+        initialVolume: volume,
+        onStatus: (next) => {
           if (sessionRef.current?.requestId !== session.requestId) return;
           const mergedStatus = { ...statusRef.current, ...next };
-          // El iframe/WebView puede emitir el último estado de la pista
-          // anterior justo después de loadTrack(). Solo la nueva pista debe
-          // dar por terminada la transición automática.
-          const currentTrack = sessionRef.current.tracks[sessionRef.current.index];
-          const isCurrentVideo =
-            currentTrack?.kind === "album" ||
-            !next.videoId ||
-            next.videoId === currentTrack?.videoId;
-          if (
-            isCurrentVideo &&
-            (mergedStatus.state === 1 || mergedStatus.state === 3)
-          ) {
-            advancingTrack.current = false;
-          }
           statusRef.current = mergedStatus;
           if (Number.isFinite(next.time)) {
-            rememberedPlayback.current.set(trackKey(currentTrack), {
+            rememberedPlayback.current.set(trackKey(track), {
               time: mergedStatus.state === 0 ? 0 : mergedStatus.time || 0,
               duration: mergedStatus.duration || 0,
               playlistIndex: mergedStatus.playlistIndex || 0,
             });
           }
           setStatus(mergedStatus);
-        }}
-      />
-    </View>
-  );
+        },
+      }
+    : null;
   return (
     <PlaybackContext.Provider value={context}>
       <View style={styles.root}>
@@ -722,36 +512,21 @@ const active = index === session.index;
                 onPress={() => setExpanded((value) => !value)}
                 style={styles.heading}
               >
-                <Text numberOfLines={1} style={styles.title}>
-                  {expanded ? session.title : currentTitle || session.title}
-                </Text>
+                {expanded && desktop ? (
+                  <View style={styles.headerPlaylistTitle}>
+                    <Text style={styles.headerPlaylistEyebrow}>
+                      {session.isTutorial ? "TUTORIALES" : "PLAY LIST"}
+                    </Text>
+                    <Text numberOfLines={1} style={styles.title}>
+                      {session.title}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text numberOfLines={1} style={styles.title}>
+                    {expanded ? session.title : currentTitle || session.title}
+                  </Text>
+                )}
               </Pressable>
-              {expanded ? (
-                <View style={styles.styleSelector}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: visiblePlayerStyle === "classic" }}
-                    onPress={() => changePlayerStyle("classic")}
-                    style={[
-                      styles.styleSelectorButton,
-                      visiblePlayerStyle === "classic" && styles.styleSelectorButtonActive,
-                    ]}
-                  >
-                    <Text style={styles.styleSelectorText}>{phonePlayer ? "Vídeo" : "Clásico"}</Text>
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: visiblePlayerStyle === "integrated" }}
-                    onPress={() => changePlayerStyle("integrated")}
-                    style={[
-                      styles.styleSelectorButton,
-                      visiblePlayerStyle === "integrated" && styles.styleSelectorButtonActive,
-                    ]}
-                  >
-                    <Text style={styles.styleSelectorText}>{phonePlayer ? "Card" : "Integrado"}</Text>
-                  </Pressable>
-                </View>
-              ) : null}
               {!expanded ? (
                 <IconButton
                   name={playing ? "pause" : "play"}
@@ -766,6 +541,48 @@ const active = index === session.index;
                   }
                 />
               ) : null}
+              {desktop ? (
+                <View style={styles.desktopColumnSelector}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Mostrar una columna"
+                    accessibilityState={{ selected: desktopColumns === 1 }}
+                    onPress={() => setDesktopColumns(1)}
+                    style={[
+                      styles.desktopColumnSelectorButton,
+                      desktopColumns === 1 && styles.desktopColumnSelectorButtonActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.desktopColumnSelectorText,
+                        desktopColumns === 1 && styles.desktopColumnSelectorTextActive,
+                      ]}
+                    >
+                      1 col
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Mostrar dos columnas"
+                    accessibilityState={{ selected: desktopColumns === 2 }}
+                    onPress={() => setDesktopColumns(2)}
+                    style={[
+                      styles.desktopColumnSelectorButton,
+                      desktopColumns === 2 && styles.desktopColumnSelectorButtonActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.desktopColumnSelectorText,
+                        desktopColumns === 2 && styles.desktopColumnSelectorTextActive,
+                      ]}
+                    >
+                      2 col
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
               <IconButton
                 name={expanded ? "remove-outline" : "expand-outline"}
                 label={tr(
@@ -779,72 +596,56 @@ const active = index === session.index;
                 onPress={stop}
               />
             </View>
+            {!expanded ? (
+              <View pointerEvents="none" style={styles.playerEngineHidden}>
+                <YouTubeSurface key={session.requestId} {...playerSurfaceProps} />
+              </View>
+            ) : null}
             <View
               style={[
-                styles.playerContent,
-                splitWideLayout && styles.playerContentSplit,
+                styles.body,
+                expanded && styles.expandedBody,
+                desktop && styles.desktopBody,
+                oneColumnDesktop && styles.desktopBodyOneColumn,
+                twoColumnDesktop && styles.desktopBodyTwoColumns,
               ]}
             >
-              {splitWideLayout ? (
-                <View style={styles.splitVideoPane}>
-                  {renderPlayerSurface([
-                    styles.playerEnginePreview,
-                    styles.playerEnginePreviewSplit,
-                    { width: splitVideoWidth, maxWidth: splitVideoWidth },
-                  ])}
-                </View>
-              ) : expanded && visiblePlayerStyle === "classic"
-                ? renderPlayerSurface([
-                    styles.playerEnginePreview,
-                    tabletPlayer && styles.playerEnginePreviewTablet,
-                    widePlayer && { width: classicVideoWidth, maxWidth: classicVideoWidth },
-                  ])
-                : !expanded
-                  ? renderPlayerSurface(styles.playerEngineHidden, false)
-                  : null}
-              <View
-                style={[
-                  styles.body,
-                  expanded && styles.expandedBody,
-                  widePlayer && styles.desktopBody,
-                  splitWideLayout && styles.splitTrackBody,
-                ]}
-              >
               {expanded ? (
+                <>
+                  {desktop ? (
+                    <View
+                      style={[
+                        styles.desktopVideoPane,
+                        oneColumnDesktop && styles.desktopVideoPaneOneColumn,
+                        twoColumnDesktop && styles.desktopVideoPaneTwoColumns,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.desktopVideoFrame,
+                          oneColumnDesktop && { width: oneColumnVideoWidth },
+                        ]}
+                      >
+                        <YouTubeSurface
+                          key={`desktop:${session.requestId}`}
+                          {...playerSurfaceProps}
+                        />
+                      </View>
+                    </View>
+                  ) : null}
                 <ScrollView
                   style={[
                     styles.trackPane,
-                    widePlayer && styles.desktopTrackPane,
-                    splitWideLayout && styles.splitTrackPane,
-                    widePlayer &&
-                      (visiblePlayerStyle === "integrated"
-                        ? styles.desktopTrackPaneIntegrated
-                        : styles.desktopTrackPaneClassic),
-                    widePlayer &&
-                      !splitWideLayout &&
-                      visiblePlayerStyle === "classic" && {
-                        width: classicVideoWidth,
-                        maxWidth: classicVideoWidth,
-                        alignSelf: "center",
-                      },
+                    desktop && styles.desktopTrackPane,
+                    oneColumnDesktop && styles.desktopTrackPaneOneColumn,
+                    oneColumnDesktop && { width: oneColumnVideoWidth, maxWidth: oneColumnVideoWidth },
+                    twoColumnDesktop && styles.desktopTrackPaneTwoColumns,
                   ]}
                   contentContainerStyle={[
                     styles.trackList,
-                    phonePlayer && styles.phoneTrackList,
-                    widePlayer && styles.desktopTrackList,
-                    tabletPlayer && styles.desktopTrackListTablet,
-                    splitWideLayout && styles.splitTrackList,
-                    tabletPortrait &&
-                      visiblePlayerStyle === "integrated" && {
-                        width: integratedDimensions.card,
-                        maxWidth: integratedDimensions.card,
-                        alignSelf: "center",
-                      },
-                    widePlayer &&
-                      !splitWideLayout &&
-                      visiblePlayerStyle === "classic" && {
-                        maxWidth: classicVideoWidth,
-                      },
+                    desktop && styles.desktopTrackList,
+                    oneColumnDesktop && styles.desktopTrackListOneColumn,
+                    twoColumnDesktop && styles.desktopTrackListTwoColumns,
                   ]}
                   scrollEnabled
                   showsVerticalScrollIndicator={false}
@@ -859,39 +660,40 @@ const active = index === session.index;
                   keyboardDismissMode="on-drag"
                   scrollEventThrottle={16}
                 >
-                  <View style={[styles.queueHeader, tabletPlayer && styles.queueHeaderTablet]}>
-                    <View style={styles.queueHeading}>
-                      <Text style={styles.queueEyebrow}>
-                        {session.isTutorial ? "TUTORIALES" : "PLAY LIST"}
-                      </Text>
-                      <Text style={styles.queueTitle}>{session.title}</Text>
-                    </View>
-                    <Text style={styles.queueCount}>
-                      {session.tracks.length}{" "}
-                      {session.tracks.length === 1 ? "pista" : "pistas"}
-                    </Text>
-                  </View>
-                  {widePlayer ? (
-                    <View style={[styles.videoSizeSelector, tabletPlayer && styles.videoSizeSelectorTablet]}>
-                      <Text style={styles.videoSizeLabel}>TAMAÑO DEL VÍDEO</Text>
-                      {[
-                        ["small", "Pequeño"],
-                        ["medium", "Mediano"],
-                        ["large", "Grande"],
-                      ].map(([size, label]) => (
-                        <Pressable
-                          key={size}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: integratedSize === size }}
-                          onPress={() => setIntegratedSize(size)}
-                          style={[
-                            styles.videoSizeButton,
-                            integratedSize === size && styles.videoSizeButtonActive,
-                          ]}
-                        >
-                          <Text style={styles.videoSizeButtonText}>{label}</Text>
-                        </Pressable>
-                      ))}
+                  {oneColumnDesktop ? (
+                    <View style={styles.videoSizeSelectorRow}>
+                      <Text style={styles.videoSizeSelectorLabel}>TAMAÑO DEL VÍDEO</Text>
+                      <View style={styles.videoSizeSelector}>
+                        {[
+                          ["small", "Pequeño"],
+                          ["medium", "Mediano"],
+                          ["large", "Grande"],
+                        ].map(([value, label]) => {
+                          const active = desktopVideoSize === value;
+                          return (
+                            <Pressable
+                              key={value}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Tamaño de vídeo ${label}`}
+                              accessibilityState={{ selected: active }}
+                              onPress={() => setDesktopVideoSize(value)}
+                              style={[
+                                styles.videoSizeSelectorButton,
+                                active && styles.videoSizeSelectorButtonActive,
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.videoSizeSelectorText,
+                                  active && styles.videoSizeSelectorTextActive,
+                                ]}
+                              >
+                                {label}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
                     </View>
                   ) : null}
                   {status.error ? (
@@ -917,7 +719,7 @@ const active = index === session.index;
                   ) : null}
                   {session.tracks.map((item, index) => {
                     const active = index === session.index;
-                    if (!active || visiblePlayerStyle === "classic" || splitWideLayout) return null;
+                    if (!active) return null;
                     const itemPlaying = active && playing;
                     const remembered = rememberedPlayback.current.get(
                       trackKey(item),
@@ -936,177 +738,57 @@ const active = index === session.index;
                     return (
                       <View
                         key={index}
-                        onLayout={phoneCard ? (event) => {
-                          const measuredWidth = event.nativeEvent.layout.width;
-                          if (measuredWidth > 0 && Math.abs(measuredWidth - phoneCardWidth) > 1) {
-                            setPhoneCardWidth(measuredWidth);
-                          }
-                        } : undefined}
                         style={[
                           styles.track,
-                          widePlayer && styles.embeddedVideoTrack,
+                          styles.legacyCurrentTrack,
                           !wideTransport && styles.trackMobile,
-                          phoneCard && styles.phoneVideoCard,
-                          phoneCard && { height: phoneVideoHeight + phoneControlsHeight },
-                          widePlayer && {
-                            maxWidth: integratedDimensions.card,
-                            height: integratedDimensions.height,
-                          },
                         ]}
                       >
-                        {visiblePlayerStyle === "integrated" ? (
-                          <View
-                            style={[
-                              styles.embeddedVideo,
-                              !widePlayer && styles.embeddedVideoMobile,
-                              phoneCard && styles.phoneCardVideo,
-                              phoneCard && { height: phoneVideoHeight },
-                              widePlayer && {
-                                width: integratedDimensions.video,
-                                height: integratedDimensions.height,
-                              },
-                            ]}
-                          >
-                            {renderPlayerSurface(styles.playerEngineEmbedded)}
-                          </View>
-                        ) : (
-                          <Pressable
-                            onPress={() => select(index)}
-                            accessibilityRole="button"
-                            accessibilityLabel={tr(
-                              itemPlaying
-                                ? `Pausar ${item.title}`
-                                : `Reproducir ${item.title}`,
-                            )}
-                            accessibilityState={{ selected: active }}
-                            style={[
-                              styles.cardArtworkButton,
-                              !wideTransport && styles.cardArtworkButtonMobile,
-                            ]}
-                          >
-                            {imageId ? (
-                              <Image
-                                source={{
-                                  uri: `https://i.ytimg.com/vi/${imageId}/mqdefault.jpg`,
-                                }}
-                                style={[
-                                  styles.cardArtwork,
-                                  !wideTransport && styles.cardArtworkMobile,
-                                ]}
-                                resizeMode="contain"
-                              />
-                            ) : (
-                              <View
-                                style={[
-                                  styles.cardArtwork,
-                                  !wideTransport && styles.cardArtworkMobile,
-                                  styles.fallback,
-                                ]}
-                              >
-                                <Ionicons
-                                  name="albums-outline"
-                                  size={34}
-                                  color="#dc2626"
-                                />
-                              </View>
-                            )}
-                          </Pressable>
-                        )}
-
-                        {phoneCard ? (
-                          <View style={styles.phoneTransport}>
-                            <View style={styles.phoneTimeRow}>
-                              <Text style={styles.phoneTimeText}>{formatTime(elapsed)}</Text>
-                              <Text style={styles.phoneTimeText}>{duration ? formatTime(duration) : "—:—"}</Text>
-                            </View>
-                            <Slider
-                              style={styles.phoneTransportProgress}
-                              minimumValue={0}
-                              maximumValue={Math.max(duration || 0, 1)}
-                              value={Math.min(elapsed || 0, Math.max(duration || 0, 1))}
-                              disabled={!status.ready || !duration}
-                              onSlidingComplete={(value) => player.current?.seek(value)}
-                              minimumTrackTintColor="#ec1970"
-                              maximumTrackTintColor="#dff3ff"
-                              thumbTintColor="transparent"
+                        <Pressable
+                          onPress={() => select(index)}
+                          accessibilityRole="button"
+                          accessibilityLabel={tr(
+                            itemPlaying
+                              ? `Pausar ${item.title}`
+                              : `Reproducir ${item.title}`,
+                          )}
+                          accessibilityState={{ selected: active }}
+                          style={[
+                            styles.cardArtworkButton,
+                            !wideTransport && styles.cardArtworkButtonMobile,
+                          ]}
+                        >
+                          {imageId ? (
+                            <Image
+                              source={{
+                                uri: `https://i.ytimg.com/vi/${imageId}/mqdefault.jpg`,
+                              }}
+                              style={[
+                                styles.cardArtwork,
+                                !wideTransport && styles.cardArtworkMobile,
+                              ]}
                             />
-                            <View style={styles.phoneLyricRow}>
-                              <SyncedLyricLine
-                                track={item}
-                                uri={lyricsUri}
-                                time={elapsed}
-                                compact
-                                fallback="Letra no disponible"
+                          ) : (
+                            <View
+                              style={[
+                                styles.cardArtwork,
+                                !wideTransport && styles.cardArtworkMobile,
+                                styles.fallback,
+                              ]}
+                            >
+                              <Ionicons
+                                name="albums-outline"
+                                size={34}
+                                color="#dc2626"
                               />
                             </View>
-                            <View style={styles.phoneTransportButtons}>
-                              <Pressable
-                                accessibilityRole="button"
-                                accessibilityLabel="Repetir canción"
-                                accessibilityState={{ selected: repeat }}
-                                onPress={() => setRepeat((value) => !value)}
-                                style={styles.phoneTransportButton}
-                              >
-                                <Ionicons name="repeat" size={20} color={repeat ? "#ec1970" : "#9aa0a6"} />
-                              </Pressable>
-                              <Pressable
-                                accessibilityRole="button"
-                                accessibilityLabel="Canción anterior"
-                                onPress={() => selectRelative(-1)}
-                                style={styles.phoneTransportButton}
-                              >
-                                <Ionicons name="play-skip-back" size={22} color="#202124" />
-                              </Pressable>
-                              <Pressable
-                                accessibilityRole="button"
-                                accessibilityLabel={tr(itemPlaying ? `Pausar ${item.title}` : `Reproducir ${item.title}`)}
-                                disabled={!status.ready || Boolean(status.error)}
-                                onPress={() => select(index)}
-                                style={styles.phoneTransportPlay}
-                              >
-                                <Ionicons name={itemPlaying ? "pause" : "play"} size={21} color="#202124" />
-                              </Pressable>
-                              <Pressable
-                                accessibilityRole="button"
-                                accessibilityLabel="Detener canción"
-                                disabled={!status.ready}
-                                onPress={stopCurrentTrack}
-                                style={[styles.phoneTransportButton, !status.ready && styles.trackStopButtonDisabled]}
-                              >
-                                <Ionicons name="stop" size={20} color="#202124" />
-                              </Pressable>
-                              <Pressable
-                                accessibilityRole="button"
-                                accessibilityLabel="Canción siguiente"
-                                onPress={() => selectRelative(1)}
-                                style={styles.phoneTransportButton}
-                              >
-                                <Ionicons name="play-skip-forward" size={22} color="#202124" />
-                              </Pressable>
-                              <Pressable
-                                accessibilityRole="button"
-                                accessibilityLabel="Orden aleatorio"
-                                accessibilityState={{ selected: shuffle }}
-                                onPress={() => setShuffle((value) => !value)}
-                                style={styles.phoneTransportButton}
-                              >
-                                <Ionicons name="shuffle" size={20} color={shuffle ? "#ec1970" : "#9aa0a6"} />
-                              </Pressable>
-                              <Pressable
-                                accessibilityRole="link"
-                                accessibilityLabel={tr(`Abrir ${cardTitle} en YouTube`)}
-                                onPress={() => openTrackExternal(item, active)}
-                                style={styles.phoneTransportButton}
-                              >
-                                <Ionicons name="logo-youtube" size={22} color="#ff0000" />
-                              </Pressable>
-                            </View>
-                          </View>
-                        ) : <View
+                          )}
+                        </Pressable>
+
+                        <View
                           style={[
                             styles.cardRight,
                             !wideTransport && styles.cardRightMobile,
-                            widePlayer && { height: integratedDimensions.height },
                           ]}
                         >
                           <View
@@ -1199,7 +881,7 @@ const active = index === session.index;
                               !wideTransport && styles.cardLowerHalfMobile,
                             ]}
                           >
-                            {!phoneCard && <Pressable
+                            <Pressable
                               accessibilityRole="button"
                               accessibilityLabel="Repetir canción"
                               onPress={() => setRepeat((value) => !value)}
@@ -1213,7 +895,7 @@ const active = index === session.index;
                                 size={22}
                                 color={repeat ? "#ec1970" : "#9aa0a6"}
                               />
-                            </Pressable>}
+                            </Pressable>
                             <View style={styles.playbackButtons}>
                               <Pressable
                                 accessibilityRole="button"
@@ -1256,7 +938,7 @@ const active = index === session.index;
                                   color="#202124"
                                 />
                               </Pressable>
-                              {!phoneCard && <Pressable
+                              <Pressable
                                 accessibilityRole="button"
                                 accessibilityLabel="Detener canción"
                                 disabled={!active || !status.ready}
@@ -1276,7 +958,7 @@ const active = index === session.index;
                                   size={wideTransport ? 24 : 19}
                                   color="#202124"
                                 />
-                              </Pressable>}
+                              </Pressable>
                               <Pressable
                                 accessibilityRole="button"
                                 accessibilityLabel="Canción siguiente"
@@ -1293,7 +975,7 @@ const active = index === session.index;
                                 />
                               </Pressable>
                             </View>
-                            {!phoneCard && <Pressable
+                            <Pressable
                               accessibilityRole="button"
                               accessibilityLabel="Orden aleatorio"
                               onPress={() => setShuffle((value) => !value)}
@@ -1307,8 +989,8 @@ const active = index === session.index;
                                 size={22}
                                 color={shuffle ? "#ec1970" : "#9aa0a6"}
                               />
-                            </Pressable>}
-                            {!phoneCard && <Pressable
+                            </Pressable>
+                            <Pressable
                               accessibilityRole="link"
                               accessibilityLabel={tr(
                                 `Abrir ${cardTitle} en YouTube`,
@@ -1326,52 +1008,110 @@ const active = index === session.index;
                                 size={wideTransport ? 30 : 22}
                                 color="#ff0000"
                               />
-                            </Pressable>}
+                            </Pressable>
                           </View>
-                        </View>}
+                        </View>
                       </View>
                     );
                   })}
                   <View
                     style={[
                       styles.queueSection,
-                      tabletPlayer && styles.queueSectionTablet,
-                      phonePlayer && styles.phoneQueueSection,
-                      tabletPortrait &&
-                        visiblePlayerStyle === "integrated" && {
-                          width: integratedDimensions.card,
-                          maxWidth: integratedDimensions.card,
-                        },
-                      widePlayer &&
-                        !splitWideLayout &&
-                        visiblePlayerStyle === "classic" && { maxWidth: classicVideoWidth },
+                      twoColumnDesktop && styles.queueSectionTwoColumns,
                     ]}
                   >
-                    <View style={[styles.queueSectionHeader, tabletPlayer && styles.queueSectionHeaderTablet]}>
-                      <Text style={styles.queueSectionEyebrow}>LISTA DE PISTAS</Text>
-                      <Text style={styles.queueSectionCount}>
-                        {session.tracks.length} {session.tracks.length === 1 ? "pista" : "pistas"}
-                      </Text>
-                    </View>
-                    {phonePlayer ? <View style={styles.queueRows}>
-                      {session.tracks.map(renderQueueRow)}
-                    </View> : <ScrollView
+                    <ScrollView
                       style={[
                         styles.queueRowsScroll,
-                        {
-                          maxHeight: splitWideLayout
-                            ? Math.max(260, height - insets.top - insets.bottom - 235)
-                            : queueRowsMaxHeight,
-                        },
+                        { maxHeight: queueRowsMaxHeight },
+                        twoColumnDesktop && styles.queueRowsScrollTwoColumns,
+                        oneColumnDesktop && styles.queueRowsScrollOneColumn,
                       ]}
                       contentContainerStyle={styles.queueRows}
                       nestedScrollEnabled
-                      scrollEnabled={session.tracks.length > 1}
+                      scrollEnabled={twoColumnDesktop || session.tracks.length > 5}
                       showsVerticalScrollIndicator={false}
                       keyboardShouldPersistTaps="handled"
                     >
-                      {session.tracks.map(renderQueueRow)}
-                    </ScrollView>}
+                      {session.tracks.map((item, index) => {
+                        const active = index === session.index;
+                        const itemTitle =
+                          item.title ||
+                          `${session.isTutorial ? "Vídeo" : "Elemento"} ${index + 1}`;
+                        const kindLabel = session.isTutorial
+                          ? item.kind === "album"
+                            ? "Serie"
+                            : "Vídeo"
+                          : item.kind === "album"
+                            ? "Álbum"
+                            : "Single";
+                        return (
+                          <View
+                            key={`${trackKey(item)}:${index}`}
+                            style={styles.queueEntry}
+                          >
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={tr(
+                              active
+                                ? `${playing ? "Pausar" : "Reproducir"} ${itemTitle}`
+                                : `Reproducir ${itemTitle}`,
+                            )}
+                            accessibilityState={{ selected: active }}
+                            onPress={() => select(index)}
+                            style={[styles.queueRow, active && styles.queueRowActive]}
+                          >
+                            <View
+                              style={[
+                                styles.queueRowIndex,
+                                active && styles.queueRowIndexActive,
+                              ]}
+                            >
+                              {active ? (
+                                <Ionicons
+                                  name={playing ? "pause" : "musical-note"}
+                                  size={15}
+                                  color="#ec1970"
+                                />
+                              ) : (
+                                <Text style={styles.queueRowIndexText}>{index + 1}</Text>
+                              )}
+                            </View>
+                            <View style={styles.queueRowText}>
+                              <Text style={styles.queueRowTitle} numberOfLines={1}>
+                                {itemTitle}
+                              </Text>
+                              <Text style={styles.queueRowMeta}>
+                                {active
+                                  ? playing
+                                    ? "Reproduciendo"
+                                    : "Seleccionada"
+                                  : kindLabel}
+                              </Text>
+                            </View>
+                            <Ionicons
+                              name={active && playing ? "pause-circle" : "play-circle-outline"}
+                              size={24}
+                              color={active ? "#ec1970" : "#9ca3af"}
+                            />
+                          </Pressable>
+                          {active && !desktop ? (
+                            <View style={styles.queuePreview}>
+                              <View pointerEvents="auto" style={styles.queuePreviewFrame}>
+                                <YouTubeSurface
+                                  key={session.requestId}
+                                  {...playerSurfaceProps}
+                                />
+                              </View>
+                              <Text style={styles.queuePreviewHint}>
+                                Vista previa de la pista seleccionada
+                              </Text>
+                            </View>
+                          ) : null}
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
                   </View>
                   {track.kind === "album" && ids.length > 0 ? (
                     <View style={styles.albumVideos}>
@@ -1406,8 +1146,8 @@ const active = index === session.index;
                     </View>
                   ) : null}
                 </ScrollView>
+                </>
               ) : null}
-              </View>
             </View>
           </View>
         ) : null}
@@ -1442,20 +1182,43 @@ const styles = StyleSheet.create({
     backgroundColor: "#111113",
   },
   heading: { flex: 1, minWidth: 0, paddingLeft: 16 },
+  headerPlaylistTitle: {
+    minHeight: 42,
+    justifyContent: "center",
+  },
+  headerPlaylistEyebrow: {
+    marginBottom: 1,
+    fontSize: 8,
+    lineHeight: 10,
+    letterSpacing: 1.15,
+    fontWeight: "900",
+    color: "#ef4444",
+  },
   title: { fontSize: 14, fontWeight: "800", color: "#f9fafb" },
-  styleSelector: {
+  desktopColumnSelector: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
-    marginRight: 4,
-    padding: 3,
+    marginRight: 8,
     borderWidth: 1,
     borderColor: "#3f3f46",
-    backgroundColor: "#18181b",
+    backgroundColor: "#111113",
   },
-  styleSelectorButton: { minHeight: 28, paddingHorizontal: 8, justifyContent: "center" },
-  styleSelectorButtonActive: { backgroundColor: "#ec1970" },
-  styleSelectorText: { fontSize: 10, fontWeight: "800", color: "#f9fafb" },
+  desktopColumnSelectorButton: {
+    minWidth: 58,
+    height: 34,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  desktopColumnSelectorButtonActive: {
+    backgroundColor: "#ec1970",
+  },
+  desktopColumnSelectorText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#d4d4d8",
+  },
+  desktopColumnSelectorTextActive: { color: "#fff" },
   iconButton: {
     width: 40,
     height: 44,
@@ -1463,54 +1226,64 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   disabled: { opacity: 0.35 },
-  playerContent: { flex: 1, minHeight: 0 },
-  playerContentSplit: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    width: "100%",
-    minHeight: 0,
-  },
-  splitVideoPane: {
-    width: "50%",
-    minWidth: 0,
-    alignItems: "center",
-    justifyContent: "flex-start",
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    borderRightWidth: 1,
-    borderRightColor: "#29292d",
-    backgroundColor: "#0b0b0c",
-  },
   body: { minHeight: 0, flexShrink: 1 },
   expandedBody: { flex: 1, backgroundColor: "#0b0b0c" },
   desktopBody: {
     width: "100%",
     maxWidth: 1320,
     alignSelf: "center",
-    alignItems: "center",
     paddingHorizontal: 24,
+    gap: 20,
   },
-  splitTrackBody: {
-    width: "50%",
-    maxWidth: "50%",
-    flex: 1,
-    alignSelf: "stretch",
+  desktopBodyOneColumn: {
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  desktopBodyTwoColumns: {
+    flexDirection: "row",
     alignItems: "stretch",
-    paddingHorizontal: 16,
+  },
+  desktopVideoPane: {
+    minWidth: 0,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingTop: 18,
+  },
+  desktopVideoPaneOneColumn: {
+    width: "100%",
+    maxWidth: 900,
+    flexShrink: 0,
+    paddingTop: 14,
+  },
+  desktopVideoPaneTwoColumns: {
+    flex: 1,
+    width: "56%",
+    maxWidth: "56%",
+  },
+  desktopVideoFrame: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    overflow: "hidden",
+    backgroundColor: "#000",
+    borderWidth: 1,
+    borderColor: "#29292d",
+    borderRadius: 8,
   },
   desktopTrackPane: {
-    width: "100%",
     minWidth: 0,
-    alignSelf: "center",
-  },
-  splitTrackPane: {
-    flex: 1,
-    width: "100%",
-    maxWidth: "100%",
     alignSelf: "stretch",
   },
-  desktopTrackPaneClassic: { maxWidth: 900 },
-  desktopTrackPaneIntegrated: { maxWidth: 900 },
+  desktopTrackPaneOneColumn: {
+    flex: 1,
+    alignSelf: "center",
+    marginTop: 2,
+  },
+  desktopTrackPaneTwoColumns: {
+    flex: 1,
+    width: "44%",
+    maxWidth: "44%",
+    minWidth: 400,
+  },
   desktopLyricsPanel: {
     flex: 0.92,
     minWidth: 340,
@@ -1585,29 +1358,6 @@ const styles = StyleSheet.create({
     color: "#71717a",
     textAlign: "center",
   },
-  playerEngine: {
-    overflow: "hidden",
-    backgroundColor: "#000",
-  },
-  playerEnginePreview: {
-    width: "100%",
-    maxWidth: 860,
-    alignSelf: "center",
-    aspectRatio: 16 / 9,
-    marginTop: 14,
-    marginBottom: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#29292d",
-  },
-  playerEnginePreviewTablet: {
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  playerEnginePreviewSplit: {
-    marginTop: 0,
-    marginBottom: 0,
-  },
   playerEngineHidden: {
     position: "absolute",
     width: 1,
@@ -1616,7 +1366,6 @@ const styles = StyleSheet.create({
     top: 52,
     opacity: 0.001,
   },
-  playerEngineEmbedded: { width: "100%", height: "100%" },
   media: { flexGrow: 0, flexShrink: 1, width: "100%", minWidth: 0 },
   mediaContent: { alignItems: "center", paddingBottom: 14 },
   desktopMedia: {
@@ -1680,25 +1429,19 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
     ...Platform.select({ web: { touchAction: "pan-y" } }),
   },
-  phoneTrackList: { flexGrow: 1, paddingHorizontal: 10, paddingBottom: 12 },
-  phoneQueueSection: { flexGrow: 1, marginTop: 6 },
   desktopTrackList: {
     width: "100%",
-    maxWidth: 900,
     alignSelf: "center",
     paddingHorizontal: 0,
     paddingTop: 18,
     gap: 10,
   },
-  desktopTrackListTablet: {
-    paddingTop: 10,
-    gap: 8,
-  },
-  splitTrackList: {
+  desktopTrackListOneColumn: { maxWidth: 900 },
+  desktopTrackListTwoColumns: {
     maxWidth: "100%",
-    paddingTop: 12,
-    paddingBottom: 16,
-    gap: 8,
+    flexGrow: 1,
+    paddingTop: 10,
+    paddingBottom: 10,
   },
   queueHeader: {
     width: "100%",
@@ -1709,31 +1452,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3,
     paddingBottom: 8,
   },
-  queueHeaderTablet: {
-    minHeight: 56,
-    paddingBottom: 4,
-  },
-  videoSizeSelector: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 8,
-    paddingBottom: 12,
-  },
-  videoSizeSelectorTablet: {
-    paddingBottom: 6,
-    gap: 6,
-  },
-  videoSizeLabel: { color: "#9ca3af", fontSize: 10, fontWeight: "800", marginRight: 4 },
-  videoSizeButton: {
-    borderWidth: 1,
-    borderColor: "#52525b",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  videoSizeButtonActive: { borderColor: "#ec1970", backgroundColor: "#ec1970" },
-  videoSizeButtonText: { color: "#fff", fontSize: 11, fontWeight: "800" },
   queueHeading: { flex: 1, minWidth: 0 },
   queueEyebrow: {
     fontSize: 9,
@@ -1748,18 +1466,59 @@ const styles = StyleSheet.create({
     color: "#f9fafb",
   },
   queueCount: { fontSize: 11, color: "#9ca3af" },
+  videoSizeSelectorRow: {
+    width: "100%",
+    minHeight: 54,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 12,
+    paddingHorizontal: 2,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#29292d",
+  },
+  videoSizeSelectorLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#9ca3af",
+  },
+  videoSizeSelector: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  videoSizeSelectorButton: {
+    minWidth: 88,
+    height: 36,
+    paddingHorizontal: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#52525b",
+    backgroundColor: "#111113",
+  },
+  videoSizeSelectorButtonActive: {
+    borderColor: "#ec1970",
+    backgroundColor: "#ec1970",
+  },
+  videoSizeSelectorText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#f4f4f5",
+  },
+  videoSizeSelectorTextActive: { color: "#fff" },
   queueSection: {
     width: "100%",
     maxWidth: 900,
     alignSelf: "center",
-    marginTop: 10,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: "#29292d",
+    marginTop: 0,
+    paddingTop: 0,
   },
-  queueSectionTablet: {
-    marginTop: 6,
-    paddingTop: 10,
+  queueSectionTwoColumns: {
+    flex: 1,
+    maxWidth: "100%",
+    minHeight: 0,
   },
   queueSectionHeader: {
     flexDirection: "row",
@@ -1767,9 +1526,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 2,
     paddingBottom: 8,
-  },
-  queueSectionHeaderTablet: {
-    paddingBottom: 6,
   },
   queueSectionEyebrow: {
     fontSize: 9,
@@ -1787,15 +1543,30 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  queueRows: { gap: 6, paddingBottom: 12 },
+  queueRowsScrollOneColumn: {
+    width: "100%",
+  },
+  queueRowsScrollTwoColumns: {
+    width: "100%",
+    minHeight: 260,
+    flex: 1,
+    flexGrow: 1,
+    ...Platform.select({
+      web: {
+        overflowY: "auto",
+      },
+    }),
+  },
+  queueRows: { gap: 6 },
+  queueEntry: { width: "100%" },
   queueRow: {
-    minHeight: 48,
+    minHeight: 64,
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 6,
     borderWidth: 1,
     borderColor: "#29292d",
     backgroundColor: "#151518",
@@ -1804,6 +1575,26 @@ const styles = StyleSheet.create({
   queueRowActive: {
     borderColor: "#ec1970",
     backgroundColor: "#24131d",
+  },
+  queuePreview: {
+    marginTop: 6,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "#ec1970",
+    backgroundColor: "#110d10",
+  },
+  queuePreviewFrame: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    overflow: "hidden",
+    borderRadius: 5,
+    backgroundColor: "#000",
+  },
+  queuePreviewHint: {
+    marginTop: 7,
+    fontSize: 10,
+    color: "#9ca3af",
+    textAlign: "center",
   },
   queueRowIndex: {
     width: 22,
@@ -1864,57 +1655,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     ...Platform.select({ web: { touchAction: "pan-y" } }),
   },
-  embeddedVideoTrack: { maxWidth: 720, aspectRatio: undefined },
-  embeddedVideo: {
-    width: 249,
-    height: "100%",
-    flexShrink: 0,
-    overflow: "hidden",
-    backgroundColor: "#000",
-  },
-  embeddedVideoMobile: {
-    width: 120,
-    height: 68,
-    alignSelf: "center",
-    marginHorizontal: 10,
-  },
-  phoneVideoCard: {
-    flexDirection: "column",
-  },
-  phoneCardVideo: {
-    width: "100%",
-    marginHorizontal: 0,
-  },
-  phoneTransport: { width: "100%", height: 140, backgroundColor: "#fff" },
-  phoneTimeRow: {
-    height: 30,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  phoneTimeText: { color: "#65696e", fontSize: 13, fontVariant: ["tabular-nums"] },
-  phoneTransportProgress: { width: "100%", height: 8 },
-  phoneLyricRow: { height: 38, paddingHorizontal: 14, justifyContent: "center" },
-  phoneLyricEmpty: { color: "#85898f", fontSize: 12 },
-  phoneTransportButtons: {
-    height: 64,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 2,
-    paddingHorizontal: 6,
-  },
-  phoneTransportButton: { width: 38, height: 48, alignItems: "center", justifyContent: "center" },
-  phoneTransportPlay: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    borderWidth: 2,
-    borderColor: "#202124",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  legacyCurrentTrack: { display: "none" },
   cardArtworkButton: { height: "100%", aspectRatio: 1, flexShrink: 0 },
   cardArtwork: { width: "100%", height: "100%", backgroundColor: "#27272a" },
   cardRight: { flex: 1, minWidth: 0, height: "100%", backgroundColor: "#fff" },
