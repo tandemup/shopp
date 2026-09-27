@@ -13,10 +13,13 @@ import { useMutation, useQuery } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
+import { libraryJsonApi } from "@/src/services/libraryJsonApi";
 
 const RTC_CONFIG = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
+
+const P2P_CHUNK_SIZE = 48 * 1024;
 
 const TEST_PLAYLIST = {
   version: 1,
@@ -52,6 +55,17 @@ function safeJson(value) {
   }
 }
 
+function getOrCreateDeviceId() {
+  if (Platform.OS !== "web" || typeof window === "undefined") return "native-device";
+  const key = "shopp-p2p-device-id";
+  let value = window.localStorage.getItem(key);
+  if (!value) {
+    value = globalThis.crypto?.randomUUID?.() || `device_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    window.localStorage.setItem(key, value);
+  }
+  return value;
+}
+
 function downloadJson(payload) {
   const text = JSON.stringify(payload, null, 2);
   if (Platform.OS !== "web" || typeof document === "undefined") {
@@ -75,15 +89,17 @@ function Status({ tone = "neutral", children }) {
 
 export default function P2PPlaylistExchangeScreen() {
   const [alias, setAlias] = useState("");
+  const [deviceId] = useState(() => getOrCreateDeviceId());
   const [busy, setBusy] = useState(false);
   const [connection, setConnection] = useState("idle");
   const [receivedPlaylist, setReceivedPlaylist] = useState(null);
+  const [librarySync, setLibrarySync] = useState(null);
 
   const currentUser = useQuery(api.users.current);
   const hasP2PAccess =
     currentUser?.isAdmin === true ||
     currentUser?.permissions?.p2pPlaylistExchange === true;
-  const p2pQueryArgs = hasP2PAccess ? {} : "skip";
+  const p2pQueryArgs = hasP2PAccess && deviceId ? { deviceId } : "skip";
 
   // No se consulta presencia hasta que Convex haya confirmado una sesión y
   // el permiso. Así una cookie antigua no deja la PWA en blanco.
@@ -96,7 +112,7 @@ export default function P2PPlaylistExchangeScreen() {
   );
   const signals = useQuery(
     api.nearbyShare.listSignals,
-    activePairing ? { pairingId: activePairing._id } : "skip",
+    activePairing ? { pairingId: activePairing._id, deviceId } : "skip",
   );
 
   const enablePresence = useMutation(api.nearbyShare.enablePresence);
@@ -111,6 +127,7 @@ export default function P2PPlaylistExchangeScreen() {
   const appliedSignalsRef = useRef(new Set());
   const queuedIceCandidatesRef = useRef([]);
   const offerStartedForRef = useRef(null);
+  const incomingLibrarySyncRef = useRef(new Map());
 
   const closePeer = useCallback(() => {
     dataChannelRef.current?.close?.();
@@ -123,14 +140,97 @@ export default function P2PPlaylistExchangeScreen() {
     setConnection("idle");
   }, []);
 
+  const sendLibrarySnapshot = useCallback(async (phase = "offer", syncId = randomCode()) => {
+    const channel = dataChannelRef.current;
+    if (!channel || channel.readyState !== "open") {
+      throw new Error("La conexión P2P todavía no está lista.");
+    }
+    const snapshot = await libraryJsonApi.getSyncSnapshot();
+    const payload = JSON.stringify(snapshot);
+    const totalChunks = Math.max(1, Math.ceil(payload.length / P2P_CHUNK_SIZE));
+    channel.send(safeJson({
+      type: "LIBRARY_SYNC_START",
+      syncId,
+      phase,
+      totalChunks,
+      linkCount: snapshot.links.length,
+      folderCount: snapshot.folders.length,
+    }));
+    for (let index = 0; index < totalChunks; index += 1) {
+      const chunk = payload.slice(index * P2P_CHUNK_SIZE, (index + 1) * P2P_CHUNK_SIZE);
+      channel.send(safeJson({ type: "LIBRARY_SYNC_CHUNK", syncId, phase, index, chunk }));
+      // Deja respirar al DataChannel y evita llenar su buffer con bibliotecas grandes.
+      if (index % 8 === 7) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    channel.send(safeJson({ type: "LIBRARY_SYNC_END", syncId, phase }));
+    setLibrarySync((current) => ({
+      ...(current || {}),
+      syncId,
+      state: phase === "offer" ? "sent" : "reply-sent",
+      sentLinks: snapshot.links.length,
+      sentChunks: totalChunks,
+    }));
+    return syncId;
+  }, []);
+
+  const handleLibraryMessage = useCallback(async (message) => {
+    const key = `${message.syncId}:${message.phase}`;
+    if (message.type === "LIBRARY_SYNC_START") {
+      incomingLibrarySyncRef.current.set(key, {
+        totalChunks: Number(message.totalChunks) || 0,
+        chunks: [],
+        linkCount: Number(message.linkCount) || 0,
+      });
+      setLibrarySync({
+        syncId: message.syncId,
+        state: "receiving",
+        receivingLinks: Number(message.linkCount) || 0,
+        receivedChunks: 0,
+        totalChunks: Number(message.totalChunks) || 0,
+      });
+      return true;
+    }
+    if (message.type === "LIBRARY_SYNC_CHUNK") {
+      const transfer = incomingLibrarySyncRef.current.get(key);
+      if (!transfer) return true;
+      transfer.chunks[Number(message.index)] = message.chunk || "";
+      const receivedChunks = transfer.chunks.filter((chunk) => typeof chunk === "string").length;
+      setLibrarySync((current) => ({ ...(current || {}), state: "receiving", receivedChunks, totalChunks: transfer.totalChunks }));
+      return true;
+    }
+    if (message.type === "LIBRARY_SYNC_END") {
+      const transfer = incomingLibrarySyncRef.current.get(key);
+      if (!transfer) return true;
+      incomingLibrarySyncRef.current.delete(key);
+      if (transfer.chunks.filter((chunk) => typeof chunk === "string").length !== transfer.totalChunks) {
+        throw new Error("La Biblioteca P2P llegó incompleta. Vuelve a sincronizar.");
+      }
+      const snapshot = JSON.parse(transfer.chunks.join(""));
+      setLibrarySync((current) => ({ ...(current || {}), state: "merging" }));
+      const result = await libraryJsonApi.applySyncSnapshot(snapshot);
+      setLibrarySync((current) => ({ ...(current || {}), state: "merged", result }));
+      if (message.phase === "offer") {
+        await sendLibrarySnapshot("reply", message.syncId);
+      } else {
+        safeAlert(
+          "Biblioteca sincronizada",
+          `Sincronización completada. ${result.linksCreated} nuevos, ${result.linksUpdated} actualizados y ${result.archivedApplied} archivados aplicados.`,
+        );
+      }
+      return true;
+    }
+    return false;
+  }, [sendLibrarySnapshot]);
+
   const bindDataChannel = useCallback((channel) => {
     dataChannelRef.current = channel;
     channel.onopen = () => setConnection("connected");
     channel.onclose = () => setConnection("closed");
     channel.onerror = () => setConnection("failed");
-    channel.onmessage = (event) => {
+    channel.onmessage = async (event) => {
       try {
         const message = JSON.parse(event.data);
+        if (await handleLibraryMessage(message)) return;
         if (message?.type === "PLAYLIST" && message.playlist?.tracks) {
           setReceivedPlaylist(message.playlist);
           safeAlert(
@@ -138,11 +238,12 @@ export default function P2PPlaylistExchangeScreen() {
             `Han llegado ${message.playlist.tracks.length} enlaces por P2P.`,
           );
         }
-      } catch {
-        // La prueba ignora mensajes que no correspondan a una playlist JSON.
+      } catch (error) {
+        setLibrarySync((current) => ({ ...(current || {}), state: "failed", error: error?.message }));
+        safeAlert("Sincronización P2P", error?.message || "No se pudo procesar el mensaje recibido.");
       }
     };
-  }, []);
+  }, [handleLibraryMessage]);
 
   const createPeer = useCallback((pairing, initiator) => {
     if (peerRef.current) return peerRef.current;
@@ -158,6 +259,7 @@ export default function P2PPlaylistExchangeScreen() {
       if (!candidate) return;
       sendSignal({
         pairingId: pairing._id,
+        deviceId,
         type: "ice",
         payload: JSON.stringify(candidate.toJSON()),
       }).catch(() => {});
@@ -165,7 +267,7 @@ export default function P2PPlaylistExchangeScreen() {
     peer.ondatachannel = (event) => bindDataChannel(event.channel);
     if (initiator) bindDataChannel(peer.createDataChannel("shopp-playlist-p2p"));
     return peer;
-  }, [bindDataChannel, sendSignal]);
+  }, [bindDataChannel, deviceId, sendSignal]);
 
   const startConnection = useCallback(async () => {
     if (!activePairing || !activePairing.isInitiator) return;
@@ -178,6 +280,7 @@ export default function P2PPlaylistExchangeScreen() {
       await peer.setLocalDescription(offer);
       await sendSignal({
         pairingId: activePairing._id,
+        deviceId,
         type: "offer",
         payload: JSON.stringify(peer.localDescription),
       });
@@ -185,7 +288,7 @@ export default function P2PPlaylistExchangeScreen() {
       setConnection("failed");
       safeAlert("Conexión P2P", error?.message || "No se pudo iniciar la conexión.");
     }
-  }, [activePairing, createPeer, sendSignal]);
+  }, [activePairing, createPeer, deviceId, sendSignal]);
 
   useEffect(() => {
     if (!activePairing || !signals) return;
@@ -212,6 +315,7 @@ export default function P2PPlaylistExchangeScreen() {
             await receiver.setLocalDescription(answer);
             await sendSignal({
               pairingId: activePairing._id,
+              deviceId,
               type: "answer",
               payload: JSON.stringify(receiver.localDescription),
             });
@@ -240,7 +344,7 @@ export default function P2PPlaylistExchangeScreen() {
     };
     processSignals();
     return () => { disposed = true; };
-  }, [activePairing, createPeer, sendSignal, signals]);
+  }, [activePairing, createPeer, deviceId, sendSignal, signals]);
 
   useEffect(() => {
     if (!activePairing) closePeer();
@@ -253,9 +357,9 @@ export default function P2PPlaylistExchangeScreen() {
     setBusy(true);
     try {
       if (myPresence) {
-        await disablePresence({});
+        await disablePresence({ deviceId });
       } else {
-        await enablePresence({ displayName: alias.trim() || "Amigo de Shopp" });
+        await enablePresence({ displayName: alias.trim() || "Mi dispositivo", deviceId });
       }
     } catch (error) {
       safeAlert("Intercambio P2P", error?.message || "No se pudo actualizar la visibilidad.");
@@ -267,7 +371,7 @@ export default function P2PPlaylistExchangeScreen() {
   const invite = async (peer) => {
     setBusy(true);
     try {
-      await requestPairing({ recipientId: peer.userId, confirmCode: randomCode() });
+      await requestPairing({ recipientPresenceId: peer.presenceId, confirmCode: randomCode(), deviceId });
     } catch (error) {
       safeAlert("Intercambio P2P", error?.message || "No se pudo enviar la solicitud.");
     } finally {
@@ -278,7 +382,7 @@ export default function P2PPlaylistExchangeScreen() {
   const respond = async (pairing, accept) => {
     setBusy(true);
     try {
-      await respondToPairing({ pairingId: pairing._id, accept });
+      await respondToPairing({ pairingId: pairing._id, accept, deviceId });
     } catch (error) {
       safeAlert("Intercambio P2P", error?.message || "No se pudo responder.");
     } finally {
@@ -295,11 +399,24 @@ export default function P2PPlaylistExchangeScreen() {
     channel.send(safeJson({ type: "PLAYLIST", playlist: TEST_PLAYLIST }));
   };
 
+  const syncLibrary = async () => {
+    setBusy(true);
+    try {
+      setLibrarySync({ state: "preparing" });
+      await sendLibrarySnapshot("offer");
+    } catch (error) {
+      setLibrarySync({ state: "failed", error: error?.message });
+      safeAlert("Sincronización P2P", error?.message || "No se pudo iniciar la sincronización.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const finish = async () => {
     closePeer();
     if (!activePairing) return;
     try {
-      await closePairing({ pairingId: activePairing._id });
+      await closePairing({ pairingId: activePairing._id, deviceId });
     } catch {
       // El vencimiento automático también elimina la sesión de prueba.
     }
@@ -325,24 +442,24 @@ export default function P2PPlaylistExchangeScreen() {
       <View style={styles.hero}><Ionicons name="people-outline" size={29} color="#2563eb" /><View><Text style={styles.title}>Intercambio P2P · prueba</Text><Text style={styles.subtitle}>Solo se coordinan el alias y la conexión. Los enlaces viajan directamente entre los dos dispositivos.</Text></View></View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>1. Hazte visible durante dos minutos</Text>
-        <TextInput value={alias} onChangeText={setAlias} editable={!myPresence && !busy} maxLength={30} placeholder="Tu alias, por ejemplo Joshnash" placeholderTextColor="#94a3b8" style={styles.input} />
+        <Text style={styles.cardTitle}>1. Haz visible este dispositivo durante dos minutos</Text>
+        <TextInput value={alias} onChangeText={setAlias} editable={!myPresence && !busy} maxLength={30} placeholder="Nombre del dispositivo, por ejemplo iPad" placeholderTextColor="#94a3b8" style={styles.input} />
         <Pressable disabled={busy} onPress={togglePresence} style={[styles.primaryButton, myPresence && styles.stopButton]}><Ionicons name={myPresence ? "eye-off-outline" : "radio-outline"} size={18} color="#fff" /><Text style={styles.primaryButtonText}>{myPresence ? "Dejar de aparecer" : "Activar intercambio cerca"}</Text></Pressable>
         {myPresence ? <Status tone="success">Visible como {myPresence.displayName}. Caduca automáticamente.</Status> : <Status>Tu alias solo se muestra mientras dura esta prueba.</Status>}
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>2. Amigos disponibles</Text>
-        {peers === undefined ? <ActivityIndicator color="#2563eb" /> : peers.length === 0 ? <Text style={styles.muted}>Aún no hay otro Shopp visible. Activa esta pantalla también en el otro dispositivo.</Text> : peers.map((peer) => <View key={peer.userId} style={styles.personRow}><View style={styles.personIcon}><Ionicons name="person-outline" size={20} color="#2563eb" /></View><Text style={styles.personName}>{peer.displayName}</Text><Pressable disabled={busy || !!activePairing} onPress={() => invite(peer)} style={styles.smallButton}><Text style={styles.smallButtonText}>Invitar</Text></Pressable></View>)}
+        <Text style={styles.cardTitle}>2. Dispositivos disponibles</Text>
+        {peers === undefined ? <ActivityIndicator color="#2563eb" /> : peers.length === 0 ? <Text style={styles.muted}>Aún no hay otro dispositivo Shopp visible. Activa esta pantalla también en el otro dispositivo con la misma cuenta.</Text> : peers.map((peer) => <View key={peer.presenceId} style={styles.personRow}><View style={styles.personIcon}><Ionicons name="person-outline" size={20} color="#2563eb" /></View><Text style={styles.personName}>{peer.displayName}{peer.sameUser ? " · tu cuenta" : ""}</Text><Pressable disabled={busy || !!activePairing} onPress={() => invite(peer)} style={styles.smallButton}><Text style={styles.smallButtonText}>Invitar</Text></Pressable></View>)}
       </View>
 
       {pendingIncoming.map((pairing) => <View key={pairing._id} style={styles.card}><Text style={styles.cardTitle}>{pairing.initiatorName} quiere intercambiar una playlist</Text><Text style={styles.muted}>Confirmad ambos este código: <Text style={styles.code}>{pairing.confirmCode}</Text></Text><View style={styles.actions}><Pressable disabled={busy} onPress={() => respond(pairing, false)} style={styles.rejectButton}><Text style={styles.rejectText}>Rechazar</Text></Pressable><Pressable disabled={busy} onPress={() => respond(pairing, true)} style={styles.acceptButton}><Text style={styles.acceptText}>Aceptar</Text></Pressable></View></View>)}
       {pendingOutgoing.map((pairing) => <View key={pairing._id} style={styles.card}><Text style={styles.cardTitle}>Esperando a {pairing.recipientName}</Text><Text style={styles.muted}>El código que ambos deben comprobar es <Text style={styles.code}>{pairing.confirmCode}</Text>.</Text></View>)}
 
-      {activePairing ? <View style={styles.card}><Text style={styles.cardTitle}>3. Conexión con {activePairing.friendName}</Text><Text style={styles.muted}>Código confirmado: <Text style={styles.code}>{activePairing.confirmCode}</Text></Text><Status tone={connection === "connected" ? "success" : connection === "failed" ? "danger" : "neutral"}>{connection === "connected" ? "Canal P2P conectado" : connection === "failed" ? "No se pudo conectar" : activePairing.isInitiator ? "Listo para iniciar la conexión" : "Esperando la conexión del otro dispositivo"}</Status>{activePairing.isInitiator && connection !== "connected" ? <Pressable onPress={startConnection} style={styles.primaryButton}><Ionicons name="link-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Conectar ahora</Text></Pressable> : null}{connection === "connected" ? <Pressable onPress={sendTestPlaylist} style={styles.primaryButton}><Ionicons name="send-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Enviar playlist de prueba</Text></Pressable> : null}<Pressable onPress={finish} style={styles.finishButton}><Text style={styles.finishText}>Finalizar y borrar sesión</Text></Pressable></View> : null}
+      {activePairing ? <View style={styles.card}><Text style={styles.cardTitle}>3. Conexión con {activePairing.friendName}</Text><Text style={styles.muted}>Código confirmado: <Text style={styles.code}>{activePairing.confirmCode}</Text></Text><Status tone={connection === "connected" ? "success" : connection === "failed" ? "danger" : "neutral"}>{connection === "connected" ? "Canal P2P conectado" : connection === "failed" ? "No se pudo conectar" : activePairing.isInitiator ? "Listo para iniciar la conexión" : "Esperando la conexión del otro dispositivo"}</Status>{activePairing.isInitiator && connection !== "connected" ? <Pressable onPress={startConnection} style={styles.primaryButton}><Ionicons name="link-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Conectar ahora</Text></Pressable> : null}{connection === "connected" ? <><Pressable onPress={sendTestPlaylist} style={styles.primaryButton}><Ionicons name="send-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Enviar playlist de prueba</Text></Pressable><Pressable disabled={busy || ["preparing", "receiving", "merging"].includes(librarySync?.state)} onPress={syncLibrary} style={[styles.primaryButton, styles.librarySyncButton]}><Ionicons name="sync-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Sincronizar Biblioteca</Text></Pressable>{librarySync ? <Status tone={librarySync.state === "failed" ? "danger" : librarySync.state === "merged" || librarySync.state === "reply-sent" ? "success" : "neutral"}>{librarySync.state === "preparing" ? "Preparando Biblioteca…" : librarySync.state === "receiving" ? `Recibiendo ${librarySync.receivedChunks || 0}/${librarySync.totalChunks || 0} bloques…` : librarySync.state === "merging" ? "Combinando cambios…" : librarySync.state === "failed" ? `Error: ${librarySync.error || "sincronización fallida"}` : librarySync.state === "sent" ? "Biblioteca enviada; esperando respuesta…" : librarySync.state === "reply-sent" ? "Respuesta de sincronización enviada" : librarySync.state === "merged" ? "Cambios recibidos y combinados" : "Sincronización P2P"}</Status> : null}</> : null}<Pressable onPress={finish} style={styles.finishButton}><Text style={styles.finishText}>Finalizar y borrar sesión</Text></Pressable></View> : null}
 
       {receivedPlaylist ? <View style={styles.card}><Text style={styles.cardTitle}>Playlist recibida por P2P</Text><Text style={styles.muted}>{receivedPlaylist.title} · {receivedPlaylist.tracks.length} enlaces</Text><Pressable onPress={() => downloadJson(receivedPlaylist)} style={styles.primaryButton}><Ionicons name="download-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Descargar JSON recibido</Text></Pressable></View> : null}
-      <Text style={styles.note}>Esta pantalla no reproduce ni guarda la playlist en Shopp. Solo verifica presencia, confirmación y transferencia P2P.</Text>
+      <Text style={styles.note}>La playlist de prueba sigue sin guardarse automáticamente. La opción “Sincronizar Biblioteca” sí combina la Biblioteca local de ambos dispositivos; los enlaces archivados se transfieren como marcas de eliminación.</Text>
     </ScrollView>
   );
 }
@@ -356,7 +473,7 @@ const styles = StyleSheet.create({
   cardTitle: { color: "#172033", fontSize: 16, fontWeight: "800" },
   input: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, minHeight: 46, paddingHorizontal: 12, color: "#172033", fontSize: 16 },
   primaryButton: { minHeight: 44, borderRadius: 10, backgroundColor: "#2563eb", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8, paddingHorizontal: 14 },
-  stopButton: { backgroundColor: "#475569" }, primaryButtonText: { color: "#fff", fontSize: 15, fontWeight: "800" },
+  stopButton: { backgroundColor: "#475569" }, librarySyncButton: { backgroundColor: "#0f766e" }, primaryButtonText: { color: "#fff", fontSize: 15, fontWeight: "800" },
   muted: { color: "#64748b", fontSize: 14, lineHeight: 20 },
   personRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#f1f5f9" },
   personIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#eff6ff", alignItems: "center", justifyContent: "center" }, personName: { flex: 1, color: "#172033", fontSize: 16, fontWeight: "700" },

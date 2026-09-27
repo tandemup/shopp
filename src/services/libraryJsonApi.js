@@ -537,6 +537,129 @@ export const libraryJsonApi = {
   remove({ linkId }) {
     return this.patchLink(linkId, { status: "archived" });
   },
+  async getSyncSnapshot() {
+    const database = await read();
+    const folderById = new Map(
+      database.folders.map((folder) => [String(folder._id), folder]),
+    );
+    return {
+      format: "shopp-library-p2p-sync",
+      version: 1,
+      createdAt: Date.now(),
+      folders: database.folders.map((folder) => ({
+        key: folder.key || folderSegment(folder.name),
+        name: folder.name,
+        parentKey: folder.parentFolderId
+          ? folderById.get(String(folder.parentFolderId))?.key || null
+          : null,
+        icon: folder.icon || null,
+        color: folder.color || null,
+        order: Number(folder.order || 0),
+        createdAt: Number(folder.createdAt) || 0,
+      })),
+      // A diferencia de exportBackup, aquí se incluyen los archivados. Son
+      // tombstones: permiten propagar eliminaciones a los otros dispositivos.
+      links: database.links.map(({ folderId, ...link }) => ({
+        ...link,
+        folderKey: folderId ? folderById.get(String(folderId))?.key : undefined,
+      })),
+    };
+  },
+  applySyncSnapshot(snapshot) {
+    if (snapshot?.format !== "shopp-library-p2p-sync" || !Array.isArray(snapshot?.links)) {
+      throw new Error("La Biblioteca recibida no tiene un formato P2P válido.");
+    }
+    return update((database) => {
+      const folderByKey = new Map(
+        database.folders.map((folder) => [
+          folder.key || folderSegment(folder.name),
+          folder,
+        ]),
+      );
+      const incomingFolderIdByKey = new Map();
+      let foldersCreated = 0;
+      [...(snapshot.folders || [])]
+        .sort((a, b) => String(a.key || "").split("/").length - String(b.key || "").split("/").length)
+        .forEach((folder) => {
+          const key = decodeFolderKey(folder.key || folder.name);
+          if (!key) return;
+          let target = folderByKey.get(key);
+          if (!target) {
+            target = {
+              _id: id("folder"),
+              key,
+              name: repairText(folder.name || key).slice(0, 50),
+              icon: folder.icon || "folder-outline",
+              color: folder.color || "#2563eb",
+              order: Number.isFinite(folder.order) ? folder.order : database.folders.length,
+              createdAt: Number(folder.createdAt) || Date.now(),
+            };
+            if (folder.parentKey) {
+              target.parentFolderId = incomingFolderIdByKey.get(decodeFolderKey(folder.parentKey));
+            }
+            database.folders.push(target);
+            folderByKey.set(key, target);
+            foldersCreated += 1;
+          }
+          incomingFolderIdByKey.set(key, target._id);
+        });
+
+      const linksByUrl = new Map(
+        database.links.map((link) => [link.normalizedUrl, link]),
+      );
+      let linksCreated = 0;
+      let linksUpdated = 0;
+      let ignoredOlder = 0;
+      let archivedApplied = 0;
+
+      for (const raw of snapshot.links) {
+        const normalized = normalizeUrl(raw?.url || raw?.normalizedUrl);
+        if (!normalized) continue;
+        const incomingUpdatedAt = Number(raw.updatedAt || raw.createdAt) || 0;
+        const folderId = raw.folderKey
+          ? incomingFolderIdByKey.get(decodeFolderKey(raw.folderKey)) || folderByKey.get(decodeFolderKey(raw.folderKey))?._id
+          : undefined;
+        const incoming = {
+          ...raw,
+          ...normalized,
+          _id: String(raw._id || id("link")),
+          folderId,
+          status: raw.status === "archived" ? "archived" : raw.status || (folderId ? "reviewed" : "pending"),
+          createdAt: Number(raw.createdAt) || Date.now(),
+          updatedAt: incomingUpdatedAt || Date.now(),
+        };
+        delete incoming.folderKey;
+
+        const existing = linksByUrl.get(normalized.normalizedUrl);
+        if (!existing) {
+          database.links.push(incoming);
+          linksByUrl.set(normalized.normalizedUrl, incoming);
+          linksCreated += 1;
+          if (incoming.status === "archived") archivedApplied += 1;
+          continue;
+        }
+
+        const existingUpdatedAt = Number(existing.updatedAt || existing.createdAt) || 0;
+        if (incomingUpdatedAt > existingUpdatedAt) {
+          const stableId = existing._id;
+          Object.assign(existing, incoming, { _id: stableId });
+          linksUpdated += 1;
+          if (incoming.status === "archived") archivedApplied += 1;
+        } else {
+          ignoredOlder += 1;
+        }
+      }
+
+      return {
+        foldersCreated,
+        linksCreated,
+        linksUpdated,
+        archivedApplied,
+        ignoredOlder,
+        totalLinks: database.links.length,
+      };
+    });
+  },
   async exportBackup() {
     const database = await read();
     const folderById = new Map(

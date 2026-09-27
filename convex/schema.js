@@ -110,17 +110,21 @@ export default defineSchema({
   // encuentro y las señales WebRTC: los enlaces viajan por el DataChannel.
   nearbySharePresence: defineTable({
     userId: v.id("users"),
+    deviceId: v.optional(v.string()),
     displayName: v.string(),
     expiresAt: v.float64(),
     createdAt: v.float64(),
     updatedAt: v.float64(),
   })
     .index("by_user", ["userId"])
+    .index("by_user_device", ["userId", "deviceId"])
     .index("by_expiresAt", ["expiresAt"]),
 
   nearbySharePairings: defineTable({
     initiatorId: v.id("users"),
     recipientId: v.id("users"),
+    initiatorDeviceId: v.optional(v.string()),
+    recipientDeviceId: v.optional(v.string()),
     initiatorName: v.string(),
     recipientName: v.string(),
     confirmCode: v.string(),
@@ -140,6 +144,7 @@ export default defineSchema({
   nearbyShareSignals: defineTable({
     pairingId: v.id("nearbySharePairings"),
     senderId: v.id("users"),
+    senderDeviceId: v.optional(v.string()),
     type: v.union(v.literal("offer"), v.literal("answer"), v.literal("ice")),
     payload: v.string(),
     expiresAt: v.float64(),
