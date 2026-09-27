@@ -6378,12 +6378,14 @@ const styles = StyleSheet.create({
   },
   folderBar: {
     height: 44,
+    flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
     gap: 6,
   },
   folderChip: {
     height: 30,
+    flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -6397,6 +6399,7 @@ const styles = StyleSheet.create({
   folderTextActive: { color: "#fff" },
   newFolderChip: {
     height: 30,
+    flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
