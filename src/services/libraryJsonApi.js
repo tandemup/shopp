@@ -269,7 +269,13 @@ function sanitizeDatabase(value) {
                 : "pending",
           notes: link.notes ? repairText(link.notes) : undefined,
           hashtags: Array.isArray(link.hashtags)
-            ? [...new Set(link.hashtags.map(repairText))].slice(0, 20)
+            ? [
+                ...new Set(
+                  link.hashtags
+                    .map((tag) => repairText(tag).trim().replace(/^#+/, ""))
+                    .filter(Boolean),
+                ),
+              ].slice(0, 20)
             : [],
           publishedAt: Number(link.publishedAt) || undefined,
           createdAt: Number(link.createdAt) || Date.now(),
@@ -498,7 +504,17 @@ export const libraryJsonApi = {
   }) {
     return this.patchLink(linkId, {
       ...(notes !== undefined ? { notes } : {}),
-      ...(hashtags !== undefined ? { hashtags } : {}),
+      ...(hashtags !== undefined
+        ? {
+            hashtags: [
+              ...new Set(
+                (Array.isArray(hashtags) ? hashtags : [])
+                  .map((tag) => String(tag || "").trim().replace(/^#+/, ""))
+                  .filter(Boolean),
+              ),
+            ].slice(0, 20),
+          }
+        : {}),
       ...(customTitle !== undefined ? { customTitle } : {}),
       ...(publishedAt !== undefined ? { publishedAt } : {}),
       ...(previewImageUrl !== undefined ? { previewImageUrl } : {}),

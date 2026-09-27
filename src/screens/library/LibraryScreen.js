@@ -2579,7 +2579,12 @@ export default function LibraryScreen({ navigation, route }) {
     setEditingLink(link);
     setEditingTitleInput(link?.customTitle || "");
     setNotesInput(link?.notes || "");
-    setHashtagsInput((link?.hashtags || []).map((tag) => `#${tag}`).join(" "));
+    setHashtagsInput(
+      (link?.hashtags || [])
+        .map((tag) => `#${String(tag || "").trim().replace(/^#+/, "")}`)
+        .filter((tag) => tag !== "#")
+        .join(" "),
+    );
   }, []);
 
   const openSourceEditor = useCallback((link) => {
@@ -2671,7 +2676,7 @@ export default function LibraryScreen({ navigation, route }) {
     try {
       const hashtags = hashtagsInput
         .split(/[\s,;]+/)
-        .map((tag) => tag.trim())
+        .map((tag) => tag.trim().replace(/^#+/, ""))
         .filter(Boolean);
       await updateMetadata({
         linkId: editingLink._id,
