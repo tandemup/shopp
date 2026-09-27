@@ -726,7 +726,7 @@ const active = index === session.index;
                   {expanded ? session.title : currentTitle || session.title}
                 </Text>
               </Pressable>
-              {expanded && !splitWideLayout ? (
+              {expanded ? (
                 <View style={styles.styleSelector}>
                   <Pressable
                     accessibilityRole="button"
