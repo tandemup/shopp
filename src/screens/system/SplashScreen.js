@@ -9,7 +9,6 @@ import {
   View,
 } from "react-native";
 
-//import splashImage from "@/assets/images/splash.png";
 import splashImage from "@/assets/images/splash-icon.png";
 
 const DISPLAY_TIME_MS = 2800;
