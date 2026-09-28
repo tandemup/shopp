@@ -13,6 +13,10 @@ const DEFAULT_FOLDERS = [
   ["Música", "musical-notes-outline", "#db2777"],
   ["Ciencia", "flask-outline", "#0891b2"],
   ["Entrevistas", "mic-outline", "#9333ea"],
+  ["Tutoriales", "school-outline", "#0f766e"],
+  ["Cursos", "library-outline", "#0369a1"],
+  ["Conferencias", "people-outline", "#4f46e5"],
+  ["Documentales", "videocam-outline", "#b45309"],
   ["Instagram", "logo-instagram", "#E1306C"],
 ];
 

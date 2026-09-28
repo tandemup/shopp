@@ -33,7 +33,7 @@ import CachedLinkImage from "@/src/components/chat/CachedLinkImage";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 const CLIENT_ID_KEY = "shopp-chat-client-id";
-const LIBRARY_SETUP_KEY = "shopp-library-setup-v5-ciencia-entrevistas";
+const LIBRARY_SETUP_KEY = "shopp-library-setup-v6-youtube-categories";
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
 const CATALOG_SOURCES_IMPORT_KEY = "__catalog_sources__";
 const IMPORT_BATCH_SIZE = 250;

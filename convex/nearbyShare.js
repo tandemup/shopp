@@ -42,7 +42,7 @@ async function getPairingForDevice(ctx, pairingId, userId, deviceId) {
 }
 
 export const enablePresence = mutation({
-  args: { displayName: v.string(), deviceId: v.string() },
+  args: { displayName: v.string(), deviceId: v.string(), channels: v.optional(v.array(v.string())) },
   handler: async (ctx, args) => {
     const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
     await deleteExpired(ctx);
@@ -52,7 +52,8 @@ export const enablePresence = mutation({
     if (!deviceId) throw new Error("No se pudo identificar este dispositivo.");
     const now = Date.now();
     const existing = await ctx.db.query("nearbySharePresence").withIndex("by_user_device", (q) => q.eq("userId", user._id).eq("deviceId", deviceId)).first();
-    const data = { deviceId, displayName, expiresAt: now + PRESENCE_MS, updatedAt: now };
+    const channels = (args.channels || []).map((item) => clean(item, 40).replace(/^#/, "").toLowerCase()).filter(Boolean).slice(0, 20);
+    const data = { deviceId, displayName, channels, expiresAt: now + PRESENCE_MS, updatedAt: now };
     if (existing) {
       await ctx.db.patch(existing._id, data);
       return existing._id;
@@ -97,6 +98,7 @@ export const listVisiblePeers = query({
         userId: item.userId,
         deviceId: item.deviceId,
         displayName: item.displayName,
+        channels: item.channels || [],
         sameUser: item.userId === user._id,
         expiresAt: item.expiresAt,
       }));

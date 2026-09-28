@@ -112,6 +112,7 @@ export default defineSchema({
     userId: v.id("users"),
     deviceId: v.optional(v.string()),
     displayName: v.string(),
+    channels: v.optional(v.array(v.string())),
     expiresAt: v.float64(),
     createdAt: v.float64(),
     updatedAt: v.float64(),
