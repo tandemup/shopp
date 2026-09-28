@@ -332,7 +332,13 @@ export default function PlaybackProvider({ children }) {
   };
   const ids = status.videoIds || [];
   const albumIndex = status.playlistIndex || 0;
-  const desktop = expanded && width >= 960;
+  // Responsive breakpoints: iPad/tablets get their own layout instead of
+  // jumping between the phone and desktop designs when the device rotates.
+  const tablet = expanded && width >= 768 && width < 1200;
+  const tabletLandscape = tablet && width > height;
+  const tabletPortrait = tablet && !tabletLandscape;
+  const desktop = expanded && width >= 1200;
+  const mediaLayout = desktop || tablet;
   const oneColumnDesktop = desktop && desktopColumns === 1;
   const twoColumnDesktop = desktop && desktopColumns === 2;
   // El reproductor compartido conserva controles compactos y de tamaño fijo.
@@ -345,11 +351,15 @@ export default function PlaybackProvider({ children }) {
   // Altura útil de la lista. En 2 columnas dejamos que la lista aproveche
   // prácticamente toda la altura disponible de la ventana; en 1 columna
   // limitamos algo más la lista porque comparte el eje vertical con el vídeo.
-  const queueRowsMaxHeight = twoColumnDesktop
-    ? Math.max(320, height - insets.top - insets.bottom - 118)
-    : oneColumnDesktop
-      ? Math.max(260, height - insets.top - insets.bottom - 500)
-      : Math.max(220, height - insets.top - insets.bottom - 620);
+  const queueRowsMaxHeight = tabletLandscape
+    ? Math.max(300, height - insets.top - insets.bottom - 170)
+    : tabletPortrait
+      ? Math.max(260, height - insets.top - insets.bottom - 470)
+      : twoColumnDesktop
+        ? Math.max(320, height - insets.top - insets.bottom - 118)
+        : oneColumnDesktop
+          ? Math.max(260, height - insets.top - insets.bottom - 500)
+          : Math.max(220, height - insets.top - insets.bottom - 620);
 
   // En una sola columna el usuario puede elegir el tamaño del vídeo.
   // El ancho se usa también para centrar y dimensionar la lista de pistas,
@@ -606,16 +616,22 @@ export default function PlaybackProvider({ children }) {
                 styles.body,
                 expanded && styles.expandedBody,
                 desktop && styles.desktopBody,
+                tablet && styles.tabletBody,
+                tabletPortrait && styles.tabletBodyPortrait,
+                tabletLandscape && styles.tabletBodyLandscape,
                 oneColumnDesktop && styles.desktopBodyOneColumn,
                 twoColumnDesktop && styles.desktopBodyTwoColumns,
               ]}
             >
               {expanded ? (
                 <>
-                  {desktop ? (
+                  {mediaLayout ? (
                     <View
                       style={[
                         styles.desktopVideoPane,
+                        tablet && styles.tabletVideoPane,
+                        tabletPortrait && styles.tabletVideoPanePortrait,
+                        tabletLandscape && styles.tabletVideoPaneLandscape,
                         oneColumnDesktop && styles.desktopVideoPaneOneColumn,
                         twoColumnDesktop && styles.desktopVideoPaneTwoColumns,
                       ]}
@@ -623,6 +639,7 @@ export default function PlaybackProvider({ children }) {
                       <View
                         style={[
                           styles.desktopVideoFrame,
+                          tablet && styles.tabletVideoFrame,
                           oneColumnDesktop && { width: oneColumnVideoWidth },
                         ]}
                       >
@@ -636,6 +653,9 @@ export default function PlaybackProvider({ children }) {
                 <ScrollView
                   style={[
                     styles.trackPane,
+                    tablet && styles.tabletTrackPane,
+                    tabletPortrait && styles.tabletTrackPanePortrait,
+                    tabletLandscape && styles.tabletTrackPaneLandscape,
                     desktop && styles.desktopTrackPane,
                     oneColumnDesktop && styles.desktopTrackPaneOneColumn,
                     oneColumnDesktop && { width: oneColumnVideoWidth, maxWidth: oneColumnVideoWidth },
@@ -643,6 +663,7 @@ export default function PlaybackProvider({ children }) {
                   ]}
                   contentContainerStyle={[
                     styles.trackList,
+                    tablet && styles.tabletTrackList,
                     desktop && styles.desktopTrackList,
                     oneColumnDesktop && styles.desktopTrackListOneColumn,
                     twoColumnDesktop && styles.desktopTrackListTwoColumns,
@@ -1095,7 +1116,7 @@ export default function PlaybackProvider({ children }) {
                               color={active ? "#ec1970" : "#9ca3af"}
                             />
                           </Pressable>
-                          {active && !desktop ? (
+                          {active && !mediaLayout ? (
                             <View style={styles.queuePreview}>
                               <View pointerEvents="auto" style={styles.queuePreviewFrame}>
                                 <YouTubeSurface
@@ -1228,6 +1249,63 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.35 },
   body: { minHeight: 0, flexShrink: 1 },
   expandedBody: { flex: 1, backgroundColor: "#0b0b0c" },
+  tabletBody: {
+    width: "100%",
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    gap: 14,
+  },
+  tabletBodyPortrait: {
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  tabletBodyLandscape: {
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  tabletVideoPane: {
+    minWidth: 0,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingTop: 12,
+  },
+  tabletVideoPanePortrait: {
+    width: "100%",
+    maxWidth: 720,
+    flexShrink: 0,
+  },
+  tabletVideoPaneLandscape: {
+    flex: 1.05,
+    width: "51%",
+    maxWidth: "51%",
+  },
+  tabletVideoFrame: {
+    width: "100%",
+    maxWidth: 720,
+  },
+  tabletTrackPane: {
+    minWidth: 0,
+    alignSelf: "stretch",
+  },
+  tabletTrackPanePortrait: {
+    width: "100%",
+    maxWidth: 720,
+    flex: 1,
+  },
+  tabletTrackPaneLandscape: {
+    flex: 1,
+    width: "49%",
+    maxWidth: "49%",
+  },
+  tabletTrackList: {
+    width: "100%",
+    alignSelf: "center",
+    paddingHorizontal: 0,
+    paddingTop: 8,
+    paddingBottom: 12,
+    gap: 9,
+  },
   desktopBody: {
     width: "100%",
     maxWidth: 1320,
