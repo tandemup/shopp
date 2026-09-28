@@ -114,6 +114,8 @@ function toP2PPlaylist(playlist) {
       ? playlist.tracks.map((track, index) => ({
           kind: track?.kind === "album" ? "album" : "single",
           title: String(track?.title || `Item ${index + 1}`).trim() || `Item ${index + 1}`,
+          videoId: track?.videoId || undefined,
+          playlistId: track?.playlistId || undefined,
           url:
             track?.url ||
             (track?.playlistId
@@ -122,6 +124,70 @@ function toP2PPlaylist(playlist) {
         }))
       : [],
   };
+}
+
+function extractYouTubeIds(track) {
+  const kind = track?.kind === "album" ? "album" : "single";
+  let videoId = String(track?.videoId || "").trim();
+  let playlistId = String(track?.playlistId || "").trim();
+  const rawUrl = String(track?.url || "").trim();
+
+  if (rawUrl) {
+    try {
+      const url = new URL(rawUrl);
+      const host = url.hostname.toLowerCase().replace(/^www\./, "");
+      if (!playlistId) playlistId = String(url.searchParams.get("list") || "").trim();
+      if (!videoId) {
+        if (host === "youtu.be") {
+          videoId = url.pathname.split("/").filter(Boolean)[0] || "";
+        } else if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+          videoId = String(url.searchParams.get("v") || "").trim();
+          if (!videoId) {
+            const parts = url.pathname.split("/").filter(Boolean);
+            if (["shorts", "embed", "live"].includes(parts[0])) videoId = parts[1] || "";
+          }
+        }
+      }
+    } catch {
+      // Si la URL no es válida, los validadores posteriores darán un error claro.
+    }
+  }
+
+  if (kind === "album") {
+    if (!/^[A-Za-z0-9_-]{10,80}$/.test(playlistId)) {
+      throw new Error(`No se pudo identificar la playlist/álbum «${track?.title || "sin título"}».`);
+    }
+    return { kind, playlistId, title: String(track?.title || "Álbum").trim() || "Álbum" };
+  }
+
+  if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+    throw new Error(`No se pudo identificar el vídeo «${track?.title || "sin título"}».`);
+  }
+  return { kind, videoId, title: String(track?.title || "Single").trim() || "Single" };
+}
+
+function normalizeReceivedPlaylist(playlist) {
+  const tracks = Array.isArray(playlist?.tracks)
+    ? playlist.tracks.map(extractYouTubeIds)
+    : [];
+  if (tracks.length === 0) throw new Error("La playlist recibida no contiene items válidos.");
+  return {
+    title: String(playlist?.title || "Playlist recibida").trim() || "Playlist recibida",
+    tracks,
+    collectionType: "playlist",
+  };
+}
+
+function playlistSignature(playlist) {
+  const title = String(playlist?.title || "").trim().toLocaleLowerCase();
+  const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
+  const media = tracks.map((track) => {
+    const kind = track?.kind === "album" ? "album" : "single";
+    return kind === "album"
+      ? `album:${String(track?.playlistId || "").trim()}`
+      : `single:${String(track?.videoId || "").trim()}`;
+  });
+  return `${title}::${media.join("|")}`;
 }
 
 function downloadJson(payload) {
@@ -192,6 +258,7 @@ export default function P2PPlaylistExchangeScreen() {
   const respondToPairing = useMutation(api.nearbyShare.respondToPairing);
   const sendSignal = useMutation(api.nearbyShare.sendSignal);
   const closePairing = useMutation(api.nearbyShare.closePairing);
+  const createPlaylist = useMutation(api.playlists.create);
 
   const peerRef = useRef(null);
   const dataChannelRef = useRef(null);
@@ -199,6 +266,12 @@ export default function P2PPlaylistExchangeScreen() {
   const queuedIceCandidatesRef = useRef([]);
   const offerStartedForRef = useRef(null);
   const incomingLibrarySyncRef = useRef(new Map());
+  const musicPlaylistsRef = useRef([]);
+  const importedPlaylistSignaturesRef = useRef(new Set());
+
+  useEffect(() => {
+    musicPlaylistsRef.current = Array.isArray(musicPlaylists) ? musicPlaylists : [];
+  }, [musicPlaylists]);
 
   const closePeer = useCallback(() => {
     dataChannelRef.current?.close?.();
@@ -305,18 +378,45 @@ export default function P2PPlaylistExchangeScreen() {
         const message = JSON.parse(messageText);
         if (await handleLibraryMessage(message)) return;
         if (message?.type === "PLAYLIST" && message.playlist?.tracks) {
+          const imported = normalizeReceivedPlaylist(message.playlist);
+          const signature = playlistSignature(imported);
+          const alreadyExists =
+            importedPlaylistSignaturesRef.current.has(signature) ||
+            musicPlaylistsRef.current.some((playlist) => playlistSignature(playlist) === signature);
+
           setReceivedPlaylists((current) => [message.playlist, ...current]);
-          safeAlert(
-            "Playlist recibida",
-            `«${message.playlist.title || "Playlist"}» · ${message.playlist.tracks.length} items recibidos por P2P.`,
-          );
+
+          if (alreadyExists) {
+            safeAlert(
+              "Playlist ya existente",
+              `«${imported.title}» ya está guardada en Music playlist. No se ha creado un duplicado.`,
+            );
+            return;
+          }
+
+          importedPlaylistSignaturesRef.current.add(signature);
+          try {
+            await createPlaylist({
+              clientId: playlistClientId || undefined,
+              title: imported.title,
+              tracks: imported.tracks,
+              collectionType: "playlist",
+            });
+            safeAlert(
+              "Playlist recibida y guardada",
+              `«${imported.title}» · ${imported.tracks.length} items. Ya está disponible en Music playlist.`,
+            );
+          } catch (error) {
+            importedPlaylistSignaturesRef.current.delete(signature);
+            throw error;
+          }
         }
       } catch (error) {
         setLibrarySync((current) => ({ ...(current || {}), state: "failed", error: error?.message }));
         safeAlert("Sincronización P2P", error?.message || "No se pudo procesar el mensaje recibido.");
       }
     };
-  }, [handleLibraryMessage]);
+  }, [createPlaylist, handleLibraryMessage, playlistClientId]);
 
   const createPeer = useCallback((pairing, initiator) => {
     if (peerRef.current) return peerRef.current;
@@ -607,7 +707,7 @@ export default function P2PPlaylistExchangeScreen() {
       {activePairing ? <View style={styles.card}><Text style={styles.cardTitle}>3. Conexión con {activePairing.friendName}</Text><Text style={styles.muted}>Código confirmado: <Text style={styles.code}>{activePairing.confirmCode}</Text></Text><Status tone={connection === "connected" ? "success" : connection === "failed" ? "danger" : "neutral"}>{connection === "connected" ? "Canal P2P conectado" : connection === "failed" ? "No se pudo conectar" : activePairing.isInitiator ? "Listo para iniciar la conexión" : "Esperando la conexión del otro dispositivo"}</Status>{activePairing.isInitiator && connection !== "connected" ? <Pressable onPress={startConnection} style={styles.primaryButton}><Ionicons name="link-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Conectar ahora</Text></Pressable> : null}{connection === "connected" ? <><Pressable disabled={busy || selectedPlaylists.length === 0} onPress={sendSelectedPlaylists} style={[styles.primaryButton, selectedPlaylists.length === 0 && styles.disabledButton]}><Ionicons name="send-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Enviar seleccionadas ({selectedPlaylists.length})</Text></Pressable><Pressable disabled={busy || ["preparing", "receiving", "merging"].includes(librarySync?.state)} onPress={syncLibrary} style={[styles.primaryButton, styles.librarySyncButton]}><Ionicons name="sync-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Sincronizar Biblioteca</Text></Pressable>{librarySync ? <Status tone={librarySync.state === "failed" ? "danger" : librarySync.state === "merged" || librarySync.state === "reply-sent" ? "success" : "neutral"}>{librarySync.state === "preparing" ? "Preparando Biblioteca…" : librarySync.state === "receiving" ? `Recibiendo ${librarySync.receivedChunks || 0}/${librarySync.totalChunks || 0} bloques…` : librarySync.state === "merging" ? "Combinando cambios…" : librarySync.state === "failed" ? `Error: ${librarySync.error || "sincronización fallida"}` : librarySync.state === "sent" ? "Biblioteca enviada; esperando respuesta…" : librarySync.state === "reply-sent" ? "Respuesta de sincronización enviada" : librarySync.state === "merged" ? "Cambios recibidos y combinados" : "Sincronización P2P"}</Status> : null}</> : null}<Pressable onPress={finish} style={styles.finishButton}><Text style={styles.finishText}>Finalizar y borrar sesión</Text></Pressable></View> : null}
 
       {receivedPlaylists.length > 0 ? <View style={styles.card}><Text style={styles.cardTitle}>Playlists recibidas por P2P</Text>{receivedPlaylists.map((playlist, index) => <View key={`${playlist.title || "playlist"}-${index}`} style={styles.receivedRow}><View style={styles.playlistInfo}><Text style={styles.playlistName} numberOfLines={1}>{playlist.title || "Playlist"}</Text><Text style={styles.playlistMeta}>{playlist.tracks?.length || 0} items</Text></View><Pressable onPress={() => downloadJson(playlist)} style={styles.downloadButton}><Ionicons name="download-outline" size={18} color="#1d4ed8" /><Text style={styles.downloadButtonText}>JSON</Text></Pressable></View>)}</View> : null}
-      <Text style={styles.note}>Las playlists seleccionadas se envían directamente por WebRTC y no se guardan automáticamente en el dispositivo receptor. La opción “Sincronizar Biblioteca” combina la Biblioteca local de ambos dispositivos.</Text>
+      <Text style={styles.note}>Las playlists seleccionadas se envían directamente por WebRTC. Al recibirlas, Shopp las guarda automáticamente en “Music playlist” del usuario receptor y evita duplicados exactos. La opción “Sincronizar Biblioteca” combina la Biblioteca local de ambos dispositivos.</Text>
     </ScrollView>
   );
 }
