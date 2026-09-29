@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Image, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRoute } from "@react-navigation/native";
+import * as ImagePicker from "expo-image-picker";
 
 function youtubeUrl(track) {
   if (!track) return "";
@@ -19,42 +20,44 @@ function esc(value) {
   return String(value ?? "").replace(/[&<>\"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 
-function buildPrintHtml({ title, subtitle, targetUrl, format, copies, cropMarks }) {
+function buildPrintHtml({ title, subtitle, targetUrl, format, copies, cropMarks, doubleSided, coverUri, dedication }) {
   const q = qrUrl(targetUrl, 700);
   const safeTitle = esc(title);
   const safeSubtitle = esc(subtitle);
+  const safeDedication = esc(dedication);
+  const safeCover = esc(coverUri);
   const count = format === "card" ? 1 : Math.max(1, Math.min(99, Number(copies) || 1));
-  const cards = Array.from({ length: count }, (_, i) => `
-    <div class="card-wrap">
-      <div class="card">
-        <div class="info">
-          <div class="brand">Shopp</div>
-          <h1>${safeTitle}</h1>
-          <p>${safeSubtitle}</p>
-          <div class="hint">Escanea para reproducir</div>
-        </div>
-        <div class="qr"><img src="${q}" alt="QR" /></div>
-      </div>
-    </div>`).join("");
-
+  const front = () => `<div class="card-wrap"><div class="card front">
+    ${safeCover ? `<img class="cover" src="${safeCover}" alt="Carátula"/>` : `<div class="cover placeholder">Shopp Music</div>`}
+    <div class="front-meta"><strong>${safeTitle}</strong><span>${safeSubtitle}</span></div>
+  </div></div>`;
+  const back = () => `<div class="card-wrap"><div class="card back">
+    <div class="back-info"><div class="brand">Shopp Music</div><h1>${safeTitle}</h1><p>${safeSubtitle}</p>${safeDedication ? `<div class="dedication">${safeDedication}</div>` : ""}<div class="hint">Escanea con Shopp para escuchar</div></div>
+    <div class="qr"><img src="${q}" alt="QR" /></div>
+  </div></div>`;
+  const fronts = Array.from({ length: count }, front).join("");
+  // En A4 las columnas del reverso se invierten por fila para alinear impresión dúplex.
+  const backs = Array.from({ length: count }, back).map((html, i, a) => {
+    if (format !== "a4") return html;
+    const row = Math.floor(i / 2), mate = row * 2 + (i % 2 === 0 ? 1 : 0);
+    return mate < a.length ? a[mate] : `<div class="card-wrap blank"></div>`;
+  }).join("");
   const isCard = format === "card";
   return `<!doctype html><html><head><meta charset="utf-8"><title>${safeTitle}</title><style>
     @page{size:${isCard ? "90mm 56mm" : "A4 portrait"};margin:${isCard ? "0" : "10mm"}}
     *{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,sans-serif;color:#111;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     .sheet{${isCard ? "width:90mm;height:56mm;" : "display:grid;grid-template-columns:90mm 90mm;grid-auto-rows:56mm;column-gap:5mm;row-gap:5mm;justify-content:center;align-content:start;"}}
-    .card-wrap{position:relative;width:90mm;height:56mm;break-inside:avoid;page-break-inside:avoid}
-    .card{width:90mm;height:56mm;border:.25mm solid #cbd5e1;display:flex;padding:5mm;background:#fff;overflow:hidden}
-    .info{flex:1;min-width:0;padding-right:4mm;display:flex;flex-direction:column}.brand{font-size:9pt;color:#2563eb;font-weight:700;margin-bottom:5mm}
-    h1{font-size:14pt;line-height:1.15;margin:0 0 2mm;max-height:17mm;overflow:hidden}p{font-size:9pt;line-height:1.2;color:#64748b;margin:0;max-height:9mm;overflow:hidden}.hint{margin-top:auto;font-size:8pt;color:#64748b}
-    .qr{width:35mm;height:35mm;align-self:center;flex:0 0 35mm}.qr img{display:block;width:100%;height:100%}
-    ${cropMarks && !isCard ? `.card-wrap:before,.card-wrap:after{content:"";position:absolute;pointer-events:none;z-index:2}.card-wrap:before{left:-2mm;right:-2mm;top:0;height:56mm;border-top:.2mm solid #555;border-bottom:.2mm solid #555}.card-wrap:after{top:-2mm;bottom:-2mm;left:0;width:90mm;border-left:.2mm solid #555;border-right:.2mm solid #555}` : ""}
-    @media screen{body{background:#e5e7eb;padding:${isCard ? "10mm" : "8mm"}}.sheet{background:#fff;margin:auto;${isCard ? "" : "width:210mm;min-height:297mm;padding:10mm;"}}}
-    @media print{.sheet{margin:0}.card-wrap:nth-child(8n+9){break-before:page;page-break-before:always}}
-  </style></head><body><div class="sheet">${cards}</div><script>
-    (function(){var imgs=Array.from(document.images);var ready=Promise.all(imgs.map(function(img){return img.complete?Promise.resolve():new Promise(function(r){img.onload=r;img.onerror=r;});}));ready.then(function(){setTimeout(function(){window.print();},150);});})();
+    .sheet.back-sheet{break-before:page;page-break-before:always}.card-wrap{position:relative;width:90mm;height:56mm;break-inside:avoid;page-break-inside:avoid}
+    .card{width:90mm;height:56mm;border:.25mm solid #cbd5e1;background:#fff;overflow:hidden}.front{position:relative}.cover{width:100%;height:100%;display:block;object-fit:cover}.placeholder{display:flex;align-items:center;justify-content:center;background:#e2e8f0;color:#64748b;font-size:18pt;font-weight:700}
+    .front-meta{position:absolute;left:0;right:0;bottom:0;padding:3mm 4mm;background:rgba(0,0,0,.68);color:#fff;display:flex;flex-direction:column;gap:1mm}.front-meta strong{font-size:12pt}.front-meta span{font-size:8.5pt}
+    .back{display:flex;padding:5mm}.back-info{flex:1;min-width:0;padding-right:4mm;display:flex;flex-direction:column}.brand{font-size:9pt;color:#2563eb;font-weight:700;margin-bottom:4mm}h1{font-size:13pt;line-height:1.15;margin:0 0 2mm;max-height:14mm;overflow:hidden}p{font-size:8.5pt;color:#64748b;margin:0}.dedication{font-size:8pt;font-style:italic;margin-top:2.5mm;max-height:9mm;overflow:hidden}.hint{margin-top:auto;font-size:7.5pt;color:#64748b}.qr{width:34mm;height:34mm;align-self:center;flex:0 0 34mm}.qr img{display:block;width:100%;height:100%}
+    ${cropMarks && !isCard ? `.card-wrap:before,.card-wrap:after{content:"";position:absolute;pointer-events:none;z-index:4}.card-wrap:before{left:-2mm;right:-2mm;top:0;height:56mm;border-top:.2mm solid #555;border-bottom:.2mm solid #555}.card-wrap:after{top:-2mm;bottom:-2mm;left:0;width:90mm;border-left:.2mm solid #555;border-right:.2mm solid #555}` : ""}
+    @media screen{body{background:#e5e7eb;padding:${isCard ? "10mm" : "8mm"}}.sheet{background:#fff;margin:auto;${isCard ? "" : "width:210mm;min-height:297mm;padding:10mm;"}}.back-sheet{margin-top:8mm}}
+    @media print{.sheet{margin:0}${!isCard ? ".sheet{break-after:page;page-break-after:always}" : ""}}
+  </style></head><body><div class="sheet front-sheet">${fronts}</div>${doubleSided ? `<div class="sheet back-sheet">${backs}</div>` : ""}<script>
+    (function(){var imgs=Array.from(document.images);var ready=Promise.all(imgs.map(function(img){return img.complete?Promise.resolve():new Promise(function(r){img.onload=r;img.onerror=r;});}));ready.then(function(){setTimeout(function(){window.print();},200);});})();
   </script></body></html>`;
 }
-
 export default function PrintMusicCardScreen() {
   const route = useRoute();
   const playlist = route.params?.playlist || {};
@@ -71,12 +74,23 @@ export default function PrintMusicCardScreen() {
   const [format, setFormat] = useState("a4");
   const [copies, setCopies] = useState(8);
   const [cropMarks, setCropMarks] = useState(true);
+  const [doubleSided, setDoubleSided] = useState(true);
+  const [coverUri, setCoverUri] = useState(String(playlist.cover || playlist.coverUrl || playlist.image || playlist.thumbnail || ""));
+  const [dedication, setDedication] = useState("");
 
   const changeCopies = (delta) => setCopies((value) => Math.max(1, Math.min(99, value + delta)));
 
+  const pickCover = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, aspect: [1, 1], quality: 0.9, base64: Platform.OS === "web" });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    const uri = asset.base64 && asset.mimeType ? `data:${asset.mimeType};base64,${asset.base64}` : asset.uri;
+    setCoverUri(uri);
+  };
+
   const print = () => {
     if (Platform.OS !== "web" || typeof window === "undefined" || !targetUrl) return;
-    const html = buildPrintHtml({ title, subtitle, targetUrl, format, copies, cropMarks });
+    const html = buildPrintHtml({ title, subtitle, targetUrl, format, copies, cropMarks, doubleSided, coverUri, dedication });
     const w = window.open("", "_blank");
     if (!w) {
       window.alert("El navegador ha bloqueado la ventana de impresión. Permite ventanas emergentes para Shopp e inténtalo de nuevo.");
@@ -94,10 +108,13 @@ export default function PrintMusicCardScreen() {
     <View style={styles.fields}>
       <Text style={styles.label}>Título</Text><TextInput value={title} onChangeText={setTitle} style={styles.input} placeholderTextColor="#999" />
       <Text style={styles.label}>Subtítulo</Text><TextInput value={subtitle} onChangeText={setSubtitle} style={styles.input} placeholderTextColor="#999" />
+      <Text style={styles.label}>Dedicatoria (reverso, opcional)</Text><TextInput value={dedication} onChangeText={setDedication} style={styles.input} placeholder="Para..." placeholderTextColor="#999" />
+      <Text style={styles.label}>Carátula del single / LP</Text>
+      <View style={styles.coverActions}><Pressable onPress={pickCover} style={styles.secondaryButton}><Ionicons name="image-outline" size={18} color="#2563eb"/><Text style={styles.secondaryButtonText}>{coverUri ? "Cambiar carátula" : "Seleccionar carátula"}</Text></Pressable>{coverUri ? <Pressable onPress={() => setCoverUri("")} style={styles.removeCover}><Text style={styles.removeCoverText}>Quitar</Text></Pressable> : null}</View>
     </View>
-    <View style={styles.card}>
-      <View style={styles.cardInfo}><Text style={styles.brand}>Shopp</Text><Text style={styles.cardTitle} numberOfLines={3}>{title}</Text><Text style={styles.cardSubtitle}>{subtitle}</Text><Text style={styles.scan}>Escanea para reproducir</Text></View>
-      {targetUrl ? <Image source={{ uri: qrUrl(targetUrl) }} style={styles.qr} /> : <View style={[styles.qr, styles.qrEmpty]}><Text>Sin enlace</Text></View>}
+    <View style={styles.previewRow}>
+      <View><Text style={styles.sideLabel}>ANVERSO</Text><View style={[styles.card, styles.frontCard]}>{coverUri ? <Image source={{ uri: coverUri }} style={styles.coverPreview} /> : <View style={[styles.coverPreview, styles.coverEmpty]}><Ionicons name="disc-outline" size={48} color="#64748b"/><Text style={styles.coverEmptyText}>Selecciona una carátula</Text></View>}<View style={styles.frontOverlay}><Text style={styles.frontTitle} numberOfLines={1}>{title}</Text><Text style={styles.frontSubtitle} numberOfLines={1}>{subtitle}</Text></View></View></View>
+      <View><Text style={styles.sideLabel}>REVERSO</Text><View style={styles.card}><View style={styles.cardInfo}><Text style={styles.brand}>Shopp Music</Text><Text style={styles.cardTitle} numberOfLines={2}>{title}</Text><Text style={styles.cardSubtitle}>{subtitle}</Text>{dedication ? <Text style={styles.dedication} numberOfLines={2}>{dedication}</Text> : null}<Text style={styles.scan}>Escanea con Shopp para escuchar</Text></View>{targetUrl ? <Image source={{ uri: qrUrl(targetUrl) }} style={styles.qr} /> : <View style={[styles.qr, styles.qrEmpty]}><Text>Sin enlace</Text></View>}</View></View>
     </View>
     <Text style={styles.note}>El QR de esta primera versión apunta directamente a YouTube. Más adelante puede sustituirse por un enlace permanente de Shopp sin cambiar el diseño de la tarjeta.</Text>
     <Pressable disabled={!targetUrl || Platform.OS !== "web"} onPress={() => setPrintOpen(true)} style={[styles.button, (!targetUrl || Platform.OS !== "web") && styles.disabled]}><Ionicons name="print-outline" size={20} color="#fff"/><Text style={styles.buttonText}>Imprimir / Guardar como PDF</Text></Pressable>
@@ -110,6 +127,8 @@ export default function PrintMusicCardScreen() {
       <Text style={styles.modalLabel}>Formato</Text>
       <Pressable style={styles.optionRow} onPress={() => setFormat("card")}><Ionicons name={format === "card" ? "radio-button-on" : "radio-button-off"} size={22} color="#2563eb"/><View><Text style={styles.optionTitle}>Tarjeta 90 × 56 mm</Text><Text style={styles.optionHelp}>Una tarjeta a tamaño físico exacto.</Text></View></Pressable>
       <Pressable style={styles.optionRow} onPress={() => setFormat("a4")}><Ionicons name={format === "a4" ? "radio-button-on" : "radio-button-off"} size={22} color="#2563eb"/><View><Text style={styles.optionTitle}>Hoja A4</Text><Text style={styles.optionHelp}>Distribuye copias para imprimir y recortar.</Text></View></Pressable>
+      <Text style={styles.modalLabel}>Caras</Text>
+      <Pressable style={styles.optionRow} onPress={() => setDoubleSided((v) => !v)}><Ionicons name={doubleSided ? "checkbox" : "square-outline"} size={23} color="#2563eb"/><View><Text style={styles.optionTitle}>Imprimir anverso y reverso</Text><Text style={styles.optionHelp}>Genera primero las carátulas y después los reversos alineados para dúplex.</Text></View></Pressable>
 
       {format === "a4" ? <>
         <Text style={styles.modalLabel}>Número de copias</Text>
@@ -126,6 +145,6 @@ export default function PrintMusicCardScreen() {
 
 const styles = StyleSheet.create({
   screen:{flex:1,backgroundColor:"#f8fafc"},content:{padding:20,alignItems:"center",gap:14},heading:{fontSize:26,fontWeight:"700",alignSelf:"stretch"},help:{color:"#64748b",alignSelf:"stretch",maxWidth:720},fields:{width:"100%",maxWidth:720,gap:6},label:{fontWeight:"600",marginTop:4},input:{borderWidth:1,borderColor:"#cbd5e1",borderRadius:8,backgroundColor:"#fff",paddingHorizontal:12,paddingVertical:10,color:"#0f172a"},
-  card:{width:340,height:212,backgroundColor:"#fff",borderWidth:1,borderColor:"#cbd5e1",flexDirection:"row",padding:18,shadowColor:"#000",shadowOpacity:.08,shadowRadius:8,elevation:2},cardInfo:{flex:1,paddingRight:12},brand:{fontWeight:"800",color:"#2563eb",fontSize:15,marginBottom:18},cardTitle:{fontSize:20,fontWeight:"700",lineHeight:23},cardSubtitle:{fontSize:13,color:"#64748b",marginTop:7},scan:{fontSize:11,color:"#64748b",marginTop:"auto"},qr:{width:132,height:132,alignSelf:"center"},qrEmpty:{backgroundColor:"#f1f5f9",alignItems:"center",justifyContent:"center"},note:{maxWidth:720,color:"#64748b",fontSize:12,textAlign:"center"},button:{flexDirection:"row",alignItems:"center",gap:8,backgroundColor:"#2563eb",paddingHorizontal:18,paddingVertical:12,borderRadius:9},disabled:{opacity:.45},buttonText:{color:"#fff",fontWeight:"700"},
+  previewRow:{width:"100%",maxWidth:760,flexDirection:"row",flexWrap:"wrap",gap:18,justifyContent:"center"},sideLabel:{fontSize:11,fontWeight:"700",color:"#64748b",marginBottom:5},frontCard:{padding:0,position:"relative"},coverPreview:{width:"100%",height:"100%",resizeMode:"cover"},coverEmpty:{backgroundColor:"#e2e8f0",alignItems:"center",justifyContent:"center",gap:8},coverEmptyText:{color:"#64748b",fontWeight:"600"},frontOverlay:{position:"absolute",left:0,right:0,bottom:0,backgroundColor:"rgba(0,0,0,.68)",paddingHorizontal:14,paddingVertical:9},frontTitle:{color:"#fff",fontWeight:"700",fontSize:16},frontSubtitle:{color:"#e2e8f0",fontSize:11,marginTop:2},dedication:{fontSize:11,fontStyle:"italic",color:"#334155",marginTop:8},coverActions:{flexDirection:"row",alignItems:"center",gap:10,flexWrap:"wrap"},secondaryButton:{flexDirection:"row",alignItems:"center",gap:7,borderWidth:1,borderColor:"#93c5fd",backgroundColor:"#eff6ff",paddingHorizontal:12,paddingVertical:9,borderRadius:8},secondaryButtonText:{color:"#2563eb",fontWeight:"600"},removeCover:{paddingHorizontal:10,paddingVertical:9},removeCoverText:{color:"#b91c1c",fontWeight:"600"},card:{width:340,height:212,backgroundColor:"#fff",borderWidth:1,borderColor:"#cbd5e1",flexDirection:"row",padding:18,shadowColor:"#000",shadowOpacity:.08,shadowRadius:8,elevation:2},cardInfo:{flex:1,paddingRight:12},brand:{fontWeight:"800",color:"#2563eb",fontSize:15,marginBottom:18},cardTitle:{fontSize:20,fontWeight:"700",lineHeight:23},cardSubtitle:{fontSize:13,color:"#64748b",marginTop:7},scan:{fontSize:11,color:"#64748b",marginTop:"auto"},qr:{width:132,height:132,alignSelf:"center"},qrEmpty:{backgroundColor:"#f1f5f9",alignItems:"center",justifyContent:"center"},note:{maxWidth:720,color:"#64748b",fontSize:12,textAlign:"center"},button:{flexDirection:"row",alignItems:"center",gap:8,backgroundColor:"#2563eb",paddingHorizontal:18,paddingVertical:12,borderRadius:9},disabled:{opacity:.45},buttonText:{color:"#fff",fontWeight:"700"},
   modalBackdrop:{flex:1,backgroundColor:"rgba(15,23,42,.42)",alignItems:"center",justifyContent:"center",padding:20},modalCard:{width:"100%",maxWidth:520,backgroundColor:"#fff",borderRadius:14,padding:22,shadowColor:"#000",shadowOpacity:.18,shadowRadius:20,elevation:8},modalTitle:{fontSize:22,fontWeight:"700",color:"#0f172a",marginBottom:18},modalLabel:{fontSize:14,fontWeight:"700",color:"#334155",marginTop:8,marginBottom:8},optionRow:{flexDirection:"row",alignItems:"center",gap:10,paddingVertical:9},optionTitle:{fontSize:15,fontWeight:"600",color:"#0f172a"},optionHelp:{fontSize:12,color:"#64748b",marginTop:2},counter:{flexDirection:"row",alignItems:"center",alignSelf:"flex-start",borderWidth:1,borderColor:"#cbd5e1",borderRadius:8,overflow:"hidden",marginBottom:5},counterButton:{width:42,height:38,alignItems:"center",justifyContent:"center",backgroundColor:"#f8fafc"},counterValue:{minWidth:52,textAlign:"center",fontSize:16,fontWeight:"700",color:"#0f172a"},capacity:{fontSize:12,color:"#64748b",marginTop:2},modalActions:{flexDirection:"row",justifyContent:"flex-end",gap:10,marginTop:22},cancelButton:{paddingHorizontal:16,paddingVertical:11,borderRadius:8,borderWidth:1,borderColor:"#cbd5e1"},cancelText:{fontWeight:"600",color:"#334155"},previewButton:{flexDirection:"row",alignItems:"center",gap:7,paddingHorizontal:16,paddingVertical:11,borderRadius:8,backgroundColor:"#2563eb"}
 });
