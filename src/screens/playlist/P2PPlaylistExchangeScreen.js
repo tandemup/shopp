@@ -211,20 +211,18 @@ function Status({ tone = "neutral", children }) {
   return <View style={[styles.status, styles[`status_${tone}`]]}><Text style={[styles.statusText, styles[`statusText_${tone}`]]}>{children}</Text></View>;
 }
 
-const P2P_CHANNELS = [
-  "idiomas", "tutoriales", "literatura", "deportes",
-  "musica", "clasica", "recetas", "noticias",
-  "ingenieria", "programacion", "ciencia", "historia",
-];
+const P2P_CHANNELS = ["musica", "recetas"];
+const P2P_CHANNEL_SET = new Set(P2P_CHANNELS);
 
 export default function P2PPlaylistExchangeScreen() {
   const [alias, setAlias] = useState("");
-  const [channels, setChannels] = useState(() => new Set(["tutoriales"]));
+  const [channels, setChannels] = useState(() => new Set(P2P_CHANNELS));
   const [chatText, setChatText] = useState("");
   const [chatMessages, setChatMessages] = useState([]);
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const [playlistClientId] = useState(() => getPlaylistClientId());
   const [busy, setBusy] = useState(false);
+  const handshakeInFlightRef = useRef(false);
   const [connection, setConnection] = useState("idle");
   const [selectedPlaylistIds, setSelectedPlaylistIds] = useState(() => new Set());
   const [receivedPlaylists, setReceivedPlaylists] = useState([]);
@@ -568,12 +566,17 @@ export default function P2PPlaylistExchangeScreen() {
   };
 
   const invite = async (peer) => {
+    // Handshake idempotente: una segunda pulsación mientras la primera
+    // solicitud está en curso se ignora, incluso antes del siguiente render.
+    if (handshakeInFlightRef.current || busy || activePairing) return;
+    handshakeInFlightRef.current = true;
     setBusy(true);
     try {
       await requestPairing({ recipientPresenceId: peer.presenceId, confirmCode: randomCode(), deviceId });
     } catch (error) {
       safeAlert("Intercambio P2P", error?.message || "No se pudo enviar la solicitud.");
     } finally {
+      handshakeInFlightRef.current = false;
       setBusy(false);
     }
   };
@@ -697,7 +700,7 @@ export default function P2PPlaylistExchangeScreen() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>2. Dispositivos disponibles</Text>
-        {peers === undefined ? <ActivityIndicator color="#2563eb" /> : peers.length === 0 ? <Text style={styles.muted}>Aún no hay otro usuario Shopp visible.</Text> : peers.map((peer) => <View key={peer.presenceId} style={styles.profileCard}><View style={styles.personRow}><View style={styles.personIcon}><Ionicons name="person-outline" size={20} color="#2563eb" /></View><View style={styles.playlistInfo}><Text style={styles.personName}>{peer.displayName}{peer.sameUser ? " · tu cuenta" : ""}</Text></View><Pressable disabled={busy || !!activePairing} onPress={() => invite(peer)} style={styles.smallButton}><Text style={styles.smallButtonText}>Handshake</Text></Pressable></View>{Array.isArray(peer.channels) && peer.channels.length ? <View style={styles.interestWrap}>{peer.channels.map((channelName) => <View key={channelName} style={styles.interestChip}><Text style={styles.interestText}>#{channelName}</Text></View>)}</View> : <Text style={styles.muted}>Sin canales públicos seleccionados.</Text>}</View>)}
+        {peers === undefined ? <ActivityIndicator color="#2563eb" /> : peers.length === 0 ? <Text style={styles.muted}>Aún no hay otro usuario Shopp visible.</Text> : peers.map((peer) => <View key={peer.presenceId} style={styles.profileCard}><View style={styles.personRow}><View style={styles.personIcon}><Ionicons name="person-outline" size={20} color="#2563eb" /></View><View style={styles.playlistInfo}><Text style={styles.personName}>{peer.displayName}{peer.sameUser ? " · tu cuenta" : ""}</Text></View><Pressable disabled={busy || !!activePairing} onPress={() => invite(peer)} style={styles.smallButton}><Text style={styles.smallButtonText}>{activePairing ? "Conectado ✓" : busy ? "Conectando…" : "Handshake"}</Text></Pressable></View>{Array.isArray(peer.channels) && peer.channels.some((channelName) => P2P_CHANNEL_SET.has(channelName)) ? <View style={styles.interestWrap}>{peer.channels.filter((channelName) => P2P_CHANNEL_SET.has(channelName)).map((channelName) => <View key={channelName} style={styles.interestChip}><Text style={styles.interestText}>#{channelName}</Text></View>)}</View> : <Text style={styles.muted}>Sin canales públicos seleccionados.</Text>}</View>)}
       </View>
 
       <View style={styles.card}>
