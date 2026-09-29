@@ -10,7 +10,7 @@ const CARD_WIDTH = 560;
 const CARD_HEIGHT = 90;
 const VIDEO_THUMBNAIL_WIDTH = (CARD_HEIGHT * 16) / 9;
 
-export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, onCreateCard, isTutorial = false, isNews = false }) {
+export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, onCreateCard, shareable = false, onToggleShareable, isTutorial = false, isNews = false }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const playback = usePlayback();
   const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
@@ -38,7 +38,7 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
               {userName}
             </Text>
             <Text style={styles.trackCount}>{tracks.length} items</Text>
-            {(canEdit || canDelete || onExport || onCreateCard) ? (
+            {(canEdit || canDelete || onExport || onCreateCard || onToggleShareable) ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Opciones de ${playlist.title}`}
@@ -76,6 +76,21 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
             <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setMenuOpen(false); onCreateCard(); }}>
               <Ionicons name="print-outline" size={18} color="#334155" />
               <Text style={styles.menuText}>Crear tarjeta</Text>
+            </Pressable>
+          ) : null}
+          {onToggleShareable ? (
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: !!shareable }}
+              style={styles.menuItem}
+              onPress={() => onToggleShareable(!shareable)}
+            >
+              <Ionicons
+                name={shareable ? "checkbox" : "square-outline"}
+                size={20}
+                color={shareable ? "#2563eb" : "#64748b"}
+              />
+              <Text style={styles.menuText}>Permitir compartir</Text>
             </Pressable>
           ) : null}
           {canDelete ? (

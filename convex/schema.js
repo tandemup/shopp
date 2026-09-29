@@ -241,6 +241,7 @@ export default defineSchema({
       v.union(v.literal("playlist"), v.literal("classical")),
     ),
     title: v.string(),
+    shareable: v.optional(v.boolean()),
     composer: v.optional(v.string()),
     performer: v.optional(v.string()),
     conductor: v.optional(v.string()),

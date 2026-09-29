@@ -391,6 +391,7 @@ export default function PlayListScreen() {
       : "skip",
   );
   const createPlaylist = useMutation(contentApi.create);
+  const setPlaylistShareable = useMutation(api.playlists.setShareable);
   const replacePlaylists = useMutation(contentApi.replaceMine);
   const updatePlaylist = useMutation(contentApi.update);
   const removePlaylist = useMutation(contentApi.remove);
@@ -1419,6 +1420,18 @@ export default function PlayListScreen() {
                 onDelete={() => confirmRemove(item)}
                 onExport={() => openExportPlaylist(item)}
                 onCreateCard={!isTutorialStyle ? () => navigation.navigate(ROUTES.PRINT_MUSIC_CARD, { playlist: item, isClassical }) : undefined}
+                shareable={item.shareable === true}
+                onToggleShareable={!isTutorialStyle ? async (shareable) => {
+                  try {
+                    await setPlaylistShareable({
+                      playlistId: item._id,
+                      clientId: clientId || undefined,
+                      shareable,
+                    });
+                  } catch (error) {
+                    safeAlert("Compartir playlist", error?.message || "No se pudo actualizar el permiso.");
+                  }
+                } : undefined}
                 onReorder={(nextTracks) => reorderPlaylist(item, nextTracks)}
               />
             </View>

@@ -291,6 +291,25 @@ export const update = mutation({
   },
 });
 
+
+export const setShareable = mutation({
+  args: {
+    playlistId: v.id("youtubePlaylists"),
+    clientId: v.optional(v.string()),
+    shareable: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await getOwnerId(ctx, args.clientId);
+    const current = await ctx.db.get(args.playlistId);
+    if (!current || current.ownerId !== ownerId)
+      throw new Error("No puedes editar esta playlist.");
+    await ctx.db.patch(args.playlistId, {
+      shareable: args.shareable,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const remove = mutation({
   args: {
     playlistId: v.id("youtubePlaylists"),
