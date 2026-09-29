@@ -14,6 +14,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 import { libraryJsonApi } from "@/src/services/libraryJsonApi";
+import { loadRecipes, saveRecipes, normalizeRecipe } from "@/src/services/recipesStorage";
 
 const RTC_CONFIG = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -105,11 +106,21 @@ function getPlaylistClientId() {
   }
 }
 
-function toP2PPlaylist(playlist) {
+function toP2PPlaylist(playlist, collectionType = "playlist") {
+  const isClassical = collectionType === "classical";
   return {
-    version: 1,
-    type: "shopp-youtube-playlist",
+    version: 2,
+    type: isClassical ? "shopp-youtube-classical-playlist" : "shopp-youtube-playlist",
+    collectionType: isClassical ? "classical" : "playlist",
     title: String(playlist?.title || "Playlist").trim() || "Playlist",
+    ...(isClassical ? {
+      composer: String(playlist?.composer || "").trim(),
+      performer: String(playlist?.performer || "").trim(),
+      conductor: String(playlist?.conductor || "").trim(),
+      orchestra: String(playlist?.orchestra || "").trim(),
+      period: String(playlist?.period || "").trim(),
+      year: String(playlist?.year || "").trim(),
+    } : {}),
     tracks: Array.isArray(playlist?.tracks)
       ? playlist.tracks.map((track, index) => ({
           kind: track?.kind === "album" ? "album" : "single",
@@ -166,16 +177,47 @@ function extractYouTubeIds(track) {
   return { kind, videoId, title: String(track?.title || "Single").trim() || "Single" };
 }
 
-function normalizeReceivedPlaylist(playlist) {
-  const tracks = Array.isArray(playlist?.tracks)
-    ? playlist.tracks.map(extractYouTubeIds)
+function normalizeReceivedMediaCollection(payload, contentType = "music") {
+  const tracks = Array.isArray(payload?.tracks)
+    ? payload.tracks.map(extractYouTubeIds)
     : [];
-  if (tracks.length === 0) throw new Error("La playlist recibida no contiene items válidos.");
+  if (tracks.length === 0) throw new Error("El contenido recibido no contiene items válidos.");
+  const collectionType = contentType === "classical" ? "classical" : "playlist";
   return {
-    title: String(playlist?.title || "Playlist recibida").trim() || "Playlist recibida",
+    title: String(payload?.title || "Contenido recibido").trim() || "Contenido recibido",
     tracks,
-    collectionType: "playlist",
+    collectionType,
+    ...(collectionType === "classical" ? {
+      composer: String(payload?.composer || "").trim(),
+      performer: String(payload?.performer || "").trim(),
+      conductor: String(payload?.conductor || "").trim(),
+      orchestra: String(payload?.orchestra || "").trim(),
+      period: String(payload?.period || "").trim(),
+      year: String(payload?.year || "").trim(),
+    } : {}),
   };
+}
+
+function toP2PTutorial(item, contentType = "tutorial") {
+  return {
+    version: 1,
+    type: contentType === "news" ? "shopp-youtube-news-item" : "shopp-youtube-tutorial",
+    title: String(item?.title || (contentType === "news" ? "Noticia" : "Tutorial")).trim(),
+    tracks: Array.isArray(item?.tracks) ? item.tracks.map((track, index) => ({
+      kind: track?.kind === "album" ? "album" : "single",
+      title: String(track?.title || `Item ${index + 1}`).trim() || `Item ${index + 1}`,
+      videoId: track?.videoId || undefined,
+      playlistId: track?.playlistId || undefined,
+      url: track?.url || (track?.playlistId
+        ? `https://www.youtube.com/playlist?list=${track.playlistId}`
+        : `https://www.youtube.com/watch?v=${track?.videoId || ""}`),
+    })) : [],
+  };
+}
+
+function contentSignature(item) {
+  if (item?.youtubeUrl) return `recipe:${String(item.title || "").toLowerCase()}::${String(item.youtubeUrl || "")}`;
+  return playlistSignature(item);
 }
 
 function playlistSignature(playlist) {
@@ -200,7 +242,7 @@ function downloadJson(payload) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = "shopp-playlist-p2p.json";
+  anchor.download = "shopp-contenido-p2p.json";
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
@@ -226,8 +268,9 @@ export default function P2PPlaylistExchangeScreen() {
   const [playlistClientId] = useState(() => getPlaylistClientId());
   const [busy, setBusy] = useState(false);
   const [connection, setConnection] = useState("idle");
-  const [selectedPlaylistIds, setSelectedPlaylistIds] = useState(() => new Set());
-  const [receivedPlaylists, setReceivedPlaylists] = useState([]);
+  const [selectedContentKeys, setSelectedContentKeys] = useState(() => new Set());
+  const [receivedContent, setReceivedContent] = useState([]);
+  const [recipes, setRecipes] = useState([]);
   const [librarySync, setLibrarySync] = useState(null);
 
   const currentUser = useQuery(api.users.current);
@@ -241,11 +284,44 @@ export default function P2PPlaylistExchangeScreen() {
       ? { clientId: playlistClientId, collectionType: "playlist" }
       : "skip",
   );
+  const classicalPlaylists = useQuery(
+    api.playlists.listMine,
+    hasP2PAccess && playlistClientId
+      ? { clientId: playlistClientId, collectionType: "classical" }
+      : "skip",
+  );
+  const tutorials = useQuery(
+    api.tutorials.listMine,
+    hasP2PAccess && playlistClientId
+      ? { clientId: playlistClientId, contentType: "tutorial" }
+      : "skip",
+  );
+  const newsItems = useQuery(
+    api.tutorials.listMine,
+    hasP2PAccess && playlistClientId
+      ? { clientId: playlistClientId, contentType: "news" }
+      : "skip",
+  );
 
-  const selectedPlaylists = useMemo(() => {
-    if (!Array.isArray(musicPlaylists)) return [];
-    return musicPlaylists.filter((playlist) => selectedPlaylistIds.has(String(playlist._id)));
-  }, [musicPlaylists, selectedPlaylistIds]);
+  const shareGroups = useMemo(() => [
+    { type: "music", label: "Música", icon: "musical-notes-outline", items: musicPlaylists || [] },
+    { type: "classical", label: "Música clásica", icon: "musical-note-outline", items: classicalPlaylists || [] },
+    { type: "tutorial", label: "Tutoriales", icon: "school-outline", items: tutorials || [] },
+    { type: "news", label: "Noticias", icon: "newspaper-outline", items: newsItems || [] },
+    { type: "recipe", label: "Recetas", icon: "restaurant-outline", items: recipes || [] },
+  ], [classicalPlaylists, musicPlaylists, newsItems, recipes, tutorials]);
+
+  const selectedContent = useMemo(() => {
+    const result = [];
+    for (const group of shareGroups) {
+      for (const item of group.items) {
+        const itemId = String(item?._id || item?.id || "");
+        const key = `${group.type}:${itemId}`;
+        if (itemId && selectedContentKeys.has(key)) result.push({ ...group, item });
+      }
+    }
+    return result;
+  }, [selectedContentKeys, shareGroups]);
 
   // No se consulta presencia hasta que Convex haya confirmado una sesión y
   // el permiso. Así una cookie antigua no deja la PWA en blanco.
@@ -268,6 +344,7 @@ export default function P2PPlaylistExchangeScreen() {
   const sendSignal = useMutation(api.nearbyShare.sendSignal);
   const closePairing = useMutation(api.nearbyShare.closePairing);
   const createPlaylist = useMutation(api.playlists.create);
+  const createTutorial = useMutation(api.tutorials.create);
 
   const peerRef = useRef(null);
   const dataChannelRef = useRef(null);
@@ -276,11 +353,22 @@ export default function P2PPlaylistExchangeScreen() {
   const offerStartedForRef = useRef(null);
   const incomingLibrarySyncRef = useRef(new Map());
   const musicPlaylistsRef = useRef([]);
-  const importedPlaylistSignaturesRef = useRef(new Set());
+  const classicalPlaylistsRef = useRef([]);
+  const tutorialsRef = useRef([]);
+  const newsItemsRef = useRef([]);
+  const recipesRef = useRef([]);
+  const importedContentSignaturesRef = useRef(new Set());
 
+  useEffect(() => { musicPlaylistsRef.current = Array.isArray(musicPlaylists) ? musicPlaylists : []; }, [musicPlaylists]);
+  useEffect(() => { classicalPlaylistsRef.current = Array.isArray(classicalPlaylists) ? classicalPlaylists : []; }, [classicalPlaylists]);
+  useEffect(() => { tutorialsRef.current = Array.isArray(tutorials) ? tutorials : []; }, [tutorials]);
+  useEffect(() => { newsItemsRef.current = Array.isArray(newsItems) ? newsItems : []; }, [newsItems]);
+  useEffect(() => { recipesRef.current = recipes; }, [recipes]);
   useEffect(() => {
-    musicPlaylistsRef.current = Array.isArray(musicPlaylists) ? musicPlaylists : [];
-  }, [musicPlaylists]);
+    let disposed = false;
+    loadRecipes().then((items) => { if (!disposed) setRecipes(items); }).catch(() => {});
+    return () => { disposed = true; };
+  }, []);
 
   const closePeer = useCallback(() => {
     dataChannelRef.current?.close?.();
@@ -397,37 +485,73 @@ export default function P2PPlaylistExchangeScreen() {
           setChatMessages((current) => [...current, { id: message.id || `chat-${Date.now()}`, incoming: true, text: String(message.text).slice(0, 1000), sentAt: message.sentAt || Date.now() }]);
           return;
         }
-        if (message?.type === "PLAYLIST" && message.playlist?.tracks) {
-          const imported = normalizeReceivedPlaylist(message.playlist);
-          const signature = playlistSignature(imported);
-          const alreadyExists =
-            importedPlaylistSignaturesRef.current.has(signature) ||
-            musicPlaylistsRef.current.some((playlist) => playlistSignature(playlist) === signature);
+        const legacyPlaylist = message?.type === "PLAYLIST" && message.playlist?.tracks;
+        if (message?.type === "CONTENT" || legacyPlaylist) {
+          const contentType = legacyPlaylist ? "music" : String(message.contentType || "");
+          const payload = legacyPlaylist ? message.playlist : message.payload;
+          if (!payload) return;
+          setReceivedContent((current) => [{ contentType, payload }, ...current]);
 
-          setReceivedPlaylists((current) => [message.playlist, ...current]);
-
-          if (alreadyExists) {
-            safeAlert(
-              "Playlist ya existente",
-              `«${imported.title}» ya está guardada en Music playlist. No se ha creado un duplicado.`,
-            );
+          if (contentType === "recipe") {
+            const importedRecipe = normalizeRecipe(payload);
+            const signature = contentSignature(importedRecipe);
+            const alreadyExists = importedContentSignaturesRef.current.has(signature) ||
+              recipesRef.current.some((item) => contentSignature(item) === signature);
+            if (alreadyExists) {
+              safeAlert("Receta ya existente", `«${importedRecipe.title}» ya está guardada.`);
+              return;
+            }
+            importedContentSignaturesRef.current.add(signature);
+            const next = [...recipesRef.current, importedRecipe];
+            await saveRecipes(next);
+            setRecipes(next);
+            safeAlert("Receta recibida", `«${importedRecipe.title}» ya está disponible en Recetas.`);
             return;
           }
 
-          importedPlaylistSignaturesRef.current.add(signature);
+          if (!["music", "classical", "tutorial", "news"].includes(contentType)) {
+            throw new Error("Shopp ha recibido un tipo de contenido P2P desconocido.");
+          }
+
+          const imported = normalizeReceivedMediaCollection(payload, contentType);
+          const signature = playlistSignature(imported);
+          const currentItems = contentType === "music" ? musicPlaylistsRef.current
+            : contentType === "classical" ? classicalPlaylistsRef.current
+              : contentType === "tutorial" ? tutorialsRef.current : newsItemsRef.current;
+          const alreadyExists = importedContentSignaturesRef.current.has(`${contentType}:${signature}`) ||
+            currentItems.some((item) => playlistSignature(item) === signature);
+          if (alreadyExists) {
+            safeAlert("Contenido ya existente", `«${imported.title}» ya está guardado. No se ha creado un duplicado.`);
+            return;
+          }
+
+          importedContentSignaturesRef.current.add(`${contentType}:${signature}`);
           try {
-            await createPlaylist({
-              clientId: playlistClientId || undefined,
-              title: imported.title,
-              tracks: imported.tracks,
-              collectionType: "playlist",
-            });
-            safeAlert(
-              "Playlist recibida y guardada",
-              `«${imported.title}» · ${imported.tracks.length} items. Ya está disponible en Music playlist.`,
-            );
+            if (contentType === "music" || contentType === "classical") {
+              await createPlaylist({
+                clientId: playlistClientId || undefined,
+                title: imported.title,
+                tracks: imported.tracks,
+                collectionType: contentType === "classical" ? "classical" : "playlist",
+                ...(contentType === "classical" ? {
+                  composer: imported.composer, performer: imported.performer, conductor: imported.conductor,
+                  orchestra: imported.orchestra, period: imported.period, year: imported.year,
+                } : {}),
+              });
+            } else {
+              await createTutorial({
+                clientId: playlistClientId || undefined,
+                contentType: contentType === "news" ? "news" : "tutorial",
+                title: imported.title,
+                tracks: imported.tracks,
+              });
+            }
+            const destination = contentType === "music" ? "Music playlist"
+              : contentType === "classical" ? "Música clásica"
+                : contentType === "tutorial" ? "Tutoriales" : "Noticias";
+            safeAlert("Contenido recibido y guardado", `«${imported.title}» ya está disponible en ${destination}.`);
           } catch (error) {
-            importedPlaylistSignaturesRef.current.delete(signature);
+            importedContentSignaturesRef.current.delete(`${contentType}:${signature}`);
             throw error;
           }
         }
@@ -436,7 +560,7 @@ export default function P2PPlaylistExchangeScreen() {
         safeAlert("Sincronización P2P", error?.message || "No se pudo procesar el mensaje recibido.");
       }
     };
-  }, [alias, channels, createPlaylist, handleLibraryMessage, myPresence?.displayName, playlistClientId]);
+  }, [alias, channels, createPlaylist, createTutorial, handleLibraryMessage, myPresence?.displayName, playlistClientId]);
 
   const createPeer = useCallback((pairing, initiator) => {
     if (peerRef.current) return peerRef.current;
@@ -594,9 +718,9 @@ export default function P2PPlaylistExchangeScreen() {
     setChatText("");
   };
 
-  const togglePlaylistSelection = (playlistId) => {
-    const key = String(playlistId);
-    setSelectedPlaylistIds((current) => {
+  const toggleContentSelection = (contentType, itemId) => {
+    const key = `${contentType}:${String(itemId)}`;
+    setSelectedContentKeys((current) => {
       const next = new Set(current);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -604,34 +728,43 @@ export default function P2PPlaylistExchangeScreen() {
     });
   };
 
-  const selectAllPlaylists = () => {
-    if (!Array.isArray(musicPlaylists)) return;
-    if (selectedPlaylistIds.size === musicPlaylists.length) {
-      setSelectedPlaylistIds(new Set());
-      return;
-    }
-    setSelectedPlaylistIds(new Set(musicPlaylists.map((playlist) => String(playlist._id))));
+  const selectAllInGroup = (group) => {
+    const keys = group.items.map((item) => `${group.type}:${String(item?._id || item?.id || "")}`).filter((key) => !key.endsWith(":"));
+    const allSelected = keys.length > 0 && keys.every((key) => selectedContentKeys.has(key));
+    setSelectedContentKeys((current) => {
+      const next = new Set(current);
+      for (const key of keys) allSelected ? next.delete(key) : next.add(key);
+      return next;
+    });
   };
 
-  const sendSelectedPlaylists = async () => {
+  const sendSelectedContent = async () => {
     const channel = dataChannelRef.current;
     if (!channel || channel.readyState !== "open") {
       safeAlert("Intercambio P2P", "La conexión todavía no está lista.");
       return;
     }
-    if (selectedPlaylists.length === 0) {
-      safeAlert("Intercambio P2P", "Selecciona al menos una playlist para compartir.");
+    if (selectedContent.length === 0) {
+      safeAlert("Intercambio P2P", "Selecciona al menos un contenido para compartir.");
       return;
     }
     setBusy(true);
     try {
-      for (const playlist of selectedPlaylists) {
-        sendP2PJson(channel, { type: "PLAYLIST", playlist: toP2PPlaylist(playlist) });
+      for (const selected of selectedContent) {
+        let payload;
+        if (selected.type === "music" || selected.type === "classical") {
+          payload = toP2PPlaylist(selected.item, selected.type === "classical" ? "classical" : "playlist");
+        } else if (selected.type === "tutorial" || selected.type === "news") {
+          payload = toP2PTutorial(selected.item, selected.type);
+        } else {
+          payload = normalizeRecipe(selected.item);
+        }
+        sendP2PJson(channel, { type: "CONTENT", contentType: selected.type, payload });
         await new Promise((resolve) => setTimeout(resolve, 30));
       }
       safeAlert(
-        "Playlists enviadas",
-        `${selectedPlaylists.length} ${selectedPlaylists.length === 1 ? "playlist enviada" : "playlists enviadas"} por P2P.`,
+        "Contenido enviado",
+        `${selectedContent.length} ${selectedContent.length === 1 ? "elemento enviado" : "elementos enviados"} por P2P.`,
       );
     } finally {
       setBusy(false);
@@ -639,6 +772,10 @@ export default function P2PPlaylistExchangeScreen() {
   };
 
   const syncLibrary = async () => {
+    if (!activePairing?.sameUser) {
+      safeAlert("Biblioteca privada", "La sincronización completa de Biblioteca solo está disponible entre dispositivos de la misma cuenta.");
+      return;
+    }
     setBusy(true);
     try {
       setLibrarySync({ state: "preparing" });
@@ -678,7 +815,7 @@ export default function P2PPlaylistExchangeScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.hero}><Ionicons name="people-outline" size={29} color="#2563eb" /><View><Text style={styles.title}>Intercambio P2P · prueba</Text><Text style={styles.subtitle}>Solo se coordinan el alias y la conexión. Los enlaces viajan directamente entre los dos dispositivos.</Text></View></View>
+      <View style={styles.hero}><Ionicons name="people-outline" size={29} color="#2563eb" /><View><Text style={styles.title}>Intercambio P2P · prueba</Text><Text style={styles.subtitle}>Solo se coordinan el alias y la conexión. El contenido seleccionado viaja directamente entre los dos dispositivos.</Text></View></View>
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>1. Haz visible este dispositivo durante dos minutos</Text>
@@ -695,49 +832,45 @@ export default function P2PPlaylistExchangeScreen() {
       </View>
 
       <View style={styles.card}>
-        <View style={styles.playlistHeader}>
-          <View style={styles.playlistHeaderText}>
-            <Text style={styles.cardTitle}>Listas de música para compartir</Text>
-            <Text style={styles.muted}>Selecciona las playlists de “Mis playlists” que quieres enviar al otro dispositivo.</Text>
-          </View>
-          {Array.isArray(musicPlaylists) && musicPlaylists.length > 0 ? (
-            <Pressable onPress={selectAllPlaylists} style={styles.selectAllButton}>
-              <Text style={styles.selectAllText}>{selectedPlaylistIds.size === musicPlaylists.length ? "Ninguna" : "Todas"}</Text>
-            </Pressable>
-          ) : null}
-        </View>
-        {musicPlaylists === undefined ? (
-          <ActivityIndicator color="#2563eb" />
-        ) : musicPlaylists.length === 0 ? (
-          <Text style={styles.muted}>No hay playlists de música en “Mis playlists”.</Text>
-        ) : (
-          <View style={styles.playlistList}>
-            {musicPlaylists.map((playlist) => {
-              const key = String(playlist._id);
-              const selected = selectedPlaylistIds.has(key);
-              const itemCount = Array.isArray(playlist.tracks) ? playlist.tracks.length : 0;
-              return (
-                <Pressable key={key} onPress={() => togglePlaylistSelection(key)} style={[styles.playlistRow, selected && styles.playlistRowSelected]}>
-                  <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
-                    {selected ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}
-                  </View>
+        <Text style={styles.cardTitle}>Contenido para compartir</Text>
+        <Text style={styles.muted}>Selecciona qué elementos quieres enviar. No se comparte nada automáticamente al hacer Handshake.</Text>
+        {shareGroups.map((group) => {
+          const loading = group.type === "music" ? musicPlaylists === undefined
+            : group.type === "classical" ? classicalPlaylists === undefined
+              : group.type === "tutorial" ? tutorials === undefined
+                : group.type === "news" ? newsItems === undefined : false;
+          const keys = group.items.map((item) => `${group.type}:${String(item?._id || item?.id || "")}`).filter((key) => !key.endsWith(":"));
+          const allSelected = keys.length > 0 && keys.every((key) => selectedContentKeys.has(key));
+          return <View key={group.type} style={styles.contentGroup}>
+            <View style={styles.playlistHeader}>
+              <View style={styles.groupTitleRow}><Ionicons name={group.icon} size={20} color="#2563eb" /><Text style={styles.playlistName}>{group.label}</Text></View>
+              {group.items.length > 0 ? <Pressable onPress={() => selectAllInGroup(group)} style={styles.selectAllButton}><Text style={styles.selectAllText}>{allSelected ? "Ninguno" : "Todos"}</Text></Pressable> : null}
+            </View>
+            {loading ? <ActivityIndicator color="#2563eb" /> : group.items.length === 0 ? <Text style={styles.muted}>No hay elementos.</Text> : <View style={styles.playlistList}>
+              {group.items.map((item) => {
+                const itemId = String(item?._id || item?.id || "");
+                const key = `${group.type}:${itemId}`;
+                const selected = selectedContentKeys.has(key);
+                const itemCount = Array.isArray(item?.tracks) ? item.tracks.length : null;
+                return <Pressable key={key} onPress={() => toggleContentSelection(group.type, itemId)} style={[styles.playlistRow, selected && styles.playlistRowSelected]}>
+                  <View style={[styles.checkbox, selected && styles.checkboxSelected]}>{selected ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}</View>
                   <View style={styles.playlistInfo}>
-                    <Text style={styles.playlistName} numberOfLines={1}>{playlist.title || "Playlist"}</Text>
-                    <Text style={styles.playlistMeta}>{itemCount} {itemCount === 1 ? "item" : "items"}</Text>
+                    <Text style={styles.playlistName} numberOfLines={1}>{item?.title || "Sin título"}</Text>
+                    <Text style={styles.playlistMeta}>{itemCount === null ? (item?.category || "Receta") : `${itemCount} ${itemCount === 1 ? "item" : "items"}`}</Text>
                   </View>
-                  <Ionicons name="musical-notes-outline" size={20} color={selected ? "#2563eb" : "#94a3b8"} />
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
-        {selectedPlaylistIds.size > 0 ? <Status tone="success">{selectedPlaylistIds.size} seleccionada{selectedPlaylistIds.size === 1 ? "" : "s"}</Status> : null}
+                  <Ionicons name={group.icon} size={20} color={selected ? "#2563eb" : "#94a3b8"} />
+                </Pressable>;
+              })}
+            </View>}
+          </View>;
+        })}
+        {selectedContent.length > 0 ? <Status tone="success">{selectedContent.length} elemento{selectedContent.length === 1 ? "" : "s"} seleccionado{selectedContent.length === 1 ? "" : "s"}</Status> : null}
       </View>
 
-      {pendingIncoming.map((pairing) => <View key={pairing._id} style={styles.card}><Text style={styles.cardTitle}>{pairing.initiatorName} quiere intercambiar una playlist</Text><Text style={styles.muted}>Confirmad ambos este código: <Text style={styles.code}>{pairing.confirmCode}</Text></Text><View style={styles.actions}><Pressable disabled={busy} onPress={() => respond(pairing, false)} style={styles.rejectButton}><Text style={styles.rejectText}>Rechazar</Text></Pressable><Pressable disabled={busy} onPress={() => respond(pairing, true)} style={styles.acceptButton}><Text style={styles.acceptText}>Aceptar</Text></Pressable></View></View>)}
+      {pendingIncoming.map((pairing) => <View key={pairing._id} style={styles.card}><Text style={styles.cardTitle}>{pairing.initiatorName} quiere intercambiar contenido</Text><Text style={styles.muted}>Confirmad ambos este código: <Text style={styles.code}>{pairing.confirmCode}</Text></Text><View style={styles.actions}><Pressable disabled={busy} onPress={() => respond(pairing, false)} style={styles.rejectButton}><Text style={styles.rejectText}>Rechazar</Text></Pressable><Pressable disabled={busy} onPress={() => respond(pairing, true)} style={styles.acceptButton}><Text style={styles.acceptText}>Aceptar</Text></Pressable></View></View>)}
       {pendingOutgoing.map((pairing) => <View key={pairing._id} style={styles.card}><Text style={styles.cardTitle}>Esperando a {pairing.recipientName}</Text><Text style={styles.muted}>El código que ambos deben comprobar es <Text style={styles.code}>{pairing.confirmCode}</Text>.</Text></View>)}
 
-      {activePairing ? <View style={styles.card}><Text style={styles.cardTitle}>3. Conexión con {activePairing.friendName}</Text><Text style={styles.muted}>Código confirmado: <Text style={styles.code}>{activePairing.confirmCode}</Text></Text><Status tone={connection === "connected" ? "success" : connection === "failed" ? "danger" : "neutral"}>{connection === "connected" ? "Canal P2P conectado" : connection === "failed" ? "No se pudo conectar" : activePairing.isInitiator ? "Listo para iniciar la conexión" : "Esperando la conexión del otro dispositivo"}</Status>{activePairing.isInitiator && connection !== "connected" ? <Pressable onPress={startConnection} style={styles.primaryButton}><Ionicons name="link-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Conectar ahora</Text></Pressable> : null}{connection === "connected" ? <><Pressable disabled={busy || selectedPlaylists.length === 0} onPress={sendSelectedPlaylists} style={[styles.primaryButton, selectedPlaylists.length === 0 && styles.disabledButton]}><Ionicons name="send-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Enviar seleccionadas ({selectedPlaylists.length})</Text></Pressable><Pressable disabled={busy || ["preparing", "receiving", "merging"].includes(librarySync?.state)} onPress={syncLibrary} style={[styles.primaryButton, styles.librarySyncButton]}><Ionicons name="sync-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Sincronizar Biblioteca</Text></Pressable>{librarySync ? <Status tone={librarySync.state === "failed" ? "danger" : librarySync.state === "merged" || librarySync.state === "reply-sent" ? "success" : "neutral"}>{librarySync.state === "preparing" ? "Preparando Biblioteca…" : librarySync.state === "receiving" ? `Recibiendo ${librarySync.receivedChunks || 0}/${librarySync.totalChunks || 0} bloques…` : librarySync.state === "merging" ? "Combinando cambios…" : librarySync.state === "failed" ? `Error: ${librarySync.error || "sincronización fallida"}` : librarySync.state === "sent" ? "Biblioteca enviada; esperando respuesta…" : librarySync.state === "reply-sent" ? "Respuesta de sincronización enviada" : librarySync.state === "merged" ? "Cambios recibidos y combinados" : "Sincronización P2P"}</Status> : null}</> : null}<Pressable onPress={finish} style={styles.finishButton}><Text style={styles.finishText}>Finalizar y borrar sesión</Text></Pressable></View> : null}
+      {activePairing ? <View style={styles.card}><Text style={styles.cardTitle}>3. Conexión con {activePairing.friendName}</Text><Text style={styles.muted}>Código confirmado: <Text style={styles.code}>{activePairing.confirmCode}</Text></Text><Status tone={connection === "connected" ? "success" : connection === "failed" ? "danger" : "neutral"}>{connection === "connected" ? "Canal P2P conectado" : connection === "failed" ? "No se pudo conectar" : activePairing.isInitiator ? "Listo para iniciar la conexión" : "Esperando la conexión del otro dispositivo"}</Status>{activePairing.isInitiator && connection !== "connected" ? <Pressable onPress={startConnection} style={styles.primaryButton}><Ionicons name="link-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Conectar ahora</Text></Pressable> : null}{connection === "connected" ? <><Pressable disabled={busy || selectedContent.length === 0} onPress={sendSelectedContent} style={[styles.primaryButton, selectedContent.length === 0 && styles.disabledButton]}><Ionicons name="send-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Enviar seleccionados ({selectedContent.length})</Text></Pressable><Pressable disabled={busy || !activePairing.sameUser || ["preparing", "receiving", "merging"].includes(librarySync?.state)} onPress={syncLibrary} style={[styles.primaryButton, styles.librarySyncButton, !activePairing.sameUser && styles.disabledButton]}><Ionicons name="sync-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Sincronizar Biblioteca</Text></Pressable>{!activePairing.sameUser ? <Text style={styles.muted}>La Biblioteca completa solo se sincroniza entre dispositivos de tu misma cuenta.</Text> : null}{librarySync ? <Status tone={librarySync.state === "failed" ? "danger" : librarySync.state === "merged" || librarySync.state === "reply-sent" ? "success" : "neutral"}>{librarySync.state === "preparing" ? "Preparando Biblioteca…" : librarySync.state === "receiving" ? `Recibiendo ${librarySync.receivedChunks || 0}/${librarySync.totalChunks || 0} bloques…` : librarySync.state === "merging" ? "Combinando cambios…" : librarySync.state === "failed" ? `Error: ${librarySync.error || "sincronización fallida"}` : librarySync.state === "sent" ? "Biblioteca enviada; esperando respuesta…" : librarySync.state === "reply-sent" ? "Respuesta de sincronización enviada" : librarySync.state === "merged" ? "Cambios recibidos y combinados" : "Sincronización P2P"}</Status> : null}</> : null}<Pressable onPress={finish} style={styles.finishButton}><Text style={styles.finishText}>Finalizar y borrar sesión</Text></Pressable></View> : null}
 
       {activePairing && connection === "connected" ? <View style={styles.card}>
         <Text style={styles.cardTitle}>Conversación con {activePairing.friendName}</Text>
@@ -748,8 +881,8 @@ export default function P2PPlaylistExchangeScreen() {
         <View style={styles.chatComposer}><TextInput value={chatText} onChangeText={setChatText} onSubmitEditing={sendChatMessage} placeholder="Escribe un mensaje…" placeholderTextColor="#94a3b8" style={[styles.input, styles.chatInput]} /><Pressable onPress={sendChatMessage} disabled={!chatText.trim()} style={[styles.sendButton, !chatText.trim() && styles.disabledButton]}><Ionicons name="send" size={18} color="#fff" /></Pressable></View>
       </View> : null}
 
-      {receivedPlaylists.length > 0 ? <View style={styles.card}><Text style={styles.cardTitle}>Playlists recibidas por P2P</Text>{receivedPlaylists.map((playlist, index) => <View key={`${playlist.title || "playlist"}-${index}`} style={styles.receivedRow}><View style={styles.playlistInfo}><Text style={styles.playlistName} numberOfLines={1}>{playlist.title || "Playlist"}</Text><Text style={styles.playlistMeta}>{playlist.tracks?.length || 0} items</Text></View><Pressable onPress={() => downloadJson(playlist)} style={styles.downloadButton}><Ionicons name="download-outline" size={18} color="#1d4ed8" /><Text style={styles.downloadButtonText}>JSON</Text></Pressable></View>)}</View> : null}
-      <Text style={styles.note}>Las playlists seleccionadas se envían directamente por WebRTC. Al recibirlas, Shopp las guarda automáticamente en “Music playlist” del usuario receptor y evita duplicados exactos. La opción “Sincronizar Biblioteca” combina la Biblioteca local de ambos dispositivos.</Text>
+      {receivedContent.length > 0 ? <View style={styles.card}><Text style={styles.cardTitle}>Contenido recibido por P2P</Text>{receivedContent.map((entry, index) => { const payload = entry.payload || {}; const count = Array.isArray(payload.tracks) ? payload.tracks.length : null; return <View key={`${entry.contentType}-${payload.title || "contenido"}-${index}`} style={styles.receivedRow}><View style={styles.playlistInfo}><Text style={styles.playlistName} numberOfLines={1}>{payload.title || "Contenido"}</Text><Text style={styles.playlistMeta}>{entry.contentType}{count !== null ? ` · ${count} items` : ""}</Text></View><Pressable onPress={() => downloadJson({ type: entry.contentType, data: payload })} style={styles.downloadButton}><Ionicons name="download-outline" size={18} color="#1d4ed8" /><Text style={styles.downloadButtonText}>JSON</Text></Pressable></View>; })}</View> : null}
+      <Text style={styles.note}>El contenido seleccionado se envía directamente por WebRTC y se guarda en su utilidad correspondiente, evitando duplicados exactos. La sincronización completa de Biblioteca se reserva a dispositivos de la misma cuenta y combina los cambios locales de ambos.</Text>
     </ScrollView>
   );
 }
@@ -787,7 +920,9 @@ const styles = StyleSheet.create({
   status: { alignSelf: "flex-start", backgroundColor: "#f1f5f9", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }, statusText: { color: "#475569", fontWeight: "700", fontSize: 13 }, status_success: { backgroundColor: "#dcfce7" }, statusText_success: { color: "#15803d" }, status_danger: { backgroundColor: "#fee2e2" }, statusText_danger: { color: "#b91c1c" },
   code: { color: "#1d4ed8", fontWeight: "900", letterSpacing: 1 },
   disabledButton: { opacity: 0.45 },
-  playlistHeader: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  playlistHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
+  contentGroup: { marginTop: 4, paddingTop: 12, borderTopWidth: 1, borderTopColor: "#e2e8f0", gap: 8 },
+  groupTitleRow: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
   playlistHeaderText: { flex: 1, minWidth: 0 },
   selectAllButton: { paddingHorizontal: 11, paddingVertical: 7, borderRadius: 8, backgroundColor: "#eff6ff" },
   selectAllText: { color: "#1d4ed8", fontSize: 13, fontWeight: "800" },

@@ -161,7 +161,7 @@ export const listPairings = query({
     return [...unique.values()]
       .filter((item) => item.expiresAt > now && ((item.initiatorId === user._id && item.initiatorDeviceId === deviceId) || (item.recipientId === user._id && item.recipientDeviceId === deviceId)))
       .sort((a, b) => b.updatedAt - a.updatedAt)
-      .map((item) => ({ ...item, isInitiator: item.initiatorId === user._id && item.initiatorDeviceId === deviceId, friendName: item.initiatorId === user._id && item.initiatorDeviceId === deviceId ? item.recipientName : item.initiatorName }));
+      .map((item) => ({ ...item, sameUser: item.initiatorId === item.recipientId, isInitiator: item.initiatorId === user._id && item.initiatorDeviceId === deviceId, friendName: item.initiatorId === user._id && item.initiatorDeviceId === deviceId ? item.recipientName : item.initiatorName }));
   },
 });
 
