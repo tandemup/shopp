@@ -1,340 +1,153 @@
 import React from "react";
 import {
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
   useWindowDimensions,
-  View
+  View,
 } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
 
-
 export default function AuthHomeScreen({ navigation }) {
   const { width } = useWindowDimensions();
-
-  const isLaptop = width >= 900;
-  const isTablet = width >= 700 && width < 900;
+  const compact = width < 700;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <View
-        style={[
-          styles.page,
-          isLaptop && styles.pageLaptop,
-          isTablet && styles.pageTablet,
-        ]}
-      >
-        {isLaptop ? (
-          <View style={styles.heroPanel}>
-            <View style={styles.heroBadge}>
-              <Text style={styles.heroBadgeText}>Shopp</Text>
-            </View>
-
-            <Text style={styles.heroTitle}>
-              Organiza tus compras, tiendas, historial y parking desde una sola
-              app.
-            </Text>
-
-            <Text style={styles.heroSubtitle}>
-              Guarda tus listas, consulta tus tiendas habituales, revisa compras
-              anteriores y configura tus preferencias con una experiencia
-              preparada para móvil, tablet y escritorio.
-            </Text>
-
-            <View style={styles.heroBullets}>
-              <View style={styles.bulletRow}>
-                <View style={styles.bulletDot} />
-                <Text style={styles.bulletText}>Listas sincronizadas</Text>
-              </View>
-
-              <View style={styles.bulletRow}>
-                <View style={styles.bulletDot} />
-                <Text style={styles.bulletText}>Historial de productos</Text>
-              </View>
-
-              <View style={styles.bulletRow}>
-                <View style={styles.bulletDot} />
-                <Text style={styles.bulletText}>Tiendas y preferencias</Text>
-              </View>
-            </View>
+    <View style={styles.screen}>
+      <View style={[styles.header, compact && styles.headerCompact]}>
+        <View style={styles.brand}>
+          <View style={styles.logoMark}>
+            <Text style={styles.logoMarkText}>S</Text>
           </View>
-        ) : null}
+          <Text style={styles.logo}>Shopp</Text>
+        </View>
 
-        <View
-          style={[
-            styles.card,
-            isLaptop && styles.cardLaptop,
-            isTablet && styles.cardTablet,
-          ]}
-        >
-          <Text style={[styles.logo, isLaptop && styles.logoLaptop]}>
-            Shopp
-          </Text>
+        <View style={styles.actions}>
+          {!compact ? (
+            <>
+              <Pressable style={styles.menuButton}>
+                <Text style={styles.menuText}>Inicio</Text>
+              </Pressable>
+              <Pressable style={styles.menuButton}>
+                <Text style={styles.menuText}>Características</Text>
+              </Pressable>
+              <Pressable style={styles.menuButton}>
+                <Text style={styles.menuText}>Cómo funciona</Text>
+              </Pressable>
+            </>
+          ) : null}
 
-          <Text style={[styles.title, isLaptop && styles.titleLaptop]}>
-            Tu lista de la compra inteligente
-          </Text>
+          <Pressable
+            style={({ pressed }) => [styles.loginButton, pressed && styles.pressed]}
+            onPress={() => navigation.navigate("Login")}
+          >
+            <Text style={styles.loginText}>Entrar</Text>
+          </Pressable>
 
-          <Text style={[styles.subtitle, isLaptop && styles.subtitleLaptop]}>
-            Inicia sesión para guardar tus listas, historial, tiendas, parking y
-            preferencias.
-          </Text>
-
-          <View style={styles.actions}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.primaryButton,
-                pressed && styles.buttonPressed,
-              ]}
-              onPress={() => navigation.navigate("Login")}
-            >
-              <Text style={styles.primaryButtonText}>Entrar</Text>
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.secondaryButton,
-                pressed && styles.buttonPressed,
-              ]}
-              onPress={() => navigation.navigate("Register")}
-            >
-              <Text style={styles.secondaryButtonText}>Crear cuenta</Text>
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.resetPasswordButton,
-                pressed && styles.buttonPressed,
-              ]}
-              onPress={() => navigation.navigate("ResetPassword")}
-            >
-              <Text style={styles.resetPasswordButtonText}>
-                ¿Has olvidado tu contraseña?
-              </Text>
-            </Pressable>
-          </View>
-          <Text style={styles.footerText}>
-            Accede con tu cuenta para mantener tus datos guardados.
-          </Text>
+          <Pressable
+            style={({ pressed }) => [styles.registerButton, pressed && styles.pressed]}
+            onPress={() => navigation.navigate("Register")}
+          >
+            <Text style={styles.registerText}>Crear cuenta</Text>
+          </Pressable>
         </View>
       </View>
-    </KeyboardAvoidingView>
+
+      <View style={styles.blankPage} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#ffffff",
   },
-
-  page: {
-    flex: 1,
+  header: {
     width: "100%",
-    justifyContent: "center",
-    alignSelf: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 28,
-  },
-
-  pageTablet: {
-    maxWidth: 620,
-    paddingHorizontal: 32,
-  },
-
-  pageLaptop: {
-    maxWidth: 1120,
+    minHeight: 72,
+    paddingHorizontal: 36,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 40,
-    paddingHorizontal: 48,
-    paddingVertical: 48,
+    justifyContent: "space-between",
+    backgroundColor: "#ffffff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+    ...Platform.select({
+      web: { position: "relative" },
+      default: {},
+    }),
   },
-
-  heroPanel: {
-    flex: 1,
-    maxWidth: 560,
-    padding: 32,
-  },
-
-  heroBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "#dbeafe",
-    borderRadius: 999,
+  headerCompact: {
+    minHeight: 64,
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginBottom: 24,
   },
-
-  heroBadgeText: {
-    color: "#1d4ed8",
-    fontSize: 15,
-    fontWeight: "900",
-  },
-
-  heroTitle: {
-    fontSize: 42,
-    lineHeight: 48,
-    fontWeight: "900",
-    color: "#0f172a",
-    marginBottom: 18,
-    letterSpacing: -0.8,
-  },
-
-  heroSubtitle: {
-    fontSize: 17,
-    lineHeight: 27,
-    color: "#475569",
-    maxWidth: 520,
-  },
-
-  heroBullets: {
-    marginTop: 28,
-    gap: 14,
-  },
-
-  bulletRow: {
+  brand: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
   },
-
-  bulletDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 99,
+  logoMark: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
     backgroundColor: "#2563eb",
-  },
-
-  bulletText: {
-    fontSize: 15,
-    color: "#334155",
-    fontWeight: "700",
-  },
-
-  card: {
-    width: "100%",
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    padding: 24,
-    shadowColor: "#000000",
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
-  },
-
-  cardTablet: {
-    padding: 32,
-  },
-
-  cardLaptop: {
-    width: 420,
-    padding: 34,
-    borderRadius: 28,
-  },
-
-  logo: {
-    fontSize: 42,
-    fontWeight: "900",
-    color: "#0f172a",
-    marginBottom: 12,
-    textAlign: "center",
-    letterSpacing: -0.6,
-  },
-
-  logoLaptop: {
-    fontSize: 46,
-  },
-
-  title: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#111827",
-    textAlign: "center",
-    marginBottom: 10,
-    lineHeight: 28,
-  },
-
-  titleLaptop: {
-    fontSize: 24,
-    lineHeight: 31,
-  },
-
-  subtitle: {
-    fontSize: 15,
-    color: "#64748b",
-    textAlign: "center",
-    lineHeight: 22,
-    marginBottom: 28,
-  },
-
-  subtitleLaptop: {
-    fontSize: 16,
-    lineHeight: 24,
-    marginBottom: 30,
-  },
-
-  actions: {
-    gap: 12,
-  },
-
-  primaryButton: {
-    backgroundColor: "#2563eb",
-    borderRadius: 14,
-    paddingVertical: 15,
-    alignItems: "center",
-  },
-
-  primaryButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-
-  secondaryButton: {
-    backgroundColor: "#eff6ff",
-    borderRadius: 14,
-    paddingVertical: 15,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#bfdbfe",
-  },
-
-  secondaryButtonText: {
-    color: "#1d4ed8",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-
-  buttonPressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.99 }],
-  },
-
-  footerText: {
-    marginTop: 18,
-    fontSize: 13,
-    lineHeight: 18,
-    color: "#94a3b8",
-    textAlign: "center",
-  },
-  resetPasswordButton: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 12,
   },
-
-  resetPasswordButtonText: {
+  logoMarkText: {
+    color: "#ffffff",
+    fontSize: 19,
+    fontWeight: "900",
+  },
+  logo: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#0f172a",
+  },
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  menuButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  menuText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#334155",
+  },
+  loginButton: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#dbe3ef",
+    backgroundColor: "#ffffff",
+  },
+  loginText: {
     color: "#2563eb",
     fontSize: 14,
-    fontWeight: "700",
-    textAlign: "center",
+    fontWeight: "800",
+  },
+  registerButton: {
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 10,
+    backgroundColor: "#2563eb",
+  },
+  registerText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  pressed: {
+    opacity: 0.8,
+  },
+  blankPage: {
+    flex: 1,
+    backgroundColor: "#ffffff",
   },
 });
