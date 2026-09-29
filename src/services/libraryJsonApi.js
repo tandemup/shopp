@@ -1,6 +1,7 @@
 import { storage } from "@/src/storage/storage";
 
 const STORAGE_KEY = "@shopping/library-json-v1";
+const LEGACY_MIGRATION_KEY = "shopp-library-convex-migration-v1";
 const FORMAT = "shopp-library-backup";
 const VERSION = 1;
 
@@ -340,6 +341,19 @@ export const libraryJsonApi = {
     return () => listeners.delete(listener);
   },
   getSnapshot: read,
+  async needsLegacyConvexMigration() {
+    const marker = await storage.getJSON(LEGACY_MIGRATION_KEY, null);
+    if (marker?.done === true) return false;
+    const database = await read();
+    return database.links.length === 0;
+  },
+  async markLegacyConvexMigrationDone(details = {}) {
+    await storage.setJSON(LEGACY_MIGRATION_KEY, {
+      done: true,
+      migratedAt: Date.now(),
+      ...details,
+    });
+  },
   ensureDefaultFolders() {
     return update((database) => {
       let created = 0;

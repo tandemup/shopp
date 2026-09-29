@@ -1297,6 +1297,106 @@ export const getLinksByIds = query({
   },
 });
 
+
+// Migración de una sola vez de la Biblioteca histórica de Convex al
+// almacenamiento local (IndexedDB/AsyncStorage). Los administradores conservan
+// el comportamiento histórico de Biblioteca, que era global. Para usuarios
+// normales sólo se exportan los enlaces creados por su cuenta.
+export const exportLegacyLibraryForLocalMigration = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const authUserId = await getAuthUserId(ctx);
+    if (!authUserId) throw new Error("Debes iniciar sesión para migrar Biblioteca.");
+
+    const user = await ctx.db.get(authUserId);
+    const isAdmin = user?.isAdmin === true || user?.role === "admin";
+
+    // Las carpetas históricas eran compartidas. Sólo se leen durante esta
+    // migración para reconstruir la ruta de cada enlace en la copia local.
+    const folders = await ctx.db.query("computerLinkFolders").collect();
+    const folderById = new Map(
+      folders.map((folder) => [String(folder._id), folder]),
+    );
+    const keyCache = new Map();
+    const trailCache = new Map();
+
+    const folderKey = (folder) => {
+      if (!folder) return null;
+      const id = String(folder._id);
+      if (keyCache.has(id)) return keyCache.get(id);
+      const parent = folder.parentFolderId
+        ? folderById.get(String(folder.parentFolderId))
+        : null;
+      const parentKey = parent ? folderKey(parent) : null;
+      const segment = encodeURIComponent(folder.name);
+      const key = parentKey ? `${parentKey}/${segment}` : segment;
+      keyCache.set(id, key);
+      return key;
+    };
+
+    const folderTrail = (folder) => {
+      if (!folder) return [];
+      const id = String(folder._id);
+      if (trailCache.has(id)) return trailCache.get(id);
+      const parent = folder.parentFolderId
+        ? folderById.get(String(folder.parentFolderId))
+        : null;
+      const trail = [
+        ...(parent ? folderTrail(parent) : []),
+        {
+          key: folderKey(folder),
+          parentKey: parent ? folderKey(parent) : null,
+          name: folder.name,
+          icon: folder.icon || "folder-outline",
+          color: folder.color || "#2563eb",
+          order: Number(folder.order || 0),
+          createdAt: Number(folder.createdAt || 0),
+        },
+      ];
+      trailCache.set(id, trail);
+      return trail;
+    };
+
+    const baseQuery = isAdmin
+      ? ctx.db.query("computerLinks").withIndex("by_updatedAt").order("desc")
+      : ctx.db
+          .query("computerLinks")
+          .withIndex("by_createdBy", (q) =>
+            q.eq("createdBy", String(authUserId)),
+          );
+
+    const linksPage = await baseQuery
+      .filter((q) => q.neq(q.field("status"), "archived"))
+      .paginate(args.paginationOpts);
+
+    return {
+      ...linksPage,
+      page: linksPage.page.map((link) => {
+        const folder = link.folderId
+          ? folderById.get(String(link.folderId))
+          : null;
+        return {
+          url: link.url,
+          normalizedUrl: link.normalizedUrl,
+          hostname: link.hostname,
+          username: link.username,
+          folderKey: folder ? folderKey(folder) : null,
+          folderTrail: folder ? folderTrail(folder) : [],
+          linkType: link.linkType || "general",
+          sourceDomain: link.sourceDomain || null,
+          customTitle: link.customTitle || null,
+          favorite: Boolean(link.favorite),
+          notes: link.notes || null,
+          hashtags: Array.isArray(link.hashtags) ? link.hashtags : [],
+          publishedAt: Number(link.publishedAt || 0) || null,
+          createdAt: Number(link.createdAt || 0),
+          updatedAt: Number(link.updatedAt || link.createdAt || 0),
+        };
+      }),
+    };
+  },
+});
+
 export const exportBackup = query({
   args: { paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
