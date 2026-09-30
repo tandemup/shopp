@@ -8,9 +8,22 @@ import {
 } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
 
-export default function AuthHomeScreen({ navigation }) {
+export default function AuthHomeScreen({
+  navigation,
+  isAuthenticated = false,
+  onAuthenticatedContinue,
+}) {
   const { width } = useWindowDimensions();
   const compact = width < 700;
+
+  const handleEnter = () => {
+    if (isAuthenticated && onAuthenticatedContinue) {
+      onAuthenticatedContinue();
+      return;
+    }
+
+    navigation.navigate("Login");
+  };
 
   return (
     <View style={styles.screen}>
@@ -39,7 +52,7 @@ export default function AuthHomeScreen({ navigation }) {
 
           <Pressable
             style={({ pressed }) => [styles.loginButton, pressed && styles.pressed]}
-            onPress={() => navigation.navigate("Login")}
+            onPress={handleEnter}
           >
             <Text style={styles.loginText}>Entrar</Text>
           </Pressable>

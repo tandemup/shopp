@@ -10,37 +10,54 @@ import ResetPasswordScreen from "@/src/screens/auth/ResetPasswordScreen";
 
 const Stack = createNativeStackNavigator();
 
-const ACCESS_MODE = String(
-  process.env.EXPO_PUBLIC_ACCESS_MODE || "landing",
-)
-  .trim()
-  .toLowerCase();
+function normalizeAccessMode(value) {
+  const mode = String(value || "landing").trim().toLowerCase();
 
-function getInitialAuthRoute() {
-  switch (ACCESS_MODE) {
+  if (["landing", "survey", "login", "auto"].includes(mode)) {
+    return mode;
+  }
+
+  return "landing";
+}
+
+function getInitialAuthRoute(accessMode) {
+  switch (normalizeAccessMode(accessMode)) {
     case "survey":
       return "WelcomeSurvey";
 
     case "login":
       return "Login";
 
+    case "auto":
     case "landing":
     default:
       return "AuthHome";
   }
 }
 
-export default function AuthStack() {
+export default function AuthStack({
+  accessMode = process.env.EXPO_PUBLIC_ACCESS_MODE || "landing",
+  isAuthenticated = false,
+  onAuthenticatedContinue,
+}) {
   useI18n();
 
   return (
     <Stack.Navigator
-      initialRouteName={getInitialAuthRoute()}
+      initialRouteName={getInitialAuthRoute(accessMode)}
       screenOptions={{
         headerShown: false,
       }}
     >
-      <Stack.Screen name="AuthHome" component={AuthHomeScreen} />
+      <Stack.Screen name="AuthHome">
+        {(props) => (
+          <AuthHomeScreen
+            {...props}
+            isAuthenticated={isAuthenticated}
+            onAuthenticatedContinue={onAuthenticatedContinue}
+          />
+        )}
+      </Stack.Screen>
       <Stack.Screen name="WelcomeSurvey" component={WelcomeSurveyScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />
