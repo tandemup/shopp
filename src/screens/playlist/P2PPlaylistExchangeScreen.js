@@ -10,6 +10,7 @@ import {
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
+import { useFocusEffect } from "@react-navigation/native";
 
 import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
@@ -281,12 +282,30 @@ export default function P2PPlaylistExchangeScreen() {
   const incomingLibrarySyncRef = useRef(new Map());
   const musicPlaylistsRef = useRef([]);
   const importedPlaylistSignaturesRef = useRef(new Set());
+  const pairingsRef = useRef([]);
+  const intentionalCloseRef = useRef(false);
+  const disconnectTimerRef = useRef(null);
+  const shutdownInFlightRef = useRef(false);
+  const screenFocusedRef = useRef(false);
 
   useEffect(() => {
     musicPlaylistsRef.current = Array.isArray(musicPlaylists) ? musicPlaylists : [];
   }, [musicPlaylists]);
 
+  useEffect(() => {
+    pairingsRef.current = Array.isArray(pairings) ? pairings : [];
+  }, [pairings]);
+
+  const clearDisconnectTimer = useCallback(() => {
+    if (disconnectTimerRef.current) {
+      clearTimeout(disconnectTimerRef.current);
+      disconnectTimerRef.current = null;
+    }
+  }, []);
+
   const closePeer = useCallback(() => {
+    intentionalCloseRef.current = true;
+    clearDisconnectTimer();
     dataChannelRef.current?.close?.();
     peerRef.current?.close?.();
     dataChannelRef.current = null;
@@ -295,7 +314,46 @@ export default function P2PPlaylistExchangeScreen() {
     queuedIceCandidatesRef.current = [];
     offerStartedForRef.current = null;
     setConnection("idle");
-  }, []);
+    // onclose puede dispararse de forma asíncrona después de close().
+    setTimeout(() => { intentionalCloseRef.current = false; }, 750);
+  }, [clearDisconnectTimer]);
+
+  const shutdownP2P = useCallback(async ({ hidePresence = true } = {}) => {
+    if (shutdownInFlightRef.current) return;
+    shutdownInFlightRef.current = true;
+
+    closePeer();
+    handshakeInFlightRef.current = false;
+    incomingLibrarySyncRef.current.clear();
+    setLibrarySync(null);
+
+    try {
+      // Cerramos todas las invitaciones de este dispositivo, tanto pendientes
+      // como aceptadas. Al borrarlas en Convex, el otro extremo recibe el
+      // cambio reactivamente y cierra su RTCPeerConnection.
+      const currentPairings = [...pairingsRef.current];
+      await Promise.allSettled(
+        currentPairings.map((pairing) =>
+          closePairing({ pairingId: pairing._id, deviceId }),
+        ),
+      );
+
+      if (hidePresence) {
+        await disablePresence({ deviceId });
+      }
+    } catch {
+      // Si el navegador se está cerrando o la red ya se ha perdido, las
+      // mutaciones pueden no llegar. La presencia y los pairings conservan
+      // su TTL como red de seguridad y caducan automáticamente.
+    } finally {
+      shutdownInFlightRef.current = false;
+    }
+  }, [closePairing, closePeer, deviceId, disablePresence]);
+
+  const handleUnexpectedDisconnect = useCallback(() => {
+    if (intentionalCloseRef.current || shutdownInFlightRef.current) return;
+    void shutdownP2P({ hidePresence: true });
+  }, [shutdownP2P]);
 
   const sendLibrarySnapshot = useCallback(async (phase = "offer", syncId = randomCode()) => {
     const channel = dataChannelRef.current;
@@ -385,8 +443,14 @@ export default function P2PPlaylistExchangeScreen() {
       setConnection("connected");
       sendP2PJson(channel, { type: "PROFILE", profile: { displayName: alias.trim() || myPresence?.displayName || "Shopp", channels: [...channels] } });
     };
-    channel.onclose = () => setConnection("closed");
-    channel.onerror = () => setConnection("failed");
+    channel.onclose = () => {
+      setConnection("closed");
+      handleUnexpectedDisconnect();
+    };
+    channel.onerror = () => {
+      setConnection("failed");
+      handleUnexpectedDisconnect();
+    };
     channel.binaryType = "arraybuffer";
     channel.onmessage = async (event) => {
       try {
@@ -440,7 +504,7 @@ export default function P2PPlaylistExchangeScreen() {
         safeAlert("Sincronización P2P", error?.message || "No se pudo procesar el mensaje recibido.");
       }
     };
-  }, [alias, channels, createPlaylist, handleLibraryMessage, myPresence?.displayName, playlistClientId]);
+  }, [alias, channels, createPlaylist, handleLibraryMessage, handleUnexpectedDisconnect, myPresence?.displayName, playlistClientId]);
 
   const createPeer = useCallback((pairing, initiator) => {
     if (peerRef.current) return peerRef.current;
@@ -448,9 +512,26 @@ export default function P2PPlaylistExchangeScreen() {
     peerRef.current = peer;
     peer.onconnectionstatechange = () => {
       const state = peer.connectionState;
-      if (state === "connected") setConnection("connected");
-      else if (state === "failed") setConnection("failed");
-      else if (state === "closed") setConnection("closed");
+      if (state === "connected") {
+        clearDisconnectTimer();
+        setConnection("connected");
+      } else if (state === "disconnected") {
+        setConnection("disconnected");
+        clearDisconnectTimer();
+        // Un cambio de Wi-Fi o una breve suspensión puede producir un estado
+        // disconnected transitorio. Damos 5 s antes de cancelar la sesión.
+        disconnectTimerRef.current = setTimeout(() => {
+          if (peerRef.current?.connectionState === "disconnected") {
+            handleUnexpectedDisconnect();
+          }
+        }, 5000);
+      } else if (state === "failed") {
+        setConnection("failed");
+        handleUnexpectedDisconnect();
+      } else if (state === "closed") {
+        setConnection("closed");
+        handleUnexpectedDisconnect();
+      }
     };
     peer.onicecandidate = ({ candidate }) => {
       if (!candidate) return;
@@ -464,7 +545,7 @@ export default function P2PPlaylistExchangeScreen() {
     peer.ondatachannel = (event) => bindDataChannel(event.channel);
     if (initiator) bindDataChannel(peer.createDataChannel("shopp-playlist-p2p"));
     return peer;
-  }, [bindDataChannel, deviceId, sendSignal]);
+  }, [bindDataChannel, clearDisconnectTimer, deviceId, handleUnexpectedDisconnect, sendSignal]);
 
   const startConnection = useCallback(async () => {
     if (!activePairing || !activePairing.isInitiator) return;
@@ -548,13 +629,40 @@ export default function P2PPlaylistExchangeScreen() {
     return undefined;
   }, [activePairing, closePeer]);
 
-  useEffect(() => () => closePeer(), [closePeer]);
+  // Salir de Intercambio P2P (flecha Atrás, cambio de pantalla o pestaña de
+  // navegación) cancela presencia, handshakes y conexiones de este dispositivo.
+  useFocusEffect(
+    useCallback(() => {
+      screenFocusedRef.current = true;
+      return () => {
+        screenFocusedRef.current = false;
+        void shutdownP2P({ hidePresence: true });
+      };
+    }, [shutdownP2P]),
+  );
+
+  // Cierre/recarga de la PWA: intento de limpieza. No todos los navegadores
+  // permiten terminar peticiones asíncronas durante pagehide, por eso el TTL
+  // de Convex sigue siendo el respaldo definitivo.
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return undefined;
+    const handlePageHide = () => {
+      if (screenFocusedRef.current) void shutdownP2P({ hidePresence: true });
+    };
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [shutdownP2P]);
+
+  useEffect(() => () => {
+    clearDisconnectTimer();
+    closePeer();
+  }, [clearDisconnectTimer, closePeer]);
 
   const togglePresence = async () => {
     setBusy(true);
     try {
       if (myPresence) {
-        await disablePresence({ deviceId });
+        await shutdownP2P({ hidePresence: true });
       } else {
         await enablePresence({ displayName: alias.trim() || "Mi dispositivo", deviceId, channels: [...channels] });
       }
@@ -661,13 +769,7 @@ export default function P2PPlaylistExchangeScreen() {
   };
 
   const finish = async () => {
-    closePeer();
-    if (!activePairing) return;
-    try {
-      await closePairing({ pairingId: activePairing._id, deviceId });
-    } catch {
-      // El vencimiento automático también elimina la sesión de prueba.
-    }
+    await shutdownP2P({ hidePresence: true });
   };
 
   if (Platform.OS !== "web") {
