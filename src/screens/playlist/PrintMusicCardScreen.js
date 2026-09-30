@@ -20,41 +20,60 @@ function esc(value) {
   return String(value ?? "").replace(/[&<>\"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 
-function buildPrintHtml({ title, subtitle, targetUrl, format, copies, cropMarks, doubleSided, coverUri, dedication }) {
+function buildPrintHtml({ title, subtitle, targetUrl, format, copies, cropMarks, doubleSided, duplexFlip, coverUri, dedication }) {
   const q = qrUrl(targetUrl, 700);
   const safeTitle = esc(title);
   const safeSubtitle = esc(subtitle);
   const safeDedication = esc(dedication);
   const safeCover = esc(coverUri);
-  const count = format === "card" ? 1 : Math.max(1, Math.min(99, Number(copies) || 1));
+  const isCard = format === "card";
+  const count = isCard ? 1 : Math.max(1, Math.min(99, Number(copies) || 1));
+  const perSheet = 10;
+
   const front = () => `<div class="card-wrap"><div class="card front">
     ${safeCover ? `<img class="cover" src="${safeCover}" alt="Carátula"/>` : `<div class="cover placeholder">Shopp Music</div>`}
     <div class="front-meta"><strong>${safeTitle}</strong><span>${safeSubtitle}</span></div>
   </div></div>`;
+
   const back = () => `<div class="card-wrap"><div class="card back">
     <div class="back-info"><div class="brand">Shopp Music</div><h1>${safeTitle}</h1><p>${safeSubtitle}</p>${safeDedication ? `<div class="dedication">${safeDedication}</div>` : ""}<div class="hint">Escanea con Shopp para escuchar</div></div>
     <div class="qr"><img src="${q}" alt="QR" /></div>
   </div></div>`;
-  const fronts = Array.from({ length: count }, front).join("");
-  // En A4 las columnas del reverso se invierten por fila para alinear impresión dúplex.
-  const backs = Array.from({ length: count }, back).map((html, i, a) => {
-    if (format !== "a4") return html;
-    const row = Math.floor(i / 2), mate = row * 2 + (i % 2 === 0 ? 1 : 0);
-    return mate < a.length ? a[mate] : `<div class="card-wrap blank"></div>`;
-  }).join("");
-  const isCard = format === "card";
+
+  const blank = () => `<div class="card-wrap blank"></div>`;
+  const pages = [];
+  for (let offset = 0; offset < count; offset += perSheet) {
+    const slots = Array.from({ length: perSheet }, (_, i) => offset + i < count);
+    const frontHtml = slots.map((used) => used ? front() : blank()).join("");
+    pages.push(`<div class="sheet front-sheet">${frontHtml}</div>`);
+
+    if (doubleSided) {
+      const backSlots = Array(perSheet).fill(false);
+      slots.forEach((used, i) => {
+        if (!used) return;
+        const row = Math.floor(i / 2);
+        const col = i % 2;
+        const mapped = duplexFlip === "short"
+          ? (4 - row) * 2 + col
+          : row * 2 + (1 - col);
+        backSlots[mapped] = true;
+      });
+      pages.push(`<div class="sheet back-sheet">${backSlots.map((used) => used ? back() : blank()).join("")}</div>`);
+    }
+  }
+
   return `<!doctype html><html><head><meta charset="utf-8"><title>${safeTitle}</title><style>
-    @page{size:${isCard ? "90mm 56mm" : "A4 portrait"};margin:${isCard ? "0" : "10mm"}}
+    @page{size:${isCard ? "90mm 56mm" : "A4 portrait"};margin:${isCard ? "0" : "8.5mm 15mm"}}
     *{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,sans-serif;color:#111;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    .sheet{${isCard ? "width:90mm;height:56mm;" : "display:grid;grid-template-columns:90mm 90mm;grid-auto-rows:56mm;column-gap:5mm;row-gap:5mm;justify-content:center;align-content:start;"}}
-    .sheet.back-sheet{break-before:page;page-break-before:always}.card-wrap{position:relative;width:90mm;height:56mm;break-inside:avoid;page-break-inside:avoid}
-    .card{width:90mm;height:56mm;border:.25mm solid #cbd5e1;background:#fff;overflow:hidden}.front{position:relative}.cover{width:100%;height:100%;display:block;object-fit:cover}.placeholder{display:flex;align-items:center;justify-content:center;background:#e2e8f0;color:#64748b;font-size:18pt;font-weight:700}
+    .sheet{${isCard ? "width:90mm;height:56mm;" : "width:180mm;height:280mm;display:grid;grid-template-columns:90mm 90mm;grid-template-rows:repeat(5,56mm);gap:0;justify-content:center;align-content:start;"}}
+    .sheet + .sheet{break-before:page;page-break-before:always}.card-wrap{position:relative;width:90mm;height:56mm;break-inside:avoid;page-break-inside:avoid}
+    .card{width:90mm;height:56mm;${cropMarks && !isCard ? "border:.22mm solid #555;" : "border:.22mm solid #cbd5e1;"}background:#fff;overflow:hidden}.front{position:relative}.cover{width:100%;height:100%;display:block;object-fit:cover}.placeholder{display:flex;align-items:center;justify-content:center;background:#e2e8f0;color:#64748b;font-size:18pt;font-weight:700}
     .front-meta{position:absolute;left:0;right:0;bottom:0;padding:3mm 4mm;background:rgba(0,0,0,.68);color:#fff;display:flex;flex-direction:column;gap:1mm}.front-meta strong{font-size:12pt}.front-meta span{font-size:8.5pt}
     .back{display:flex;padding:5mm}.back-info{flex:1;min-width:0;padding-right:4mm;display:flex;flex-direction:column}.brand{font-size:9pt;color:#2563eb;font-weight:700;margin-bottom:4mm}h1{font-size:13pt;line-height:1.15;margin:0 0 2mm;max-height:14mm;overflow:hidden}p{font-size:8.5pt;color:#64748b;margin:0}.dedication{font-size:8pt;font-style:italic;margin-top:2.5mm;max-height:9mm;overflow:hidden}.hint{margin-top:auto;font-size:7.5pt;color:#64748b}.qr{width:34mm;height:34mm;align-self:center;flex:0 0 34mm}.qr img{display:block;width:100%;height:100%}
-    ${cropMarks && !isCard ? `.card-wrap:before,.card-wrap:after{content:"";position:absolute;pointer-events:none;z-index:4}.card-wrap:before{left:-2mm;right:-2mm;top:0;height:56mm;border-top:.2mm solid #555;border-bottom:.2mm solid #555}.card-wrap:after{top:-2mm;bottom:-2mm;left:0;width:90mm;border-left:.2mm solid #555;border-right:.2mm solid #555}` : ""}
-    @media screen{body{background:#e5e7eb;padding:${isCard ? "10mm" : "8mm"}}.sheet{background:#fff;margin:auto;${isCard ? "" : "width:210mm;min-height:297mm;padding:10mm;"}}.back-sheet{margin-top:8mm}}
-    @media print{.sheet{margin:0}${!isCard ? ".sheet{break-after:page;page-break-after:always}" : ""}}
-  </style></head><body><div class="sheet front-sheet">${fronts}</div>${doubleSided ? `<div class="sheet back-sheet">${backs}</div>` : ""}<script>
+    .blank{background:#fff}${cropMarks && !isCard ? ".blank{border:.22mm solid #555}" : ""}
+    @media screen{body{background:#e5e7eb;padding:${isCard ? "10mm" : "8mm"}}.sheet{background:#fff;margin:0 auto 8mm;${isCard ? "" : "box-shadow:0 2px 12px rgba(0,0,0,.12);"}}}
+    @media print{body{background:#fff;padding:0}.sheet{margin:0;box-shadow:none}}
+  </style></head><body>${pages.join("")}<script>
     (function(){var imgs=Array.from(document.images);var ready=Promise.all(imgs.map(function(img){return img.complete?Promise.resolve():new Promise(function(r){img.onload=r;img.onerror=r;});}));ready.then(function(){setTimeout(function(){window.print();},200);});})();
   </script></body></html>`;
 }
@@ -72,9 +91,10 @@ export default function PrintMusicCardScreen() {
   );
   const [printOpen, setPrintOpen] = useState(false);
   const [format, setFormat] = useState("a4");
-  const [copies, setCopies] = useState(8);
+  const [copies, setCopies] = useState(10);
   const [cropMarks, setCropMarks] = useState(true);
   const [doubleSided, setDoubleSided] = useState(true);
+  const [duplexFlip, setDuplexFlip] = useState("long");
   const [coverUri, setCoverUri] = useState(String(playlist.cover || playlist.coverUrl || playlist.image || playlist.thumbnail || ""));
   const [dedication, setDedication] = useState("");
 
@@ -90,7 +110,7 @@ export default function PrintMusicCardScreen() {
 
   const print = () => {
     if (Platform.OS !== "web" || typeof window === "undefined" || !targetUrl) return;
-    const html = buildPrintHtml({ title, subtitle, targetUrl, format, copies, cropMarks, doubleSided, coverUri, dedication });
+    const html = buildPrintHtml({ title, subtitle, targetUrl, format, copies, cropMarks, doubleSided, duplexFlip, coverUri, dedication });
     const w = window.open("", "_blank");
     if (!w) {
       window.alert("El navegador ha bloqueado la ventana de impresión. Permite ventanas emergentes para Shopp e inténtalo de nuevo.");
@@ -133,8 +153,14 @@ export default function PrintMusicCardScreen() {
       {format === "a4" ? <>
         <Text style={styles.modalLabel}>Número de copias</Text>
         <View style={styles.counter}><Pressable onPress={() => changeCopies(-1)} style={styles.counterButton}><Ionicons name="remove" size={20} color="#0f172a"/></Pressable><Text style={styles.counterValue}>{copies}</Text><Pressable onPress={() => changeCopies(1)} style={styles.counterButton}><Ionicons name="add" size={20} color="#0f172a"/></Pressable></View>
-        <Pressable style={styles.optionRow} onPress={() => setCropMarks((v) => !v)}><Ionicons name={cropMarks ? "checkbox" : "square-outline"} size={23} color="#2563eb"/><Text style={styles.optionTitle}>Mostrar marcas de corte</Text></Pressable>
-        <Text style={styles.capacity}>Cabida: hasta 8 tarjetas por página A4.</Text>
+        <Pressable style={styles.optionRow} onPress={() => setCropMarks((v) => !v)}><Ionicons name={cropMarks ? "checkbox" : "square-outline"} size={23} color="#2563eb"/><Text style={styles.optionTitle}>Líneas de corte para tijera</Text></Pressable>
+        <Text style={styles.optionHelp}>Dibuja una retícula continua de 90 × 56 mm para cortar siguiendo líneas rectas.</Text>
+        {doubleSided ? <>
+          <Text style={styles.modalLabel}>Volteo dúplex</Text>
+          <Pressable style={styles.optionRow} onPress={() => setDuplexFlip("long")}><Ionicons name={duplexFlip === "long" ? "radio-button-on" : "radio-button-off"} size={22} color="#2563eb"/><Text style={styles.optionTitle}>Borde largo</Text></Pressable>
+          <Pressable style={styles.optionRow} onPress={() => setDuplexFlip("short")}><Ionicons name={duplexFlip === "short" ? "radio-button-on" : "radio-button-off"} size={22} color="#2563eb"/><Text style={styles.optionTitle}>Borde corto</Text></Pressable>
+        </> : null}
+        <Text style={styles.capacity}>Cabida: 10 tarjetas por página A4 (2 × 5), listas para cortar con tijera.</Text>
       </> : null}
 
       <View style={styles.modalActions}><Pressable onPress={() => setPrintOpen(false)} style={styles.cancelButton}><Text style={styles.cancelText}>Cancelar</Text></Pressable><Pressable onPress={print} style={styles.previewButton}><Ionicons name="print-outline" size={18} color="#fff"/><Text style={styles.buttonText}>Vista previa / Imprimir</Text></Pressable></View>

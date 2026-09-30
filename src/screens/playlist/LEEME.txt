@@ -1,0 +1,21 @@
+Shopp - Tarjetas musicales dúplex para corte con tijera
+
+Archivo modificado:
+  src/screens/playlist/PrintMusicCardScreen.js
+
+Cambios:
+- Hoja A4 con 10 tarjetas de 90 x 56 mm (2 columnas x 5 filas).
+- Líneas continuas de corte para tijera.
+- Impresión anverso/reverso.
+- Selección de volteo dúplex: borde largo o borde corto.
+- Reordenación automática de los reversos para alinear con los anversos.
+- 10 copias por defecto.
+
+Instalación:
+Copiar el archivo incluido sobre el mismo path del proyecto Shopp.
+
+Impresión:
+- Papel A4, orientación vertical.
+- Escala 100% / Tamaño real.
+- Desactivar "Ajustar a página".
+- Seleccionar en Shopp el mismo tipo de volteo que en el diálogo de la impresora.
