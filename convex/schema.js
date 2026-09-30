@@ -16,7 +16,7 @@ export default defineSchema({
     phone: v.optional(v.string()),
     phoneVerificationTime: v.optional(v.float64()),
     isAnonymous: v.optional(v.boolean()),
-    role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
+    role: v.optional(v.union(v.literal("user"), v.literal("tester"), v.literal("admin"))),
     // Los permisos son independientes del rol. Un administrador los tiene
     // implícitamente todos; a un usuario normal se le pueden conceder uno a uno.
     permissions: v.optional(

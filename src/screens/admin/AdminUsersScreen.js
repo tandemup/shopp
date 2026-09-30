@@ -47,6 +47,7 @@ const emptyPermissions = () =>
 
 function UserCard({ user, busy, onChangeRole, onChangeBlocked, onManagePermissions }) {
   const isAdmin = user.role === "admin";
+  const isTester = user.role === "tester";
   const isBlocked = user.status === "blocked";
   const label = user.email || user.name || String(user._id);
 
@@ -92,7 +93,7 @@ function UserCard({ user, busy, onChangeRole, onChangeBlocked, onManagePermissio
             <ActivityIndicator size="small" color="#0f172a" />
           ) : (
             <Text style={isAdmin ? styles.adminText : styles.userText}>
-              {isAdmin ? "Admin" : "Usuario"}
+              {isAdmin ? "Admin" : isTester ? "Tester" : "Usuario"}
             </Text>
           )}
         </Pressable>

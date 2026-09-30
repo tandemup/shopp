@@ -46,6 +46,7 @@ function getLoginErrorMessage(error) {
 
 export default function LoginScreen({ navigation, route }) {
   const { signIn } = useAuthActions();
+  const developmentMode = route?.params?.developmentMode === true;
 
   const { width, height } = useWindowDimensions();
 
@@ -250,7 +251,15 @@ export default function LoginScreen({ navigation, route }) {
                 styles.backButton,
                 pressed && styles.pressedButton,
               ]}
-              onPress={() => navigation.goBack()}
+              onPress={() => {
+                if (navigation.canGoBack()) {
+                  navigation.goBack();
+                } else if (developmentMode) {
+                  navigation.navigate("Development");
+                } else {
+                  navigation.navigate("AuthHome");
+                }
+              }}
             >
               <Ionicons name="chevron-back" size={20} color="#64748b" />
 
@@ -409,20 +418,22 @@ export default function LoginScreen({ navigation, route }) {
                 )}
               </Pressable>
 
-              <View style={styles.registerBox}>
-                <Text style={styles.registerText}>¿No tienes cuenta?</Text>
+              {!developmentMode ? (
+                <View style={styles.registerBox}>
+                  <Text style={styles.registerText}>¿No tienes cuenta?</Text>
 
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.registerButton,
-                    pressed && styles.pressedButton,
-                  ]}
-                  onPress={() => navigation.navigate("Register")}
-                  disabled={submitting}
-                >
-                  <Text style={styles.registerLink}>Crear cuenta</Text>
-                </Pressable>
-              </View>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.registerButton,
+                      pressed && styles.pressedButton,
+                    ]}
+                    onPress={() => navigation.navigate("Register")}
+                    disabled={submitting}
+                  >
+                    <Text style={styles.registerLink}>Crear cuenta</Text>
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
           </View>
         </View>

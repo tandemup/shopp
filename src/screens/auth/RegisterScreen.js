@@ -119,9 +119,11 @@ function PasswordRequirement({ valid, children }) {
   );
 }
 
-export default function RegisterScreen({ navigation }) {
+export default function RegisterScreen({ navigation, route }) {
   const { signIn } = useAuthActions();
   const upsertMyProfile = useMutation(api.users.upsertMyProfile);
+  const activateTesterRole = useMutation(api.users.activateTesterRole);
+  const testerAccount = route?.params?.testerAccount === true;
 
   const { width, height } = useWindowDimensions();
 
@@ -358,6 +360,9 @@ export default function RegisterScreen({ navigation }) {
 
       await signIn("password", formData);
       await saveUserProfile();
+      if (testerAccount) {
+        await activateTesterRole();
+      }
     } catch (error) {
       setErrorMessage(getVerificationError(error));
     } finally {
@@ -464,7 +469,7 @@ export default function RegisterScreen({ navigation }) {
         <Text style={styles.stepBadgeText}>PASO 1 DE 2</Text>
       </View>
 
-      <Text style={layoutStyles.title}>Crear una cuenta</Text>
+      <Text style={layoutStyles.title}>{testerAccount ? "Crear cuenta tester" : "Crear una cuenta"}</Text>
 
       <Text style={styles.subtitle}>
         Completa tus datos para empezar a utilizar Shopp.

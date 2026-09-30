@@ -159,10 +159,35 @@ export const listForAdmin = query({
   },
 });
 
+
+// Convierte la cuenta autenticada en una cuenta de pruebas.
+// "tester" no concede privilegios de administrador; conserva los permisos
+// normales configurados para la cuenta.
+export const activateTesterRole = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const authUserId = await requireAuthUserId(ctx);
+    const user = await ctx.db.get(authUserId);
+
+    if (!user) {
+      throw new Error("Usuario no encontrado.");
+    }
+
+    if (user.role === "admin") {
+      // Nunca degradamos una cuenta administradora desde el registro tester.
+      return { ok: true, role: "admin" };
+    }
+
+    await ctx.db.patch(authUserId, { role: "tester" });
+
+    return { ok: true, role: "tester" };
+  },
+});
+
 export const setRole = mutation({
   args: {
     userId: v.id("users"),
-    role: v.union(v.literal("user"), v.literal("admin")),
+    role: v.union(v.literal("user"), v.literal("tester"), v.literal("admin")),
   },
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);

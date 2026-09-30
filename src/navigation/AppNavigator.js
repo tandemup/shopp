@@ -16,6 +16,12 @@ import MainTabs from "@/src/navigation/MainTabs";
 import PlaybackProvider from "@/src/components/playback/PlaybackProvider";
 import SplashScreen from "@/src/screens/system/SplashScreen";
 
+const APP_MODE = String(
+  process.env.EXPO_PUBLIC_APP_MODE || "development",
+)
+  .trim()
+  .toLowerCase();
+
 const ACCESS_MODE = String(
   process.env.EXPO_PUBLIC_ACCESS_MODE || "landing",
 )
@@ -73,12 +79,24 @@ function AuthenticatedApp() {
 export default function AppNavigator() {
   const [showSplash, setShowSplash] = useState(true);
   const [publicEntryComplete, setPublicEntryComplete] = useState(false);
+  const [guestMode, setGuestMode] = useState(false);
   const initialAuthStateRef = useRef(null);
   const { isAuthenticated, isLoading } = useConvexAuth();
 
   const finishSplash = useCallback(() => setShowSplash(false), []);
   const continueToAuthenticatedApp = useCallback(() => {
+    setGuestMode(false);
     setPublicEntryComplete(true);
+  }, []);
+
+  const continueAsGuest = useCallback(() => {
+    setGuestMode(true);
+    setPublicEntryComplete(true);
+  }, []);
+
+  const exitGuestMode = useCallback(() => {
+    setGuestMode(false);
+    setPublicEntryComplete(false);
   }, []);
 
   useEffect(() => {
@@ -108,6 +126,38 @@ export default function AppNavigator() {
     return <SplashScreen onFinish={finishSplash} />;
   }
 
+  // Modo de desarrollo público:
+  // - sin sesión: pantalla "En desarrollo" con acceso por email;
+  // - con sesión válida: acceso normal a Shopp.
+  if (APP_MODE === "development") {
+    return (
+      <>
+        <AuthLoading>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" />
+            <Text style={styles.loadingText}>Cargando Shopp...</Text>
+          </View>
+        </AuthLoading>
+
+        <Unauthenticated>
+          <AuthStack accessMode="development" />
+        </Unauthenticated>
+
+        <Authenticated>
+          <AuthenticatedApp />
+        </Authenticated>
+      </>
+    );
+  }
+
+  if (guestMode) {
+    return (
+      <PlaybackProvider>
+        <MainTabs guestMode onExitGuest={exitGuestMode} />
+      </PlaybackProvider>
+    );
+  }
+
   // landing y survey son modos de ARRANQUE públicos. Se muestran incluso si
   // Convex conserva una sesión válida. El botón Entrar permite continuar hacia
   // MainTabs sin volver a pedir credenciales cuando ya hay sesión.
@@ -117,6 +167,7 @@ export default function AppNavigator() {
         accessMode={ACCESS_MODE}
         isAuthenticated={isAuthenticated}
         onAuthenticatedContinue={continueToAuthenticatedApp}
+        onGuestContinue={continueAsGuest}
       />
     );
   }
@@ -131,7 +182,7 @@ export default function AppNavigator() {
       </AuthLoading>
 
       <Unauthenticated>
-        <AuthStack accessMode={ACCESS_MODE} />
+        <AuthStack accessMode={ACCESS_MODE} onGuestContinue={continueAsGuest} />
       </Unauthenticated>
 
       <Authenticated>

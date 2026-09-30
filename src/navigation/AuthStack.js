@@ -7,13 +7,14 @@ import WelcomeSurveyScreen from "@/src/screens/auth/WelcomeSurveyScreen";
 import LoginScreen from "@/src/screens/auth/LoginScreen";
 import RegisterScreen from "@/src/screens/auth/RegisterScreen";
 import ResetPasswordScreen from "@/src/screens/auth/ResetPasswordScreen";
+import DevelopmentScreen from "@/src/screens/system/DevelopmentScreen";
 
 const Stack = createNativeStackNavigator();
 
 function normalizeAccessMode(value) {
   const mode = String(value || "landing").trim().toLowerCase();
 
-  if (["landing", "survey", "login", "auto"].includes(mode)) {
+  if (["landing", "survey", "login", "auto", "development"].includes(mode)) {
     return mode;
   }
 
@@ -28,6 +29,9 @@ function getInitialAuthRoute(accessMode) {
     case "login":
       return "Login";
 
+    case "development":
+      return "Development";
+
     case "auto":
     case "landing":
     default:
@@ -39,6 +43,7 @@ export default function AuthStack({
   accessMode = process.env.EXPO_PUBLIC_ACCESS_MODE || "landing",
   isAuthenticated = false,
   onAuthenticatedContinue,
+  onGuestContinue,
 }) {
   useI18n();
 
@@ -49,12 +54,14 @@ export default function AuthStack({
         headerShown: false,
       }}
     >
+      <Stack.Screen name="Development" component={DevelopmentScreen} />
       <Stack.Screen name="AuthHome">
         {(props) => (
           <AuthHomeScreen
             {...props}
             isAuthenticated={isAuthenticated}
             onAuthenticatedContinue={onAuthenticatedContinue}
+            onGuestContinue={onGuestContinue}
           />
         )}
       </Stack.Screen>
