@@ -10,11 +10,42 @@ const CARD_WIDTH = 560;
 const CARD_HEIGHT = 90;
 const VIDEO_THUMBNAIL_WIDTH = (CARD_HEIGHT * 16) / 9;
 
+
+function splitAuthorAndSingle(value) {
+  const text = String(value || "").trim();
+  if (!text) return { author: "", single: "" };
+  const match = text.match(/^(.+?)\s+(?:-|–|—)\s+(.+)$/);
+  return match
+    ? { author: match[1].trim(), single: match[2].trim() }
+    : { author: "", single: text };
+}
+
 export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, onCreateCard, shareable = false, onToggleShareable, isTutorial = false, isNews = false }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const playback = usePlayback();
   const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
   const activeTrack = tracks[0];
+  const parsedTrack = splitAuthorAndSingle(activeTrack?.title || "");
+  const parsedPlaylist = splitAuthorAndSingle(playlist?.title || "");
+  const author = String(
+    playlist?.author ||
+      playlist?.artist ||
+      playlist?.composer ||
+      activeTrack?.author ||
+      activeTrack?.artist ||
+      parsedTrack.author ||
+      parsedPlaylist.author ||
+      "",
+  );
+  const single = String(
+    playlist?.single ||
+      activeTrack?.single ||
+      parsedTrack.single ||
+      parsedPlaylist.single ||
+      activeTrack?.title ||
+      playlist?.title ||
+      "",
+  );
   if (!activeTrack) return null;
   return (
     <View style={[styles.card, isNews && styles.newsCard]}>
@@ -51,8 +82,13 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
               </Pressable>
             ) : null}
           </View>
-          <Text style={styles.title} numberOfLines={2}>
-            {playlist.title}
+          {author ? (
+            <Text style={styles.author} numberOfLines={1}>
+              {author}
+            </Text>
+          ) : null}
+          <Text style={styles.title} numberOfLines={1}>
+            {single}
           </Text>
         </View>
       </Pressable>
@@ -160,8 +196,15 @@ const styles = StyleSheet.create({
   menuItem: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
   menuText: { fontSize: 14, color: "#334155", fontWeight: "600" },
   deleteText: { fontSize: 14, color: "#dc2626", fontWeight: "600" },
-  title: {
+  author: {
     marginTop: 4,
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "700",
+    color: "#334155",
+  },
+  title: {
+    marginTop: 1,
     fontSize: 14,
     lineHeight: 18,
     fontWeight: "400",
