@@ -1775,6 +1775,18 @@ export default function LibraryScreen({ navigation, route }) {
     if (!isFocused) return;
     libraryJsonApi.listFolders().then(setRawFolders).catch(console.warn);
   }, [isFocused, localRevision]);
+
+  useEffect(() => {
+    if (!isFocused || Platform.OS !== "web") return;
+    libraryJsonApi
+      .getDiagnostics()
+      .then((diagnostics) =>
+        console.info("[Biblioteca] almacenamiento local", diagnostics),
+      )
+      .catch((error) =>
+        console.warn("[Biblioteca] diagnóstico IndexedDB falló", error),
+      );
+  }, [isFocused, localRevision]);
   const libraryBackup = useMemo(() => {
     if (exportStatus !== "Exhausted" || !Array.isArray(exportedLinks)) {
       return null;

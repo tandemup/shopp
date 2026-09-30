@@ -336,6 +336,19 @@ function text(value) {
 
 export const libraryJsonApi = {
   storageKey: STORAGE_KEY,
+  async getDiagnostics() {
+    const stored = await storage.getJSON(STORAGE_KEY, null);
+    const source = stored?.data && Array.isArray(stored.data.links)
+      ? stored.data
+      : stored;
+    return {
+      storageKey: STORAGE_KEY,
+      found: Boolean(stored),
+      format: stored?.format || source?.format || null,
+      folders: Array.isArray(source?.folders) ? source.folders.length : 0,
+      links: Array.isArray(source?.links) ? source.links.length : 0,
+    };
+  },
   subscribe(listener) {
     listeners.add(listener);
     return () => listeners.delete(listener);
