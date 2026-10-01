@@ -180,7 +180,17 @@ export default function LoginScreen({ navigation, route }) {
       });
     } catch (error) {
       console.error("Login error:", error);
-      setErrorMessage(getLoginErrorMessage(error));
+      const friendlyMessage = getLoginErrorMessage(error);
+      const technicalMessage =
+        error instanceof Error ? error.message : String(error ?? "");
+      const isDevelopment =
+        process.env.EXPO_PUBLIC_APP_MODE?.trim().toLowerCase() ===
+        "development";
+      setErrorMessage(
+        isDevelopment && technicalMessage
+          ? `${friendlyMessage}\n\nDetalle técnico: ${technicalMessage}`
+          : friendlyMessage,
+      );
     } finally {
       setSubmitting(false);
     }
