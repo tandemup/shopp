@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Linking,
+  Modal,
+  ActivityIndicator,
   Platform,
   Pressable,
   ScrollView,
@@ -16,7 +18,7 @@ import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
 import { StatusBar } from "expo-status-bar";
@@ -39,6 +41,7 @@ import {
   storage,
 } from "@/src/storage";
 
+import { JSON_EXPORT_UTILITIES, saveUtilityJson } from "@/src/services/exportUtilityJson";
 import { useScannedHistoryStorage } from "@/src/hooks/useScannedHistoryStorage";
 import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
@@ -770,6 +773,9 @@ export default function MenuScreen({ navigation }) {
   const { language, setLanguage } = useI18n();
   const { signOut } = useAuthActions();
   const currentUser = useQuery(api.users.current);
+  const convex = useConvex();
+  const [utilityExportVisible, setUtilityExportVisible] = useState(false);
+  const [utilityExportBusy, setUtilityExportBusy] = useState(null);
   const importItemsFromAsyncStorage = useMutation(
     api.shoppingImport.importItemsFromAsyncStorage,
   );
@@ -1094,6 +1100,25 @@ export default function MenuScreen({ navigation }) {
         },
       ],
     });
+  };
+
+  const handleUtilityExport = async (id) => {
+    if (utilityExportBusy) return;
+    setUtilityExportBusy(id);
+    try {
+      const result = await saveUtilityJson(id, {
+        convex,
+        getScannedHistory: scanHistoryStorage.getScannedHistory,
+      });
+      safeAlert("Exportación preparada", `${result.filename} (${result.count} registros).`);
+    } catch (error) {
+      if (String(error?.name || "") !== "AbortError") {
+        console.warn("[MenuScreen] utility export error", error);
+        safeAlert("Error al exportar", String(error?.message || error));
+      }
+    } finally {
+      setUtilityExportBusy(null);
+    }
   };
 
   const handleExportUserData = async () => {
@@ -1610,6 +1635,25 @@ export default function MenuScreen({ navigation }) {
             />
           </View>
 
+          <Modal visible={utilityExportVisible} transparent animationType="fade" onRequestClose={() => !utilityExportBusy && setUtilityExportVisible(false)}>
+            <View style={{ flex: 1, justifyContent: "center", backgroundColor: "#0007", padding: 20 }}>
+              <View style={{ backgroundColor: "white", padding: 20, borderRadius: 16, maxWidth: 520, width: "100%", alignSelf: "center" }}>
+                <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 8 }}>Copias JSON independientes</Text>
+                <Text style={{ color: "#64748b", marginBottom: 14 }}>Pulsa cada utilidad para guardar su fichero JSON. Se exportan todos los registros, no solo los visibles.</Text>
+                {JSON_EXPORT_UTILITIES.map(({ id, label }) => (
+                  <Pressable key={id} disabled={!!utilityExportBusy} onPress={() => handleUtilityExport(id)}
+                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: "#e5e7eb", opacity: utilityExportBusy && utilityExportBusy !== id ? 0.4 : 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: "600" }}>{label}</Text>
+                    {utilityExportBusy === id ? <ActivityIndicator /> : <Ionicons name="download-outline" size={22} color="#2563eb" />}
+                  </Pressable>
+                ))}
+                <Pressable disabled={!!utilityExportBusy} onPress={() => setUtilityExportVisible(false)} style={{ marginTop: 18, padding: 12, alignSelf: "flex-end" }}>
+                  <Text style={{ color: "#2563eb", fontWeight: "700" }}>Cerrar</Text>
+                </Pressable>
+              </View>
+            </View>
+          </Modal>
+
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Datos</Text>
 
@@ -1620,6 +1664,14 @@ export default function MenuScreen({ navigation }) {
               badge={exportingUserData ? "..." : "JSON"}
               disabled={exportingUserData}
               onPress={handleExportUserData}
+            />
+
+            <SettingsCard
+              icon="documents-outline"
+              title="Copias JSON por utilidad"
+              subtitle="Biblioteca, Música, Clásica, Tutoriales, Noticias y Escaneos: un JSON independiente por descarga"
+              badge="6 JSON"
+              onPress={() => setUtilityExportVisible(true)}
             />
 
             <SettingsCard
