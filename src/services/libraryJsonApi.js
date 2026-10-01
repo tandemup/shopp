@@ -4,6 +4,12 @@ const STORAGE_KEY = "@shopping/library-json-v1";
 const LEGACY_MIGRATION_KEY = "shopp-library-convex-migration-v1";
 const FORMAT = "shopp-library-backup";
 const VERSION = 1;
+// Guardamos los enlaces por bloques independientes. Esto evita reescribir
+// una Biblioteca completa de 15.000 enlaces por cada lote importado.
+const CHUNK_SIZE = 500;
+const CHUNK_MANIFEST_KEY = `${STORAGE_KEY}:chunks:v1`;
+const chunkKey = (index) => `${STORAGE_KEY}:chunk:${index}`;
+
 
 const DEFAULT_FOLDERS = [
   ["Noticias", "newspaper-outline", "#dc2626"],
@@ -300,14 +306,69 @@ function sanitizeDatabase(value) {
   return database;
 }
 
-async function read() {
-  const stored = await storage.getJSON(STORAGE_KEY, null);
-  if (!stored) {
-    const initial = emptyDatabase();
-    await storage.setJSON(STORAGE_KEY, initial);
-    return initial;
+// Cada bloque mantiene su contenido serializado para detectar cuáles han
+// cambiado. Al importar 500 enlaces nuevos, normalmente solo se escribe un
+// bloque (y el manifiesto), no los miles de enlaces anteriores.
+async function loadChunked() {
+  const manifest = await storage.getJSON(CHUNK_MANIFEST_KEY, null);
+  if (!manifest || manifest.version !== 1 || !Number.isInteger(manifest.count)) {
+    return null;
   }
-  return sanitizeDatabase(stored);
+  const chunks = [];
+  for (let index = 0; index < manifest.count; index += 1) {
+    const chunk = await storage.getJSON(chunkKey(index), null);
+    if (!Array.isArray(chunk)) {
+      throw new Error(`Falta el bloque ${index + 1} de Biblioteca. Restaura tu backup JSON.`);
+    }
+    chunks.push(chunk);
+  }
+  return {
+    format: FORMAT,
+    version: VERSION,
+    updatedAt: manifest.updatedAt,
+    folders: manifest.folders,
+    links: chunks.flat(),
+  };
+}
+
+async function read() {
+  const chunked = await loadChunked();
+  if (chunked) return chunked;
+
+  // Compatibilidad sin pérdida: leemos el documento antiguo, pero no lo
+  // borramos durante la migración. El manifiesto se escribe en último lugar.
+  const stored = await storage.getJSON(STORAGE_KEY, null);
+  return stored ? sanitizeDatabase(stored) : emptyDatabase();
+}
+
+async function persist(database) {
+  const previous = await storage.getJSON(CHUNK_MANIFEST_KEY, null);
+  const count = Math.ceil(database.links.length / CHUNK_SIZE);
+  for (let index = 0; index < count; index += 1) {
+    const nextChunk = database.links.slice(index * CHUNK_SIZE, (index + 1) * CHUNK_SIZE);
+    // Comparamos el bloque existente para no reescribir los que no cambian.
+    const existing = previous && index < previous.count
+      ? await storage.getJSON(chunkKey(index), null)
+      : null;
+    if (!existing || JSON.stringify(existing) !== JSON.stringify(nextChunk)) {
+      await storage.setJSON(chunkKey(index), nextChunk);
+    }
+  }
+  // Publicar el manifiesto al final hace que las nuevas importaciones sean
+  // recuperables. Conservamos la clave antigua como copia de seguridad.
+  await storage.setJSON(CHUNK_MANIFEST_KEY, {
+    version: 1,
+    count,
+    folders: database.folders,
+    updatedAt: database.updatedAt,
+  });
+  // Si se reduce el número de bloques, limpiamos los bloques huérfanos
+  // después de publicar el manifiesto, nunca antes.
+  if (previous?.count > count) {
+    for (let index = count; index < previous.count; index += 1) {
+      await storage.remove(chunkKey(index));
+    }
+  }
 }
 
 function emit(database) {
@@ -319,7 +380,7 @@ function update(mutator) {
     const database = await read();
     const result = await mutator(database);
     database.updatedAt = Date.now();
-    await storage.setJSON(STORAGE_KEY, database);
+    await persist(database);
     emit(database);
     return result;
   });
@@ -337,6 +398,21 @@ function text(value) {
 export const libraryJsonApi = {
   storageKey: STORAGE_KEY,
   async getDiagnostics() {
+    const manifest = await storage.getJSON(CHUNK_MANIFEST_KEY, null);
+    if (manifest?.version === 1) {
+      let links = 0;
+      for (let index = 0; index < manifest.count; index += 1) {
+        const chunk = await storage.getJSON(chunkKey(index), []);
+        links += Array.isArray(chunk) ? chunk.length : 0;
+      }
+      return {
+        storageKey: CHUNK_MANIFEST_KEY,
+        found: true,
+        format: FORMAT,
+        folders: manifest.folders?.length || 0,
+        links,
+      };
+    }
     const stored = await storage.getJSON(STORAGE_KEY, null);
     const source = stored?.data && Array.isArray(stored.data.links)
       ? stored.data
