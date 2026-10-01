@@ -19,6 +19,9 @@ function upsertMeta(name, content) {
 // Configure the iPhone/iPad web-app chrome before React mounts. This keeps
 // the status-bar area visually continuous with Shopp's top navigation bar.
 if (typeof window !== "undefined" && typeof document !== "undefined") {
+  // Título definido antes de montar React y durante la pantalla Splash.
+  document.title = "Shopp";
+
   const isStandalone =
     window.matchMedia?.("(display-mode: standalone)")?.matches ||
     window.navigator.standalone === true;

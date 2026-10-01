@@ -47,7 +47,7 @@ function ShoppApp() {
         <ListsProvider>
           <StoresProvider>
             <LocationProvider>
-              <NavigationContainer>
+              <NavigationContainer documentTitle={{ enabled: false }}>
                 <AppNavigator />
               </NavigationContainer>
               {Platform.OS === "web" ? <DialogHost /> : null}
