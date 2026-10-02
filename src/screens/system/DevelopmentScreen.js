@@ -4,6 +4,7 @@ import {
   Pressable,
   SafeAreaView,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -12,13 +13,20 @@ import { I18nText as Text } from "@/src/i18n";
 const GITHUB_URL = "https://github.com/tandemup/shopp";
 
 export default function DevelopmentScreen({ navigation }) {
+  const { width } = useWindowDimensions();
+  const compactHeader = width < 820;
+  const narrowScreen = width < 520;
+
   const openGitHub = () => Linking.openURL(GITHUB_URL);
   const openLogin = () =>
     navigation.navigate("Login", { developmentMode: true });
+  const openInfo = () => navigation.navigate("AuthHome");
+  const openTesterRegister = () =>
+    navigation.navigate("Register", { testerAccount: true });
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
+      <View style={[styles.header, compactHeader && styles.headerCompact]}>
         <View style={styles.headerBrand}>
           <View style={styles.headerLogoMark}>
             <Text style={styles.headerLogoText}>S</Text>
@@ -26,21 +34,51 @@ export default function DevelopmentScreen({ navigation }) {
           <Text style={styles.headerTitle}>Shopp</Text>
         </View>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Entrar en Shopp"
-          onPress={openLogin}
-          style={({ pressed }) => [
-            styles.loginButton,
-            pressed && styles.buttonPressed,
-          ]}
-        >
-          <Text style={styles.loginButtonText}>Entrar</Text>
-        </Pressable>
+        <View style={[styles.headerActions, compactHeader && styles.headerActionsCompact]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Información de Shopp"
+            onPress={openInfo}
+            style={({ pressed }) => [
+              styles.secondaryHeaderButton,
+              compactHeader && styles.compactHeaderButton,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Ionicons name="information-circle-outline" size={18} color="#2563eb" />
+            <Text style={styles.secondaryHeaderButtonText}>Info</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Entrar en Shopp"
+            onPress={openLogin}
+            style={({ pressed }) => [
+              styles.secondaryHeaderButton,
+              compactHeader && styles.compactHeaderButton,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.secondaryHeaderButtonText}>Entrar</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Registro de betatester"
+            onPress={openTesterRegister}
+            style={({ pressed }) => [
+              styles.primaryHeaderButton,
+              compactHeader && styles.compactHeaderButton,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.primaryHeaderButtonText}>Registro tester</Text>
+          </Pressable>
+        </View>
       </View>
 
-      <View style={styles.screen}>
-        <View style={styles.card}>
+      <View style={[styles.screen, narrowScreen && styles.screenNarrow]}>
+        <View style={[styles.card, narrowScreen && styles.cardNarrow]}>
           <View style={styles.logoMark}>
             <Text style={styles.logoMarkText}>S</Text>
           </View>
@@ -90,13 +128,18 @@ const styles = StyleSheet.create({
   header: {
     width: "100%",
     minHeight: 68,
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: "#ffffff",
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
+  },
+  headerCompact: {
+    flexWrap: "wrap",
+    gap: 12,
   },
   headerBrand: {
     flexDirection: "row",
@@ -121,18 +164,52 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "900",
   },
-  loginButton: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+  headerActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+  },
+  headerActionsCompact: {
+    width: "100%",
+    justifyContent: "flex-start",
+  },
+  secondaryHeaderButton: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "#dbe3ef",
     backgroundColor: "#ffffff",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
-  loginButtonText: {
+  secondaryHeaderButtonText: {
     color: "#2563eb",
     fontSize: 14,
     fontWeight: "800",
+  },
+  primaryHeaderButton: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: "#2563eb",
+    borderWidth: 1,
+    borderColor: "#2563eb",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryHeaderButtonText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  compactHeaderButton: {
+    paddingHorizontal: 12,
   },
   buttonPressed: {
     opacity: 0.75,
@@ -141,30 +218,36 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 32,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
     backgroundColor: "#f8fafc",
+  },
+  screenNarrow: {
+    justifyContent: "flex-start",
   },
   card: {
     width: "100%",
-    maxWidth: 560,
+    maxWidth: 460,
     alignItems: "center",
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    borderRadius: 24,
-    paddingHorizontal: 28,
-    paddingVertical: 40,
+    borderRadius: 22,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
     shadowColor: "#0f172a",
     shadowOpacity: 0.08,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 4,
   },
+  cardNarrow: {
+    maxWidth: 420,
+  },
   logoMark: {
-    width: 58,
-    height: 58,
-    borderRadius: 16,
+    width: 54,
+    height: 54,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#2563eb",
@@ -177,19 +260,19 @@ const styles = StyleSheet.create({
   },
   brand: {
     color: "#0f172a",
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "900",
-    marginBottom: 22,
+    marginBottom: 18,
   },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 999,
     backgroundColor: "#eff6ff",
-    marginBottom: 22,
+    marginBottom: 18,
   },
   statusText: {
     color: "#1d4ed8",
@@ -199,27 +282,27 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "#0f172a",
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 24,
+    lineHeight: 30,
     fontWeight: "900",
     textAlign: "center",
   },
   description: {
-    marginTop: 14,
+    marginTop: 12,
     color: "#475569",
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 15,
+    lineHeight: 22,
     textAlign: "center",
   },
   secondaryText: {
-    marginTop: 10,
+    marginTop: 8,
     color: "#64748b",
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 13,
+    lineHeight: 20,
     textAlign: "center",
   },
   githubButton: {
-    marginTop: 24,
+    marginTop: 20,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,

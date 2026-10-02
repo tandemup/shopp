@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Switch,
+  TextInput,
   View
 } from "react-native";
 import { I18nText as Text, useI18n } from "@/src/i18n";
@@ -131,6 +132,21 @@ export default function AdminUsersScreen() {
     currentUser?.isAdmin ? {} : "skip",
   );
   const setRole = useMutation(api.users.setRole);
+  const inviteTester = useMutation(api.users.inviteTester);
+  const revokeInvitation = useMutation(api.users.revokeTesterInvitation);
+  const invitations = useQuery(api.users.listTesterInvitations, currentUser?.isAdmin ? {} : "skip");
+  const [invitationEmail, setInvitationEmail] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const createInvitation = async () => {
+    try {
+      setInviteBusy(true);
+      await inviteTester({ email: invitationEmail });
+      setInvitationEmail("");
+      safeAlert("Invitación creada", "Comparte con el tester la dirección de Shopp para que se registre con el correo autorizado. La invitación dura 7 días.");
+    } catch (error) {
+      safeAlert("No se pudo crear la invitación", error?.message || "Error inesperado.");
+    } finally { setInviteBusy(false); }
+  };
   const setBlocked = useMutation(api.users.setBlocked);
   const setPermissions = useMutation(api.users.setPermissions);
   const [busyUserId, setBusyUserId] = useState(null);
@@ -138,14 +154,12 @@ export default function AdminUsersScreen() {
   const [draftPermissions, setDraftPermissions] = useState(emptyPermissions);
 
   const changeRole = (user) => {
-    const nextRole = user.role === "admin" ? "user" : "admin";
+    const nextRole = user.role === "user" ? "tester" : user.role === "tester" ? "admin" : "user";
     const label = user.email || user.name || "este usuario";
 
     safeAlert(
-      t(nextRole === "admin" ? "Conceder permisos" : "Retirar permisos"),
-      nextRole === "admin"
-        ? t(`¿Quieres convertir a ${label} en administrador?`)
-        : t(`¿Quieres convertir a ${label} en usuario normal?`),
+      t("Cambiar rol"),
+      t(`¿Quieres cambiar el rol de ${label} a ${nextRole}?`),
       [
         { text: t("Cancelar"), style: "cancel" },
         {
@@ -260,6 +274,29 @@ export default function AdminUsersScreen() {
         </Text>
       </View>
 
+      <View style={styles.inviteBox}>
+        <Text style={styles.summaryTitle}>Invitar betatester</Text>
+        <Text style={styles.inviteHint}>Autoriza un correo durante 7 días. El tester completará su registro y verificación en Shopp.</Text>
+        <TextInput
+          style={styles.inviteInput} placeholder="tester@ejemplo.com"
+          autoCapitalize="none" keyboardType="email-address" autoCorrect={false}
+          value={invitationEmail} onChangeText={setInvitationEmail}
+        />
+        <Pressable accessibilityRole="button" disabled={inviteBusy || !invitationEmail.trim()}
+          style={[styles.saveButton, (inviteBusy || !invitationEmail.trim()) && styles.disabled]}
+          onPress={createInvitation}>
+          <Text style={styles.saveButtonText}>{inviteBusy ? "Creando..." : "Crear invitación"}</Text>
+        </Pressable>
+        {(invitations || []).filter(i => !i.acceptedAt && !i.revokedAt && i.expiresAt > Date.now()).map(i => (
+          <View key={i._id} style={styles.inviteRow}>
+            <Text style={{ flex: 1 }} numberOfLines={1}>{i.email}</Text>
+            <Pressable onPress={async () => {
+              try { await revokeInvitation({ invitationId: i._id }); }
+              catch (error) { safeAlert("Error", error?.message || "No se pudo revocar."); }
+            }}><Text style={styles.blockText}>Revocar</Text></Pressable>
+          </View>
+        ))}
+      </View>
       {users.map((user) => (
         <UserCard
           key={user._id}
@@ -352,6 +389,10 @@ export default function AdminUsersScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#f8fafc" },
+  inviteBox: { backgroundColor: "#fff", padding: 16, borderRadius: 16, gap: 10 },
+  inviteHint: { color: "#475569", fontSize: 13 },
+  inviteInput: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, padding: 12, color: "#0f172a" },
+  inviteRow: { flexDirection: "row", gap: 12, alignItems: "center", paddingVertical: 6 },
   content: { padding: 16, paddingBottom: 40, gap: 10 },
   center: {
     flex: 1,

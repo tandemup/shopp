@@ -8,6 +8,7 @@ import LoginScreen from "@/src/screens/auth/LoginScreen";
 import RegisterScreen from "@/src/screens/auth/RegisterScreen";
 import ResetPasswordScreen from "@/src/screens/auth/ResetPasswordScreen";
 import DevelopmentScreen from "@/src/screens/system/DevelopmentScreen";
+import InformationScreen from "@/src/screens/system/InformationScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -55,6 +56,7 @@ export default function AuthStack({
       }}
     >
       <Stack.Screen name="Development" component={DevelopmentScreen} />
+      <Stack.Screen name="Information" component={InformationScreen} />
       <Stack.Screen name="AuthHome">
         {(props) => (
           <AuthHomeScreen

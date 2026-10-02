@@ -160,26 +160,80 @@ export const listForAdmin = query({
 });
 
 
-// Convierte la cuenta autenticada en una cuenta de pruebas.
-// "tester" no concede privilegios de administrador; conserva los permisos
-// normales configurados para la cuenta.
+const DEFAULT_TESTER_PERMISSIONS = Object.freeze({
+  scanner: true, stores: true, musicPlaylist: true, classicalMusic: true,
+  tutorials: true, p2pPlaylistExchange: true,
+});
+
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+// Solo administradores pueden autorizar un correo para acceder como tester.
+export const inviteTester = mutation({
+  args: { email: v.string() },
+  handler: async (ctx, { email }) => {
+    const admin = await requireAdmin(ctx);
+    const normalized = normalizeEmail(email);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+      throw new Error("Introduce un correo electrónico válido.");
+    }
+    const existing = await ctx.db.query("testerInvitations")
+      .withIndex("by_email", q => q.eq("email", normalized)).collect();
+    const now = Date.now();
+    if (existing.some(i => !i.revokedAt && !i.acceptedAt && i.expiresAt > now)) {
+      throw new Error("Este correo ya tiene una invitación vigente.");
+    }
+    // Si el usuario existe, el administrador puede asignarle tester desde Gestión de usuarios.
+    const id = await ctx.db.insert("testerInvitations", {
+      email: normalized, createdBy: admin._id, createdAt: now,
+      expiresAt: now + 7 * 24 * 60 * 60 * 1000,
+      permissions: DEFAULT_TESTER_PERMISSIONS,
+    });
+    return { id, email: normalized };
+  },
+});
+
+export const listTesterInvitations = query({
+  args: {},
+  handler: async ctx => {
+    await requireAdmin(ctx);
+    return await ctx.db.query("testerInvitations").order("desc").take(100);
+  },
+});
+
+export const revokeTesterInvitation = mutation({
+  args: { invitationId: v.id("testerInvitations") },
+  handler: async (ctx, { invitationId }) => {
+    await requireAdmin(ctx);
+    const invitation = await ctx.db.get(invitationId);
+    if (!invitation) throw new Error("Invitación no encontrada.");
+    if (invitation.acceptedAt) throw new Error("Esta invitación ya se utilizó.");
+    await ctx.db.patch(invitationId, { revokedAt: Date.now() });
+    return { ok: true };
+  },
+});
+
+// Se ejecuta después de la verificación de Convex Auth: nunca confía en un
+// parámetro de navegación ni en una dirección proporcionada por el cliente.
 export const activateTesterRole = mutation({
   args: {},
-  handler: async (ctx) => {
-    const authUserId = await requireAuthUserId(ctx);
-    const user = await ctx.db.get(authUserId);
-
-    if (!user) {
-      throw new Error("Usuario no encontrado.");
+  handler: async ctx => {
+    const userId = await requireAuthUserId(ctx);
+    const user = await ctx.db.get(userId);
+    if (!user?.email || !user.emailVerificationTime) {
+      throw new Error("Verifica tu correo electrónico para activar la invitación.");
     }
-
-    if (user.role === "admin") {
-      // Nunca degradamos una cuenta administradora desde el registro tester.
-      return { ok: true, role: "admin" };
-    }
-
-    await ctx.db.patch(authUserId, { role: "tester" });
-
+    if (user.role === "admin" || user.isAdmin === true) return { ok: true, role: "admin" };
+    const email = normalizeEmail(user.email);
+    const invitations = await ctx.db.query("testerInvitations")
+      .withIndex("by_email", q => q.eq("email", email)).collect();
+    const invitation = invitations.find(i => !i.revokedAt && !i.acceptedAt && i.expiresAt > Date.now());
+    if (!invitation) throw new Error("No existe una invitación vigente para este correo.");
+    await ctx.db.patch(userId, {
+      role: "tester", permissions: normalizePermissions(invitation.permissions || DEFAULT_TESTER_PERMISSIONS),
+    });
+    await ctx.db.patch(invitation._id, { acceptedAt: Date.now(), acceptedBy: user._id });
     return { ok: true, role: "tester" };
   },
 });
@@ -202,7 +256,11 @@ export const setRole = mutation({
       throw new Error("Usuario no encontrado.");
     }
 
-    await ctx.db.patch(args.userId, { role: args.role });
+    await ctx.db.patch(args.userId, {
+      role: args.role,
+      ...(args.role === "tester" && !targetUser.permissions
+        ? { permissions: normalizePermissions(DEFAULT_TESTER_PERMISSIONS) } : {}),
+    });
 
     return { ok: true };
   },

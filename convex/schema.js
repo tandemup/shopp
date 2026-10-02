@@ -43,6 +43,25 @@ export default defineSchema({
     blockReason: v.optional(v.string()),
   }).index("email", ["email"]),
 
+  testerInvitations: defineTable({
+    email: v.string(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    acceptedAt: v.optional(v.number()),
+    acceptedBy: v.optional(v.id("users")),
+    revokedAt: v.optional(v.number()),
+    permissions: v.optional(v.object({
+      scanner: v.optional(v.boolean()), stores: v.optional(v.boolean()),
+      chat: v.optional(v.boolean()), parking: v.optional(v.boolean()),
+      englishTutor: v.optional(v.boolean()), library: v.optional(v.boolean()),
+      musicPlaylist: v.optional(v.boolean()), classicalMusic: v.optional(v.boolean()),
+      tutorials: v.optional(v.boolean()), news: v.optional(v.boolean()),
+      shoppLive: v.optional(v.boolean()), p2pPlaylistExchange: v.optional(v.boolean()),
+      fireAlarm: v.optional(v.boolean()), investments: v.optional(v.boolean()),
+    })),
+  }).index("by_email", ["email"]),
+
   products: defineTable({
     barcode: v.string(),
 
