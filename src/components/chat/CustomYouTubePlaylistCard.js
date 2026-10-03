@@ -4,10 +4,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { I18nText as Text } from "@/src/i18n";
 import { usePlayback } from "@/src/components/playback/PlaybackProvider";
 
-// La tarjeta dispone de espacio para el nombre, autor, canción y controles.
-// La miniatura mantiene su anchura para no comprimir el texto.
+// Altura compacta fija: una línea por texto y fila de acciones al pie.
 const CARD_WIDTH = 560;
-const CARD_HEIGHT = 124;
+const CARD_HEIGHT = 90;
 const VIDEO_THUMBNAIL_WIDTH = 160;
 
 
@@ -66,7 +65,7 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
         )}
         <View style={styles.summaryText}>
           <View style={styles.metaRow}>
-            <Text style={styles.user} numberOfLines={1}>
+            <Text style={styles.user} numberOfLines={1} ellipsizeMode="tail">
               {displayName}
             </Text>
             {(canEdit || canDelete || onExport || onCreateCard) ? (
@@ -83,11 +82,11 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
             ) : null}
           </View>
           {author ? (
-            <Text style={styles.author} numberOfLines={1}>
+            <Text style={styles.author} numberOfLines={1} ellipsizeMode="tail">
               {author}
             </Text>
           ) : null}
-          <Text style={styles.title} numberOfLines={1}>
+          <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
             {single}
           </Text>
           {onToggleShareable ? (
@@ -159,7 +158,8 @@ const styles = StyleSheet.create({
   },
   newsCard: { width: CARD_WIDTH },
   summary: {
-    minHeight: CARD_HEIGHT,
+    height: CARD_HEIGHT,
+    overflow: "hidden",
     flexDirection: "row",
     alignItems: "stretch",
   },
@@ -180,23 +180,26 @@ const styles = StyleSheet.create({
   summaryText: {
     flex: 1,
     minWidth: 0,
+    height: CARD_HEIGHT,
+    overflow: "hidden",
     paddingHorizontal: 9,
-    paddingTop: 2,
-    paddingBottom: 7,
-    justifyContent: "space-between",
+    paddingTop: 1,
+    paddingBottom: 2,
   },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  user: { flex: 1, fontSize: 11, fontWeight: "800", color: "#2563eb" },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 4, height: 27 },
+  user: { flex: 1, minWidth: 0, fontSize: 11, lineHeight: 15, fontWeight: "800", color: "#2563eb" },
   shareRow: {
     marginTop: "auto",
-    paddingTop: 4,
+    paddingTop: 0,
     width: "100%",
     flexDirection: "row",
     justifyContent: "flex-end",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
+    height: 24,
+    flexShrink: 0,
   },
-  itemCount: { fontSize: 12, color: "#64748b", fontWeight: "600" },
+  itemCount: { fontSize: 12, lineHeight: 16, color: "#64748b", fontWeight: "600" },
   shareControl: {
     flexDirection: "row",
     alignItems: "center",
@@ -216,16 +219,18 @@ const styles = StyleSheet.create({
   menuText: { fontSize: 14, color: "#334155", fontWeight: "600" },
   deleteText: { fontSize: 14, color: "#dc2626", fontWeight: "600" },
   author: {
-    marginTop: 4,
+    marginTop: 0,
+    flexShrink: 1,
     fontSize: 12,
     lineHeight: 15,
     fontWeight: "700",
     color: "#334155",
   },
   title: {
-    marginTop: 1,
-    fontSize: 14,
-    lineHeight: 18,
+    marginTop: 0,
+    flexShrink: 1,
+    fontSize: 13,
+    lineHeight: 17,
     fontWeight: "400",
     color: "#111827",
   },
