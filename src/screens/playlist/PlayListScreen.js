@@ -1406,7 +1406,7 @@ export default function PlayListScreen() {
                         ? [item.composer, item.performer]
                             .filter(Boolean)
                             .join(" · ") || "Música clásica"
-                        : "Mi playlist"
+                        : item.title || "Mi playlist"
                 }
                 isTutorial={isTutorialStyle}
                 isNews={isNews}

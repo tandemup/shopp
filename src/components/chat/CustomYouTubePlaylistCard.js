@@ -23,6 +23,7 @@ function splitAuthorAndSingle(value) {
 export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, onCreateCard, shareable = false, onToggleShareable, isTutorial = false, isNews = false }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const playback = usePlayback();
+  const displayName = String(playlist?.title || "").trim() || userName || "Mi playlist";
   const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
   const activeTrack = tracks[0];
   const parsedTrack = splitAuthorAndSingle(activeTrack?.title || "");
@@ -66,10 +67,10 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
         <View style={styles.summaryText}>
           <View style={styles.metaRow}>
             <Text style={styles.user} numberOfLines={1}>
-              {userName}
+              {displayName}
             </Text>
             <Text style={styles.trackCount}>{tracks.length} items</Text>
-            {(canEdit || canDelete || onExport || onCreateCard || onToggleShareable) ? (
+            {(canEdit || canDelete || onExport || onCreateCard) ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Opciones de ${playlist.title}`}
@@ -90,6 +91,26 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
           <Text style={styles.title} numberOfLines={1}>
             {single}
           </Text>
+          {onToggleShareable ? (
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityLabel={`Compartir ${displayName}`}
+              accessibilityState={{ checked: shareable, disabled: deleting }}
+              disabled={deleting}
+              onPress={(event) => {
+                event.stopPropagation();
+                onToggleShareable(!shareable);
+              }}
+              style={styles.shareControl}
+            >
+              <Ionicons
+                name={shareable ? "checkbox" : "square-outline"}
+                size={19}
+                color={shareable ? "#2563eb" : "#64748b"}
+              />
+              <Text style={styles.shareLabel}>Compartir</Text>
+            </Pressable>
+          ) : null}
         </View>
       </Pressable>
       {menuOpen ? (
@@ -112,13 +133,6 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
             <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setMenuOpen(false); onCreateCard(); }}>
               <Ionicons name="print-outline" size={18} color="#334155" />
               <Text style={styles.menuText}>Crear tarjeta</Text>
-            </Pressable>
-          ) : null}
-          {onToggleShareable ? (
-            <Pressable accessibilityRole="button" style={styles.menuItem}
-              onPress={() => { setMenuOpen(false); onToggleShareable(!shareable); }}>
-              <Ionicons name={shareable ? "folder-open-outline" : "folder-outline"} size={19} color="#2563eb" />
-              <Text style={styles.menuText}>{shareable ? "Quitar de Compartidos" : "Añadir a Compartidos"}</Text>
             </Pressable>
           ) : null}
           {canDelete ? (
@@ -178,6 +192,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#64748b",
   },
+  shareControl: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 5, minHeight: 24 },
+  shareLabel: { fontSize: 12, color: "#334155", fontWeight: "600" },
   menuButton: {
     width: 36,
     height: 36,
