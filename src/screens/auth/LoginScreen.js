@@ -474,8 +474,8 @@ const styles = StyleSheet.create({
   },
 
   scrollContentDesktop: {
-    paddingHorizontal: 48,
-    paddingVertical: 48,
+    paddingHorizontal: 30,
+    paddingVertical: 28,
   },
 
   scrollContentSmallMobile: {
@@ -485,7 +485,7 @@ const styles = StyleSheet.create({
 
   shell: {
     width: "100%",
-    maxWidth: 440,
+    maxWidth: 420,
     alignSelf: "center",
     borderRadius: 28,
     overflow: "hidden",
@@ -501,13 +501,13 @@ const styles = StyleSheet.create({
   },
 
   shellDesktop: {
-    maxWidth: 1040,
-    minHeight: 620,
+    maxWidth: 900,
+    minHeight: 540,
     flexDirection: "row",
   },
 
   shellTablet: {
-    maxWidth: 560,
+    maxWidth: 520,
   },
 
   brandPanel: {
@@ -515,23 +515,23 @@ const styles = StyleSheet.create({
   },
 
   brandPanelDesktop: {
-    flex: 1,
-    paddingHorizontal: 46,
-    paddingVertical: 48,
+    flex: 0.92,
+    paddingHorizontal: 34,
+    paddingVertical: 36,
     justifyContent: "center",
   },
 
   brandPanelMobile: {
-    paddingHorizontal: 24,
-    paddingTop: 34,
-    paddingBottom: 28,
+    paddingHorizontal: 22,
+    paddingTop: 28,
+    paddingBottom: 24,
     alignItems: "center",
   },
 
   logoCircle: {
-    width: 82,
-    height: 82,
-    borderRadius: 28,
+    width: 72,
+    height: 72,
+    borderRadius: 24,
     backgroundColor: "rgba(255, 255, 255, 0.18)",
     alignItems: "center",
     justifyContent: "center",
@@ -541,26 +541,26 @@ const styles = StyleSheet.create({
   },
 
   brandTitle: {
-    fontSize: 42,
-    lineHeight: 48,
+    fontSize: 34,
+    lineHeight: 40,
     fontWeight: "900",
     color: "#ffffff",
     textAlign: "center",
   },
 
   brandSubtitle: {
-    marginTop: 12,
-    maxWidth: 340,
-    fontSize: 16,
-    lineHeight: 24,
+    marginTop: 10,
+    maxWidth: 320,
+    fontSize: 15,
+    lineHeight: 22,
     fontWeight: "600",
     color: "#dbeafe",
     textAlign: "center",
   },
 
   desktopFeatureBox: {
-    marginTop: 34,
-    gap: 16,
+    marginTop: 26,
+    gap: 13,
   },
 
   featureRow: {
@@ -570,29 +570,29 @@ const styles = StyleSheet.create({
 
   featureText: {
     marginLeft: 10,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 20,
     fontWeight: "600",
     color: "#eff6ff",
   },
 
   formPanel: {
     backgroundColor: "#ffffff",
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 30,
+    paddingHorizontal: 22,
+    paddingTop: 22,
+    paddingBottom: 24,
   },
 
   formPanelDesktop: {
     flex: 1,
-    paddingHorizontal: 52,
-    paddingVertical: 48,
+    paddingHorizontal: 34,
+    paddingVertical: 30,
     justifyContent: "center",
   },
 
   formPanelTablet: {
-    paddingHorizontal: 34,
-    paddingVertical: 36,
+    paddingHorizontal: 30,
+    paddingVertical: 30,
   },
 
   formPanelSmallMobile: {
@@ -624,8 +624,8 @@ const styles = StyleSheet.create({
   },
 
   titleDesktop: {
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 28,
+    lineHeight: 34,
   },
 
   titleSmallMobile: {
@@ -642,8 +642,8 @@ const styles = StyleSheet.create({
   },
 
   subtitleDesktop: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 15,
+    lineHeight: 22,
   },
 
   subtitleSmallMobile: {
@@ -673,11 +673,11 @@ const styles = StyleSheet.create({
   },
 
   form: {
-    marginTop: 28,
+    marginTop: 22,
   },
 
   field: {
-    marginBottom: 18,
+    marginBottom: 15,
   },
 
   label: {
@@ -688,7 +688,7 @@ const styles = StyleSheet.create({
   },
 
   inputBox: {
-    minHeight: 54,
+    minHeight: 50,
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
@@ -709,7 +709,7 @@ const styles = StyleSheet.create({
 
   input: {
     flex: 1,
-    minHeight: 52,
+    minHeight: 48,
     paddingVertical: Platform.OS === "ios" ? 14 : 10,
     fontSize: 16,
     color: "#0f172a",
@@ -768,7 +768,7 @@ const styles = StyleSheet.create({
   },
 
   primaryButton: {
-    minHeight: 54,
+    minHeight: 50,
     borderRadius: 16,
     backgroundColor: "#2563eb",
     alignItems: "center",
