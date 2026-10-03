@@ -148,6 +148,7 @@ export default defineSchema({
     initiatorName: v.string(),
     recipientName: v.string(),
     confirmCode: v.string(),
+    offeredPlaylists: v.optional(v.array(v.object({ id: v.string(), title: v.string(), tracks: v.array(v.object({ title: v.string(), artist: v.string() })) }))),
     status: v.union(
       v.literal("pending"),
       v.literal("accepted"),
