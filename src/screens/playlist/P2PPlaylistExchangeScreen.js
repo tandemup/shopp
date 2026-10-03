@@ -292,6 +292,7 @@ export default function P2PPlaylistExchangeScreen() {
   const musicPlaylistsRef = useRef([]);
   const importedPlaylistSignaturesRef = useRef(new Set());
   const pairingsRef = useRef([]);
+  const sentInvitationRef = useRef(new Set());
   const intentionalCloseRef = useRef(false);
   const disconnectTimerRef = useRef(null);
   const shutdownInFlightRef = useRef(false);
@@ -451,6 +452,23 @@ export default function P2PPlaylistExchangeScreen() {
     channel.onopen = () => {
       setConnection("connected");
       sendP2PJson(channel, { type: "PROFILE", profile: { displayName: alias.trim() || myPresence?.displayName || "Shopp", channels: [...channels] } });
+      // Solo el emisor transfiere las playlists de la invitación aceptada.
+      const invitation = pairingsRef.current.find((item) => item.status === "accepted" && item.isInitiator);
+      if (invitation?.offeredPlaylists?.length && !sentInvitationRef.current.has(String(invitation._id))) {
+        sentInvitationRef.current.add(String(invitation._id));
+        void (async () => {
+          try {
+            for (const offered of invitation.offeredPlaylists) {
+              const playlist = musicPlaylistsRef.current.find((item) => String(item._id) === offered.id && item.shareable === true);
+              if (!playlist) throw new Error(`La playlist «${offered.title}» ya no está disponible para compartir.`);
+              sendP2PJson(channel, { type: "PLAYLIST", playlist: toP2PPlaylist(playlist) });
+              await new Promise((resolve) => setTimeout(resolve, 40));
+            }
+          } catch (error) {
+            safeAlert("Handshake", error?.message || "No se pudieron transferir las playlists.");
+          }
+        })();
+      }
     };
     channel.onclose = () => {
       setConnection("closed");
@@ -686,10 +704,23 @@ export default function P2PPlaylistExchangeScreen() {
     // Handshake idempotente: una segunda pulsación mientras la primera
     // solicitud está en curso se ignora, incluso antes del siguiente render.
     if (handshakeInFlightRef.current || busy || activePairing || pairings?.some((item) => item.status === "pending" && item.expiresAt > Date.now())) return;
+    if (selectedPlaylists.length === 0) {
+      safeAlert("Handshake", "Selecciona primero las playlists que quieres compartir con este dispositivo.");
+      return;
+    }
+    if (selectedPlaylists.length > 25 || selectedPlaylists.some((playlist) => (playlist.tracks || []).length > 100)) {
+      safeAlert("Handshake", "Máximo 25 playlists y 100 canciones por playlist.");
+      return;
+    }
     handshakeInFlightRef.current = true;
     setBusy(true);
     try {
-      await requestPairing({ recipientPresenceId: peer.presenceId, confirmCode: randomCode(), deviceId });
+      const offeredPlaylists = selectedPlaylists.map((playlist) => ({
+        id: String(playlist._id),
+        title: String(playlist.title || "Playlist"),
+        tracks: (playlist.tracks || []).map((track) => ({ title: String(track.title || "Canción"), artist: String(track.artist || track.author || "") })),
+      }));
+      await requestPairing({ recipientPresenceId: peer.presenceId, confirmCode: randomCode(), deviceId, offeredPlaylists });
     } catch (error) {
       safeAlert("Intercambio P2P", error?.message || "No se pudo enviar la solicitud.");
     } finally {
@@ -832,7 +863,7 @@ export default function P2PPlaylistExchangeScreen() {
         <View style={styles.playlistHeader}>
           <View style={styles.playlistHeaderText}>
             <Text style={styles.cardTitle}>Listas de música para compartir</Text>
-            <Text style={styles.muted}>Selecciona las playlists de “Mis playlists” que quieres enviar al otro dispositivo.</Text>
+            <Text style={styles.muted}>Selecciona las playlists que incluirás en la invitación Handshake. El receptor verá sus canciones antes de aceptarlas.</Text>
           </View>
           {shareablePlaylists.length > 0 ? (
             <Pressable onPress={selectAllPlaylists} style={styles.selectAllButton}>
@@ -871,13 +902,14 @@ export default function P2PPlaylistExchangeScreen() {
 
       {pendingOutgoing.map((pairing) => <View key={pairing._id} style={[styles.card, styles.waitingCard]}>
         <View style={styles.invitationHeading}><ActivityIndicator color="#2563eb" /><View style={styles.playlistInfo}><Text style={styles.cardTitle}>Tendiendo la mano a {pairing.recipientName}…</Text><Text style={styles.muted}>Esperando a que acepte o rechace la invitación.</Text></View></View>
+        <Text style={styles.muted}>Playlists propuestas: {(pairing.offeredPlaylists || []).map((item) => item.title).join(", ")}</Text>
         <Text style={styles.muted}>Comprueba en ambos dispositivos el código <Text style={styles.code}>{pairing.confirmCode}</Text>.</Text>
         <Pressable disabled={busy} onPress={() => cancelInvitation(pairing)} style={styles.rejectButton}><Text style={styles.rejectText}>Cancelar solicitud</Text></Pressable>
       </View>)}
       {expiredOutgoing && !activePairing && pendingOutgoing.length === 0 ? <View style={styles.card}><Status tone="danger">La solicitud a {expiredOutgoing.recipientName} ha caducado. Puedes enviar otra invitación.</Status></View> : null}
       {lastOutgoingResponse && !activePairing && pendingOutgoing.length === 0 ? <View style={styles.card}><Status tone="danger">{lastOutgoingResponse.recipientName} ha rechazado el Handshake.</Status><Pressable disabled={busy} onPress={() => cancelInvitation(lastOutgoingResponse)} style={styles.finishButton}><Text style={styles.finishText}>Cerrar aviso</Text></Pressable></View> : null}
 
-      {activePairing ? <View style={styles.card}><Text style={styles.cardTitle}>3. Conexión con {activePairing.friendName}</Text><Text style={styles.muted}>Código de verificación: <Text style={styles.code}>{activePairing.confirmCode}</Text></Text><Status tone={connection === "connected" ? "success" : connection === "failed" ? "danger" : "neutral"}>{connection === "connected" ? "Canal P2P conectado" : connection === "failed" ? "No se pudo conectar" : activePairing.isInitiator ? "Listo para iniciar la conexión" : "Esperando la conexión del otro dispositivo"}</Status>{activePairing.isInitiator && connection !== "connected" ? <Pressable onPress={startConnection} style={styles.primaryButton}><Ionicons name="link-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Conectar ahora</Text></Pressable> : null}{connection === "connected" ? <><Pressable disabled={busy || selectedPlaylists.length === 0} onPress={sendSelectedPlaylists} style={[styles.primaryButton, selectedPlaylists.length === 0 && styles.disabledButton]}><Ionicons name="send-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Enviar seleccionadas ({selectedPlaylists.length})</Text></Pressable><Pressable disabled={busy || ["preparing", "receiving", "merging"].includes(librarySync?.state)} onPress={syncLibrary} style={[styles.primaryButton, styles.librarySyncButton]}><Ionicons name="sync-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Sincronizar Biblioteca</Text></Pressable>{librarySync ? <Status tone={librarySync.state === "failed" ? "danger" : librarySync.state === "merged" || librarySync.state === "reply-sent" ? "success" : "neutral"}>{librarySync.state === "preparing" ? "Preparando Biblioteca…" : librarySync.state === "receiving" ? `Recibiendo ${librarySync.receivedChunks || 0}/${librarySync.totalChunks || 0} bloques…` : librarySync.state === "merging" ? "Combinando cambios…" : librarySync.state === "failed" ? `Error: ${librarySync.error || "sincronización fallida"}` : librarySync.state === "sent" ? "Biblioteca enviada; esperando respuesta…" : librarySync.state === "reply-sent" ? "Respuesta de sincronización enviada" : librarySync.state === "merged" ? "Cambios recibidos y combinados" : "Sincronización P2P"}</Status> : null}</> : null}<Pressable onPress={finish} style={styles.finishButton}><Text style={styles.finishText}>Finalizar y borrar sesión</Text></Pressable></View> : null}
+      {activePairing ? <View style={styles.card}><Text style={styles.cardTitle}>3. Conexión con {activePairing.friendName}</Text><Text style={styles.muted}>Código de verificación: <Text style={styles.code}>{activePairing.confirmCode}</Text></Text><Status tone={connection === "connected" ? "success" : connection === "failed" ? "danger" : "neutral"}>{connection === "connected" ? "Canal P2P conectado" : connection === "failed" ? "No se pudo conectar" : activePairing.isInitiator ? "Listo para iniciar la conexión" : "Esperando la conexión del otro dispositivo"}</Status>{activePairing.isInitiator && connection !== "connected" ? <Pressable onPress={startConnection} style={styles.primaryButton}><Ionicons name="link-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Conectar y enviar invitación aceptada</Text></Pressable> : null}{connection === "connected" ? <><Status tone="success">{activePairing.isInitiator ? "La transferencia de la invitación se inicia al conectar." : "Recibiendo las canciones aceptadas del otro dispositivo."}</Status><Pressable disabled={busy || ["preparing", "receiving", "merging"].includes(librarySync?.state)} onPress={syncLibrary} style={[styles.primaryButton, styles.librarySyncButton]}><Ionicons name="sync-outline" size={18} color="#fff" /><Text style={styles.primaryButtonText}>Sincronizar Biblioteca</Text></Pressable>{librarySync ? <Status tone={librarySync.state === "failed" ? "danger" : librarySync.state === "merged" || librarySync.state === "reply-sent" ? "success" : "neutral"}>{librarySync.state === "preparing" ? "Preparando Biblioteca…" : librarySync.state === "receiving" ? `Recibiendo ${librarySync.receivedChunks || 0}/${librarySync.totalChunks || 0} bloques…` : librarySync.state === "merging" ? "Combinando cambios…" : librarySync.state === "failed" ? `Error: ${librarySync.error || "sincronización fallida"}` : librarySync.state === "sent" ? "Biblioteca enviada; esperando respuesta…" : librarySync.state === "reply-sent" ? "Respuesta de sincronización enviada" : librarySync.state === "merged" ? "Cambios recibidos y combinados" : "Sincronización P2P"}</Status> : null}</> : null}<Pressable onPress={finish} style={styles.finishButton}><Text style={styles.finishText}>Finalizar y borrar sesión</Text></Pressable></View> : null}
 
       {activePairing && connection === "connected" ? <View style={styles.card}>
         <Text style={styles.cardTitle}>Conversación con {activePairing.friendName}</Text>
@@ -889,17 +921,23 @@ export default function P2PPlaylistExchangeScreen() {
       </View> : null}
 
       {receivedPlaylists.length > 0 ? <View style={styles.card}><Text style={styles.cardTitle}>Playlists recibidas por P2P</Text>{receivedPlaylists.map((playlist, index) => <View key={`${playlist.title || "playlist"}-${index}`} style={styles.receivedRow}><View style={styles.playlistInfo}><Text style={styles.playlistName} numberOfLines={1}>{playlist.title || "Playlist"}</Text><Text style={styles.playlistMeta}>{playlist.tracks?.length || 0} items</Text></View><Pressable onPress={() => downloadJson(playlist)} style={styles.downloadButton}><Ionicons name="download-outline" size={18} color="#1d4ed8" /><Text style={styles.downloadButtonText}>JSON</Text></Pressable></View>)}</View> : null}
-      <Text style={styles.note}>Las playlists seleccionadas se envían directamente por WebRTC. Al recibirlas, Shopp las guarda automáticamente en “Music playlist” del usuario receptor y evita duplicados exactos. La opción “Sincronizar Biblioteca” combina la Biblioteca local de ambos dispositivos.</Text>
+      <Text style={styles.note}>Las playlists incluidas en una invitación aceptada se envían por WebRTC al establecerse la conexión. Al recibirlas, Shopp las guarda automáticamente en “Music playlist” del usuario receptor y evita duplicados exactos. La opción “Sincronizar Biblioteca” combina la Biblioteca local de ambos dispositivos.</Text>
       <Modal visible={!!incomingInvitation} transparent animationType="fade" onRequestClose={() => { if (incomingInvitation && !busy) void respond(incomingInvitation, false); }}>
         <View style={styles.modalBackdrop}>
           {incomingInvitation ? <View style={styles.invitationModal}>
             <View style={styles.invitationHeading}><View style={styles.handIcon}><Ionicons name="hand-left-outline" size={30} color="#2563eb" /></View><View style={styles.playlistInfo}><Text style={styles.modalTitle}>Solicitud de Handshake</Text><Text style={styles.muted}>Intercambio P2P · Shopp</Text></View></View>
             <Text style={styles.invitationTitle}>{incomingInvitation.initiatorName} está tendiendo la mano</Text>
-            <Text style={styles.invitationDescription}>Quiere establecer una conexión contigo para intercambiar contenido. Aceptar no envía automáticamente ninguna playlist ni sincroniza la Biblioteca.</Text>
+            <Text style={styles.invitationDescription}>Quiere enviarte estas canciones. Si aceptas, se transferirán las playlists indicadas cuando se establezca la conexión WebRTC.</Text>
+            <ScrollView style={styles.invitedList} nestedScrollEnabled>
+              {(incomingInvitation.offeredPlaylists || []).map((playlist, index) => <View key={`${playlist.id}-${index}`} style={styles.invitedGroup}>
+                <Text style={styles.playlistName}>{playlist.title} · {playlist.tracks.length} canciones</Text>
+                {playlist.tracks.map((track, trackIndex) => <Text key={trackIndex} style={styles.invitedTrack}>♪ {track.title}{track.artist ? ` — ${track.artist}` : ""}</Text>)}
+              </View>)}
+            </ScrollView>
             <View style={styles.verificationBox}><Text style={styles.muted}>Código de verificación</Text><Text style={styles.verificationCode}>{incomingInvitation.confirmCode}</Text><Text style={styles.muted}>Comprueba que coincide en ambos dispositivos antes de aceptar.</Text></View>
             <View style={styles.actions}>
               <Pressable disabled={busy} onPress={() => respond(incomingInvitation, false)} style={styles.rejectButton}><Text style={styles.rejectText}>Rechazar</Text></Pressable>
-              <Pressable disabled={busy} onPress={() => respond(incomingInvitation, true)} style={styles.acceptButton}><Text style={styles.acceptText}>Aceptar</Text></Pressable>
+              <Pressable disabled={busy} onPress={() => respond(incomingInvitation, true)} style={styles.acceptButton}><Text style={styles.acceptText}>Aceptar canciones</Text></Pressable>
             </View>
           </View> : null}
         </View>
@@ -916,6 +954,9 @@ const styles = StyleSheet.create({
   handIcon: { width: 58, height: 58, borderRadius: 29, backgroundColor: "#eff6ff", justifyContent: "center", alignItems: "center" },
   modalTitle: { fontSize: 20, fontWeight: "800", color: "#172033" },
   invitationTitle: { fontSize: 20, lineHeight: 27, textAlign: "center", fontWeight: "800", color: "#172033" },
+  invitedList: { maxHeight: 250 },
+  invitedGroup: { paddingVertical: 8, borderBottomWidth: 1, borderColor: "#e2e8f0", gap: 4 },
+  invitedTrack: { color: "#475569", fontSize: 13, lineHeight: 19 },
   invitationDescription: { color: "#475569", lineHeight: 21, fontSize: 14, textAlign: "center" },
   verificationBox: { backgroundColor: "#f1f5f9", borderRadius: 12, padding: 16, alignItems: "center", gap: 8 },
   verificationCode: { fontSize: 28, fontWeight: "900", letterSpacing: 4, color: "#1d4ed8" },

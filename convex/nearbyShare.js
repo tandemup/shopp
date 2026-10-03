@@ -8,6 +8,8 @@ const PRESENCE_MS = 2 * 60 * 1000;
 const PAIRING_MS = 5 * 60 * 1000;
 const INVITATION_MS = 60 * 1000;
 const MAX_SIGNAL_LENGTH = 20000;
+const MAX_INVITED_PLAYLISTS = 25;
+const MAX_INVITED_TRACKS = 100;
 const clean = (value, max) => String(value || "").trim().slice(0, max);
 const cleanDeviceId = (value) => clean(value, 80);
 
@@ -107,7 +109,7 @@ export const listVisiblePeers = query({
 });
 
 export const requestPairing = mutation({
-  args: { recipientPresenceId: v.id("nearbySharePresence"), confirmCode: v.string(), deviceId: v.string() },
+  args: { recipientPresenceId: v.id("nearbySharePresence"), confirmCode: v.string(), deviceId: v.string(), offeredPlaylists: v.array(v.object({ id: v.string(), title: v.string(), tracks: v.array(v.object({ title: v.string(), artist: v.string() })) })) },
   handler: async (ctx, args) => {
     const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
     await deleteExpired(ctx);
@@ -119,6 +121,11 @@ export const requestPairing = mutation({
     if (recipientPresence.userId === user._id && recipientPresence.deviceId === deviceId) throw new Error("Elige otro dispositivo.");
     const confirmCode = clean(args.confirmCode, 12);
     if (!/^[A-Z0-9]{4,12}$/.test(confirmCode)) throw new Error("El código de confirmación no es válido.");
+    if (!args.offeredPlaylists.length || args.offeredPlaylists.length > MAX_INVITED_PLAYLISTS) throw new Error("Selecciona entre 1 y 25 playlists.");
+    const offeredPlaylists = args.offeredPlaylists.map((playlist) => {
+      if (!clean(playlist.id, 100) || !clean(playlist.title, 160) || playlist.tracks.length > MAX_INVITED_TRACKS) throw new Error("Lista de canciones inválida.");
+      return { id: clean(playlist.id, 100), title: clean(playlist.title, 160), tracks: playlist.tracks.map((track) => ({ title: clean(track.title, 160), artist: clean(track.artist, 120) })) };
+    });
     const now = Date.now();
     return await ctx.db.insert("nearbySharePairings", {
       initiatorId: user._id,
@@ -128,6 +135,7 @@ export const requestPairing = mutation({
       initiatorName: ownPresence.displayName,
       recipientName: recipientPresence.displayName,
       confirmCode,
+      offeredPlaylists,
       status: "pending",
       expiresAt: now + INVITATION_MS,
       createdAt: now,
