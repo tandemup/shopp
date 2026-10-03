@@ -69,7 +69,6 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
             <Text style={styles.user} numberOfLines={1}>
               {displayName}
             </Text>
-            <Text style={styles.trackCount}>{tracks.length} items</Text>
             {(canEdit || canDelete || onExport || onCreateCard) ? (
               <Pressable
                 accessibilityRole="button"
@@ -92,24 +91,26 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
             {single}
           </Text>
           {onToggleShareable ? (
-            <Pressable
-              accessibilityRole="checkbox"
-              accessibilityLabel={`Compartir ${displayName}`}
-              accessibilityState={{ checked: shareable, disabled: deleting }}
-              disabled={deleting}
-              onPress={(event) => {
-                event.stopPropagation();
-                onToggleShareable(!shareable);
-              }}
-              style={styles.shareControl}
-            >
-              <Ionicons
-                name={shareable ? "checkbox" : "square-outline"}
-                size={19}
-                color={shareable ? "#2563eb" : "#64748b"}
-              />
-              <Text style={styles.shareLabel}>Compartir</Text>
-            </Pressable>
+            <View style={styles.shareRow}>
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityLabel={`Compartir ${displayName}`}
+                accessibilityState={{ checked: shareable, disabled: deleting }}
+                disabled={deleting}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  onToggleShareable(!shareable);
+                }}
+                style={styles.shareControl}
+              >
+                <Ionicons
+                  name={shareable ? "checkbox" : "square-outline"}
+                  size={19}
+                  color={shareable ? "#2563eb" : "#64748b"}
+                />
+                <Text style={styles.shareLabel}>Compartir</Text>
+              </Pressable>
+            </View>
           ) : null}
         </View>
       </Pressable>
@@ -185,14 +186,19 @@ const styles = StyleSheet.create({
   },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   user: { flex: 1, fontSize: 11, fontWeight: "800", color: "#2563eb" },
-  trackCount: {
-    flexShrink: 0,
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: "700",
-    color: "#64748b",
+  shareRow: {
+    marginTop: 3,
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "flex-end",
   },
-  shareControl: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 5, minHeight: 24 },
+  shareControl: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 5,
+    minHeight: 24,
+  },
   shareLabel: { fontSize: 12, color: "#334155", fontWeight: "600" },
   menuButton: {
     width: 36,
