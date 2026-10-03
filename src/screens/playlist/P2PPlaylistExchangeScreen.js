@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
@@ -217,6 +218,11 @@ const P2P_CHANNELS = ["musica", "recetas"];
 const P2P_CHANNEL_SET = new Set(P2P_CHANNELS);
 
 export default function P2PPlaylistExchangeScreen() {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const compactInvitation = windowWidth < 600;
+  const shortInvitation = windowHeight < 560;
+  const invitationWidth = Math.min(windowWidth - (compactInvitation ? 24 : 48), windowWidth >= 1000 ? 560 : 520);
+  const invitationHeight = Math.max(260, windowHeight - (shortInvitation ? 16 : 48));
   const [alias, setAlias] = useState("");
   const [channels, setChannels] = useState(() => new Set(P2P_CHANNELS));
   const [chatText, setChatText] = useState("");
@@ -955,22 +961,31 @@ export default function P2PPlaylistExchangeScreen() {
 
       {receivedPlaylists.length > 0 ? <View style={styles.card}><Text style={styles.cardTitle}>Playlists recibidas por P2P</Text>{receivedPlaylists.map((playlist, index) => <View key={`${playlist.title || "playlist"}-${index}`} style={styles.receivedRow}><View style={styles.playlistInfo}><Text style={styles.playlistName} numberOfLines={1}>{playlist.title || "Playlist"}</Text><Text style={styles.playlistMeta}>{playlist.tracks?.length || 0} items</Text></View><Pressable onPress={() => downloadJson(playlist)} style={styles.downloadButton}><Ionicons name="download-outline" size={18} color="#1d4ed8" /><Text style={styles.downloadButtonText}>JSON</Text></Pressable></View>)}</View> : null}
       <Text style={styles.note}>Las playlists incluidas en una invitación aceptada se envían por WebRTC al establecerse la conexión. Al recibirlas, Shopp las guarda automáticamente en “Music playlist” del usuario receptor y evita duplicados exactos. La opción “Sincronizar Biblioteca” combina la Biblioteca local de ambos dispositivos.</Text>
-      <Modal visible={!!incomingInvitation} transparent animationType="fade" onRequestClose={() => { if (incomingInvitation && !busy) void respond(incomingInvitation, false); }}>
-        <View style={styles.modalBackdrop}>
-          {incomingInvitation ? <View style={styles.invitationModal}>
-            <View style={styles.invitationHeading}><View style={styles.handIcon}><Ionicons name="hand-left-outline" size={30} color="#2563eb" /></View><View style={styles.playlistInfo}><Text style={styles.modalTitle}>Solicitud de Handshake</Text><Text style={styles.muted}>Intercambio P2P · Shopp</Text></View></View>
-            <Text style={styles.invitationTitle}>{incomingInvitation.initiatorName} está tendiendo la mano</Text>
-            <Text style={styles.invitationDescription}>Quiere enviarte estas canciones. Si aceptas, se transferirán las playlists indicadas cuando se establezca la conexión WebRTC.</Text>
-            <ScrollView style={styles.invitedList} nestedScrollEnabled>
-              {(incomingInvitation.offeredPlaylists || []).map((playlist, index) => <View key={`${playlist.id}-${index}`} style={styles.invitedGroup}>
-                <Text style={styles.playlistName}>{playlist.title} · {playlist.tracks.length} canciones</Text>
-                {playlist.tracks.map((track, trackIndex) => <Text key={trackIndex} style={styles.invitedTrack}>♪ {track.title}{track.artist ? ` — ${track.artist}` : ""}</Text>)}
-              </View>)}
+      <Modal visible={!!incomingInvitation} transparent animationType="fade" statusBarTranslucent onRequestClose={() => { if (incomingInvitation && !busy) void respond(incomingInvitation, false); }}>
+        <View style={[styles.modalBackdrop, shortInvitation && styles.modalBackdropCompact]}>
+          {incomingInvitation ? <View style={[styles.invitationModal, { width: invitationWidth, maxHeight: invitationHeight }, compactInvitation && styles.invitationModalCompact]}>
+            <ScrollView
+              style={styles.invitationBody}
+              contentContainerStyle={styles.invitationBodyContent}
+              nestedScrollEnabled
+              showsVerticalScrollIndicator
+            >
+              <View style={styles.invitationHeading}><View style={[styles.handIcon, compactInvitation && styles.handIconCompact]}><Ionicons name="hand-left-outline" size={compactInvitation ? 24 : 30} color="#2563eb" /></View><View style={styles.playlistInfo}><Text style={styles.modalTitle}>Solicitud de Handshake</Text><Text style={styles.muted}>Intercambio P2P · Shopp</Text></View></View>
+              <Text style={[styles.invitationTitle, compactInvitation && styles.invitationTitleCompact]}>{incomingInvitation.initiatorName} está tendiendo la mano</Text>
+              <Text style={styles.invitationDescription}>Quiere enviarte estas canciones. Si aceptas, se transferirán las playlists indicadas cuando se establezca la conexión WebRTC.</Text>
+              <View style={styles.invitedList}>
+                {(incomingInvitation.offeredPlaylists || []).map((playlist, index) => <View key={`${playlist.id}-${index}`} style={styles.invitedGroup}>
+                  <Text style={styles.playlistName}>{playlist.title} · {playlist.tracks.length} canciones</Text>
+                  {playlist.tracks.map((track, trackIndex) => <Text key={trackIndex} style={styles.invitedTrack}>♪ {track.title}{track.artist ? ` — ${track.artist}` : ""}</Text>)}
+                </View>)}
+              </View>
             </ScrollView>
-            <View style={styles.verificationBox}><Text style={styles.muted}>Código de verificación</Text><Text style={styles.verificationCode}>{incomingInvitation.confirmCode}</Text><Text style={styles.muted}>Comprueba que coincide en ambos dispositivos antes de aceptar.</Text></View>
-            <View style={styles.actions}>
-              <Pressable disabled={busy} onPress={() => respond(incomingInvitation, false)} style={styles.rejectButton}><Text style={styles.rejectText}>Rechazar</Text></Pressable>
-              <Pressable disabled={busy} onPress={() => respond(incomingInvitation, true)} style={styles.acceptButton}><Text style={styles.acceptText}>Aceptar canciones</Text></Pressable>
+            <View style={styles.invitationFooter}>
+              <View style={[styles.verificationBox, compactInvitation && styles.verificationBoxCompact]}><Text style={styles.muted}>Código de verificación</Text><Text style={[styles.verificationCode, compactInvitation && styles.verificationCodeCompact]}>{incomingInvitation.confirmCode}</Text><Text style={styles.verificationHint}>Comprueba que coincide en ambos dispositivos antes de aceptar.</Text></View>
+              <View style={styles.actions}>
+                <Pressable disabled={busy} onPress={() => respond(incomingInvitation, false)} style={styles.rejectButton}><Text style={styles.rejectText}>Rechazar</Text></Pressable>
+                <Pressable disabled={busy} onPress={() => respond(incomingInvitation, true)} style={styles.acceptButton}><Text style={styles.acceptText}>Aceptar canciones</Text></Pressable>
+              </View>
             </View>
           </View> : null}
         </View>
@@ -981,18 +996,28 @@ export default function P2PPlaylistExchangeScreen() {
 
 const styles = StyleSheet.create({
   container: { padding: 16, paddingBottom: 40, backgroundColor: "#f4f7fb", gap: 12 },
-  modalBackdrop: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(15,23,42,0.64)", padding: 18 },
-  invitationModal: { width: "100%", maxWidth: 430, borderRadius: 20, backgroundColor: "#fff", padding: 22, gap: 18 },
+  modalBackdrop: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(15,23,42,0.64)", padding: 12 },
+  modalBackdropCompact: { padding: 6 },
+  invitationModal: { maxWidth: 560, borderRadius: 20, backgroundColor: "#fff", overflow: "hidden" },
+  invitationModalCompact: { borderRadius: 14 },
+  invitationBody: { flexShrink: 1, minHeight: 0 },
+  invitationBodyContent: { padding: 20, paddingBottom: 12, gap: 13 },
+  invitationFooter: { flexShrink: 0, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 16, gap: 12, borderTopWidth: 1, borderTopColor: "#e2e8f0", backgroundColor: "#fff" },
   invitationHeading: { flexDirection: "row", alignItems: "center", gap: 12 },
   handIcon: { width: 58, height: 58, borderRadius: 29, backgroundColor: "#eff6ff", justifyContent: "center", alignItems: "center" },
+  handIconCompact: { width: 42, height: 42, borderRadius: 21 },
   modalTitle: { fontSize: 20, fontWeight: "800", color: "#172033" },
   invitationTitle: { fontSize: 20, lineHeight: 27, textAlign: "center", fontWeight: "800", color: "#172033" },
-  invitedList: { maxHeight: 250 },
+  invitationTitleCompact: { fontSize: 18, lineHeight: 24 },
+  invitedList: { gap: 4 },
   invitedGroup: { paddingVertical: 8, borderBottomWidth: 1, borderColor: "#e2e8f0", gap: 4 },
   invitedTrack: { color: "#475569", fontSize: 13, lineHeight: 19 },
   invitationDescription: { color: "#475569", lineHeight: 21, fontSize: 14, textAlign: "center" },
-  verificationBox: { backgroundColor: "#f1f5f9", borderRadius: 12, padding: 16, alignItems: "center", gap: 8 },
+  verificationBox: { backgroundColor: "#f1f5f9", borderRadius: 12, padding: 12, alignItems: "center", gap: 3 },
+  verificationBoxCompact: { padding: 8 },
+  verificationHint: { color: "#64748b", fontSize: 12, lineHeight: 17, textAlign: "center" },
   verificationCode: { fontSize: 28, fontWeight: "900", letterSpacing: 4, color: "#1d4ed8" },
+  verificationCodeCompact: { fontSize: 24, letterSpacing: 3 },
   waitingCard: { borderColor: "#93c5fd", backgroundColor: "#eff6ff" },
   hero: { flexDirection: "row", gap: 12, alignItems: "flex-start", padding: 4 },
   title: { fontSize: 21, fontWeight: "800", color: "#172033" },
