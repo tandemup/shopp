@@ -860,7 +860,12 @@ export const libraryJsonApi = {
       (a, b) => b.count - a.count || a.tag.localeCompare(b.tag),
     );
   },
-  importBackup(payload, { mode = "combine" } = {}) {
+  async importBackup(payload, { mode = "combine" } = {}) {
+    // Una restauración explícita nunca debe activar la migración histórica
+    // aunque la Biblioteca se encuentre vacía durante el reemplazo.
+    if (mode === "replace") {
+      await this.markLegacyConvexMigrationDone({ source: "local-json-restore" });
+    }
     return update((database) => {
       const incoming = sanitizeDatabase(payload);
       if (mode === "replace") {
@@ -1165,7 +1170,9 @@ export const libraryJsonApi = {
       };
     });
   },
-  reset() {
+  async reset() {
+    // El importador por lotes llama a reset antes de importar desde USB.
+    await this.markLegacyConvexMigrationDone({ source: "local-json-restore" });
     return update((database) => {
       const fresh = emptyDatabase();
       database.folders = fresh.folders;
