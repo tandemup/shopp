@@ -1035,6 +1035,16 @@ export default function PlaybackProvider({ children }) {
                       </View>
                     );
                   })}
+                  {!mediaLayout ? (
+                    <View style={styles.mobileVideoSection}>
+                      <View style={styles.mobileVideoFrame}>
+                        <YouTubeSurface
+                          key={`mobile:${session.requestId}`}
+                          {...playerSurfaceProps}
+                        />
+                      </View>
+                    </View>
+                  ) : null}
                   <View
                     style={[
                       styles.queueSection,
@@ -1044,13 +1054,14 @@ export default function PlaybackProvider({ children }) {
                     <ScrollView
                       style={[
                         styles.queueRowsScroll,
-                        { maxHeight: queueRowsMaxHeight },
+                        mediaLayout ? { maxHeight: queueRowsMaxHeight } : null,
                         twoColumnDesktop && styles.queueRowsScrollTwoColumns,
                         oneColumnDesktop && styles.queueRowsScrollOneColumn,
                       ]}
                       contentContainerStyle={styles.queueRows}
                       nestedScrollEnabled
-                      scrollEnabled={twoColumnDesktop || session.tracks.length > 5}
+                      // El ScrollView exterior gestiona el scroll en iPhone.
+                      scrollEnabled={mediaLayout && (twoColumnDesktop || session.tracks.length > 5)}
                       showsVerticalScrollIndicator={false}
                       keyboardShouldPersistTaps="handled"
                     >
@@ -1116,19 +1127,6 @@ export default function PlaybackProvider({ children }) {
                               color={active ? "#ec1970" : "#9ca3af"}
                             />
                           </Pressable>
-                          {active && !mediaLayout ? (
-                            <View style={styles.queuePreview}>
-                              <View pointerEvents="auto" style={styles.queuePreviewFrame}>
-                                <YouTubeSurface
-                                  key={session.requestId}
-                                  {...playerSurfaceProps}
-                                />
-                              </View>
-                              <Text style={styles.queuePreviewHint}>
-                                Vista previa de la pista seleccionada
-                              </Text>
-                            </View>
-                          ) : null}
                           </View>
                         );
                       })}
@@ -1586,6 +1584,16 @@ const styles = StyleSheet.create({
     color: "#f4f4f5",
   },
   videoSizeSelectorTextActive: { color: "#fff" },
+  mobileVideoSection: {
+    width: "100%",
+    marginBottom: 10,
+  },
+  mobileVideoFrame: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    overflow: "hidden",
+    backgroundColor: "#000",
+  },
   queueSection: {
     width: "100%",
     maxWidth: 900,

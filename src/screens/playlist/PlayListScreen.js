@@ -617,9 +617,21 @@ export default function PlayListScreen() {
 
   const updateTrack = useCallback((index, field, value) => {
     setTracks((current) =>
-      current.map((track, currentIndex) =>
-        currentIndex === index ? { ...track, [field]: value } : track,
-      ),
+      current.map((track, currentIndex) => {
+        if (currentIndex !== index) return track;
+        // Una URL de playlist no es un vídeo individual. Seleccionamos el
+        // tipo correcto al pegar el enlace y conservamos las URLs mixtas.
+        if (field === "url") {
+          const parsed = parseYouTubeUrl(String(value).trim());
+          if (parsed.isValid && parsed.playlistId && !parsed.videoId) {
+            return { ...track, url: value, kind: "album" };
+          }
+          if (parsed.isValid && parsed.videoId && !parsed.playlistId) {
+            return { ...track, url: value, kind: "single" };
+          }
+        }
+        return { ...track, [field]: value };
+      }),
     );
   }, []);
 
@@ -1960,6 +1972,21 @@ export default function PlayListScreen() {
                     }
                     style={styles.trackInput}
                   />
+                  {Boolean(track.url.trim()) && (() => {
+                    const parsed = parseYouTubeUrl(track.url.trim());
+                    const message = !parsed.isValid
+                      ? "Introduce un enlace válido de YouTube."
+                      : track.kind === "album" && !parsed.playlistId
+                        ? "Para Álbum utiliza un enlace de playlist de YouTube."
+                        : track.kind !== "album" && !parsed.videoId
+                          ? "Para Single utiliza un enlace de vídeo de YouTube."
+                          : null;
+                    return message ? (
+                      <Text style={{ color: "#b91c1c", fontSize: 12, marginTop: 4 }}>
+                        {message}
+                      </Text>
+                    ) : null;
+                  })()}
                   {isTutorialStyle && editorVisible ? (
                     <EditorVideoPreview
                       track={track}
