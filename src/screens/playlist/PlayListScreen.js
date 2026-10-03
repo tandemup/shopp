@@ -1429,7 +1429,7 @@ export default function PlayListScreen() {
                       shareable,
                     });
                   } catch (error) {
-                    safeAlert("Compartir playlist", error?.message || "No se pudo actualizar el permiso.");
+                    safeAlert("Carpeta Compartidos", error?.message || "No se pudo actualizar la carpeta.");
                   }
                 } : undefined}
                 onReorder={(nextTracks) => reorderPlaylist(item, nextTracks)}
