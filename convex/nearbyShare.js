@@ -6,6 +6,7 @@ import { requireFeature } from "./lib/auth";
 const P2P_PLAYLIST_EXCHANGE = "p2pPlaylistExchange";
 const PRESENCE_MS = 2 * 60 * 1000;
 const PAIRING_MS = 5 * 60 * 1000;
+const INVITATION_MS = 60 * 1000;
 const MAX_SIGNAL_LENGTH = 20000;
 const clean = (value, max) => String(value || "").trim().slice(0, max);
 const cleanDeviceId = (value) => clean(value, 80);
@@ -128,7 +129,7 @@ export const requestPairing = mutation({
       recipientName: recipientPresence.displayName,
       confirmCode,
       status: "pending",
-      expiresAt: now + PAIRING_MS,
+      expiresAt: now + INVITATION_MS,
       createdAt: now,
       updatedAt: now,
     });
