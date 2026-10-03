@@ -115,18 +115,10 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
             </Pressable>
           ) : null}
           {onToggleShareable ? (
-            <Pressable
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: !!shareable }}
-              style={styles.menuItem}
-              onPress={() => onToggleShareable(!shareable)}
-            >
-              <Ionicons
-                name={shareable ? "checkbox" : "square-outline"}
-                size={20}
-                color={shareable ? "#2563eb" : "#64748b"}
-              />
-              <Text style={styles.menuText}>Permitir compartir</Text>
+            <Pressable accessibilityRole="button" style={styles.menuItem}
+              onPress={() => { setMenuOpen(false); onToggleShareable(!shareable); }}>
+              <Ionicons name={shareable ? "folder-open-outline" : "folder-outline"} size={19} color="#2563eb" />
+              <Text style={styles.menuText}>{shareable ? "Quitar de Compartidos" : "Añadir a Compartidos"}</Text>
             </Pressable>
           ) : null}
           {canDelete ? (

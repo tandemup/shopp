@@ -250,6 +250,18 @@ export default function P2PPlaylistExchangeScreen() {
     [musicPlaylists],
   );
 
+  const privatePlaylists = useMemo(() => Array.isArray(musicPlaylists)
+    ? musicPlaylists.filter((playlist) => playlist.shareable !== true) : [], [musicPlaylists]);
+
+  const updateSharedFolder = async (playlist, add) => {
+    try {
+      await setPlaylistShareable({ playlistId: playlist._id, clientId: playlistClientId || undefined, shareable: add });
+      if (!add) setSelectedPlaylistIds((current) => { const next = new Set(current); next.delete(String(playlist._id)); return next; });
+    } catch (error) {
+      safeAlert("Compartidos", error?.message || "No se pudo actualizar la carpeta.");
+    }
+  };
+
   const selectedPlaylists = useMemo(() => {
     return shareablePlaylists.filter((playlist) => selectedPlaylistIds.has(String(playlist._id)));
   }, [shareablePlaylists, selectedPlaylistIds]);
@@ -282,6 +294,8 @@ export default function P2PPlaylistExchangeScreen() {
   const sendSignal = useMutation(api.nearbyShare.sendSignal);
   const closePairing = useMutation(api.nearbyShare.closePairing);
   const createPlaylist = useMutation(api.playlists.create);
+  const setPlaylistShareable = useMutation(api.playlists.setShareable);
+  const [showAddToShared, setShowAddToShared] = useState(false);
 
   const peerRef = useRef(null);
   const dataChannelRef = useRef(null);
@@ -862,19 +876,35 @@ export default function P2PPlaylistExchangeScreen() {
       <View style={styles.card}>
         <View style={styles.playlistHeader}>
           <View style={styles.playlistHeaderText}>
-            <Text style={styles.cardTitle}>Listas de música para compartir</Text>
-            <Text style={styles.muted}>Selecciona las playlists que incluirás en la invitación Handshake. El receptor verá sus canciones antes de aceptarlas.</Text>
+            <Text style={styles.cardTitle}>Carpeta pública · Compartidos</Text>
+            <Text style={styles.muted}>Las playlists de esta carpeta están disponibles para Handshake. Selecciona cuáles quieres enviar en esta invitación.</Text>
           </View>
+          <Pressable onPress={() => setShowAddToShared((current) => !current)} style={styles.selectAllButton}>
+            <Text style={styles.selectAllText}>{showAddToShared ? "Cerrar" : "+ Añadir"}</Text>
+          </Pressable>
           {shareablePlaylists.length > 0 ? (
             <Pressable onPress={selectAllPlaylists} style={styles.selectAllButton}>
               <Text style={styles.selectAllText}>{selectedPlaylistIds.size === shareablePlaylists.length ? "Ninguna" : "Todas"}</Text>
             </Pressable>
           ) : null}
         </View>
+        {showAddToShared ? (
+          <View style={styles.playlistList}>
+            <Text style={styles.muted}>Playlists disponibles para añadir a Compartidos:</Text>
+            {privatePlaylists.length === 0 ? <Text style={styles.muted}>Todas tus playlists están en Compartidos.</Text> :
+              privatePlaylists.map((playlist) => (
+                <Pressable key={String(playlist._id)} onPress={() => updateSharedFolder(playlist, true)} style={styles.playlistRow}>
+                  <Ionicons name="add-circle-outline" size={20} color="#2563eb" />
+                  <View style={styles.playlistInfo}><Text style={styles.playlistName}>{playlist.title || "Playlist"}</Text></View>
+                  <Text style={styles.selectAllText}>Añadir</Text>
+                </Pressable>
+              ))}
+          </View>
+        ) : null}
         {musicPlaylists === undefined ? (
           <ActivityIndicator color="#2563eb" />
         ) : shareablePlaylists.length === 0 ? (
-          <Text style={styles.muted}>No hay playlists autorizadas para compartir. Activa “Permitir compartir” en el menú de cada playlist.</Text>
+          <Text style={styles.muted}>La carpeta está vacía. Añade playlists desde aquí o desde el menú de cada lista.</Text>
         ) : (
           <View style={styles.playlistList}>
             {shareablePlaylists.map((playlist) => {
@@ -890,7 +920,10 @@ export default function P2PPlaylistExchangeScreen() {
                     <Text style={styles.playlistName} numberOfLines={1}>{playlist.title || "Playlist"}</Text>
                     <Text style={styles.playlistMeta}>{itemCount} {itemCount === 1 ? "item" : "items"}</Text>
                   </View>
-                  <Ionicons name="musical-notes-outline" size={20} color={selected ? "#2563eb" : "#94a3b8"} />
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Quitar ${playlist.title} de Compartidos`}
+                    onPress={() => updateSharedFolder(playlist, false)} style={{ padding: 8 }}>
+                    <Ionicons name="remove-circle-outline" size={21} color="#dc2626" />
+                  </Pressable>
                 </Pressable>
               );
             })}
