@@ -4,11 +4,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { I18nText as Text } from "@/src/i18n";
 import { usePlayback } from "@/src/components/playback/PlaybackProvider";
 
-// La altura de la card no cambia. La miniatura usa 16:9 exacto para no
-// recortar ni deformar el fotograma que devuelve YouTube.
+// La tarjeta dispone de espacio para el nombre, autor, canción y controles.
+// La miniatura mantiene su anchura para no comprimir el texto.
 const CARD_WIDTH = 560;
-const CARD_HEIGHT = 90;
-const VIDEO_THUMBNAIL_WIDTH = (CARD_HEIGHT * 16) / 9;
+const CARD_HEIGHT = 124;
+const VIDEO_THUMBNAIL_WIDTH = 160;
 
 
 function splitAuthorAndSingle(value) {
@@ -159,10 +159,9 @@ const styles = StyleSheet.create({
   },
   newsCard: { width: CARD_WIDTH },
   summary: {
-    height: CARD_HEIGHT,
+    minHeight: CARD_HEIGHT,
     flexDirection: "row",
     alignItems: "stretch",
-    overflow: "hidden",
   },
   cover: {
     width: VIDEO_THUMBNAIL_WIDTH,
@@ -183,12 +182,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: 9,
     paddingTop: 2,
-    paddingBottom: 5,
+    paddingBottom: 7,
+    justifyContent: "space-between",
   },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   user: { flex: 1, fontSize: 11, fontWeight: "800", color: "#2563eb" },
   shareRow: {
-    marginTop: 3,
+    marginTop: "auto",
+    paddingTop: 4,
     width: "100%",
     flexDirection: "row",
     justifyContent: "flex-end",
