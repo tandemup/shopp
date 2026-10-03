@@ -92,6 +92,7 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
           </Text>
           {onToggleShareable ? (
             <View style={styles.shareRow}>
+              <Text style={styles.itemCount}>{tracks.length} {tracks.length === 1 ? "item" : "items"}</Text>
               <Pressable
                 accessibilityRole="checkbox"
                 accessibilityLabel={`Compartir ${displayName}`}
@@ -191,7 +192,10 @@ const styles = StyleSheet.create({
     width: "100%",
     flexDirection: "row",
     justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 12,
   },
+  itemCount: { fontSize: 12, color: "#64748b", fontWeight: "600" },
   shareControl: {
     flexDirection: "row",
     alignItems: "center",
