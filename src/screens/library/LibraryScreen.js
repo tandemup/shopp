@@ -24,7 +24,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as Clipboard from "expo-clipboard";
-import { useAction, usePaginatedQuery } from "convex/react";
+import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { libraryJsonApi } from "@/src/services/libraryJsonApi";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
@@ -34,7 +34,6 @@ import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 const CLIENT_ID_KEY = "shopp-chat-client-id";
 const LIBRARY_SETUP_KEY = "shopp-library-setup-v7-library-categories";
-const LEGACY_LIBRARY_MIGRATION_PAGE_SIZE = 250;
 const UNCLASSIFIED_IMPORT_KEY = "__unclassified__";
 const CATALOG_SOURCES_IMPORT_KEY = "__catalog_sources__";
 const IMPORT_BATCH_SIZE = 250;
@@ -1652,103 +1651,9 @@ export default function LibraryScreen({ navigation, route }) {
   const activeImportJobRef = useRef(null);
   const [exportedLinks, setExportedLinks] = useState([]);
   const [exportStatus, setExportStatus] = useState("Idle");
-  const [legacyMigrationEnabled, setLegacyMigrationEnabled] = useState(false);
-  const legacyMigrationAppliedRef = useRef(false);
-
-  const {
-    results: legacyMigrationLinks,
-    status: legacyMigrationStatus,
-    loadMore: loadMoreLegacyMigration,
-  } = usePaginatedQuery(
-    api.computerLinks.exportLegacyLibraryForLocalMigration,
-    legacyMigrationEnabled ? {} : "skip",
-    { initialNumItems: LEGACY_LIBRARY_MIGRATION_PAGE_SIZE },
-  );
-
-  // Biblioteca dejó de usar Convex como almacenamiento permanente. Si esta
-  // instalación todavía no tiene enlaces locales, recuperamos una sola vez la
-  // Biblioteca histórica y la copiamos a IndexedDB/AsyncStorage. A partir de
-  // entonces el hook queda en "skip" y no mantiene consultas reactivas.
-  useEffect(() => {
-    if (!isFocused) return;
-    let cancelled = false;
-    libraryJsonApi
-      .needsLegacyConvexMigration()
-      .then((needed) => {
-        if (!cancelled) setLegacyMigrationEnabled(Boolean(needed));
-      })
-      .catch((error) =>
-        console.warn("[LibraryScreen] legacy migration check failed", error),
-      );
-    return () => {
-      cancelled = true;
-    };
-  }, [isFocused]);
-
-  useEffect(() => {
-    if (!legacyMigrationEnabled || legacyMigrationStatus !== "CanLoadMore") {
-      return;
-    }
-    loadMoreLegacyMigration(LEGACY_LIBRARY_MIGRATION_PAGE_SIZE);
-  }, [
-    legacyMigrationEnabled,
-    legacyMigrationStatus,
-    loadMoreLegacyMigration,
-  ]);
-
-  useEffect(() => {
-    if (
-      !legacyMigrationEnabled ||
-      legacyMigrationStatus !== "Exhausted" ||
-      legacyMigrationAppliedRef.current
-    ) {
-      return;
-    }
-
-    legacyMigrationAppliedRef.current = true;
-    const migrate = async () => {
-      const links = Array.isArray(legacyMigrationLinks)
-        ? legacyMigrationLinks
-        : [];
-      const foldersByKey = new Map();
-      for (const link of links) {
-        for (const folder of Array.isArray(link?.folderTrail)
-          ? link.folderTrail
-          : []) {
-          if (folder?.key && !foldersByKey.has(folder.key)) {
-            foldersByKey.set(folder.key, folder);
-          }
-        }
-      }
-
-      const cleanLinks = links.map(({ folderTrail, ...link }) => link);
-      if (cleanLinks.length > 0) {
-        await libraryJsonApi.importBackup(
-          {
-            format: "shopp-library-backup",
-            version: 1,
-            data: {
-              folders: [...foldersByKey.values()],
-              links: cleanLinks,
-            },
-          },
-          { mode: "combine" },
-        );
-      }
-
-      await libraryJsonApi.markLegacyConvexMigrationDone({
-        links: cleanLinks.length,
-        folders: foldersByKey.size,
-      });
-      setLegacyMigrationEnabled(false);
-      setLocalRevision((value) => value + 1);
-    };
-
-    migrate().catch((error) => {
-      legacyMigrationAppliedRef.current = false;
-      console.warn("[LibraryScreen] legacy Convex migration failed", error);
-    });
-  }, [legacyMigrationEnabled, legacyMigrationLinks, legacyMigrationStatus]);
+  // No se recuperan automáticamente enlaces históricos de Convex. Una
+  // restauración desde USB/JSON es la fuente de verdad de la Biblioteca.
+  // El acceso a Convex se conserva únicamente para las vistas previas.
 
   useEffect(
     () =>
@@ -5042,18 +4947,12 @@ export default function LibraryScreen({ navigation, route }) {
             <View style={styles.empty}>
               <Ionicons name="library-outline" size={46} color="#94a3b8" />
               <Text style={styles.emptyTitle}>
-                {legacyMigrationEnabled
-                  ? "Recuperando Biblioteca…"
-                  : links === undefined
-                    ? "Cargando…"
-                    : "No hay enlaces"}
+                {links === undefined ? "Cargando…" : "No hay enlaces"}
               </Text>
               <Text style={styles.emptyText}>
-                {legacyMigrationEnabled
-                  ? "Copiando una sola vez los enlaces anteriores desde Convex al almacenamiento local…"
-                  : links === undefined
-                    ? "Cargando los enlaces guardados…"
-                    : "Añade una URL o selecciona otra categoría."}
+                {links === undefined
+                  ? "Cargando los enlaces guardados…"
+                  : "Añade una URL o selecciona otra categoría."}
               </Text>
             </View>
           }
