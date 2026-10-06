@@ -364,10 +364,9 @@ export default function PlaybackProvider({ children }) {
           ? Math.max(260, height - insets.top - insets.bottom - 500)
           : Math.max(220, height - insets.top - insets.bottom - 620);
 
-  // En escritorio a 2 columnas usamos directamente la altura disponible de la
-  // ventana. Medir el ScrollView derecho con onLayout puede devolver una altura
-  // menor que la del panel real y dejar una franja negra sin utilizar.
-  const twoColumnQueueHeight = queueRowsMaxHeight;
+  // En escritorio a 2 columnas NO calculamos una altura fija para la cola.
+  // El body ya tiene una altura acotada (expandedBody: flex: 1), por lo que
+  // dejamos que la cola consuma por flex todo el alto restante del panel derecho.
 
   // En una sola columna el usuario puede elegir el tamaño del vídeo.
   // El ancho se usa también para centrar y dimensionar la lista de pistas,
@@ -1065,9 +1064,6 @@ export default function PlaybackProvider({ children }) {
                         mediaLayout && !twoColumnDesktop
                           ? { maxHeight: queueRowsMaxHeight }
                           : null,
-                        twoColumnDesktop
-                          ? { height: twoColumnQueueHeight, maxHeight: twoColumnQueueHeight }
-                          : null,
                         twoColumnDesktop && styles.queueRowsScrollTwoColumns,
                         oneColumnDesktop && styles.queueRowsScrollOneColumn,
                       ]}
@@ -1650,8 +1646,7 @@ const styles = StyleSheet.create({
   queueRowsScrollTwoColumns: {
     width: "100%",
     minHeight: 0,
-    flexGrow: 0,
-    flexShrink: 0,
+    flex: 1,
     ...Platform.select({
       web: {
         overflowY: "auto",
