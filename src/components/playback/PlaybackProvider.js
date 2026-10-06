@@ -237,8 +237,6 @@ export default function PlaybackProvider({ children }) {
   // Altura real del panel derecho y posición vertical de la cola. En escritorio
   // a dos columnas esto permite que la lista llegue exactamente hasta el borde
   // inferior disponible, sin depender de una resta fija de píxeles.
-  const [trackPaneHeight, setTrackPaneHeight] = useState(0);
-  const [queueSectionY, setQueueSectionY] = useState(0);
   const installSession = useCallback((value) => {
     // The keyed surface destroys the old iframe/WebView before creating the next one.
     const next = value ? { ...value, requestId: ++serial.current } : null;
@@ -366,15 +364,10 @@ export default function PlaybackProvider({ children }) {
           ? Math.max(260, height - insets.top - insets.bottom - 500)
           : Math.max(220, height - insets.top - insets.bottom - 620);
 
-  // En 2 columnas conocemos el alto visible del panel derecho y la posición Y
-  // donde empieza la cola. La diferencia es el viewport exacto de tracks.
-  // Se reserva un pequeño margen inferior para evitar que la última card toque
-  // el borde del reproductor. Hasta que onLayout mida el panel usamos el cálculo
-  // anterior como fallback.
-  const twoColumnQueueHeight =
-    trackPaneHeight > 0 && queueSectionY >= 0
-      ? Math.max(220, trackPaneHeight - queueSectionY - 10)
-      : queueRowsMaxHeight;
+  // En escritorio a 2 columnas usamos directamente la altura disponible de la
+  // ventana. Medir el ScrollView derecho con onLayout puede devolver una altura
+  // menor que la del panel real y dejar una franja negra sin utilizar.
+  const twoColumnQueueHeight = queueRowsMaxHeight;
 
   // En una sola columna el usuario puede elegir el tamaño del vídeo.
   // El ancho se usa también para centrar y dimensionar la lista de pistas,
@@ -666,14 +659,6 @@ export default function PlaybackProvider({ children }) {
                     </View>
                   ) : null}
                 <ScrollView
-                  onLayout={(event) => {
-                    if (twoColumnDesktop) {
-                      const nextHeight = Math.round(event.nativeEvent.layout.height);
-                      if (nextHeight > 0 && nextHeight !== trackPaneHeight) {
-                        setTrackPaneHeight(nextHeight);
-                      }
-                    }
-                  }}
                   style={[
                     styles.trackPane,
                     tablet && styles.tabletTrackPane,
@@ -691,7 +676,7 @@ export default function PlaybackProvider({ children }) {
                     oneColumnDesktop && styles.desktopTrackListOneColumn,
                     twoColumnDesktop && styles.desktopTrackListTwoColumns,
                   ]}
-                  scrollEnabled
+                  scrollEnabled={!twoColumnDesktop}
                   showsVerticalScrollIndicator={false}
                   alwaysBounceVertical
                   bounces
@@ -1069,12 +1054,6 @@ export default function PlaybackProvider({ children }) {
                     </View>
                   ) : null}
                   <View
-                    onLayout={(event) => {
-                      if (twoColumnDesktop) {
-                        const nextY = Math.round(event.nativeEvent.layout.y);
-                        if (nextY !== queueSectionY) setQueueSectionY(nextY);
-                      }
-                    }}
                     style={[
                       styles.queueSection,
                       twoColumnDesktop && styles.queueSectionTwoColumns,
@@ -1393,6 +1372,7 @@ const styles = StyleSheet.create({
     width: "44%",
     maxWidth: "44%",
     minWidth: 400,
+    height: "100%",
   },
   desktopLyricsPanel: {
     flex: 0.92,
@@ -1671,6 +1651,7 @@ const styles = StyleSheet.create({
     width: "100%",
     minHeight: 0,
     flexGrow: 0,
+    flexShrink: 0,
     ...Platform.select({
       web: {
         overflowY: "auto",
