@@ -1525,8 +1525,16 @@ const styles = StyleSheet.create({
   desktopTrackListOneColumn: { maxWidth: 900 },
   desktopTrackListTwoColumns: {
     maxWidth: "100%",
-    flexGrow: 1,
-    minHeight: "100%",
+
+    // En escritorio a 2 columnas el ScrollView exterior NO hace scroll.
+    // Por tanto su contentContainer debe tener exactamente la altura visible
+    // del panel derecho. Así queueSection (flex: 1) recibe el espacio restante
+    // después de la card del track actual y queueRowsScroll puede ocuparlo
+    // completamente hasta el borde inferior.
+    flexGrow: 0,
+    height: "100%",
+    minHeight: 0,
+
     paddingTop: 10,
     paddingBottom: 10,
   },
