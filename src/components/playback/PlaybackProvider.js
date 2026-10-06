@@ -493,6 +493,14 @@ export default function PlaybackProvider({ children }) {
         },
       }
     : null;
+
+  // En escritorio a 2 columnas evitamos un ScrollView exterior.
+  // En react-native-web, un ScrollView anidado como contenedor del panel
+  // derecho puede colapsar su contentContainer a la altura del contenido y
+  // dejar una franja vacía debajo. Un View normal permite que flex: 1 se
+  // propague desde expandedBody hasta la lista de pistas.
+  const TrackPaneComponent = twoColumnDesktop ? View : ScrollView;
+
   return (
     <PlaybackContext.Provider value={context}>
       <View style={styles.root}>
@@ -657,7 +665,7 @@ export default function PlaybackProvider({ children }) {
                       </View>
                     </View>
                   ) : null}
-                <ScrollView
+                <TrackPaneComponent
                   style={[
                     styles.trackPane,
                     tablet && styles.tabletTrackPane,
@@ -667,26 +675,33 @@ export default function PlaybackProvider({ children }) {
                     oneColumnDesktop && styles.desktopTrackPaneOneColumn,
                     oneColumnDesktop && { width: oneColumnVideoWidth, maxWidth: oneColumnVideoWidth },
                     twoColumnDesktop && styles.desktopTrackPaneTwoColumns,
-                  ]}
-                  contentContainerStyle={[
-                    styles.trackList,
-                    tablet && styles.tabletTrackList,
-                    desktop && styles.desktopTrackList,
-                    oneColumnDesktop && styles.desktopTrackListOneColumn,
+                    // En 2 columnas el propio View es también el content container.
+                    twoColumnDesktop && styles.trackList,
+                    twoColumnDesktop && styles.desktopTrackList,
                     twoColumnDesktop && styles.desktopTrackListTwoColumns,
                   ]}
-                  scrollEnabled={!twoColumnDesktop}
-                  showsVerticalScrollIndicator={false}
-                  alwaysBounceVertical
-                  bounces
-                  nestedScrollEnabled
-                  directionalLockEnabled
-                  canCancelContentTouches
-                  overScrollMode="always"
-                  decelerationRate="normal"
-                  keyboardShouldPersistTaps="handled"
-                  keyboardDismissMode="on-drag"
-                  scrollEventThrottle={16}
+                  {...(!twoColumnDesktop
+                    ? {
+                        contentContainerStyle: [
+                          styles.trackList,
+                          tablet && styles.tabletTrackList,
+                          desktop && styles.desktopTrackList,
+                          oneColumnDesktop && styles.desktopTrackListOneColumn,
+                        ],
+                        scrollEnabled: true,
+                        showsVerticalScrollIndicator: false,
+                        alwaysBounceVertical: true,
+                        bounces: true,
+                        nestedScrollEnabled: true,
+                        directionalLockEnabled: true,
+                        canCancelContentTouches: true,
+                        overScrollMode: "always",
+                        decelerationRate: "normal",
+                        keyboardShouldPersistTaps: "handled",
+                        keyboardDismissMode: "on-drag",
+                        scrollEventThrottle: 16,
+                      }
+                    : {})}
                 >
                   {oneColumnDesktop ? (
                     <View style={styles.videoSizeSelectorRow}>
@@ -1173,7 +1188,7 @@ export default function PlaybackProvider({ children }) {
                       ))}
                     </View>
                   ) : null}
-                </ScrollView>
+                </TrackPaneComponent>
                 </>
               ) : null}
             </View>
@@ -1365,10 +1380,13 @@ const styles = StyleSheet.create({
   },
   desktopTrackPaneTwoColumns: {
     flex: 1,
+    flexBasis: 0,
     width: "44%",
     maxWidth: "44%",
     minWidth: 400,
-    height: "100%",
+    minHeight: 0,
+    alignSelf: "stretch",
+    overflow: "hidden",
   },
   desktopLyricsPanel: {
     flex: 0.92,
@@ -1525,87 +1543,11 @@ const styles = StyleSheet.create({
   desktopTrackListOneColumn: { maxWidth: 900 },
   desktopTrackListTwoColumns: {
     maxWidth: "100%",
-
-    // En escritorio a 2 columnas el ScrollView exterior NO hace scroll.
-    // Por tanto su contentContainer debe tener exactamente la altura visible
-    // del panel derecho. Así queueSection (flex: 1) recibe el espacio restante
-    // después de la card del track actual y queueRowsScroll puede ocuparlo
-    // completamente hasta el borde inferior.
-    flexGrow: 0,
-    height: "100%",
+    flex: 1,
+    flexBasis: 0,
     minHeight: 0,
-
     paddingTop: 10,
     paddingBottom: 10,
-  },
-  queueHeader: {
-    width: "100%",
-    minHeight: 72,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 3,
-    paddingBottom: 8,
-  },
-  queueHeading: { flex: 1, minWidth: 0 },
-  queueEyebrow: {
-    fontSize: 9,
-    letterSpacing: 1.2,
-    fontWeight: "900",
-    color: "#ef4444",
-  },
-  queueTitle: {
-    marginTop: 3,
-    fontSize: 18,
-    fontWeight: "900",
-    color: "#f9fafb",
-  },
-  queueCount: { fontSize: 11, color: "#9ca3af" },
-  videoSizeSelectorRow: {
-    width: "100%",
-    minHeight: 54,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 12,
-    paddingHorizontal: 2,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#29292d",
-  },
-  videoSizeSelectorLabel: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#9ca3af",
-  },
-  videoSizeSelector: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-  },
-  videoSizeSelectorButton: {
-    minWidth: 88,
-    height: 36,
-    paddingHorizontal: 11,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#52525b",
-    backgroundColor: "#111113",
-  },
-  videoSizeSelectorButtonActive: {
-    borderColor: "#ec1970",
-    backgroundColor: "#ec1970",
-  },
-  videoSizeSelectorText: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#f4f4f5",
-  },
-  videoSizeSelectorTextActive: { color: "#fff" },
-  mobileVideoSection: {
-    width: "100%",
-    marginBottom: 10,
   },
   mobileVideoFrame: {
     width: "100%",
@@ -1622,8 +1564,10 @@ const styles = StyleSheet.create({
   },
   queueSectionTwoColumns: {
     flex: 1,
+    flexBasis: 0,
     maxWidth: "100%",
     minHeight: 0,
+    overflow: "hidden",
   },
   queueSectionHeader: {
     flexDirection: "row",
@@ -1655,9 +1599,11 @@ const styles = StyleSheet.create({
     width: "100%",
     minHeight: 0,
     flex: 1,
+    flexBasis: 0,
     ...Platform.select({
       web: {
         overflowY: "auto",
+        overflowX: "hidden",
       },
     }),
   },
