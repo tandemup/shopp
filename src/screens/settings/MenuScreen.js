@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { I18nText as Text, useI18n } from "@/src/i18n";
@@ -586,7 +587,7 @@ function UserAccountCard({ user }) {
         <Text style={styles.userEmail} numberOfLines={1}>
           {isLoading
             ? "Obteniendo datos de Convex Auth"
-            : `Proyecto Netlify: ${FRONTEND_NAME}`}
+            : user?.email || user?.profile?.email || "Email no disponible"}
         </Text>
 
         {!isLoading && user?._id ? (
@@ -771,6 +772,7 @@ async function requestWebCameraPermission() {
 
 export default function MenuScreen({ navigation }) {
   const { language, setLanguage } = useI18n();
+  const { height: screenHeight } = useWindowDimensions();
   const { signOut } = useAuthActions();
   const currentUser = useQuery(api.users.current);
   const convex = useConvex();
@@ -1106,11 +1108,10 @@ export default function MenuScreen({ navigation }) {
     if (utilityExportBusy) return;
     setUtilityExportBusy(id);
     try {
-      const result = await saveUtilityJson(id, {
+      await saveUtilityJson(id, {
         convex,
         getScannedHistory: scanHistoryStorage.getScannedHistory,
       });
-      safeAlert("Exportación preparada", `${result.filename} (${result.count} registros).`);
     } catch (error) {
       if (String(error?.name || "") !== "AbortError") {
         console.warn("[MenuScreen] utility export error", error);
@@ -1635,20 +1636,61 @@ export default function MenuScreen({ navigation }) {
             />
           </View>
 
-          <Modal visible={utilityExportVisible} transparent animationType="fade" onRequestClose={() => !utilityExportBusy && setUtilityExportVisible(false)}>
-            <View style={{ flex: 1, justifyContent: "center", backgroundColor: "#0007", padding: 20 }}>
-              <View style={{ backgroundColor: "white", padding: 20, borderRadius: 16, maxWidth: 520, width: "100%", alignSelf: "center" }}>
-                <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 8 }}>Copias JSON independientes</Text>
-                <Text style={{ color: "#64748b", marginBottom: 14 }}>Pulsa cada utilidad para guardar su fichero JSON. Se exportan todos los registros, no solo los visibles.</Text>
-                {JSON_EXPORT_UTILITIES.map(({ id, label }) => (
-                  <Pressable key={id} disabled={!!utilityExportBusy} onPress={() => handleUtilityExport(id)}
-                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: "#e5e7eb", opacity: utilityExportBusy && utilityExportBusy !== id ? 0.4 : 1 }}>
-                    <Text style={{ fontSize: 16, fontWeight: "600" }}>{label}</Text>
-                    {utilityExportBusy === id ? <ActivityIndicator /> : <Ionicons name="download-outline" size={22} color="#2563eb" />}
-                  </Pressable>
-                ))}
-                <Pressable disabled={!!utilityExportBusy} onPress={() => setUtilityExportVisible(false)} style={{ marginTop: 18, padding: 12, alignSelf: "flex-end" }}>
-                  <Text style={{ color: "#2563eb", fontWeight: "700" }}>Cerrar</Text>
+          <Modal
+            visible={utilityExportVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => !utilityExportBusy && setUtilityExportVisible(false)}
+          >
+            <View style={styles.utilityExportOverlay}>
+              <View style={[styles.utilityExportModal, { maxHeight: screenHeight * 0.85 }]}>
+                <Text style={styles.utilityExportTitle}>Copias JSON independientes</Text>
+                <Text style={styles.utilityExportDescription}>
+                  Pulsa el icono de exportación de una utilidad para generar y guardar su JSON.
+                  Se incluyen todos los registros, no solo los visibles.
+                </Text>
+                <ScrollView
+                  style={[styles.utilityExportScroll, { maxHeight: Math.max(120, screenHeight * 0.42) }]}
+                  contentContainerStyle={styles.utilityExportList}
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {JSON_EXPORT_UTILITIES.map(({ id, label }) => (
+                    <View key={id} style={styles.utilityExportRow}>
+                      <Text style={styles.utilityExportLabel} numberOfLines={2}>{label}</Text>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Exportar ${label} a JSON`}
+                        accessibilityHint="Genera y descarga el archivo JSON de esta utilidad"
+                        disabled={!!utilityExportBusy}
+                        onPress={() => handleUtilityExport(id)}
+                        hitSlop={6}
+                        style={({ pressed }) => [
+                          styles.utilityExportButton,
+                          !!utilityExportBusy && utilityExportBusy !== id && styles.utilityExportDisabled,
+                          pressed && !utilityExportBusy && styles.utilityExportPressed,
+                        ]}
+                      >
+                        {utilityExportBusy === id ? (
+                          <ActivityIndicator color="#2563eb" />
+                        ) : (
+                          <Ionicons name="document-text-outline" size={24} color="#2563eb" />
+                        )}
+                        {utilityExportBusy !== id && (
+                          <Ionicons name="arrow-up-outline" size={13} color="#2563eb" style={styles.utilityExportArrow} />
+                        )}
+                      </Pressable>
+                    </View>
+                  ))}
+                </ScrollView>
+                <Pressable
+                  disabled={!!utilityExportBusy}
+                  accessibilityRole="button"
+                  onPress={() => setUtilityExportVisible(false)}
+                  style={[styles.utilityExportClose, !!utilityExportBusy && styles.utilityExportDisabled]}
+                >
+                  <Text style={styles.utilityExportCloseText}>Cerrar</Text>
                 </Pressable>
               </View>
             </View>
@@ -1805,6 +1847,80 @@ export default function MenuScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  utilityExportOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    backgroundColor: "#0007",
+    padding: 20,
+  },
+  utilityExportModal: {
+    backgroundColor: "#fff",
+    padding: 20,
+    borderRadius: 16,
+    maxWidth: 520,
+    width: "100%",
+    alignSelf: "center",
+  },
+  utilityExportTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 8,
+  },
+  utilityExportDescription: {
+    color: "#64748b",
+    marginBottom: 14,
+    lineHeight: 20,
+  },
+  utilityExportScroll: {
+    flexGrow: 0,
+  },
+  utilityExportList: {
+    paddingBottom: 3,
+  },
+  utilityExportRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 54,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+  utilityExportLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#0f172a",
+    marginRight: 12,
+  },
+  utilityExportButton: {
+    width: 46,
+    height: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  utilityExportArrow: {
+    position: "absolute",
+    top: 6,
+    right: 4,
+  },
+  utilityExportPressed: {
+    backgroundColor: "#eff6ff",
+    borderRadius: 8,
+  },
+  utilityExportDisabled: {
+    opacity: 0.4,
+  },
+  utilityExportClose: {
+    marginTop: 18,
+    padding: 12,
+    alignSelf: "flex-end",
+  },
+  utilityExportCloseText: {
+    color: "#2563eb",
+    fontWeight: "700",
+  },
   screen: {
     flex: 1,
     backgroundColor: "#f8fafc",

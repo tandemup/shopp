@@ -1,5 +1,5 @@
 // Copias JSON independientes; no modifica ni sincroniza los datos originales.
-import { Platform, Share } from "react-native";
+import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sharing from "expo-sharing";
 import { api } from "@/convex/_generated/api";
@@ -49,6 +49,9 @@ export async function readUtilityExport(id, { convex, getScannedHistory } = {}) 
   let data;
   if (id === "biblioteca") {
     const { folders, links } = await libraryJsonApi.getSnapshot();
+    if (!Array.isArray(folders) || !Array.isArray(links)) {
+      throw new Error("La instantánea de Biblioteca no contiene carpetas y enlaces válidos.");
+    }
     data = { folders, links }; // Todos los bloques; no usa list() paginada ni Convex.
   } else if (id === "escaneos") {
     if (typeof getScannedHistory !== "function") throw new Error("No está disponible el historial de escaneos.");
@@ -94,7 +97,7 @@ export async function saveUtilityJson(id, options = {}) {
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
   } else {
     const FileSystem = await import("expo-file-system/legacy");
     const uri = `${FileSystem.cacheDirectory}${filename}`;
@@ -102,7 +105,7 @@ export async function saveUtilityJson(id, options = {}) {
     if (await Sharing.isAvailableAsync()) {
       await Sharing.shareAsync(uri, { mimeType: "application/json", dialogTitle: `Guardar ${filename}`, UTI: "public.json" });
     } else {
-      await Share.share({ message: json, title: filename });
+      throw new Error("No está disponible la opción de guardar o compartir archivos JSON en este dispositivo.");
     }
   }
   return { filename, count: id === "biblioteca" ? data.links.length : (data.items || data.playlists).length };
