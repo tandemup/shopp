@@ -202,6 +202,34 @@ export function ListsProvider({ children }) {
       return next;
     });
   };
+  // Restaura listas activas y archivadas en la misma fuente de verdad.
+  // El historial de compras se recalcula automáticamente a partir de archivadas.
+  const importUserLists = async (incomingLists = [], mode = "merge") => {
+    if (!isReady) throw new Error("Las listas todavía se están cargando.");
+    if (!Array.isArray(incomingLists)) throw new Error("Formato de listas no válido.");
+    const valid = incomingLists.map((item) => ({
+      ...item,
+      id: String(item.id),
+      items: item.items,
+      archived: item.archived === true,
+    }));
+    const next = mode === "replace" ? [] : [...lists];
+    const positions = new Map(next.map((item, index) => [String(item.id), index]));
+    for (const item of valid) {
+      const pos = positions.get(item.id);
+      if (pos === undefined) {
+        positions.set(item.id, next.length);
+        next.push(item);
+      } else {
+        next[pos] = item;
+      }
+    }
+    // Escribir antes de informar del éxito; actualizar además el estado visible.
+    await saveLists(next, userStorageKey);
+    setLists(next);
+    return next.length;
+  };
+
   /* -------------------------------------------------
      API pública — Items
   -------------------------------------------------- */
@@ -288,6 +316,7 @@ export function ListsProvider({ children }) {
       clearArchivedListsState,
       clearAllListsState,
       mergeArchivedLists,
+      importUserLists,
 
       addItem,
       updateItem,
