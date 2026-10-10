@@ -57,6 +57,19 @@ import {
 } from "@/src/storage/settingsStorage";
 import { SEARCH_ENGINES } from "@/src/constants/searchEngines";
 
+// Iconos propios de cada utilidad; no afectan a la generación de JSON.
+const UTILITY_EXPORT_ICONS = {
+  biblioteca: "book-outline",
+  music: "musical-notes-outline",
+  classic: "disc-outline",
+  tutoriales: "school-outline",
+  noticias: "newspaper-outline",
+  escaneos: "barcode-outline",
+  "listas-compra": "cart-outline",
+  "historial-compras": "receipt-outline",
+  "listas-archivadas": "archive-outline",
+};
+
 const USER_EXPORT_VERSION = 1;
 
 const EXPORT_STORAGE_KEYS = {
@@ -1111,6 +1124,9 @@ export default function MenuScreen({ navigation }) {
       await saveUtilityJson(id, {
         convex,
         getScannedHistory: scanHistoryStorage.getScannedHistory,
+        activeLists,
+        archivedLists,
+        purchaseHistory,
       });
     } catch (error) {
       if (String(error?.name || "") !== "AbortError") {
@@ -1650,7 +1666,7 @@ export default function MenuScreen({ navigation }) {
                   Se incluyen todos los registros, no solo los visibles.
                 </Text>
                 <ScrollView
-                  style={[styles.utilityExportScroll, { maxHeight: Math.max(120, screenHeight * 0.42) }]}
+                  style={[styles.utilityExportScroll, { maxHeight: Math.max(160, screenHeight * 0.48) }]}
                   contentContainerStyle={styles.utilityExportList}
                   nestedScrollEnabled
                   showsVerticalScrollIndicator
@@ -1658,7 +1674,15 @@ export default function MenuScreen({ navigation }) {
                 >
                   {JSON_EXPORT_UTILITIES.map(({ id, label }) => (
                     <View key={id} style={styles.utilityExportRow}>
-                      <Text style={styles.utilityExportLabel} numberOfLines={2}>{label}</Text>
+                      <View style={styles.utilityExportInfo}>
+                        <View style={styles.utilityExportInfoIconBox}>
+                          <Ionicons name={UTILITY_EXPORT_ICONS[id] || "document-text-outline"} size={22} color="#2563eb" />
+                        </View>
+                        <View style={styles.utilityExportTextBox}>
+                          <Text style={styles.utilityExportLabel} numberOfLines={2}>{label}</Text>
+                          <Text style={styles.utilityExportMeta}>Documento independiente en formato JSON</Text>
+                        </View>
+                      </View>
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={`Exportar ${label} a JSON`}
@@ -1675,10 +1699,15 @@ export default function MenuScreen({ navigation }) {
                         {utilityExportBusy === id ? (
                           <ActivityIndicator color="#2563eb" />
                         ) : (
-                          <Ionicons name="document-text-outline" size={24} color="#2563eb" />
-                        )}
-                        {utilityExportBusy !== id && (
-                          <Ionicons name="arrow-up-outline" size={13} color="#2563eb" style={styles.utilityExportArrow} />
+                          <>
+                            <Ionicons
+                              name="share-outline"
+                              size={18}
+                              color="#2563eb"
+                              style={styles.utilityExportButtonIcon}
+                            />
+                            <Text style={styles.utilityExportButtonText}>Exportar</Text>
+                          </>
                         )}
                       </Pressable>
                     </View>
@@ -1688,7 +1717,11 @@ export default function MenuScreen({ navigation }) {
                   disabled={!!utilityExportBusy}
                   accessibilityRole="button"
                   onPress={() => setUtilityExportVisible(false)}
-                  style={[styles.utilityExportClose, !!utilityExportBusy && styles.utilityExportDisabled]}
+                  style={({ pressed }) => [
+                    styles.utilityExportClose,
+                    !!utilityExportBusy && styles.utilityExportDisabled,
+                    pressed && !utilityExportBusy && styles.utilityExportClosePressed,
+                  ]}
                 >
                   <Text style={styles.utilityExportCloseText}>Cerrar</Text>
                 </Pressable>
@@ -1711,8 +1744,8 @@ export default function MenuScreen({ navigation }) {
             <SettingsCard
               icon="documents-outline"
               title="Copias JSON por utilidad"
-              subtitle="Biblioteca, Música, Clásica, Tutoriales, Noticias y Escaneos: un JSON independiente por descarga"
-              badge="6 JSON"
+              subtitle="Biblioteca, Música, Clásica, Tutoriales, Noticias, Escaneos, Listas e Historial de compras"
+              badge="9 JSON"
               onPress={() => setUtilityExportVisible(true)}
             />
 
@@ -1854,72 +1887,129 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   utilityExportModal: {
-    backgroundColor: "#fff",
+    backgroundColor: "#ffffff",
     padding: 20,
-    borderRadius: 16,
-    maxWidth: 520,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    maxWidth: 560,
     width: "100%",
     alignSelf: "center",
+    shadowColor: "#0f172a",
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 10,
   },
   utilityExportTitle: {
     fontSize: 20,
-    fontWeight: "700",
+    fontWeight: "800",
     color: "#0f172a",
     marginBottom: 8,
   },
   utilityExportDescription: {
     color: "#64748b",
-    marginBottom: 14,
+    marginBottom: 16,
     lineHeight: 20,
   },
   utilityExportScroll: {
     flexGrow: 0,
   },
   utilityExportList: {
-    paddingBottom: 3,
+    paddingBottom: 4,
   },
   utilityExportRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    minHeight: 54,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    marginBottom: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#dbeafe",
+    backgroundColor: "#f8fbff",
   },
-  utilityExportLabel: {
+  utilityExportInfo: {
     flex: 1,
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#0f172a",
-    marginRight: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
   },
-  utilityExportButton: {
-    width: 46,
-    height: 46,
+  utilityExportInfoIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "#eff6ff",
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
+    marginRight: 12,
   },
-  utilityExportArrow: {
-    position: "absolute",
-    top: 6,
-    right: 4,
+  utilityExportTextBox: {
+    flex: 1,
+    minWidth: 0,
+  },
+  utilityExportLabel: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0f172a",
+  },
+  utilityExportMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 16,
+    color: "#64748b",
+  },
+  utilityExportButton: {
+    minWidth: 114,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  utilityExportButtonIcon: {
+    marginRight: 8,
+  },
+  utilityExportButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#2563eb",
   },
   utilityExportPressed: {
     backgroundColor: "#eff6ff",
-    borderRadius: 8,
+    borderColor: "#93c5fd",
   },
   utilityExportDisabled: {
-    opacity: 0.4,
+    opacity: 0.45,
   },
   utilityExportClose: {
-    marginTop: 18,
-    padding: 12,
+    marginTop: 4,
+    minWidth: 112,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
     alignSelf: "flex-end",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#ffffff",
+  },
+  utilityExportClosePressed: {
+    backgroundColor: "#f8fafc",
   },
   utilityExportCloseText: {
     color: "#2563eb",
-    fontWeight: "700",
+    fontWeight: "800",
   },
   screen: {
     flex: 1,

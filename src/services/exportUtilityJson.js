@@ -12,6 +12,9 @@ export const JSON_EXPORT_UTILITIES = [
   { id: "tutoriales", label: "Tutoriales" },
   { id: "noticias", label: "Noticias" },
   { id: "escaneos", label: "Escaneos" },
+  { id: "listas-compra", label: "Lista de la compra" },
+  { id: "historial-compras", label: "Historial de compras" },
+  { id: "listas-archivadas", label: "Listas archivadas" },
 ];
 
 const formats = {
@@ -21,6 +24,9 @@ const formats = {
   tutoriales: "shopp-youtube-tutorials",
   noticias: "shopp-youtube-news",
   escaneos: "shopp-scanned-history",
+  "listas-compra": "shopp-shopping-lists",
+  "historial-compras": "shopp-purchase-history",
+  "listas-archivadas": "shopp-archived-lists",
 };
 
 function filenameFor(id) {
@@ -44,10 +50,26 @@ function playlistItem(item) {
   };
 }
 
-export async function readUtilityExport(id, { convex, getScannedHistory } = {}) {
+export async function readUtilityExport(id, { convex, getScannedHistory, activeLists, archivedLists, purchaseHistory } = {}) {
   if (!formats[id]) throw new Error("Utilidad desconocida.");
   let data;
-  if (id === "biblioteca") {
+  if (id === "listas-compra") {
+    // Las listas activas son las que muestra el contexto de compras del usuario.
+    if (!Array.isArray(activeLists)) throw new Error("No están disponibles las listas de la compra.");
+    data = activeLists;
+  } else if (id === "listas-archivadas") {
+    if (!Array.isArray(archivedLists)) {
+      throw new Error("No están disponibles las listas archivadas.");
+    }
+    data = archivedLists;
+  } else if (id === "historial-compras") {
+    // Se conserva tanto el historial calculado como las listas archivadas
+    // para permitir una futura restauración sin perder detalles de las compras.
+    if (!Array.isArray(purchaseHistory) || !Array.isArray(archivedLists)) {
+      throw new Error("No están disponibles el historial de compras y las listas archivadas.");
+    }
+    data = { purchaseHistory, archivedLists };
+  } else if (id === "biblioteca") {
     const { folders, links } = await libraryJsonApi.getSnapshot();
     if (!Array.isArray(folders) || !Array.isArray(links)) {
       throw new Error("La instantánea de Biblioteca no contiene carpetas y enlaces válidos.");
@@ -79,7 +101,13 @@ export async function readUtilityExport(id, { convex, getScannedHistory } = {}) 
     type: formats[id],
     version: 1,
     exportedAt: new Date().toISOString(),
-    ...(id === "biblioteca" ? { ...data } : id === "escaneos" ? { items: data } : { playlists: data }),
+    ...(id === "biblioteca"
+      ? { ...data }
+      : id === "escaneos" ? { items: data }
+      : id === "listas-compra" ? { shoppingLists: data }
+      : id === "listas-archivadas" ? { archivedLists: data }
+      : id === "historial-compras" ? data
+      : { playlists: data }),
   };
 }
 
@@ -108,5 +136,10 @@ export async function saveUtilityJson(id, options = {}) {
       throw new Error("No está disponible la opción de guardar o compartir archivos JSON en este dispositivo.");
     }
   }
-  return { filename, count: id === "biblioteca" ? data.links.length : (data.items || data.playlists).length };
+  const count = id === "biblioteca" ? data.links.length
+    : id === "listas-compra" ? data.shoppingLists.length
+    : id === "listas-archivadas" ? data.archivedLists.length
+    : id === "historial-compras" ? data.purchaseHistory.length
+    : (data.items || data.playlists).length;
+  return { filename, count };
 }
