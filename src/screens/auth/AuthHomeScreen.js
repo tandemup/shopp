@@ -196,6 +196,17 @@ export default function AuthHomeScreen({
                     <Text style={styles.heroPrimaryText}>Crear cuenta</Text>
                   </Pressable>
 
+                  {onGuestContinue ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Continuar como invitado"
+                      style={({ pressed }) => [styles.heroGuest, pressed && styles.pressed]}
+                      onPress={onGuestContinue}
+                    >
+                      <Text style={styles.heroGuestText}>Continuar como invitado</Text>
+                    </Pressable>
+                  ) : null}
+
                   <Pressable
                     style={({ pressed }) => [styles.heroSecondary, pressed && styles.pressed]}
                     onPress={() => scrollToSection("caracteristicas")}

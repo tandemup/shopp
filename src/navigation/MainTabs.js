@@ -88,26 +88,14 @@ export default function MainTabs({ guestMode = false, onExitGuest }) {
           tabBarLabelStyle: { fontSize: 12.5, fontWeight: "600" },
         }}
       >
-        <Tab.Screen
-          name="GuestLibrary"
-          component={LibraryScreen}
-          options={{
-            title: "Biblioteca",
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="library-outline" color={color} size={Math.min(size, 28)} />
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="GuestRecipes"
-          component={RecipesScreen}
-          options={{
-            title: "Recetas",
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="restaurant-outline" color={color} size={Math.min(size, 28)} />
-            ),
-          }}
-        />
+        <Tab.Screen name="GuestRecipes" options={{
+          title: "Recetas",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="restaurant-outline" color={color} size={Math.min(size, 28)} />
+          ),
+        }}>
+          {() => <RecipesScreen guestMode />}
+        </Tab.Screen>
         <Tab.Screen name="GuestAccess" options={{
           title: "Acceso",
           tabBarIcon: ({ color, size }) => (
