@@ -1242,12 +1242,23 @@ export default function MenuScreen({ navigation }) {
     try {
       setBackupBusy(true);
       const result = await restoreCompleteBackup(asset, { mode });
-      await reloadLists();
+      // Algunas versiones de ListsContext no exponen reloadLists.
+      // Los datos ya se han escrito en el almacenamiento por restoreCompleteBackup.
+      // Si no hay método de recarga, es necesario reiniciar la vista/aplicación.
+      let refreshed = false;
+      if (typeof reloadLists === "function") {
+        try {
+          await reloadLists();
+          refreshed = true;
+        } catch (refreshError) {
+          console.warn("[MenuScreen] Backup restored, but UI refresh failed", refreshError);
+        }
+      }
       safeAlert(
         "Restauración completada",
         mode === "replace"
-          ? `Se han restaurado ${result.recordCount} grupos de datos y ${result.mediaCount} imágenes. Las listas ya se han actualizado.`
-          : `Se han combinado ${result.recordCount} grupos de datos y ${result.mediaCount} imágenes sin borrar los datos actuales.`,
+          ? `Se han restaurado ${result.recordCount} grupos de datos y ${result.mediaCount} imágenes.${refreshed ? " Las listas se han actualizado." : " Cierra y vuelve a abrir Shopp para actualizar las listas en pantalla."}`
+          : `Se han combinado ${result.recordCount} grupos de datos y ${result.mediaCount} imágenes sin borrar los datos actuales.${refreshed ? "" : " Cierra y vuelve a abrir Shopp para ver los cambios."}`,
       );
     } catch (error) {
       safeAlert(
