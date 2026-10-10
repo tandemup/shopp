@@ -10,6 +10,7 @@ import {
   StyleSheet,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -52,6 +53,8 @@ function downloadJson(filename, payload) {
 }
 
 export default function RecipesScreen() {
+  const { width } = useWindowDimensions();
+  const compactHeader = width < 760;
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -185,14 +188,24 @@ export default function RecipesScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={["left", "right"]}>
-      <View style={styles.header}>
-        <View style={styles.headerCopy}>
+      <View style={[styles.header, compactHeader && styles.headerCompact]}>
+        <View style={[styles.headerCopy, compactHeader && styles.headerCopyCompact]}>
           <Text style={styles.title}>Recetas saludables</Text>
           <Text style={styles.subtitle}>Ideas asequibles para tu compra del supermercado.</Text>
         </View>
-        <Pressable style={styles.addButton} onPress={openNew}>
-          <Ionicons name="add" size={22} color="#fff" />
-        </Pressable>
+        <View style={[styles.actions, compactHeader && styles.actionsCompact]}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Importar recetas desde JSON" style={styles.action} onPress={importRecipes}>
+            <Ionicons name="download-outline" size={23} color="#2563eb" />
+            <Text style={styles.actionText}>Importar</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Exportar recetas a JSON" style={styles.action} onPress={exportRecipes}>
+            <Ionicons name="share-outline" size={23} color="#2563eb" />
+            <Text style={styles.actionText}>Exportar</Text>
+          </Pressable>
+          <Pressable style={styles.addButton} onPress={openNew} accessibilityRole="button" accessibilityLabel="Nueva receta">
+            <Ionicons name="add" size={22} color="#fff" />
+          </Pressable>
+        </View>
       </View>
       <TextInput
         value={query}
@@ -201,10 +214,6 @@ export default function RecipesScreen() {
         placeholderTextColor="#64748b"
         style={styles.search}
       />
-      <View style={styles.actions}>
-        <Pressable style={styles.action} onPress={importRecipes}><Text style={styles.actionText}>Importar JSON</Text></Pressable>
-        <Pressable style={styles.action} onPress={exportRecipes}><Text style={styles.actionText}>Exportar JSON</Text></Pressable>
-      </View>
       {loading ? <View style={styles.center}><ActivityIndicator color="#15803d" /></View> : (
         <FlatList
           data={filteredRecipes}
@@ -235,5 +244,5 @@ export default function RecipesScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#f8fafc", padding: 16 }, header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 }, headerCopy: { flex: 1 }, title: { color: "#172033", fontSize: 24, fontWeight: "800" }, subtitle: { color: "#64748b", fontSize: 14, lineHeight: 20, marginTop: 3 }, addButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "#15803d" }, search: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#dbe3ee", borderRadius: 12, minHeight: 46, paddingHorizontal: 14, color: "#172033" }, actions: { flexDirection: "row", gap: 10, marginVertical: 12 }, action: { backgroundColor: "#eaf7ee", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 }, actionText: { color: "#166534", fontSize: 13, fontWeight: "700" }, list: { paddingBottom: 28, gap: 12 }, card: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 16, padding: 14 }, cardTop: { flexDirection: "row", gap: 12 }, cardCopy: { flex: 1 }, cardTitle: { color: "#172033", fontSize: 17, fontWeight: "800" }, meta: { color: "#15803d", fontSize: 13, fontWeight: "700", marginTop: 3 }, tags: { color: "#475569", fontSize: 13, lineHeight: 19, marginTop: 10 }, notes: { color: "#64748b", fontSize: 13, lineHeight: 19, marginTop: 7 }, cardActions: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 13 }, cardButton: { flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#dc2626", paddingHorizontal: 12, minHeight: 36, borderRadius: 9 }, cardButtonDisabled: { backgroundColor: "#94a3b8" }, cardButtonText: { color: "#fff", fontWeight: "800", fontSize: 13 }, deleteButton: { padding: 8 }, center: { flex: 1, alignItems: "center", justifyContent: "center" }, empty: { alignItems: "center", paddingHorizontal: 30, paddingTop: 80 }, emptyTitle: { color: "#172033", fontSize: 18, fontWeight: "800", marginTop: 12 }, emptyText: { color: "#64748b", fontSize: 14, lineHeight: 21, textAlign: "center", marginTop: 7 }, modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(15, 23, 42, 0.42)" }, modal: { maxHeight: "92%", backgroundColor: "#fff", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20 }, modalTitle: { color: "#172033", fontSize: 21, fontWeight: "800", marginBottom: 14 }, input: { minHeight: 45, borderWidth: 1, borderColor: "#dbe3ee", borderRadius: 10, paddingHorizontal: 12, color: "#172033", marginBottom: 10 }, inline: { flexDirection: "row", gap: 10 }, smallInput: { flex: 1 }, notesInput: { minHeight: 80, paddingTop: 10, textAlignVertical: "top" }, modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 4 }, cancel: { paddingHorizontal: 15, paddingVertical: 11 }, cancelText: { color: "#475569", fontWeight: "700" }, save: { backgroundColor: "#15803d", paddingHorizontal: 17, paddingVertical: 11, borderRadius: 10 }, saveText: { color: "#fff", fontWeight: "800" },
+  screen: { flex: 1, backgroundColor: "#f8fafc", padding: 16 }, header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 }, headerCopy: { flex: 1 }, headerCompact: { flexWrap: "wrap" }, headerCopyCompact: { flexBasis: "100%" }, title: { color: "#172033", fontSize: 24, fontWeight: "800" }, subtitle: { color: "#64748b", fontSize: 14, lineHeight: 20, marginTop: 3 }, addButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "#15803d" }, search: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#dbe3ee", borderRadius: 12, minHeight: 46, paddingHorizontal: 14, color: "#172033" }, actions: { flexDirection: "row", alignItems: "center", gap: 10 }, actionsCompact: { marginLeft: "auto", flexWrap: "wrap", justifyContent: "flex-end" }, action: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, minHeight: 48, backgroundColor: "#eff6ff", borderWidth: 1, borderColor: "#bfdbfe", borderRadius: 0, paddingHorizontal: 17, paddingVertical: 10 }, actionText: { color: "#2563eb", fontSize: 15, fontWeight: "700" }, list: { paddingBottom: 28, gap: 12 }, card: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 16, padding: 14 }, cardTop: { flexDirection: "row", gap: 12 }, cardCopy: { flex: 1 }, cardTitle: { color: "#172033", fontSize: 17, fontWeight: "800" }, meta: { color: "#15803d", fontSize: 13, fontWeight: "700", marginTop: 3 }, tags: { color: "#475569", fontSize: 13, lineHeight: 19, marginTop: 10 }, notes: { color: "#64748b", fontSize: 13, lineHeight: 19, marginTop: 7 }, cardActions: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 13 }, cardButton: { flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#dc2626", paddingHorizontal: 12, minHeight: 36, borderRadius: 9 }, cardButtonDisabled: { backgroundColor: "#94a3b8" }, cardButtonText: { color: "#fff", fontWeight: "800", fontSize: 13 }, deleteButton: { padding: 8 }, center: { flex: 1, alignItems: "center", justifyContent: "center" }, empty: { alignItems: "center", paddingHorizontal: 30, paddingTop: 80 }, emptyTitle: { color: "#172033", fontSize: 18, fontWeight: "800", marginTop: 12 }, emptyText: { color: "#64748b", fontSize: 14, lineHeight: 21, textAlign: "center", marginTop: 7 }, modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(15, 23, 42, 0.42)" }, modal: { maxHeight: "92%", backgroundColor: "#fff", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20 }, modalTitle: { color: "#172033", fontSize: 21, fontWeight: "800", marginBottom: 14 }, input: { minHeight: 45, borderWidth: 1, borderColor: "#dbe3ee", borderRadius: 10, paddingHorizontal: 12, color: "#172033", marginBottom: 10 }, inline: { flexDirection: "row", gap: 10 }, smallInput: { flex: 1 }, notesInput: { minHeight: 80, paddingTop: 10, textAlignVertical: "top" }, modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 4 }, cancel: { paddingHorizontal: 15, paddingVertical: 11 }, cancelText: { color: "#475569", fontWeight: "700" }, save: { backgroundColor: "#15803d", paddingHorizontal: 17, paddingVertical: 11, borderRadius: 10 }, saveText: { color: "#fff", fontWeight: "800" },
 });
