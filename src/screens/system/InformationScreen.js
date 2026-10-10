@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -55,13 +54,14 @@ export default function InformationScreen({ navigation }) {
           ))}
         </View>
         <Pressable
-          accessibilityRole="link"
-          accessibilityLabel="Ver el proyecto Shopp en GitHub"
-          onPress={() => Linking.openURL("https://github.com/tandemup/shopp")}
+          accessibilityRole="button"
+          accessibilityLabel="Abrir información de contacto"
+          onPress={() => navigation.navigate("Contact")}
           style={({ pressed }) => [styles.githubButton, pressed && styles.pressed]}
         >
-          <Ionicons name="logo-github" size={20} color="#0f172a" />
-          <Text style={styles.githubText}>Ver proyecto en GitHub</Text>
+          <Ionicons name="mail-outline" size={20} color="#0f172a" />
+          <Text style={styles.githubText}>Contacto</Text>
+          <Ionicons name="arrow-forward-outline" size={18} color="#2563eb" />
         </Pressable>
       </ScrollView>
     </SafeAreaView>
