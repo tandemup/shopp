@@ -52,7 +52,7 @@ function downloadJson(filename, payload) {
   URL.revokeObjectURL(url);
 }
 
-export default function RecipesScreen() {
+export default function RecipesScreen({ guestMode = false }) {
   const { width } = useWindowDimensions();
   const compactHeader = width < 760;
   const [recipes, setRecipes] = useState([]);
@@ -66,13 +66,13 @@ export default function RecipesScreen() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      setRecipes(await loadRecipes());
+      setRecipes(await loadRecipes(guestMode));
     } catch (error) {
       safeAlert("Recetas", "No se pudieron leer las recetas guardadas.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [guestMode]);
 
   useEffect(() => {
     refresh();
@@ -108,7 +108,7 @@ export default function RecipesScreen() {
   };
 
   const persist = async (nextRecipes) => {
-    const saved = await saveRecipes(nextRecipes);
+    const saved = await saveRecipes(nextRecipes, guestMode);
     setRecipes(saved);
   };
 

@@ -37,17 +37,17 @@ export function normalizeRecipe(value = {}) {
   };
 }
 
-export async function loadRecipes() {
-  const stored = await storage.getJSON(STORAGE_KEY, []);
+export async function loadRecipes(guestMode = false) {
+  const stored = await storage.getJSON(guestMode ? `${STORAGE_KEY}:guest` : STORAGE_KEY, []);
   if (!Array.isArray(stored)) return [];
   return stored.map(normalizeRecipe).filter((recipe) => recipe.title);
 }
 
-export async function saveRecipes(recipes) {
+export async function saveRecipes(recipes, guestMode = false) {
   const normalized = Array.isArray(recipes)
     ? recipes.map(normalizeRecipe).filter((recipe) => recipe.title)
     : [];
-  await storage.setJSON(STORAGE_KEY, normalized);
+  await storage.setJSON(guestMode ? `${STORAGE_KEY}:guest` : STORAGE_KEY, normalized);
   return normalized;
 }
 

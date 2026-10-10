@@ -44,6 +44,7 @@ import {
 
 import { JSON_EXPORT_UTILITIES, saveUtilityJson } from "@/src/services/exportUtilityJson";
 import { useScannedHistoryStorage } from "@/src/hooks/useScannedHistoryStorage";
+import { getScannedHistory as readLocalScans, saveScannedHistory as writeLocalScans } from "@/src/services/scannerHistory";
 import { useLists } from "@/src/context/ListsContext";
 import { useStores } from "@/src/context/StoresContext";
 import {
@@ -806,6 +807,7 @@ export default function MenuScreen({ navigation }) {
 
   const [locationPermission, setLocationPermission] = useState(null);
   const [exportingUserData, setExportingUserData] = useState(false);
+  const [importingUserData, setImportingUserData] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
   const [importingItems, setImportingItems] = useState(false);
   const [productSearchEngineSubtitle, setProductSearchEngineSubtitle] =
@@ -816,6 +818,7 @@ export default function MenuScreen({ navigation }) {
     archivedLists,
     purchaseHistory,
     reloadLists,
+    importUserLists,
     clearActiveListsState,
     clearArchivedListsState,
     clearAllListsState,
@@ -1176,6 +1179,78 @@ export default function MenuScreen({ navigation }) {
       }
     } finally {
       setExportingUserData(false);
+    }
+  };
+
+  const handleImportUserData = async () => {
+    if (importingUserData || exportingUserData) return;
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({
+        type: ["application/json", "text/plain", "*/*"],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (picked.canceled) return;
+      const asset = picked.assets?.[0];
+      if (!asset) throw new Error("No se ha seleccionado ningún fichero.");
+      const raw = asset.file && typeof asset.file.text === "function"
+        ? await asset.file.text()
+        : Platform.OS === "web"
+          ? await (await fetch(asset.uri)).text()
+          : await FileSystem.readAsStringAsync(asset.uri);
+      const payload = JSON.parse(raw);
+      if (payload?.app !== "Shopp" || payload?.type !== "user-data-export" || payload?.version !== USER_EXPORT_VERSION) {
+        throw new Error("El fichero no es una exportación de datos de usuario Shopp compatible (versión 1).");
+      }
+      const data = payload.data;
+      if (!data || !["shoppingLists", "archivedLists", "scanHistory", "purchaseHistory"].every((key) => Array.isArray(data[key]))) {
+        throw new Error("Faltan conjuntos de datos obligatorios en el JSON.");
+      }
+      const incomingLists = [
+        ...data.shoppingLists.map((item) => ({ ...item, archived: false, archivedAt: null })),
+        ...data.archivedLists.map((item) => ({ ...item, archived: true })),
+      ];
+      if (incomingLists.some((item) => !item || typeof item !== "object" || !item.id || !Array.isArray(item.items))) {
+        throw new Error("Una o varias listas contienen datos incorrectos.");
+      }
+      if (data.scanHistory.some((item) => !item || typeof item !== "object")) {
+        throw new Error("El historial de escaneos no es válido.");
+      }
+      const summary = `${data.shoppingLists.length} listas activas, ${data.archivedLists.length} archivadas y ${data.scanHistory.length} escaneos. El historial de compras se reconstruirá desde las listas archivadas. No se modifica la cuenta ni el perfil de Convex.`;
+      safeAlert("Importar datos de Shopp", `${asset.name || "Archivo JSON"}\n${summary}\n\nElige cómo importarlos:`, [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Combinar", onPress: () => applyUserDataImport(incomingLists, data.scanHistory, "merge") },
+        { text: "Reemplazar", style: "destructive", onPress: () => applyUserDataImport(incomingLists, data.scanHistory, "replace") },
+      ]);
+    } catch (error) {
+      safeAlert("Importación no disponible", error?.message || "No se pudo leer el JSON.");
+    }
+  };
+
+  const applyUserDataImport = async (incomingLists, incomingScans, mode) => {
+    if (importingUserData) return;
+    setImportingUserData(true);
+    try {
+      const previousScans = mode === "merge" ? await readLocalScans() : [];
+      const mergedScans = [...previousScans];
+      const positions = new Map(mergedScans.map((item, index) => [String(item.barcode || item.id || item._id || index), index]));
+      for (const item of incomingScans) {
+        const key = String(item.barcode || item.id || item._id || `import-${mergedScans.length}`);
+        const index = positions.get(key);
+        if (index === undefined) {
+          positions.set(key, mergedScans.length);
+          mergedScans.push(item);
+        } else {
+          mergedScans[index] = item;
+        }
+      }
+      await writeLocalScans(mergedScans);
+      await importUserLists(incomingLists, mode);
+      safeAlert("Datos importados", `Importación ${mode === "merge" ? "combinada" : "reemplazada"} completada. Las listas ya están actualizadas. Si tienes sincronización de escaneos activada, revisa el historial después de sincronizar.`);
+    } catch (error) {
+      safeAlert("Error al importar", error?.message || "No se pudieron restaurar los datos.");
+    } finally {
+      setImportingUserData(false);
     }
   };
 
@@ -1750,6 +1825,15 @@ export default function MenuScreen({ navigation }) {
               badge={exportingUserData ? "..." : "JSON"}
               disabled={exportingUserData}
               onPress={handleExportUserData}
+            />
+
+            <SettingsCard
+              icon="cloud-upload-outline"
+              title="Importar datos desde JSON"
+              subtitle="Combinar o reemplazar listas, archivadas y escaneos de una exportación de usuario Shopp"
+              badge={importingUserData ? "..." : "JSON"}
+              disabled={importingUserData || exportingUserData}
+              onPress={handleImportUserData}
             />
 
             <SettingsCard

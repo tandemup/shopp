@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
 import {
@@ -27,6 +28,8 @@ const ACCESS_MODE = String(
 )
   .trim()
   .toLowerCase();
+
+const GUEST_SESSION_KEY = "@shopp/guest-session-v1";
 
 const SHOW_PUBLIC_ENTRY_FIRST =
   ACCESS_MODE === "landing" || ACCESS_MODE === "survey";
@@ -80,22 +83,35 @@ export default function AppNavigator() {
   const [showSplash, setShowSplash] = useState(true);
   const [publicEntryComplete, setPublicEntryComplete] = useState(false);
   const [guestMode, setGuestMode] = useState(false);
+  const [guestRestored, setGuestRestored] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(GUEST_SESSION_KEY)
+      .then((value) => { if (active && value === "true") setGuestMode(true); })
+      .catch(() => {})
+      .finally(() => { if (active) setGuestRestored(true); });
+    return () => { active = false; };
+  }, []);
   const initialAuthStateRef = useRef(null);
   const { isAuthenticated, isLoading } = useConvexAuth();
 
   const finishSplash = useCallback(() => setShowSplash(false), []);
   const continueToAuthenticatedApp = useCallback(() => {
     setGuestMode(false);
+    AsyncStorage.removeItem(GUEST_SESSION_KEY).catch(() => {});
     setPublicEntryComplete(true);
   }, []);
 
   const continueAsGuest = useCallback(() => {
     setGuestMode(true);
+    AsyncStorage.setItem(GUEST_SESSION_KEY, "true").catch(() => {});
     setPublicEntryComplete(true);
   }, []);
 
   const exitGuestMode = useCallback(() => {
     setGuestMode(false);
+    AsyncStorage.removeItem(GUEST_SESSION_KEY).catch(() => {});
     setPublicEntryComplete(false);
   }, []);
 
@@ -126,6 +142,15 @@ export default function AppNavigator() {
     return <SplashScreen onFinish={finishSplash} />;
   }
 
+  if (!guestRestored) {
+    return <View style={styles.loadingContainer}><ActivityIndicator size="large" /></View>;
+  }
+
+  // Un invitado que vuelve a abrir la aplicación recupera su sesión local.
+  if (guestMode) {
+    return <PlaybackProvider><MainTabs guestMode onExitGuest={exitGuestMode} /></PlaybackProvider>;
+  }
+
   // Modo de desarrollo público:
   // - sin sesión: pantalla "En desarrollo" con acceso por email;
   // - con sesión válida: acceso normal a Shopp.
@@ -147,14 +172,6 @@ export default function AppNavigator() {
           <AuthenticatedApp />
         </Authenticated>
       </>
-    );
-  }
-
-  if (guestMode) {
-    return (
-      <PlaybackProvider>
-        <MainTabs guestMode onExitGuest={exitGuestMode} />
-      </PlaybackProvider>
     );
   }
 
