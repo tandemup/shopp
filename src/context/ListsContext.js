@@ -24,14 +24,14 @@ const ListsContext = createContext(null);
 /* -------------------------------------------------
    Provider
 -------------------------------------------------- */
-export function ListsProvider({ children }) {
-  const currentUser = useQuery(api.users.current);
+export function ListsProvider({ children, guestMode = false }) {
+  const currentUser = useQuery(api.users.current, guestMode ? "skip" : {});
   const userStorageKey = useMemo(() => {
     return getUserScopedStorageKey(
-      currentUser?._id || "anonymous",
+      guestMode ? "guest-local-v1" : (currentUser?._id || "anonymous"),
       STORAGE_KEYS.LISTS,
     );
-  }, [currentUser?._id]);
+  }, [currentUser?._id, guestMode]);
 
   const [lists, setLists] = useState([]);
   const [purchaseHistory, setPurchaseHistory] = useState([]);
@@ -304,6 +304,7 @@ export function ListsProvider({ children }) {
       archivedLists,
       purchaseHistory,
       isReady,
+      guestMode,
 
       createList,
       updateList,
@@ -322,7 +323,7 @@ export function ListsProvider({ children }) {
       updateItem,
       deleteItem,
     }),
-    [lists, activeLists, archivedLists, purchaseHistory, isReady],
+    [lists, activeLists, archivedLists, purchaseHistory, isReady, guestMode],
   );
 
   return (

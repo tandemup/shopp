@@ -165,7 +165,7 @@ export default function AppNavigator() {
         </AuthLoading>
 
         <Unauthenticated>
-          <AuthStack accessMode="development" />
+          <AuthStack accessMode="development" onGuestContinue={continueAsGuest} />
         </Unauthenticated>
 
         <Authenticated>

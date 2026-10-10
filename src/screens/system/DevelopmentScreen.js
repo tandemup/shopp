@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  Linking,
   Pressable,
   SafeAreaView,
   StyleSheet,
@@ -10,17 +9,14 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { I18nText as Text } from "@/src/i18n";
 
-const GITHUB_URL = "https://github.com/tandemup/shopp";
-
-export default function DevelopmentScreen({ navigation }) {
+export default function DevelopmentScreen({ navigation, onGuestContinue }) {
   const { width } = useWindowDimensions();
   const compactHeader = width < 820;
   const narrowScreen = width < 520;
 
-  const openGitHub = () => Linking.openURL(GITHUB_URL);
   const openLogin = () =>
     navigation.navigate("Login", { developmentMode: true });
-  const openInfo = () => navigation.navigate("AuthHome");
+  const openInfo = () => navigation.navigate("Information");
   const openTesterRegister = () =>
     navigation.navigate("Register", { testerAccount: true });
 
@@ -100,20 +96,22 @@ export default function DevelopmentScreen({ navigation }) {
             móvil, tablet y escritorio.
           </Text>
 
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel="Abrir repositorio de Shopp en GitHub"
-            onPress={openGitHub}
-            style={({ pressed }) => [
-              styles.githubButton,
-              pressed && styles.githubButtonPressed,
-            ]}
-          >
-            <Ionicons name="logo-github" size={20} color="#0f172a" />
-            <Text style={styles.githubButtonText}>
-              github.com/tandemup/shopp
-            </Text>
-          </Pressable>
+          {onGuestContinue ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Continuar como invitado sin registro"
+              onPress={onGuestContinue}
+              style={({ pressed }) => [
+                styles.guestButton,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Ionicons name="person-outline" size={19} color="#ffffff" />
+              <Text style={styles.guestButtonText}>Continuar como invitado</Text>
+            </Pressable>
+          ) : null}
+
+
         </View>
       </View>
     </SafeAreaView>
@@ -300,6 +298,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     textAlign: "center",
+  },
+  guestButton: {
+    marginTop: 24,
+    minHeight: 46,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#2563eb",
+    flexDirection: "row",
+    gap: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "stretch",
+  },
+  guestButtonText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "800",
   },
   githubButton: {
     marginTop: 20,

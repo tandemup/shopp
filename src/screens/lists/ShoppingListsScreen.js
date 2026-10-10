@@ -520,9 +520,7 @@ function ListCard({ item, onOpen, onOpenMenu }) {
 export default function ShoppingListsScreen() {
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
-  const currentUser = useQuery(api.users.current);
-
-  const {
+  const { guestMode = false,
     activeLists = [],
     archivedLists = [],
     purchaseHistory = [],
@@ -531,6 +529,7 @@ export default function ShoppingListsScreen() {
     updateList,
     archiveList,
   } = useLists();
+  const currentUser = useQuery(api.users.current, guestMode ? "skip" : {});
   const [editingList, setEditingList] = useState(undefined);
   const [editName, setEditName] = useState("");
 

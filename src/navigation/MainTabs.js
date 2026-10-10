@@ -1,13 +1,16 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { tr, useI18n } from "@/src/i18n";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import GuestFeaturesScreen from "@/src/screens/guest/GuestFeaturesScreen";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 
 import { ROUTES } from "@/src/navigation/ROUTES";
 import ShoppingStack from "@/src/navigation/ShoppingStack";
+import { ListsProvider } from "@/src/context/ListsContext";
 import StoresStack from "@/src/navigation/StoresStack";
 import ChatStack from "@/src/navigation/ChatStack";
 import ScannerStack from "@/src/navigation/ScannerStack";
@@ -19,6 +22,15 @@ import { I18nText as Text } from "@/src/i18n";
 import { APP_FEATURES, hasFeatureAccess } from "@/src/utils/featureAccess";
 
 const Tab = createBottomTabNavigator();
+
+function GuestShoppingTab() {
+  return (
+    <ListsProvider guestMode>
+      <ShoppingStack />
+    </ListsProvider>
+  );
+}
+
 
 const SCREEN_BACKGROUND = "#f8fafc";
 const TAB_BAR_CONTENT_HEIGHT = Platform.OS === "web" ? 78 : 70;
@@ -55,6 +67,27 @@ function GuestAccessScreen({ onExitGuest }) {
 
 export default function MainTabs({ guestMode = false, onExitGuest }) {
   useI18n();
+  const [guestFeatures, setGuestFeatures] = useState({ compras: true, alimentos: true });
+  const [guestFeaturesReady, setGuestFeaturesReady] = useState(false);
+  useEffect(() => {
+    if (!guestMode) return;
+    let live = true;
+    AsyncStorage.getItem("@shopp:guest:features:v1")
+      .then(raw => {
+        if (live && raw) {
+          const data = JSON.parse(raw);
+          setGuestFeatures({ compras: data.compras !== false, alimentos: data.alimentos !== false });
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (live) setGuestFeaturesReady(true); });
+    return () => { live = false; };
+  }, [guestMode]);
+  const updateGuestFeatures = async (next) => {
+    setGuestFeatures(next);
+    try { await AsyncStorage.setItem("@shopp:guest:features:v1", JSON.stringify(next)); }
+    catch (error) { console.warn("No se pudo guardar la selección de invitado", error); }
+  };
   const currentUser = useQuery(api.users.current, guestMode ? "skip" : {});
   const canUseStores = hasFeatureAccess(currentUser, APP_FEATURES.STORES);
   const canUseScanner = hasFeatureAccess(currentUser, APP_FEATURES.SCANNER);
@@ -70,6 +103,7 @@ export default function MainTabs({ guestMode = false, onExitGuest }) {
     Platform.OS === "web" ? WEB_SAFE_BOTTOM : bottomPadding;
 
   if (guestMode) {
+    if (!guestFeaturesReady) return null;
     return (
       <Tab.Navigator
         screenOptions={{
@@ -88,13 +122,25 @@ export default function MainTabs({ guestMode = false, onExitGuest }) {
           tabBarLabelStyle: { fontSize: 12.5, fontWeight: "600" },
         }}
       >
-        <Tab.Screen name="GuestRecipes" options={{
+        {guestFeatures.compras && <Tab.Screen name="GuestShopping" component={GuestShoppingTab} options={{
+          title: "Compras",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="cart-outline" color={color} size={Math.min(size, 28)} />
+          ),
+        }} />}
+        {guestFeatures.alimentos && <Tab.Screen name="GuestRecipes" options={{
           title: "Recetas",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="restaurant-outline" color={color} size={Math.min(size, 28)} />
           ),
         }}>
           {() => <RecipesScreen guestMode />}
+        </Tab.Screen>}
+        <Tab.Screen name="GuestFeatures" options={{
+          title: "Mis funciones",
+          tabBarIcon: ({ color, size }) => <Ionicons name="options-outline" color={color} size={Math.min(size, 28)} />,
+        }}>
+          {() => <GuestFeaturesScreen value={guestFeatures} onChange={updateGuestFeatures} />}
         </Tab.Screen>
         <Tab.Screen name="GuestAccess" options={{
           title: "Acceso",
