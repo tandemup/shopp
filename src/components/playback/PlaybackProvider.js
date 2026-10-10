@@ -501,6 +501,43 @@ export default function PlaybackProvider({ children }) {
   // propague desde expandedBody hasta la lista de pistas.
   const TrackPaneComponent = twoColumnDesktop ? View : ScrollView;
 
+  // DIAGNÓSTICO TEMPORAL DEL LAYOUT
+  // Mide la cadena vertical completa para localizar exactamente dónde se
+  // pierde altura en el modo escritorio de 2 columnas. El prefijo permite
+  // filtrar fácilmente la consola de Chrome por "PlaybackLayout".
+  const logLayout = useCallback((name) => (event) => {
+    if (Platform.OS !== "web" || !expanded || !twoColumnDesktop) return;
+    const { x, y, width: layoutWidth, height: layoutHeight } =
+      event.nativeEvent.layout;
+    console.log(`[PlaybackLayout] ${name}`, {
+      x: Math.round(x),
+      y: Math.round(y),
+      width: Math.round(layoutWidth),
+      height: Math.round(layoutHeight),
+      windowWidth: Math.round(width),
+      windowHeight: Math.round(height),
+    });
+  }, [expanded, twoColumnDesktop, width, height]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || !expanded || !twoColumnDesktop) return;
+    console.log("[PlaybackLayout] viewport", {
+      windowWidth: Math.round(width),
+      windowHeight: Math.round(height),
+      insetTop: Math.round(insets.top),
+      insetBottom: Math.round(insets.bottom),
+      queueRowsMaxHeight: Math.round(queueRowsMaxHeight),
+    });
+  }, [
+    expanded,
+    twoColumnDesktop,
+    width,
+    height,
+    insets.top,
+    insets.bottom,
+    queueRowsMaxHeight,
+  ]);
+
   return (
     <PlaybackContext.Provider value={context}>
       <View style={styles.root}>
@@ -627,6 +664,7 @@ export default function PlaybackProvider({ children }) {
               </View>
             ) : null}
             <View
+              onLayout={logLayout("expandedBody")}
               style={[
                 styles.body,
                 expanded && styles.expandedBody,
@@ -666,6 +704,7 @@ export default function PlaybackProvider({ children }) {
                     </View>
                   ) : null}
                 <TrackPaneComponent
+                  onLayout={logLayout("trackPane")}
                   style={[
                     styles.trackPane,
                     tablet && styles.tabletTrackPane,
@@ -1068,12 +1107,27 @@ export default function PlaybackProvider({ children }) {
                     </View>
                   ) : null}
                   <View
+                    onLayout={logLayout("queueSection")}
                     style={[
                       styles.queueSection,
                       twoColumnDesktop && styles.queueSectionTwoColumns,
                     ]}
                   >
                     <ScrollView
+                      onLayout={logLayout("queueRowsScroll")}
+                      onContentSizeChange={(contentWidth, contentHeight) => {
+                        if (
+                          Platform.OS === "web" &&
+                          expanded &&
+                          twoColumnDesktop
+                        ) {
+                          console.log("[PlaybackLayout] queueRowsContent", {
+                            width: Math.round(contentWidth),
+                            height: Math.round(contentHeight),
+                            tracks: session.tracks.length,
+                          });
+                        }
+                      }}
                       style={[
                         styles.queueRowsScroll,
                         mediaLayout && !twoColumnDesktop
