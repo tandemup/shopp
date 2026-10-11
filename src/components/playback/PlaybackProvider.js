@@ -787,6 +787,7 @@ export default function PlaybackProvider({ children }) {
               style={[
                 styles.body,
                 expanded && styles.expandedBody,
+                !mediaLayout && styles.mobileBody,
                 desktop && styles.desktopBody,
                 tablet && styles.tabletBody,
                 tabletPortrait && styles.tabletBodyPortrait,
@@ -822,10 +823,21 @@ export default function PlaybackProvider({ children }) {
                       </View>
                     </View>
                   ) : null}
+                  {!mediaLayout ? (
+                    <View style={styles.mobileVideoSection}>
+                      <View style={styles.mobileVideoFrame}>
+                        <YouTubeSurface
+                          key={`mobile:${session.requestId}`}
+                          {...playerSurfaceProps}
+                        />
+                      </View>
+                    </View>
+                  ) : null}
                 <TrackPaneComponent
                   onLayout={logLayout("trackPane")}
                   style={[
                     styles.trackPane,
+                    !mediaLayout && styles.mobileTrackPane,
                     tablet && styles.tabletTrackPane,
                     tabletPortrait && styles.tabletTrackPanePortrait,
                     tabletLandscape && styles.tabletTrackPaneLandscape,
@@ -1216,16 +1228,6 @@ export default function PlaybackProvider({ children }) {
                       </View>
                     );
                   })}
-                  {!mediaLayout ? (
-                    <View style={styles.mobileVideoSection}>
-                      <View style={styles.mobileVideoFrame}>
-                        <YouTubeSurface
-                          key={`mobile:${session.requestId}`}
-                          {...playerSurfaceProps}
-                        />
-                      </View>
-                    </View>
-                  ) : null}
                   <View
                     onLayout={logLayout("queueSection")}
                     style={[
@@ -1446,6 +1448,18 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.35 },
   body: { minHeight: 0, flexShrink: 1 },
   expandedBody: { flex: 1, backgroundColor: "#0b0b0c" },
+  // Móvil: la superficie YouTube se mantiene fuera del área desplazable.
+  // Solo mobileTrackPane contiene el ScrollView de las pistas.
+  mobileBody: {
+    flexDirection: "column",
+    overflow: "hidden",
+    minHeight: 0,
+  },
+  mobileTrackPane: {
+    flex: 1,
+    minHeight: 0,
+    alignSelf: "stretch",
+  },
   tabletBody: {
     width: "100%",
     alignSelf: "center",
@@ -1736,6 +1750,11 @@ const styles = StyleSheet.create({
         WebkitOverflowScrolling: "touch",
       },
     }),
+  },
+  mobileVideoSection: {
+    width: "100%",
+    flexShrink: 0,
+    alignSelf: "stretch",
   },
   mobileVideoFrame: {
     width: "100%",
