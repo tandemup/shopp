@@ -5,6 +5,7 @@ import * as Sharing from "expo-sharing";
 import { api } from "@/convex/_generated/api";
 import { libraryJsonApi } from "@/src/services/libraryJsonApi";
 import { makePlaylistBackupV2 } from "@/src/services/playlistBackupV2";
+import { savePlaylistArchive } from "@/src/services/playlistArchiveZip";
 
 export const JSON_EXPORT_UTILITIES = [
   { id: "biblioteca", label: "Biblioteca" },
@@ -118,6 +119,10 @@ export async function readUtilityExport(id, { convex, getScannedHistory, activeL
 export async function saveUtilityJson(id, options = {}) {
   const data = await readUtilityExport(id, options);
   const filename = filenameFor(id);
+  if (id === "music" || id === "classic") {
+    const saved = await savePlaylistArchive(data, filename);
+    return { filename: saved.filename, count: (data.playlists || []).length, lyricsCount: saved.lyricsCount };
+  }
   const json = JSON.stringify(data, null, 2);
   if (Platform.OS === "web") {
     // Safari/iPad: un fichero por gesto del usuario; evita bloquear varias descargas.
