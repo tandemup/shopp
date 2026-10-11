@@ -330,9 +330,6 @@ export default function PlaybackProvider({ children }) {
   const [expanded, setExpanded] = useState(true);
   // Desktop layout: one vertical column or two side-by-side columns.
   const [desktopColumns, setDesktopColumns] = useState(2);
-  // Altura medida del cuerpo del reproductor. Evita diferencias de cálculo
-  // de flexBasis entre Chrome (Blink) y Safari (WebKit).
-  const [twoColumnBodyHeight, setTwoColumnBodyHeight] = useState(0);
   // Tamaño del vídeo cuando usamos el layout de una sola columna.
   const [desktopVideoSize, setDesktopVideoSize] = useState("medium");
   const [repeat, setRepeat] = useState(false);
@@ -457,6 +454,14 @@ export default function PlaybackProvider({ children }) {
   const mediaLayout = desktop || tablet;
   const oneColumnDesktop = desktop && desktopColumns === 1;
   const twoColumnDesktop = desktop && desktopColumns === 2;
+  // Safari iOS necesita un único ScrollView vertical en las pantallas
+  // móviles. Un ScrollView interior deshabilitado puede interceptar gestos
+  // táctiles aunque la columna exterior permita desplazarse.
+  // En landscape de tableta y en dos columnas ya usamos el panel exterior
+  // como superficie de scroll; solo el escritorio de una columna necesita
+  // el ScrollView interno independiente de las pistas.
+  const queueHasOwnScroll = oneColumnDesktop;
+
   // El reproductor compartido conserva controles compactos y de tamaño fijo.
   // El ancho de la columna puede crecer con la ventana, pero las imágenes,
   // tipografías e iconos no deben saltar a una escala desproporcionada.
@@ -613,6 +618,7 @@ export default function PlaybackProvider({ children }) {
   // dejar una franja vacía debajo. Un View normal permite que flex: 1 se
   // propague desde expandedBody hasta la lista de pistas.
   const TrackPaneComponent = twoColumnDesktop ? View : ScrollView;
+  const QueueRowsComponent = queueHasOwnScroll ? ScrollView : View;
 
   // DIAGNÓSTICO TEMPORAL DEL LAYOUT
   // Mide la cadena vertical completa para localizar exactamente dónde se
@@ -777,17 +783,7 @@ export default function PlaybackProvider({ children }) {
               </View>
             ) : null}
             <View
-              onLayout={(event) => {
-                logLayout("expandedBody")(event);
-                if (twoColumnDesktop) {
-                  const measured = Math.round(event.nativeEvent.layout.height);
-                  if (measured > 0) {
-                    setTwoColumnBodyHeight((previous) =>
-                      previous === measured ? previous : measured,
-                    );
-                  }
-                }
-              }}
+              onLayout={logLayout("expandedBody")}
               style={[
                 styles.body,
                 expanded && styles.expandedBody,
@@ -841,10 +837,7 @@ export default function PlaybackProvider({ children }) {
                     twoColumnDesktop && styles.trackList,
                     twoColumnDesktop && styles.desktopTrackList,
                     twoColumnDesktop && styles.desktopTrackListTwoColumns,
-                    twoColumnDesktop && twoColumnBodyHeight > 0 && {
-                      height: twoColumnBodyHeight,
-                      flex: 0,
-                    },
+                    twoColumnDesktop && styles.desktopTrackPaneNativeScroll,
                   ]}
                   {...(!twoColumnDesktop
                     ? {
@@ -1238,45 +1231,28 @@ export default function PlaybackProvider({ children }) {
                     style={[
                       styles.queueSection,
                       twoColumnDesktop && styles.queueSectionTwoColumns,
-                      twoColumnDesktop && twoColumnBodyHeight > 0 && {
-                        height: Math.max(100, twoColumnBodyHeight - 18),
-                        flex: 0,
-                      },
                     ]}
                   >
-                    <ScrollView
+                    <QueueRowsComponent
                       onLayout={logLayout("queueRowsScroll")}
-                      onContentSizeChange={(contentWidth, contentHeight) => {
-                        if (
-                          Platform.OS === "web" &&
-                          expanded &&
-                          twoColumnDesktop
-                        ) {
-                          console.log("[PlaybackLayout] queueRowsContent", {
-                            width: Math.round(contentWidth),
-                            height: Math.round(contentHeight),
-                            tracks: session.tracks.length,
-                          });
-                        }
-                      }}
                       style={[
                         styles.queueRowsScroll,
-                        mediaLayout && !twoColumnDesktop
+                        !queueHasOwnScroll && styles.queueRows,
+                        mediaLayout && queueHasOwnScroll
                           ? { maxHeight: queueRowsMaxHeight }
                           : null,
-                        twoColumnDesktop && styles.queueRowsScrollTwoColumns,
-                        twoColumnDesktop && twoColumnBodyHeight > 0 && {
-                          height: Math.max(80, twoColumnBodyHeight - 18),
-                          flex: 0,
-                        },
+                        (twoColumnDesktop || tabletLandscape) && styles.queueRowsScrollTwoColumns,
                         oneColumnDesktop && styles.queueRowsScrollOneColumn,
                       ]}
-                      contentContainerStyle={styles.queueRows}
-                      nestedScrollEnabled
-                      // El ScrollView exterior gestiona el scroll en iPhone.
-                      scrollEnabled={mediaLayout && (twoColumnDesktop || session.tracks.length > 5)}
-                      showsVerticalScrollIndicator={false}
-                      keyboardShouldPersistTaps="handled"
+                      {...(!queueHasOwnScroll
+                        ? {}
+                        : {
+                            contentContainerStyle: styles.queueRows,
+                            nestedScrollEnabled: true,
+                            scrollEnabled: mediaLayout && session.tracks.length > 5,
+                            showsVerticalScrollIndicator: false,
+                            keyboardShouldPersistTaps: "handled",
+                          })}
                     >
                       {session.tracks.map((item, index) => {
                         const active = index === session.index;
@@ -1353,7 +1329,7 @@ export default function PlaybackProvider({ children }) {
                           </View>
                         );
                       })}
-                    </ScrollView>
+                    </QueueRowsComponent>
                   </View>
                   {track.kind === "album" && ids.length > 0 ? (
                     <View style={styles.albumVideos}>
@@ -1714,13 +1690,14 @@ const styles = StyleSheet.create({
   slider: { width: "100%", height: 28 },
   trackPane: {
     flex: 1,
-    minHeight: 120,
+    minHeight: 0,
     backgroundColor: "#0b0b0c",
     ...Platform.select({
       web: {
         touchAction: "pan-y",
         overscrollBehaviorY: "contain",
         WebkitOverflowScrolling: "touch",
+        overflowY: "auto",
         scrollbarWidth: "none",
         msOverflowStyle: "none",
       },
@@ -1746,7 +1723,19 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
     minHeight: 0,
     paddingTop: 10,
-    paddingBottom: 0,
+    paddingBottom: 10,
+  },
+  desktopTrackPaneNativeScroll: {
+    flex: 1,
+    minHeight: 0,
+    overflow: "auto",
+    ...Platform.select({
+      web: {
+        overflowY: "auto",
+        overflowX: "hidden",
+        WebkitOverflowScrolling: "touch",
+      },
+    }),
   },
   mobileVideoFrame: {
     width: "100%",
@@ -1765,7 +1754,6 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: "100%",
     minHeight: 0,
-    overflow: "hidden",
   },
   queueSectionHeader: {
     flexDirection: "row",
@@ -1796,12 +1784,7 @@ const styles = StyleSheet.create({
   queueRowsScrollTwoColumns: {
     width: "100%",
     minHeight: 0,
-    ...Platform.select({
-      web: {
-        overflowY: "auto",
-        overflowX: "hidden",
-      },
-    }),
+    gap: 6,
   },
   queueRows: { gap: 6 },
   queueEntry: { width: "100%" },

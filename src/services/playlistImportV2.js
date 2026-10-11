@@ -1,6 +1,6 @@
 // Importación conservadora de respaldos v2. Nunca elimina datos de Convex.
 import { parseYouTubeUrl } from '@/src/services/urlSafety';
-import { saveLocalLyrics } from '@/src/storage/lyricsStorage';
+import { getLocalLyrics, saveLocalLyrics } from '@/src/storage/lyricsStorage';
 const MAX_LRC_BYTES = 512 * 1024;
 const utf8Size = (str) => new TextEncoder().encode(str).length;
 
@@ -53,7 +53,22 @@ export async function importPlaylistBackupV2({ playlists, existing = [], clientI
   // No se reutilizan los IDs de archivo Convex del origen: se sube una copia nueva.
   for (const playlist of playlists) {
     const signature = `${playlist.title.toLowerCase()}|${playlist.tracks.map(t=>t.videoId || t.playlistId).join(',')}`;
-    if (signatures.has(signature)) { skipped++; continue; }
+    if (signatures.has(signature)) {
+      // Una playlist duplicada puede existir en Convex aunque este navegador
+      // todavía no tenga las letras en IndexedDB (Safari y Chrome aíslan sus
+      // datos locales). Restaurar las LRC que faltan sin crear otra playlist.
+      for (const track of playlist.tracks) {
+        if (!track.lyricsBackup) continue;
+        const current = await getLocalLyrics(track);
+        if (String(current?.text || '').trim()) continue;
+        await saveLocalLyrics(track, track.lyricsBackup.text, {
+          fileName: track.lyricsBackup.fileName,
+        });
+        lyricsRestored++;
+      }
+      skipped++;
+      continue;
+    }
     const tracks = [];
     for (const track of playlist.tracks) {
       const { lyricsBackup, ...clean } = track;
@@ -80,9 +95,13 @@ export async function importPlaylistBackupV2({ playlists, existing = [], clientI
     // La copia local es adicional; Convex mantiene su propio LRC restaurado.
     for (const track of playlist.tracks) {
       if (track.lyricsBackup) {
-        try { await saveLocalLyrics(track, track.lyricsBackup.text, { fileName: track.lyricsBackup.fileName }); }
-        catch (error) { console.warn('LRC restaurado en Convex, pero no en almacenamiento local:', error); }
-        lyricsRestored++;
+        const current = await getLocalLyrics(track);
+        if (!String(current?.text || '').trim()) {
+          await saveLocalLyrics(track, track.lyricsBackup.text, {
+            fileName: track.lyricsBackup.fileName,
+          });
+          lyricsRestored++;
+        }
       }
     }
     signatures.add(signature); added++;
