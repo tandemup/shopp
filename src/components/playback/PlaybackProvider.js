@@ -122,6 +122,69 @@ function SyncedLyricLine({ track, uri, time, compact = false }) {
   );
 }
 
+function QueueLyricsPreview({ track, uri, time }) {
+  const [lines, setLines] = useState([]);
+  const [hasSource, setHasSource] = useState(Boolean(uri));
+  useEffect(() => {
+    let cancelled = false;
+    setLines([]);
+    setHasSource(Boolean(uri));
+    (async () => {
+      try {
+        const local = await getLocalLyrics(track);
+        if (cancelled) return;
+        if (local?.text != null) {
+          setHasSource(true);
+          setLines(parseLrc(local.text));
+          return;
+        }
+        if (uri) {
+          const response = await fetch(uri);
+          const source = response.ok ? await response.text() : "";
+          if (!cancelled) {
+            setHasSource(true);
+            setLines(parseLrc(source));
+          }
+        }
+      } catch {
+        if (!cancelled) setHasSource(Boolean(uri));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [track?.videoId, track?.playlistId, track?.url, uri]);
+
+  let activeIndex = -1;
+  lines.forEach((line, i) => {
+    if (line.time <= time + 0.08) activeIndex = i;
+  });
+  const currentLine = activeIndex >= 0 ? lines[activeIndex] : lines[0];
+  if (!hasSource) {
+    return (
+      <View style={styles.queueLyricsBox}>
+        <Text style={styles.queueLyricsStatus}>Sin letra disponible</Text>
+      </View>
+    );
+  }
+
+  if (!lines.length) {
+    return (
+      <View style={styles.queueLyricsBox}>
+        <Text style={styles.queueLyricsStatus}>Archivo LRC sin líneas sincronizadas</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.queueLyricsBox}>
+      <Text style={styles.queueLyricsCurrent} numberOfLines={1}>
+        {currentLine?.text || ""}
+      </Text>
+    </View>
+  );
+}
+
 function DesktopLyricsPanel({ track, uri, time, title }) {
   const [lines, setLines] = useState([]);
   const [hasSource, setHasSource] = useState(Boolean(uri));
@@ -709,14 +772,6 @@ export default function PlaybackProvider({ children }) {
                           {...playerSurfaceProps}
                         />
                       </View>
-                      {twoColumnDesktop && !session.isTutorial ? (
-                        <DesktopLyricsPanel
-                          track={track}
-                          uri={lyricsUri}
-                          time={status.time || 0}
-                          title={track?.title || session.title}
-                        />
-                      ) : null}
                     </View>
                   ) : null}
                 <TrackPaneComponent
@@ -1214,6 +1269,13 @@ export default function PlaybackProvider({ children }) {
                                     : "Seleccionada"
                                   : kindLabel}
                               </Text>
+                              {active ? (
+                                <QueueLyricsPreview
+                                  track={item}
+                                  uri={active ? lyricsUri : item.lyricsUri || item.lyricsUrl}
+                                  time={active ? status.time || 0 : 0}
+                                />
+                              ) : null}
                             </View>
                             <Ionicons
                               name={active && playing ? "pause-circle" : "play-circle-outline"}
@@ -1732,6 +1794,31 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
   queueRowText: { flex: 1, minWidth: 0 },
+  queueLyricsBox: {
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderLeftWidth: 2,
+    borderLeftColor: "#ec1970",
+    backgroundColor: "#301c2a",
+    gap: 5,
+  },
+  queueLyricsCurrent: {
+    color: "#ffffff",
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: "700",
+  },
+  queueLyricsNext: {
+    color: "#d1d5db",
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  queueLyricsStatus: {
+    color: "#d1d5db",
+    fontSize: 12,
+    lineHeight: 18,
+  },
   queueThumbnail: {
     width: 76,
     height: 43,
