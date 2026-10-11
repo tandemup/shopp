@@ -26,6 +26,7 @@ import { parseYouTubeUrl } from "@/src/services/urlSafety";
 import { ROUTES } from "@/src/navigation/ROUTES";
 import { makePlaylistBackupV2 } from "@/src/services/playlistBackupV2";
 import { savePlaylistArchive } from "@/src/services/playlistArchiveZip";
+import { readPlaylistImportAsset } from "@/src/services/playlistArchiveImport";
 import { validatePlaylistBackupV2, importPlaylistBackupV2 } from "@/src/services/playlistImportV2";
 import { stagePlaylistBackupV2Locally } from "@/src/services/stagePlaylistsLocally";
 
@@ -1144,8 +1145,7 @@ export default function PlayListScreen() {
     setImporting(true);
     try {
       if (!asset?.uri) return;
-      const response = await fetch(asset.uri);
-      const payload = JSON.parse(await response.text());
+      const payload = await readPlaylistImportAsset(asset);
       if (!isTutorialStyle && payload?.version === 2) {
         if (importMode === "replace") {
           throw new Error("Por seguridad, reemplazar desde JSON v2 está desactivado hasta disponer de una restauración local transaccional. Selecciona Combinar: no elimina las playlists existentes.");
@@ -1268,15 +1268,13 @@ export default function PlayListScreen() {
     if (Platform.OS !== "web" || isTutorialStyle || stagingLocal) return;
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ["application/json", "text/json", "text/plain"],
+        type: ["application/json", "text/json", "text/plain", "application/zip", "application/x-zip-compressed", ".zip"],
         copyToCacheDirectory: true, multiple: false,
       });
       const asset = result.assets?.[0];
       if (result.canceled || !asset?.uri) return;
       setStagingLocal(true);
-      const response = await fetch(asset.uri);
-      if (!response.ok) throw new Error("No se pudo leer el archivo JSON.");
-      const payload = JSON.parse(await response.text());
+      const payload = await readPlaylistImportAsset(asset);
       const report = await stagePlaylistBackupV2Locally(payload, isClassical ? "classical" : "playlist");
       safeAlert("Copia local verificada", `${report.verifiedCount} playlists, ${report.verifiedTracks} elementos y ${report.verifiedLyrics} letras LRC únicas comprobadas en IndexedDB. Convex sigue siendo el origen activo; no se eliminó ningún dato.`);
     } catch (error) {
@@ -1289,7 +1287,7 @@ export default function PlayListScreen() {
   const importJson = useCallback(async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ["application/json", "text/json", "text/plain"],
+        type: ["application/json", "text/json", "text/plain", "application/zip", "application/x-zip-compressed", ".zip"],
         copyToCacheDirectory: true,
         multiple: false,
       });

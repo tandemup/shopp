@@ -122,6 +122,62 @@ function SyncedLyricLine({ track, uri, time, compact = false }) {
   );
 }
 
+
+function trackHasLyricsReference(track) {
+  return Boolean(
+    track?.lyricsFileName ||
+      track?.lyricsStorageId ||
+      track?.lyricsUri ||
+      track?.lyricsUrl ||
+      track?.lyricsKey ||
+      track?.hasLyrics,
+  );
+}
+
+function LyricsAvailabilityMark({ track }) {
+  const [available, setAvailable] = useState(trackHasLyricsReference(track));
+
+  useEffect(() => {
+    let cancelled = false;
+    const initial = trackHasLyricsReference(track);
+    setAvailable(initial);
+    if (initial) return () => {
+      cancelled = true;
+    };
+    (async () => {
+      try {
+        const local = await getLocalLyrics(track);
+        if (!cancelled && String(local?.text || "").trim()) {
+          setAvailable(true);
+        }
+      } catch {
+        // Si no hay letra local, la marca no se muestra.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    track?.videoId,
+    track?.playlistId,
+    track?.url,
+    track?.lyricsFileName,
+    track?.lyricsStorageId,
+    track?.lyricsUri,
+    track?.lyricsUrl,
+    track?.lyricsKey,
+    track?.hasLyrics,
+  ]);
+
+  if (!available) return null;
+
+  return (
+    <View style={styles.lyricsMark}>
+      <Ionicons name="musical-note" size={10} color="#facc15" />
+    </View>
+  );
+}
+
 function QueueLyricsPreview({ track, uri, time }) {
   const [lines, setLines] = useState([]);
   useEffect(() => {
@@ -274,6 +330,9 @@ export default function PlaybackProvider({ children }) {
   const [expanded, setExpanded] = useState(true);
   // Desktop layout: one vertical column or two side-by-side columns.
   const [desktopColumns, setDesktopColumns] = useState(2);
+  // Altura medida del cuerpo del reproductor. Evita diferencias de cálculo
+  // de flexBasis entre Chrome (Blink) y Safari (WebKit).
+  const [twoColumnBodyHeight, setTwoColumnBodyHeight] = useState(0);
   // Tamaño del vídeo cuando usamos el layout de una sola columna.
   const [desktopVideoSize, setDesktopVideoSize] = useState("medium");
   const [repeat, setRepeat] = useState(false);
@@ -718,7 +777,17 @@ export default function PlaybackProvider({ children }) {
               </View>
             ) : null}
             <View
-              onLayout={logLayout("expandedBody")}
+              onLayout={(event) => {
+                logLayout("expandedBody")(event);
+                if (twoColumnDesktop) {
+                  const measured = Math.round(event.nativeEvent.layout.height);
+                  if (measured > 0) {
+                    setTwoColumnBodyHeight((previous) =>
+                      previous === measured ? previous : measured,
+                    );
+                  }
+                }
+              }}
               style={[
                 styles.body,
                 expanded && styles.expandedBody,
@@ -772,6 +841,10 @@ export default function PlaybackProvider({ children }) {
                     twoColumnDesktop && styles.trackList,
                     twoColumnDesktop && styles.desktopTrackList,
                     twoColumnDesktop && styles.desktopTrackListTwoColumns,
+                    twoColumnDesktop && twoColumnBodyHeight > 0 && {
+                      height: twoColumnBodyHeight,
+                      flex: 0,
+                    },
                   ]}
                   {...(!twoColumnDesktop
                     ? {
@@ -1165,6 +1238,10 @@ export default function PlaybackProvider({ children }) {
                     style={[
                       styles.queueSection,
                       twoColumnDesktop && styles.queueSectionTwoColumns,
+                      twoColumnDesktop && twoColumnBodyHeight > 0 && {
+                        height: Math.max(100, twoColumnBodyHeight - 18),
+                        flex: 0,
+                      },
                     ]}
                   >
                     <ScrollView
@@ -1188,6 +1265,10 @@ export default function PlaybackProvider({ children }) {
                           ? { maxHeight: queueRowsMaxHeight }
                           : null,
                         twoColumnDesktop && styles.queueRowsScrollTwoColumns,
+                        twoColumnDesktop && twoColumnBodyHeight > 0 && {
+                          height: Math.max(80, twoColumnBodyHeight - 18),
+                          flex: 0,
+                        },
                         oneColumnDesktop && styles.queueRowsScrollOneColumn,
                       ]}
                       contentContainerStyle={styles.queueRows}
@@ -1242,9 +1323,12 @@ export default function PlaybackProvider({ children }) {
                               )}
                             </View>
                             <View style={styles.queueRowText}>
-                              <Text style={styles.queueRowTitle} numberOfLines={1}>
-                                {itemTitle}
-                              </Text>
+                              <View style={styles.queueRowTitleLine}>
+                                <Text style={styles.queueRowTitle} numberOfLines={1}>
+                                  {itemTitle}
+                                </Text>
+                                <LyricsAvailabilityMark track={item} />
+                              </View>
                               <Text style={styles.queueRowMeta}>
                                 {active
                                   ? playing
@@ -1660,11 +1744,9 @@ const styles = StyleSheet.create({
   desktopTrackListOneColumn: { maxWidth: 900 },
   desktopTrackListTwoColumns: {
     maxWidth: "100%",
-    flex: 1,
-    flexBasis: 0,
     minHeight: 0,
     paddingTop: 10,
-    paddingBottom: 10,
+    paddingBottom: 0,
   },
   mobileVideoFrame: {
     width: "100%",
@@ -1680,8 +1762,7 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
   queueSectionTwoColumns: {
-    flex: 1,
-    flexBasis: 0,
+    width: "100%",
     maxWidth: "100%",
     minHeight: 0,
     overflow: "hidden",
@@ -1715,8 +1796,6 @@ const styles = StyleSheet.create({
   queueRowsScrollTwoColumns: {
     width: "100%",
     minHeight: 0,
-    flex: 1,
-    flexBasis: 0,
     ...Platform.select({
       web: {
         overflowY: "auto",
