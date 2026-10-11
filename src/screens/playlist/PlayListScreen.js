@@ -25,6 +25,7 @@ import { safeAlert, safeConfirm } from "@/src/components/ui/alert/safeAlert";
 import { parseYouTubeUrl } from "@/src/services/urlSafety";
 import { ROUTES } from "@/src/navigation/ROUTES";
 import { makePlaylistBackupV2 } from "@/src/services/playlistBackupV2";
+import { savePlaylistArchive } from "@/src/services/playlistArchiveZip";
 import { validatePlaylistBackupV2, importPlaylistBackupV2 } from "@/src/services/playlistImportV2";
 import { stagePlaylistBackupV2Locally } from "@/src/services/stagePlaylistsLocally";
 
@@ -1017,17 +1018,16 @@ export default function PlayListScreen() {
   const exportPlaylist = useCallback(
     async (item, fileName) => {
       try {
-        await saveJsonFile(
-          jsonFileName(fileName, safeFileName(item.title)),
-          isTutorialStyle
-            ? toExportedPlaylist(item, exportItemType)
-            : await makePlaylistBackupV2([item], exportItemType, { single: true }),
-        );
+        const payload = isTutorialStyle
+          ? toExportedPlaylist(item, exportItemType)
+          : await makePlaylistBackupV2([item], exportItemType, { single: true });
+        if (isTutorialStyle) {
+          await saveJsonFile(jsonFileName(fileName, safeFileName(item.title)), payload);
+        } else {
+          await savePlaylistArchive(payload, fileName || safeFileName(item.title));
+        }
       } catch (error) {
-        safeAlert(
-          "No se pudo exportar",
-          error?.message || "Inténtalo de nuevo.",
-        );
+        safeAlert("No se pudo exportar", error?.message || "Inténtalo de nuevo.");
       }
     },
     [exportItemType, isTutorialStyle],
@@ -1053,7 +1053,11 @@ export default function PlayListScreen() {
               playlists: playlists.map((item) => toExportedPlaylist(item, exportItemType)),
             }
           : await makePlaylistBackupV2(playlists, exportType);
-        await saveJsonFile(jsonFileName(fileName, defaultExportName), payload);
+        if (isTutorialStyle) {
+          await saveJsonFile(jsonFileName(fileName, defaultExportName), payload);
+        } else {
+          await savePlaylistArchive(payload, fileName || defaultExportName);
+        }
       } catch (error) {
         safeAlert(
           "No se pudo exportar",

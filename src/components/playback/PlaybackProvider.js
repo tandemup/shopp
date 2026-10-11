@@ -124,17 +124,14 @@ function SyncedLyricLine({ track, uri, time, compact = false }) {
 
 function QueueLyricsPreview({ track, uri, time }) {
   const [lines, setLines] = useState([]);
-  const [hasSource, setHasSource] = useState(Boolean(uri));
   useEffect(() => {
     let cancelled = false;
     setLines([]);
-    setHasSource(Boolean(uri));
     (async () => {
       try {
         const local = await getLocalLyrics(track);
         if (cancelled) return;
         if (local?.text != null) {
-          setHasSource(true);
           setLines(parseLrc(local.text));
           return;
         }
@@ -142,12 +139,11 @@ function QueueLyricsPreview({ track, uri, time }) {
           const response = await fetch(uri);
           const source = response.ok ? await response.text() : "";
           if (!cancelled) {
-            setHasSource(true);
             setLines(parseLrc(source));
           }
         }
       } catch {
-        if (!cancelled) setHasSource(Boolean(uri));
+        // Una letra inaccesible no genera ningún aviso dentro de la pista.
       }
     })();
     return () => {
@@ -160,21 +156,8 @@ function QueueLyricsPreview({ track, uri, time }) {
     if (line.time <= time + 0.08) activeIndex = i;
   });
   const currentLine = activeIndex >= 0 ? lines[activeIndex] : lines[0];
-  if (!hasSource) {
-    return (
-      <View style={styles.queueLyricsBox}>
-        <Text style={styles.queueLyricsStatus}>Sin letra disponible</Text>
-      </View>
-    );
-  }
-
-  if (!lines.length) {
-    return (
-      <View style={styles.queueLyricsBox}>
-        <Text style={styles.queueLyricsStatus}>Archivo LRC sin líneas sincronizadas</Text>
-      </View>
-    );
-  }
+  // Sin líneas LRC válidas, la tarjeta mantiene su altura normal.
+  if (!lines.length || !currentLine?.text?.trim()) return null;
 
   return (
     <View style={styles.queueLyricsBox}>
@@ -1796,18 +1779,18 @@ const styles = StyleSheet.create({
   queueRowText: { flex: 1, minWidth: 0 },
   queueLyricsBox: {
     marginTop: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
     borderLeftWidth: 2,
-    borderLeftColor: "#ec1970",
+    borderLeftColor: "#facc15",
     backgroundColor: "#301c2a",
-    gap: 5,
   },
   queueLyricsCurrent: {
-    color: "#ffffff",
+    color: "#facc15",
     fontSize: 15,
-    lineHeight: 21,
-    fontWeight: "700",
+    lineHeight: 22,
+    fontStyle: "italic",
+    fontWeight: "600",
   },
   queueLyricsNext: {
     color: "#d1d5db",

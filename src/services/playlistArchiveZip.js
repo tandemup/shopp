@@ -1,0 +1,134 @@
+// Portable, uncompressed ZIP of a complete Shopp JSON v2 backup and .lrc files.
+// No external ZIP dependency; original IndexedDB/Convex data remains untouched.
+import { Platform } from "react-native";
+import * as Sharing from "expo-sharing";
+
+function safeName(name) {
+  return (String(name || "lyrics")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/^\.+/, "")
+    .slice(0, 90) || "lyrics");
+}
+function bytes(value) { return new TextEncoder().encode(value); }
+function u16(out, offset, n) { out[offset] = n & 255; out[offset + 1] = (n >>> 8) & 255; }
+function u32(out, offset, n) {
+  out[offset] = n & 255; out[offset + 1] = (n >>> 8) & 255;
+  out[offset + 2] = (n >>> 16) & 255; out[offset + 3] = (n >>> 24) & 255;
+}
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let i = 0; i < 8; i++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+function crc32(data) {
+  let c = 0xffffffff;
+  for (const b of data) c = CRC_TABLE[(c ^ b) & 255] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+function makeZip(entries) {
+  const locals = [], centrals = [];
+  let offset = 0;
+  for (const [path, value] of entries) {
+    const filename = bytes(path), content = bytes(value), crc = crc32(content);
+    const local = new Uint8Array(30 + filename.length + content.length);
+    u32(local, 0, 0x04034b50); u16(local, 4, 20); u16(local, 6, 0x0800);
+    u32(local, 14, crc); u32(local, 18, content.length); u32(local, 22, content.length);
+    u16(local, 26, filename.length); local.set(filename, 30);
+    local.set(content, 30 + filename.length);
+    const central = new Uint8Array(46 + filename.length);
+    u32(central, 0, 0x02014b50); u16(central, 4, 20); u16(central, 6, 20);
+    u16(central, 8, 0x0800); u32(central, 16, crc);
+    u32(central, 20, content.length); u32(central, 24, content.length);
+    u16(central, 28, filename.length); u32(central, 42, offset);
+    central.set(filename, 46);
+    locals.push(local); centrals.push(central); offset += local.length;
+  }
+  const centralSize = centrals.reduce((n, e) => n + e.length, 0);
+  const result = new Uint8Array(offset + centralSize + 22);
+  let pos = 0;
+  for (const segment of [...locals, ...centrals]) {
+    result.set(segment, pos); pos += segment.length;
+  }
+  u32(result, pos, 0x06054b50); u16(result, pos + 8, entries.length);
+  u16(result, pos + 10, entries.length); u32(result, pos + 12, centralSize);
+  u32(result, pos + 16, offset);
+  return result;
+}
+function asBase64(buffer) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let result = "";
+  for (let i = 0; i < buffer.length; i += 3) {
+    const a = buffer[i], b = buffer[i + 1], c = buffer[i + 2];
+    result += alphabet[a >>> 2] + alphabet[((a & 3) << 4) | ((b || 0) >>> 4)] +
+      (i + 1 < buffer.length ? alphabet[((b & 15) << 2) | ((c || 0) >>> 6)] : "=") +
+      (i + 2 < buffer.length ? alphabet[c & 63] : "=");
+  }
+  return result;
+}
+
+export function makePlaylistArchive(backup) {
+  if (backup?.version !== 2 || backup?.backupStatus !== "complete") {
+    throw new Error("Se necesita una copia JSON v2 completa.");
+  }
+  const playlists = Array.isArray(backup.playlists) ? backup.playlists : [backup];
+  const entries = [["playlist.json", JSON.stringify(backup, null, 2)]];
+  const used = new Set();
+  let count = 0;
+  for (const [pIndex, playlist] of playlists.entries()) {
+    for (const [tIndex, track] of (playlist.tracks || []).entries()) {
+      const lrc = track.lyricsBackup;
+      if (!lrc || typeof lrc.text !== "string") continue;
+      const requested = safeName(lrc.fileName || track.lyricsFileName || track.title);
+      const filename = requested.toLowerCase().endsWith(".lrc") ? requested : `${requested}.lrc`;
+      const prefix = `${String(pIndex + 1).padStart(3, "0")}-${safeName(playlist.title)}_`;
+      const unique = `${prefix}${String(tIndex + 1).padStart(3, "0")}-${filename}`;
+      let path = `lyrics/${unique}`;
+      let suffix = 2;
+      while (used.has(path)) path = `lyrics/${suffix++}-${unique}`;
+      used.add(path);
+      entries.push([path, lrc.text]);
+      count += 1;
+    }
+  }
+  if (count !== backup.lyricsEntries) {
+    throw new Error("El número de letras LRC no coincide con el respaldo. No se exportará una copia incompleta.");
+  }
+  return { buffer: makeZip(entries), lyricsCount: count };
+}
+
+export async function savePlaylistArchive(backup, filename) {
+  const { buffer, lyricsCount } = makePlaylistArchive(backup);
+  const name = `${String(filename || "playlist").replace(/\.(json|zip)$/i, "")}.zip`;
+  if (Platform.OS === "web") {
+    const blob = new Blob([buffer], { type: "application/zip" });
+    if (typeof window.showSaveFilePicker === "function") {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: name,
+          types: [{ description: "Archivo ZIP", accept: { "application/zip": [".zip"] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob); await writable.close();
+        return { filename: name, lyricsCount };
+      } catch (error) {
+        if (error?.name === "AbortError") return { filename: null, lyricsCount: 0, cancelled: true };
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url; anchor.download = name;
+    document.body.appendChild(anchor); anchor.click(); anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } else {
+    const FileSystem = await import("expo-file-system/legacy");
+    const uri = `${FileSystem.cacheDirectory}${name}`;
+    await FileSystem.writeAsStringAsync(uri, asBase64(buffer), {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    if (!(await Sharing.isAvailableAsync())) throw new Error("No se puede compartir este ZIP en el dispositivo.");
+    await Sharing.shareAsync(uri, { mimeType: "application/zip", UTI: "public.zip-archive", dialogTitle: name });
+  }
+  return { filename: name, lyricsCount };
+}
