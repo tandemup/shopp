@@ -447,20 +447,33 @@ export default function PlaybackProvider({ children }) {
   const albumIndex = status.playlistIndex || 0;
   // Responsive breakpoints: iPad/tablets get their own layout instead of
   // jumping between the phone and desktop designs when the device rotates.
-  const tablet = expanded && width >= 768 && width < 1200;
-  const tabletLandscape = tablet && width > height;
+  // Al reducir el umbral a 1050 px, Chrome entraba en el layout de
+  // escritorio con una ventana demasiado estrecha y solapaba la lista con
+  // la cabecera. Reservamos ese layout para ventanas web amplias.
+  const desktopBreakpoint = Platform.OS === "web" ? 1280 : 1200;
+  const tablet = expanded && width >= 768 && width < desktopBreakpoint;
+  const desktop = expanded && width >= desktopBreakpoint;
+  // El selector también se ofrece en la ventana de laptop, pero en ese rango
+  // se usa el layout de tableta (más estable en Chrome), NO el de escritorio.
+  const tabletColumnSelector = Platform.OS === "web" && tablet && width >= 950;
+  const showColumnSelector = desktop || tabletColumnSelector;
+  // Chrome puede entrar en el rango "tableta" pese a ser una ventana de laptop.
+  // En 1 columna necesita la misma anchura centrada y un scroll de lista real.
+  const tabletOneColumn = tabletColumnSelector && desktopColumns === 1;
+  const tabletLandscape = tablet && width > height &&
+    (!tabletColumnSelector || desktopColumns === 2);
   const tabletPortrait = tablet && !tabletLandscape;
-  const desktop = expanded && width >= 1200;
   const mediaLayout = desktop || tablet;
   const oneColumnDesktop = desktop && desktopColumns === 1;
   const twoColumnDesktop = desktop && desktopColumns === 2;
+  const oneColumnLayout = oneColumnDesktop || tabletOneColumn;
   // Safari iOS necesita un único ScrollView vertical en las pantallas
   // móviles. Un ScrollView interior deshabilitado puede interceptar gestos
   // táctiles aunque la columna exterior permita desplazarse.
   // En landscape de tableta y en dos columnas ya usamos el panel exterior
   // como superficie de scroll; solo el escritorio de una columna necesita
   // el ScrollView interno independiente de las pistas.
-  const queueHasOwnScroll = oneColumnDesktop;
+  const queueHasOwnScroll = oneColumnLayout;
 
   // El reproductor compartido conserva controles compactos y de tamaño fijo.
   // El ancho de la columna puede crecer con la ventana, pero las imágenes,
@@ -617,7 +630,9 @@ export default function PlaybackProvider({ children }) {
   // derecho puede colapsar su contentContainer a la altura del contenido y
   // dejar una franja vacía debajo. Un View normal permite que flex: 1 se
   // propague desde expandedBody hasta la lista de pistas.
-  const TrackPaneComponent = twoColumnDesktop ? View : ScrollView;
+  // En Chrome (ancho tipo tableta, 1 col) el panel debe ser View, NO
+  // ScrollView: el único scroller estará dentro de la lista de canciones.
+  const TrackPaneComponent = twoColumnDesktop || tabletOneColumn ? View : ScrollView;
   const QueueRowsComponent = queueHasOwnScroll ? ScrollView : View;
 
   // DIAGNÓSTICO TEMPORAL DEL LAYOUT
@@ -722,7 +737,7 @@ export default function PlaybackProvider({ children }) {
                   }
                 />
               ) : null}
-              {desktop ? (
+              {showColumnSelector ? (
                 <View style={styles.desktopColumnSelector}>
                   <Pressable
                     accessibilityRole="button"
@@ -792,6 +807,7 @@ export default function PlaybackProvider({ children }) {
                 tablet && styles.tabletBody,
                 tabletPortrait && styles.tabletBodyPortrait,
                 tabletLandscape && styles.tabletBodyLandscape,
+                tabletOneColumn && styles.tabletBodyOneColumn,
                 oneColumnDesktop && styles.desktopBodyOneColumn,
                 twoColumnDesktop && styles.desktopBodyTwoColumns,
               ]}
@@ -813,7 +829,7 @@ export default function PlaybackProvider({ children }) {
                         style={[
                           styles.desktopVideoFrame,
                           tablet && styles.tabletVideoFrame,
-                          oneColumnDesktop && { width: oneColumnVideoWidth },
+                          oneColumnLayout && { width: oneColumnVideoWidth },
                         ]}
                       >
                         <YouTubeSurface
@@ -841,6 +857,8 @@ export default function PlaybackProvider({ children }) {
                     tablet && styles.tabletTrackPane,
                     tabletPortrait && styles.tabletTrackPanePortrait,
                     tabletLandscape && styles.tabletTrackPaneLandscape,
+                    tabletOneColumn && styles.tabletTrackPaneOneColumn,
+                    tabletOneColumn && { width: oneColumnVideoWidth, maxWidth: oneColumnVideoWidth },
                     desktop && styles.desktopTrackPane,
                     oneColumnDesktop && styles.desktopTrackPaneOneColumn,
                     oneColumnDesktop && { width: oneColumnVideoWidth, maxWidth: oneColumnVideoWidth },
@@ -850,8 +868,12 @@ export default function PlaybackProvider({ children }) {
                     twoColumnDesktop && styles.desktopTrackList,
                     twoColumnDesktop && styles.desktopTrackListTwoColumns,
                     twoColumnDesktop && styles.desktopTrackPaneNativeScroll,
+                    // En modo tableta/1 columna: cola centrada dentro de un
+                    // View acotado; solo su ScrollView interno tiene overflow.
+                    tabletOneColumn && styles.trackList,
+                    tabletOneColumn && styles.tabletTrackList,
                   ]}
-                  {...(!twoColumnDesktop
+                  {...(!(twoColumnDesktop || tabletOneColumn)
                     ? {
                         contentContainerStyle: [
                           styles.trackList,
@@ -874,7 +896,7 @@ export default function PlaybackProvider({ children }) {
                       }
                     : {})}
                 >
-                  {oneColumnDesktop ? (
+                  {oneColumnLayout ? (
                     <View style={styles.videoSizeSelectorRow}>
                       <Text style={styles.videoSizeSelectorLabel}>TAMAÑO DEL VÍDEO</Text>
                       <View style={styles.videoSizeSelector}>
@@ -1233,6 +1255,7 @@ export default function PlaybackProvider({ children }) {
                     style={[
                       styles.queueSection,
                       twoColumnDesktop && styles.queueSectionTwoColumns,
+                      tabletOneColumn && styles.queueSectionTabletOneColumn,
                     ]}
                   >
                     <QueueRowsComponent
@@ -1240,18 +1263,22 @@ export default function PlaybackProvider({ children }) {
                       style={[
                         styles.queueRowsScroll,
                         !queueHasOwnScroll && styles.queueRows,
-                        mediaLayout && queueHasOwnScroll
+                        // El layout de laptop/Chrome necesita aprovechar
+                        // TODO el alto restante; el maxHeight heredado de
+                        // tabletPortrait limitaba la lista a ~260 px.
+                        mediaLayout && queueHasOwnScroll && !tabletOneColumn
                           ? { maxHeight: queueRowsMaxHeight }
                           : null,
                         (twoColumnDesktop || tabletLandscape) && styles.queueRowsScrollTwoColumns,
-                        oneColumnDesktop && styles.queueRowsScrollOneColumn,
+                        oneColumnLayout && styles.queueRowsScrollOneColumn,
+                        tabletOneColumn && styles.queueRowsScrollTabletOneColumn,
                       ]}
                       {...(!queueHasOwnScroll
                         ? {}
                         : {
                             contentContainerStyle: styles.queueRows,
                             nestedScrollEnabled: true,
-                            scrollEnabled: mediaLayout && session.tracks.length > 5,
+                            scrollEnabled: tabletOneColumn || (mediaLayout && session.tracks.length > 5),
                             showsVerticalScrollIndicator: false,
                             keyboardShouldPersistTaps: "handled",
                           })}
@@ -1385,7 +1412,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#29292d",
   },
-  expanded: { top: 0, left: 0, right: 0, bottom: 0 },
+  // Contiene los hijos dentro del modal: evita que el contenido del
+  // ScrollView aparezca por debajo de su borde en Chrome.
+  expanded: { top: 0, left: 0, right: 0, bottom: 0, overflow: "hidden" },
   mini: {
     right: 8,
     shadowColor: "#000",
@@ -1415,6 +1444,49 @@ const styles = StyleSheet.create({
     color: "#ef4444",
   },
   title: { fontSize: 14, fontWeight: "800", color: "#f9fafb" },
+  // Antes faltaban estos estilos: los controles de tamaño se apilaban
+  // verticalmente sin contraste y separaban el vídeo de la lista.
+  videoSizeSelectorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    minHeight: 30,
+    paddingVertical: 2,
+    marginBottom: 3,
+  },
+  videoSizeSelectorLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#a1a1aa",
+  },
+  videoSizeSelector: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  videoSizeSelectorButton: {
+    paddingHorizontal: 10,
+    height: 27,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#3f3f46",
+    borderRadius: 5,
+    backgroundColor: "#18181b",
+  },
+  videoSizeSelectorButtonActive: {
+    borderColor: "#ec1970",
+    backgroundColor: "#591632",
+  },
+  videoSizeSelectorText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#d4d4d8",
+  },
+  videoSizeSelectorTextActive: {
+    color: "#ffffff",
+  },
   desktopColumnSelector: {
     flexDirection: "row",
     alignItems: "center",
@@ -1471,6 +1543,10 @@ const styles = StyleSheet.create({
     flexDirection: "column",
     alignItems: "center",
   },
+  tabletBodyOneColumn: {
+    minHeight: 0,
+    overflow: "hidden",
+  },
   tabletBodyLandscape: {
     flexDirection: "row",
     alignItems: "stretch",
@@ -1504,6 +1580,13 @@ const styles = StyleSheet.create({
     maxWidth: 720,
     flex: 1,
   },
+  tabletTrackPaneOneColumn: {
+    flex: 1,
+    minHeight: 0,
+    alignSelf: "center",
+    overflow: "hidden",
+    ...Platform.select({ web: { overflowY: "hidden", overflowX: "hidden" } }),
+  },
   tabletTrackPaneLandscape: {
     flex: 1,
     width: "49%",
@@ -1527,6 +1610,7 @@ const styles = StyleSheet.create({
   desktopBodyOneColumn: {
     flexDirection: "column",
     alignItems: "center",
+    gap: 6,
   },
   desktopBodyTwoColumns: {
     flexDirection: "row",
@@ -1542,7 +1626,7 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 900,
     flexShrink: 0,
-    paddingTop: 14,
+    paddingTop: 8,
   },
   desktopVideoPaneTwoColumns: {
     flex: 1,
@@ -1565,7 +1649,7 @@ const styles = StyleSheet.create({
   desktopTrackPaneOneColumn: {
     flex: 1,
     alignSelf: "center",
-    marginTop: 2,
+    marginTop: 0,
   },
   desktopTrackPaneTwoColumns: {
     flex: 1,
@@ -1732,7 +1816,7 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     gap: 10,
   },
-  desktopTrackListOneColumn: { maxWidth: 900 },
+  desktopTrackListOneColumn: { maxWidth: 900, paddingTop: 2, gap: 6 },
   desktopTrackListTwoColumns: {
     maxWidth: "100%",
     minHeight: 0,
@@ -1774,6 +1858,12 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
     minHeight: 0,
   },
+  queueSectionTabletOneColumn: {
+    flex: 1,
+    minHeight: 0,
+    maxWidth: "100%",
+    overflow: "hidden",
+  },
   queueSectionHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -1799,6 +1889,16 @@ const styles = StyleSheet.create({
   },
   queueRowsScrollOneColumn: {
     width: "100%",
+  },
+  queueRowsScrollTabletOneColumn: {
+    flex: 1,
+    minHeight: 0,
+    ...Platform.select({ web: {
+      overflowY: "auto",
+      overflowX: "hidden",
+      overscrollBehaviorY: "contain",
+      WebkitOverflowScrolling: "touch",
+    } }),
   },
   queueRowsScrollTwoColumns: {
     width: "100%",
@@ -1858,6 +1958,20 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
   queueRowText: { flex: 1, minWidth: 0 },
+  // La marca LRC comparte fila con el título; evita aumentar la tarjeta.
+  queueRowTitleLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minWidth: 0,
+  },
+  lyricsMark: {
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   queueLyricsBox: {
     marginTop: 8,
     paddingVertical: 11,
@@ -1902,6 +2016,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#334155",
   },
   queueRowTitle: {
+    flexShrink: 1,
     fontSize: 14,
     lineHeight: 18,
     fontWeight: "800",
