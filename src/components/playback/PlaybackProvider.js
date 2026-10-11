@@ -125,11 +125,13 @@ function SyncedLyricLine({ track, uri, time, compact = false }) {
 function DesktopLyricsPanel({ track, uri, time, title }) {
   const [lines, setLines] = useState([]);
   const [hasSource, setHasSource] = useState(Boolean(uri));
+  const [loading, setLoading] = useState(true);
   const scrollRef = useRef(null);
   useEffect(() => {
     let cancelled = false;
     setLines([]);
     setHasSource(Boolean(uri));
+    setLoading(true);
     (async () => {
       try {
         const local = await getLocalLyrics(track);
@@ -149,6 +151,8 @@ function DesktopLyricsPanel({ track, uri, time, title }) {
         }
       } catch {
         if (!cancelled) setHasSource(Boolean(uri));
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
@@ -176,7 +180,11 @@ function DesktopLyricsPanel({ track, uri, time, title }) {
           </Text>
         </View>
       </View>
-      {!hasSource ? (
+      {loading ? (
+        <View style={styles.desktopLyricsEmpty}>
+          <Text style={styles.desktopLyricsEmptyText}>Cargando letra…</Text>
+        </View>
+      ) : !hasSource ? (
         <View style={styles.desktopLyricsEmpty}>
           <Ionicons name="musical-notes-outline" size={28} color="#52525b" />
           <Text style={styles.desktopLyricsEmptyTitle}>
@@ -188,7 +196,7 @@ function DesktopLyricsPanel({ track, uri, time, title }) {
         </View>
       ) : !lines.length ? (
         <View style={styles.desktopLyricsEmpty}>
-          <Text style={styles.desktopLyricsEmptyText}>Cargando letra…</Text>
+          <Text style={styles.desktopLyricsEmptyText}>No se encontraron líneas LRC con marcas de tiempo.</Text>
         </View>
       ) : (
         <ScrollView
@@ -701,6 +709,14 @@ export default function PlaybackProvider({ children }) {
                           {...playerSurfaceProps}
                         />
                       </View>
+                      {twoColumnDesktop && !session.isTutorial ? (
+                        <DesktopLyricsPanel
+                          track={track}
+                          uri={lyricsUri}
+                          time={status.time || 0}
+                          title={track?.title || session.title}
+                        />
+                      ) : null}
                     </View>
                   ) : null}
                 <TrackPaneComponent
@@ -1443,14 +1459,16 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   desktopLyricsPanel: {
-    flex: 0.92,
-    minWidth: 340,
-    maxWidth: 560,
-    borderLeftWidth: 1,
-    borderLeftColor: "#29292d",
-    paddingLeft: 24,
-    paddingTop: 18,
-    paddingBottom: 18,
+    flex: 1,
+    width: "100%",
+    minWidth: 0,
+    minHeight: 0,
+    marginTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#29292d",
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 12,
   },
   desktopLyricsHeader: {
     minHeight: 66,
