@@ -1,0 +1,280 @@
+{
+  "app": "Shopp",
+  "version": 2,
+  "type": "shopp-youtube-playlists",
+  "exportedAt": "2026-10-11T04:52:41.927Z",
+  "backupStatus": "complete",
+  "lyricsEntries": 0,
+  "playlists": [
+    {
+      "_creationTime": 1791023170024.7148,
+      "_id": "q97f9pxk716d3b050axk94ssbh8fkwhy",
+      "collectionType": "playlist",
+      "createdAt": 1791023170024,
+      "ownerId": "ks77tzxa6vksgke8xj3btj3tnn89xt08",
+      "shareable": true,
+      "title": "Gijón del Alma: 7 videos",
+      "tracks": [
+        {
+          "kind": "single",
+          "title": "Gijón del Alma",
+          "url": "https://www.youtube.com/watch?v=RIl1EUIJhdw",
+          "videoId": "RIl1EUIJhdw"
+        },
+        {
+          "kind": "single",
+          "title": "Gijón del Alma",
+          "url": "https://www.youtube.com/watch?v=GzFqKsLG8L8",
+          "videoId": "GzFqKsLG8L8"
+        },
+        {
+          "kind": "single",
+          "title": "Gijón del Alma",
+          "url": "https://www.youtube.com/watch?v=iB4gfmiqfKw",
+          "videoId": "iB4gfmiqfKw"
+        },
+        {
+          "kind": "single",
+          "title": "Gijón del Alma",
+          "url": "https://www.youtube.com/watch?v=y00GmZU7nbY",
+          "videoId": "y00GmZU7nbY"
+        },
+        {
+          "kind": "single",
+          "title": "Gijón del Alma",
+          "url": "https://www.youtube.com/watch?v=BlyR1E-INfs",
+          "videoId": "BlyR1E-INfs"
+        },
+        {
+          "kind": "single",
+          "title": "Gijón del Alma",
+          "url": "https://www.youtube.com/watch?v=o5pYxY9t49c",
+          "videoId": "o5pYxY9t49c"
+        },
+        {
+          "kind": "single",
+          "title": "Gijón del Alma",
+          "url": "https://www.youtube.com/watch?v=LJueLe4j7yc",
+          "videoId": "LJueLe4j7yc"
+        },
+        {
+          "kind": "single",
+          "title": "Single 8",
+          "url": "https://www.youtube.com/watch?v=9q1sUEYSZmk",
+          "videoId": "9q1sUEYSZmk"
+        },
+        {
+          "kind": "single",
+          "title": "Single 9",
+          "url": "https://www.youtube.com/watch?v=xlqSANowpb0",
+          "videoId": "xlqSANowpb0"
+        },
+        {
+          "kind": "single",
+          "title": "Single 10",
+          "url": "https://www.youtube.com/watch?v=t9STU56p_Xc",
+          "videoId": "t9STU56p_Xc"
+        }
+      ],
+      "updatedAt": 1791389705792
+    },
+    {
+      "_creationTime": 1791023170138.0813,
+      "_id": "q979c5401x8fszkfrz6wqjh9ws8fjyve",
+      "collectionType": "playlist",
+      "createdAt": 1791023170138,
+      "ownerId": "ks77tzxa6vksgke8xj3btj3tnn89xt08",
+      "shareable": true,
+      "title": "Alan Parsons Proyect",
+      "tracks": [
+        {
+          "kind": "single",
+          "title": "Eye in the Sky",
+          "url": "https://www.youtube.com/watch?v=56hqrlQxMMI",
+          "videoId": "56hqrlQxMMI"
+        }
+      ],
+      "updatedAt": 1791054416609
+    },
+    {
+      "_creationTime": 1791054002856.248,
+      "_id": "q9790j5fckmetjn7wyscvrf3318fjh58",
+      "collectionType": "playlist",
+      "createdAt": 1791054002856,
+      "ownerId": "ks77tzxa6vksgke8xj3btj3tnn89xt08",
+      "shareable": true,
+      "title": "Pink Floyd: Wish you were here",
+      "tracks": [
+        {
+          "kind": "single",
+          "title": "Wish you were here",
+          "url": "https://www.youtube.com/watch?v=8UXircX3VdM",
+          "videoId": "8UXircX3VdM"
+        }
+      ],
+      "updatedAt": 1791054007809
+    },
+    {
+      "_creationTime": 1790098826376.9712,
+      "_id": "q975vev4qj0wf4hnxwq3t3zk4x8ew43q",
+      "collectionType": "playlist",
+      "createdAt": 1790098826376,
+      "ownerId": "ks77tzxa6vksgke8xj3btj3tnn89xt08",
+      "shareable": true,
+      "title": "Mis '80",
+      "tracks": [
+        {
+          "kind": "single",
+          "title": "Voyager",
+          "url": "https://www.youtube.com/watch?v=Akclgs4C-Eo",
+          "videoId": "Akclgs4C-Eo"
+        },
+        {
+          "kind": "single",
+          "title": "The Sun always shine on TV",
+          "url": "https://www.youtube.com/watch?v=a3ir9HC9vYg",
+          "videoId": "a3ir9HC9vYg"
+        },
+        {
+          "kind": "single",
+          "title": "Hunting Hi and Low",
+          "url": "https://www.youtube.com/watch?v=s6VaeFCxta8",
+          "videoId": "s6VaeFCxta8"
+        },
+        {
+          "kind": "single",
+          "title": "Time",
+          "url": "https://www.youtube.com/watch?v=zhRzORqNa0E",
+          "videoId": "zhRzORqNa0E"
+        },
+        {
+          "kind": "single",
+          "title": "Bette Davis Eyes",
+          "url": "https://www.youtube.com/watch?v=EPOIS5taqA8",
+          "videoId": "EPOIS5taqA8"
+        },
+        {
+          "kind": "single",
+          "title": "Woman",
+          "url": "https://www.youtube.com/watch?v=cZExm8vKwcY",
+          "videoId": "cZExm8vKwcY"
+        },
+        {
+          "kind": "single",
+          "title": "Eye in the Sky",
+          "url": "https://www.youtube.com/watch?v=56hqrlQxMMI",
+          "videoId": "56hqrlQxMMI"
+        },
+        {
+          "kind": "single",
+          "title": "The Police - Every Breath You Take",
+          "url": "https://www.youtube.com/watch?v=OMOGaugKpzs",
+          "videoId": "OMOGaugKpzs"
+        },
+        {
+          "kind": "single",
+          "title": "Don't Answer Me",
+          "url": "https://www.youtube.com/watch?v=lmGOErHweCY",
+          "videoId": "lmGOErHweCY"
+        },
+        {
+          "kind": "single",
+          "title": "Imagination",
+          "url": "https://www.youtube.com/watch?v=uY4cVhXxW64",
+          "videoId": "uY4cVhXxW64"
+        }
+      ],
+      "updatedAt": 1791044205788
+    },
+    {
+      "_creationTime": 1791027669050.2988,
+      "_id": "q976ssdp573d5p96f925yx9pz98fkph2",
+      "collectionType": "playlist",
+      "createdAt": 1791027669050,
+      "ownerId": "ks77tzxa6vksgke8xj3btj3tnn89xt08",
+      "shareable": true,
+      "title": "Album Oficial: Gijón del alma",
+      "tracks": [
+        {
+          "kind": "single",
+          "title": "Paraiso natural",
+          "url": "https://www.youtube.com/watch?v=e0yaxR50Hq0",
+          "videoId": "e0yaxR50Hq0"
+        },
+        {
+          "kind": "single",
+          "title": "Los marineros",
+          "url": "https://www.youtube.com/watch?v=LOZ3A5ZpwZQ",
+          "videoId": "LOZ3A5ZpwZQ"
+        },
+        {
+          "kind": "single",
+          "title": "Gijón del alma",
+          "url": "https://www.youtube.com/watch?v=j4ukOpCxAN0",
+          "videoId": "j4ukOpCxAN0"
+        },
+        {
+          "kind": "single",
+          "title": "La carolina",
+          "url": "https://www.youtube.com/watch?v=Ma4f6s3TMMc",
+          "videoId": "Ma4f6s3TMMc"
+        },
+        {
+          "kind": "single",
+          "title": "Campo asturiano",
+          "url": "https://www.youtube.com/watch?v=DA_OrCx0--M",
+          "videoId": "DA_OrCx0--M"
+        },
+        {
+          "kind": "single",
+          "title": "La santina",
+          "url": "https://www.youtube.com/watch?v=H5ksW0GJmtI",
+          "videoId": "H5ksW0GJmtI"
+        },
+        {
+          "kind": "single",
+          "title": "La cabraliega",
+          "url": "https://www.youtube.com/watch?v=_e6PztPaHpA",
+          "videoId": "_e6PztPaHpA"
+        },
+        {
+          "kind": "single",
+          "title": "Paso doble asturianu",
+          "url": "https://www.youtube.com/watch?v=yNxtvKIDgCU",
+          "videoId": "yNxtvKIDgCU"
+        },
+        {
+          "kind": "single",
+          "title": "La montaña",
+          "url": "https://www.youtube.com/watch?v=MLu_Kk8DyzM",
+          "videoId": "MLu_Kk8DyzM"
+        },
+        {
+          "kind": "single",
+          "title": "La capitana",
+          "url": "https://www.youtube.com/watch?v=YqD80T7Y4f8",
+          "videoId": "YqD80T7Y4f8"
+        }
+      ],
+      "updatedAt": 1791044186345
+    },
+    {
+      "_creationTime": 1790708425683.2612,
+      "_id": "q97bk83j4nz0y7avapqsq9bfns8fb8yr",
+      "collectionType": "playlist",
+      "createdAt": 1790708425683,
+      "ownerId": "ks77tzxa6vksgke8xj3btj3tnn89xt08",
+      "shareable": true,
+      "title": "a-ha",
+      "tracks": [
+        {
+          "kind": "single",
+          "title": "The Sun always shine on TV",
+          "url": "https://www.youtube.com/watch?v=a3ir9HC9vYg",
+          "videoId": "a3ir9HC9vYg"
+        }
+      ],
+      "updatedAt": 1791029336035
+    }
+  ]
+}

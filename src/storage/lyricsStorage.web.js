@@ -1,5 +1,5 @@
 const DB_NAME = "shopp-local-storage";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "entries";
 const PREFIX = "@shopping/playlist-lyrics/";
 
@@ -13,6 +13,11 @@ function openDb() {
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
+      if (!db.objectStoreNames.contains("playlists")) {
+        const store = db.createObjectStore("playlists", { keyPath: "id" });
+        store.createIndex("by_collection", "collectionType", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("playlist-migrations")) db.createObjectStore("playlist-migrations", { keyPath: "id" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || new Error("No se pudo abrir IndexedDB."));

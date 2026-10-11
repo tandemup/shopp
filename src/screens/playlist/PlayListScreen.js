@@ -24,6 +24,9 @@ import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 import { safeAlert, safeConfirm } from "@/src/components/ui/alert/safeAlert";
 import { parseYouTubeUrl } from "@/src/services/urlSafety";
 import { ROUTES } from "@/src/navigation/ROUTES";
+import { makePlaylistBackupV2 } from "@/src/services/playlistBackupV2";
+import { validatePlaylistBackupV2, importPlaylistBackupV2 } from "@/src/services/playlistImportV2";
+import { stagePlaylistBackupV2Locally } from "@/src/services/stagePlaylistsLocally";
 
 import TutorialTransferScreen from "./TutorialTransferScreen";
 import EditorVideoPreview from "./EditorVideoPreview";
@@ -1016,7 +1019,9 @@ export default function PlayListScreen() {
       try {
         await saveJsonFile(
           jsonFileName(fileName, safeFileName(item.title)),
-          toExportedPlaylist(item, exportItemType),
+          isTutorialStyle
+            ? toExportedPlaylist(item, exportItemType)
+            : await makePlaylistBackupV2([item], exportItemType, { single: true }),
         );
       } catch (error) {
         safeAlert(
@@ -1025,7 +1030,7 @@ export default function PlayListScreen() {
         );
       }
     },
-    [exportItemType],
+    [exportItemType, isTutorialStyle],
   );
 
   const defaultExportName = isNews
@@ -1039,14 +1044,16 @@ export default function PlayListScreen() {
   const exportAll = useCallback(
     async (fileName) => {
       try {
-        await saveJsonFile(jsonFileName(fileName, defaultExportName), {
-          version: 1,
-          type: exportType,
-          exportedAt: new Date().toISOString(),
-          playlists: (playlists || []).map((item) =>
-            toExportedPlaylist(item, exportItemType),
-          ),
-        });
+        if (!Array.isArray(playlists)) throw new Error("Las playlists todavía no están disponibles.");
+        const payload = isTutorialStyle
+          ? {
+              version: 1,
+              type: exportType,
+              exportedAt: new Date().toISOString(),
+              playlists: playlists.map((item) => toExportedPlaylist(item, exportItemType)),
+            }
+          : await makePlaylistBackupV2(playlists, exportType);
+        await saveJsonFile(jsonFileName(fileName, defaultExportName), payload);
       } catch (error) {
         safeAlert(
           "No se pudo exportar",
@@ -1054,7 +1061,7 @@ export default function PlayListScreen() {
         );
       }
     },
-    [defaultExportName, exportItemType, exportType, playlists],
+    [defaultExportName, exportItemType, exportType, isTutorialStyle, playlists],
   );
 
   const openExportAll = useCallback(() => {
@@ -1135,6 +1142,16 @@ export default function PlayListScreen() {
       if (!asset?.uri) return;
       const response = await fetch(asset.uri);
       const payload = JSON.parse(await response.text());
+      if (!isTutorialStyle && payload?.version === 2) {
+        if (importMode === "replace") {
+          throw new Error("Por seguridad, reemplazar desde JSON v2 está desactivado hasta disponer de una restauración local transaccional. Selecciona Combinar: no elimina las playlists existentes.");
+        }
+        if (!Array.isArray(playlists)) throw new Error("Espera a que se carguen las playlists actuales antes de importar.");
+        const validated = validatePlaylistBackupV2(payload, payload.type === exportType ? exportType : exportItemType, { minimumTracks, maximumTracks });
+        const result = await importPlaylistBackupV2({ playlists: validated, existing: playlists, clientId, createPlaylist, generateUploadUrl, setPlaylistShareable });
+        safeAlert("Importación v2 terminada", `${result.added} playlists añadidas, ${result.skipped} duplicadas omitidas y ${result.lyricsRestored} letras LRC restauradas. Los datos anteriores de Convex no se han eliminado.`);
+        return;
+      }
       const imported = parseImportedPayload(
         isNews ? normalizeNewsImportPayload(payload) : payload,
         exportItemType,
@@ -1229,6 +1246,7 @@ export default function PlayListScreen() {
     createPlaylist,
     exportItemType,
     exportType,
+    generateUploadUrl,
     isClassical,
     isNews,
     isTutorialStyle,
@@ -1237,7 +1255,32 @@ export default function PlayListScreen() {
     maximumTracks,
     playlists,
     replacePlaylists,
+    setPlaylistShareable,
   ]);
+
+  // Fase 3: copia de prueba en IndexedDB. No modifica los datos activos de Convex.
+  const [stagingLocal, setStagingLocal] = useState(false);
+  const stageLocalBackup = useCallback(async () => {
+    if (Platform.OS !== "web" || isTutorialStyle || stagingLocal) return;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/json", "text/json", "text/plain"],
+        copyToCacheDirectory: true, multiple: false,
+      });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset?.uri) return;
+      setStagingLocal(true);
+      const response = await fetch(asset.uri);
+      if (!response.ok) throw new Error("No se pudo leer el archivo JSON.");
+      const payload = JSON.parse(await response.text());
+      const report = await stagePlaylistBackupV2Locally(payload, isClassical ? "classical" : "playlist");
+      safeAlert("Copia local verificada", `${report.verifiedCount} playlists, ${report.verifiedTracks} elementos y ${report.verifiedLyrics} letras LRC únicas comprobadas en IndexedDB. Convex sigue siendo el origen activo; no se eliminó ningún dato.`);
+    } catch (error) {
+      safeAlert("Migración local no activada", error?.message || "No se pudo comprobar la copia local.");
+    } finally {
+      setStagingLocal(false);
+    }
+  }, [isClassical, isTutorialStyle, stagingLocal]);
 
   const importJson = useCallback(async () => {
     try {
@@ -1355,6 +1398,18 @@ export default function PlayListScreen() {
               <Ionicons name="copy-outline" size={21} color="#2563eb" />
               <Text style={styles.secondaryButtonText}>
                 Copiar entre listas
+              </Text>
+            </Pressable>
+          ) : null}
+          {!isTutorialStyle && Platform.OS === "web" ? (
+            <Pressable
+              onPress={stageLocalBackup}
+              disabled={stagingLocal}
+              style={styles.secondaryButton}
+            >
+              <Ionicons name="shield-checkmark-outline" size={21} color="#2563eb" />
+              <Text style={styles.secondaryButtonText}>
+                {stagingLocal ? "Verificando…" : "Preparar copia local"}
               </Text>
             </Pressable>
           ) : null}

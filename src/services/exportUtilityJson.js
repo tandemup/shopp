@@ -4,6 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sharing from "expo-sharing";
 import { api } from "@/convex/_generated/api";
 import { libraryJsonApi } from "@/src/services/libraryJsonApi";
+import { makePlaylistBackupV2 } from "@/src/services/playlistBackupV2";
 
 export const JSON_EXPORT_UTILITIES = [
   { id: "biblioteca", label: "Biblioteca" },
@@ -95,6 +96,9 @@ export async function readUtilityExport(id, { convex, getScannedHistory, activeL
     }
     if (!Array.isArray(data)) throw new Error("No se pudieron recuperar los datos de la utilidad.");
     data = data.map(playlistItem);
+  }
+  if (id === "music" || id === "classic") {
+    return makePlaylistBackupV2(data, formats[id]);
   }
   return {
     app: "Shopp",
