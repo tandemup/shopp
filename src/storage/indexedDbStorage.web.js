@@ -1,5 +1,5 @@
 const DB_NAME = "shopp-local-storage";
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Compartida con lyricsStorage.web.js y playlistRepository.web.js
 const STORE_NAME = "entries";
 
 function openDatabase() {
