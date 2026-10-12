@@ -11,6 +11,7 @@ import { StoresProvider } from "@/src/context/StoresContext";
 import DialogHost from "@/src/components/ui/alert/DialogHost";
 import AppNavigator from "@/src/navigation/AppNavigator";
 import { I18nProvider } from "@/src/i18n";
+import PublicMusicCardScreen from "@/src/screens/playlist/PublicMusicCardScreen";
 
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL?.trim();
 const hasValidConvexUrl = /^https:\/\/[^\s/]+\.convex\.cloud\/?$/.test(
@@ -27,6 +28,11 @@ export default function App() {
 }
 
 function ShoppApp() {
+  // Acceso público desde tarjetas QR: no requiere Convex ni autenticación.
+  if (Platform.OS === "web" && typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("shoppCard") === "1") {
+    return <SafeAreaProvider><PublicMusicCardScreen /></SafeAreaProvider>;
+  }
   if (!convex) {
     return (
       <SafeAreaProvider>
