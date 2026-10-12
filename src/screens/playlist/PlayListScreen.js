@@ -466,9 +466,9 @@ export default function PlayListScreen() {
   const generateUploadUrl = useMutation(contentApi.generateUploadUrl);
   const [editorVisible, setEditorVisible] = useState(false);
   const { width } = useWindowDimensions();
-  // En móvil y tablet pequeña, las acciones no deben desbordar el ancho.
-  const compactHeader = width < 900;
-  const HeaderActionsContainer = compactHeader ? ScrollView : View;
+  // En móvil y tablet, mantener los controles en una fila desplazable.
+  // El ancho de un iPad en horizontal no basta para título + acciones en paralelo.
+  const compactHeader = width < 1200;
   const canEditLyricsLocally =
     Platform.OS === "web" && width >= 960 && !isTutorialStyle;
   const [lyricsEditorIndex, setLyricsEditorIndex] = useState(null);
@@ -1492,33 +1492,11 @@ export default function PlayListScreen() {
     </View>
   );
 
-  return (
-    <SafeAreaView style={styles.screen}>
-      <View style={[styles.header, compactHeader && styles.headerCompact]}>
-        <View style={[styles.headerText, compactHeader && styles.headerTextCompact]}>
-          <Text style={styles.heading}>{collectionTitle}</Text>
-          <Text style={styles.subtitle}>
-            {isNews
-              ? "Guarda un enlace de YouTube con un título descriptivo. Se ordenan por fecha de publicación."
-              : isTutorials
-                ? "Organiza vídeos y series de YouTube para aprender a tu ritmo."
-                : isClassical
-                  ? "Organiza obras, conciertos, intérpretes y grabaciones de YouTube."
-                  : "Combina canciones individuales y álbumes de YouTube."}
-          </Text>
-        </View>
-        <HeaderActionsContainer
-          style={compactHeader ? styles.headerActionsScroll : styles.headerActions}
-          {...(compactHeader
-            ? {
-                horizontal: true,
-                showsHorizontalScrollIndicator: true,
-                keyboardShouldPersistTaps: "handled",
-                directionalLockEnabled: true,
-                contentContainerStyle: styles.headerActionsScrollContent,
-              }
-            : {})}
-        >
+  // Keep the controls in a separate row on compact screens.
+  // The horizontal ScrollView must have a fixed viewport height on React Native Web;
+  // otherwise WebKit can overlap the title and leave a large blank header area.
+  const headerActionButtons = (
+    <>
           {isTutorials ? (
             <Pressable
               onPress={() => setTransferVisible(true)}
@@ -1586,7 +1564,41 @@ export default function PlayListScreen() {
                     : "Nueva playlist"}
             </Text>
           </Pressable>
-        </HeaderActionsContainer>
+    </>
+  );
+
+  return (
+    <SafeAreaView style={styles.screen}>
+      <View style={[styles.header, compactHeader && styles.headerCompact]}>
+        <View style={[styles.headerText, compactHeader && styles.headerTextCompact]}>
+          <Text style={styles.heading}>{collectionTitle}</Text>
+          <Text style={styles.subtitle}>
+            {isNews
+              ? "Guarda un enlace de YouTube con un título descriptivo. Se ordenan por fecha de publicación."
+              : isTutorials
+                ? "Organiza vídeos y series de YouTube para aprender a tu ritmo."
+                : isClassical
+                  ? "Organiza obras, conciertos, intérpretes y grabaciones de YouTube."
+                  : "Combina canciones individuales y álbumes de YouTube."}
+          </Text>
+        </View>
+        {compactHeader ? (
+          <View style={styles.headerActionsMobileViewport}>
+            <ScrollView
+              horizontal
+              style={styles.headerActionsMobileScroll}
+              contentContainerStyle={styles.headerActionsScrollContent}
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              directionalLockEnabled
+              nestedScrollEnabled
+            >
+              {headerActionButtons}
+            </ScrollView>
+          </View>
+        ) : (
+          <View style={styles.headerActions}>{headerActionButtons}</View>
+        )}
       </View>
       {localMode ? (
         <View style={styles.localModeNotice}>
@@ -1600,6 +1612,7 @@ export default function PlayListScreen() {
         </View>
       ) : (
         <FlatList
+          style={styles.playlistsListViewport}
           data={filteredPlaylists}
           ListHeaderComponent={searchHeader}
           keyboardShouldPersistTaps="handled"
@@ -2423,7 +2436,9 @@ const styles = StyleSheet.create({
     borderColor: "#bfdbfe",
     backgroundColor: "#eff6ff",
   },
-  screen: { flex: 1, backgroundColor: "#f4f7fb" },
+  screen: { flex: 1, minHeight: 0, backgroundColor: "#f4f7fb" },
+  // FlatList necesita ocupar el espacio disponible bajo la cabecera en WebKit.
+  playlistsListViewport: { flex: 1, minHeight: 0, width: "100%" },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -2433,6 +2448,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#e5e7eb",
     backgroundColor: "#fff",
     flexWrap: "wrap",
+    flexShrink: 0,
   },
   headerText: { flex: 1, minWidth: 220 },
   headerCompact: {
@@ -2443,14 +2459,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
-  headerTextCompact: { flex: 0, width: "100%", minWidth: 0 },
-  headerActionsScroll: { width: "100%", maxWidth: "100%", flexGrow: 0 },
+  headerTextCompact: {
+    width: "100%",
+    minWidth: 0,
+    flexGrow: 0,
+    flexShrink: 0,
+    alignSelf: "stretch",
+  },
+  headerActionsMobileViewport: {
+    width: "100%",
+    height: 54,
+    overflow: "hidden",
+    alignSelf: "stretch",
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  headerActionsMobileScroll: {
+    width: "100%",
+    height: 54,
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   headerActionsScrollContent: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingRight: 24,
-    paddingVertical: 2,
+    paddingVertical: 4,
+    minHeight: 54,
   },
   heading: { fontSize: 22, fontWeight: "900", color: "#111827" },
   subtitle: { marginTop: 3, fontSize: 12, color: "#64748b" },
