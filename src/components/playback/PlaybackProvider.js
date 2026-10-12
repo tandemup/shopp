@@ -467,11 +467,24 @@ export default function PlaybackProvider({ children }) {
   // compartirse entre el vídeo fijo y la cola desplazable. Aplicamos este
   // ajuste exclusivamente en vertical: no cambia el layout horizontal.
   const ipadPortrait = tablet && height > width;
+  // En iPad vertical la botonera de tamaño utiliza los mismos tres valores
+  // que en escritorio. Conservamos el tamaño "medium" de la versión anterior
+  // y acotamos el vídeo para que la cola siga disponiendo de scroll propio.
+  const ipadPortraitSizeConfig = {
+    small: { heightFactor: 0.20, minWidth: 300 },
+    medium: { heightFactor: 0.275, minWidth: 390 },
+    large: { heightFactor: 0.33, minWidth: 440 },
+  };
+  const ipadPortraitVideoConfig =
+    ipadPortraitSizeConfig[desktopVideoSize] || ipadPortraitSizeConfig.medium;
   const ipadPortraitVideoWidth = ipadPortrait
     ? Math.min(
         Math.max(320, width - 48),
         720,
-        Math.max(390, (height * 0.275 * 16) / 9),
+        Math.max(
+          ipadPortraitVideoConfig.minWidth,
+          (height * ipadPortraitVideoConfig.heightFactor * 16) / 9,
+        ),
       )
     : null;
   const mediaLayout = desktop || tablet;
@@ -954,7 +967,7 @@ export default function PlaybackProvider({ children }) {
                       }
                     : {})}
                 >
-                  {oneColumnLayout ? (
+                  {(oneColumnLayout || ipadPortrait) ? (
                     <View style={styles.videoSizeSelectorRow}>
                       <Text style={styles.videoSizeSelectorLabel}>TAMAÑO DEL VÍDEO</Text>
                       <View style={styles.videoSizeSelector}>
