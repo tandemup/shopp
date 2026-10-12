@@ -1,12 +1,12 @@
 // All playlist and LRC writes are committed atomically in IndexedDB.
 // A failed import never leaves half a collection behind.
 import * as repository from "@/src/storage/playlists/playlistRepository";
-import { getLyricsStorageKey } from "@/src/storage/lyricsStorage";
+import { newLyricsStorageKey } from "@/src/storage/lyricsStorage";
 
 const length = value => new TextEncoder().encode(String(value || "")).length;
 export async function importPlaylistsLocally({ playlists, collection, replace = false }) {
   if (!["playlist", "classical"].includes(collection)) throw new Error("Colección local incorrecta");
-  const lyricsByKey = new Map();
+  const lyricsByKey = [];
   const prepared = playlists.map(playlist => {
     if (playlist.collectionType !== collection) throw new Error("El respaldo corresponde a otra colección.");
     return {
@@ -19,25 +19,24 @@ export async function importPlaylistsLocally({ playlists, collection, replace = 
       tracks: playlist.tracks.map(track => {
         const { lyricsBackup, ...clean } = track;
         if (lyricsBackup) {
-          const key = getLyricsStorageKey(track);
+          const key = newLyricsStorageKey();
           const record = {
             text: lyricsBackup.text, fileName: lyricsBackup.fileName,
             mimeType: 'text/plain', updatedAt: Date.now(),
             videoId: track.videoId || null, playlistId: track.playlistId || null,
           };
-          const previous = lyricsByKey.get(key);
-          if (previous && (previous.record.text !== record.text || previous.record.fileName !== record.fileName)) {
-            throw new Error(`El respaldo contiene letras LRC contradictorias para ${track.title}.`);
-          }
-          lyricsByKey.set(key, { key, record });
+          lyricsByKey.push({ key, record });
           return {
-            ...clean, lyricsFileName: record.fileName,
+            ...clean, lyricsKey: key, lyricsDisabled: false,
+            lyricsFileName: record.fileName,
             lyricsMimeType: 'text/plain', lyricsSize: length(record.text),
           };
         }
-        return clean;
+        // Preserve explicit per-playlist removal, not the source device key.
+        const { lyricsKey, ...portable } = clean;
+        return { ...portable, lyricsDisabled: true };
       }),
     };
   });
-  return repository.importBatch(collection, prepared, [...lyricsByKey.values()], { replace });
+  return repository.importBatch(collection, prepared, lyricsByKey, { replace });
 }

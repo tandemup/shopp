@@ -37,11 +37,7 @@ import {
   MIN_PLAYLIST_ITEMS,
   MAX_PLAYLIST_ITEMS,
 } from "@/convex/lib/playlistItems";
-import {
-  getLocalLyrics,
-  saveLocalLyrics,
-  removeLocalLyrics,
-} from "@/src/storage/lyricsStorage";
+import { getLocalLyrics, newLyricsStorageKey } from "@/src/storage/lyricsStorage";
 
 const CLIENT_ID_KEY = "shopp-playlist-client-id";
 const normalizeSearchText = (value) =>
@@ -443,7 +439,7 @@ export default function PlayListScreen() {
             safeAlert("Migración", "No hay colecciones de este tipo en Convex.");
             return;
           }
-          const backup = await makePlaylistBackupV2(remote, exportType);
+          const backup = await makePlaylistBackupV2(remote, exportType, { allowRemoteLyrics: true });
           const normalized = validatePlaylistBackupV2(backup, exportType, { minimumTracks, maximumTracks });
           const result = await importPlaylistsLocally({ playlists: normalized, collection });
           await refreshLocalPlaylists();
@@ -638,6 +634,8 @@ export default function PlayListScreen() {
           track.title ||
           `${isTutorialStyle ? "Vídeo" : "Elemento"} ${index + 1}`,
         lyricsFileName: track.lyricsFileName || null,
+        lyricsKey: track.lyricsKey || null,
+        lyricsDisabled: track.lyricsDisabled === true,
         url:
           track.url ||
           (track.playlistId
@@ -664,7 +662,8 @@ export default function PlayListScreen() {
                 kind: track.kind,
                 videoId: parsed.videoId,
                 playlistId: parsed.playlistId,
-                url: track.url,
+                url: track.url, lyricsKey: track.lyricsKey,
+                lyricsDisabled: track.lyricsDisabled,
               });
               return local ? { ...track, localLyrics: local } : track;
             } catch {
@@ -689,6 +688,14 @@ export default function PlayListScreen() {
         // tipo correcto al pegar el enlace y conservamos las URLs mixtas.
         if (field === "url") {
           const parsed = parseYouTubeUrl(String(value).trim());
+          const previous = parseYouTubeUrl(String(track.url || "").trim());
+          if (parsed.videoId !== previous.videoId || parsed.playlistId !== previous.playlistId) {
+            return {
+              ...track, url: value, kind: parsed.playlistId && !parsed.videoId ? "album" : "single",
+              lyrics: null, localLyrics: null, lyricsFileName: null,
+              lyricsKey: null, lyricsDisabled: true, localLyricsRemoved: false,
+            };
+          }
           if (parsed.isValid && parsed.playlistId && !parsed.videoId) {
             return { ...track, url: value, kind: "album" };
           }
@@ -765,9 +772,12 @@ export default function PlayListScreen() {
           kind: editorTrack.kind,
           videoId: parsed.videoId,
           playlistId: parsed.playlistId,
-          url: editorTrack.url,
+          url: editorTrack.url, lyricsKey: editorTrack.lyricsKey,
+          lyricsDisabled: editorTrack.lyricsDisabled,
         };
-        const local = await getLocalLyrics(identity);
+        const local = editorTrack.localLyricsRemoved
+          ? null
+          : editorTrack.localLyrics || await getLocalLyrics(identity);
         if (local?.text != null) {
           setLyricsDraft(local.text);
           setLyricsFileName(local.fileName || "lyrics.lrc");
@@ -775,7 +785,7 @@ export default function PlayListScreen() {
         }
         const sourceUri =
           editorTrack.lyrics?.uri || editorTrack.lyrics?.sourceUri;
-        if (sourceUri) {
+        if (sourceUri && !localMode) {
           const response = await fetch(sourceUri);
           const sourceText = response.ok ? await response.text() : "";
           setLyricsDraft(sourceText);
@@ -793,7 +803,7 @@ export default function PlayListScreen() {
         setLyricsEditorLoading(false);
       }
     },
-    [tracks],
+    [tracks, localMode],
   );
 
   const importLyricsIntoEditor = useCallback(async () => {
@@ -850,12 +860,21 @@ export default function PlayListScreen() {
         playlistId: parsed.playlistId,
         url: editorTrack.url,
       };
-      const record = await saveLocalLyrics(identity, lyricsDraft, {
+      // Solo preparar: la letra y la playlist se confirman juntas al pulsar Guardar.
+      const record = {
+        text: lyricsDraft,
         fileName: lyricsFileName || "lyrics.lrc",
-      });
+        mimeType: "text/plain",
+        updatedAt: Date.now(),
+        videoId: identity.videoId || null,
+        playlistId: identity.playlistId || null,
+      };
       setTracks((current) =>
         current.map((item, index) =>
-          index === lyricsEditorIndex ? { ...item, localLyrics: record } : item,
+          index === lyricsEditorIndex
+            ? { ...item, localLyrics: record, localLyricsRemoved: false,
+                lyricsDisabled: false, lyricsFileName: record.fileName }
+            : item,
         ),
       );
       setLyricsEditorVisible(false);
@@ -873,16 +892,12 @@ export default function PlayListScreen() {
     if (!editorTrack) return;
     const parsed = parseYouTubeUrl(editorTrack.url.trim());
     if (!parsed.isValid) return;
-    await removeLocalLyrics({
-      kind: editorTrack.kind,
-      videoId: parsed.videoId,
-      playlistId: parsed.playlistId,
-      url: editorTrack.url,
-    });
+    // No borrar todavía: esperar a que se guarde la playlist.
     setTracks((current) =>
       current.map((item, index) =>
         index === lyricsEditorIndex
-          ? { ...item, localLyrics: null, lyrics: null, lyricsFileName: null }
+          ? { ...item, localLyrics: null, localLyricsRemoved: true,
+                lyricsDisabled: true, lyrics: null, lyricsFileName: null }
           : item,
       ),
     );
@@ -999,25 +1014,44 @@ export default function PlayListScreen() {
     setSaving(true);
     try {
       const normalizedTracks = [];
+      const pendingLyrics = [];
       for (let index = 0; index < tracks.length; index += 1) {
         const track = tracks[index];
         const parsed = parseYouTubeUrl(track.url.trim());
         let lyrics;
         if (localMode) {
-          // In local mode never request a Convex upload URL or upload an LRC.
-          let record = track.localLyrics;
-          if (track.lyrics && !track.lyrics.existing && track.lyrics.uri) {
-            const response = await fetch(track.lyrics.uri);
-            if (!response.ok) throw new Error(`No se pudo leer el LRC del elemento ${index + 1}.`);
-            const text = await response.text();
-            if (new TextEncoder().encode(text).length > 512 * 1024) throw new Error("La letra LRC supera 512 KB.");
-            record = await saveLocalLyrics({ kind: track.kind, videoId: parsed.videoId, playlistId: parsed.playlistId }, text, { fileName: track.lyrics.fileName });
+          // Cada pista almacena su LRC en una clave propia. La lectura de
+          // registros antiguos compartidos sigue permitida sin sobrescribirlos.
+          const identity = { kind: track.kind, videoId: parsed.videoId,
+            playlistId: parsed.playlistId, url: track.url };
+          if (track.localLyricsRemoved || track.lyricsDisabled) {
+            // A previous per-track entry is removed only after a successful
+            // atomic save. Never remove the old shared video-wide entry.
+            if (track.lyricsKey && track.localLyricsRemoved) {
+              pendingLyrics.push({ key: track.lyricsKey, remove: true });
+            }
+            lyrics = { lyricsDisabled: true };
+          } else {
+            let record = track.localLyrics;
+            if (track.lyrics && !track.lyrics.existing && track.lyrics.uri) {
+              const response = await fetch(track.lyrics.uri);
+              if (!response.ok) throw new Error(`No se pudo leer el LRC del elemento ${index + 1}.`);
+              record = { text: await response.text(), fileName: track.lyrics.fileName || "lyrics.lrc" };
+            }
+            if (record && typeof record.text === "string") {
+              const size = new TextEncoder().encode(record.text).length;
+              if (size > 512 * 1024) throw new Error("La letra LRC supera 512 KB.");
+              const key = track.lyricsKey || newLyricsStorageKey();
+              pendingLyrics.push({ key, record: { ...record,
+                mimeType: "text/plain", updatedAt: Date.now(),
+                videoId: identity.videoId || null, playlistId: identity.playlistId || null } });
+              lyrics = { lyricsKey: key, lyricsDisabled: false,
+                lyricsFileName: record.fileName || "lyrics.lrc", lyricsMimeType: "text/plain", lyricsSize: size };
+            } else if (track.lyricsFileName) {
+              // Evitar guardar metadatos de letras cuyo contenido falta.
+              throw new Error(`Falta el archivo LRC local para el elemento ${index + 1}. Restaura el respaldo o migra desde Convex.`);
+            } else lyrics = {};
           }
-          lyrics = record?.fileName
-            ? { lyricsFileName: record.fileName, lyricsMimeType: "text/plain", lyricsSize: new TextEncoder().encode(record.text || "").length }
-            : track.lyricsFileName && !track.lyrics?.existing
-              ? { lyricsFileName: track.lyricsFileName }
-              : {};
         } else {
           lyrics = await uploadLyrics(track.lyrics, index);
         }
@@ -1053,8 +1087,7 @@ export default function PlayListScreen() {
           collectionType: collection,
           ...(isClassical ? classicalDetails : {}),
         };
-        if (editingId) await localRepo.update(editingId, localItem);
-        else await localRepo.create(localItem);
+        await localRepo.saveWithLyrics(editingId, localItem, pendingLyrics);
         await refreshLocalPlaylists();
       } else if (editingId) await updatePlaylist({ playlistId: editingId, ...args });
       else await createPlaylist(args);
@@ -1127,7 +1160,7 @@ export default function PlayListScreen() {
       try {
         const payload = isTutorialStyle
           ? toExportedPlaylist(item, exportItemType)
-          : await makePlaylistBackupV2([item], exportItemType, { single: true });
+          : await makePlaylistBackupV2([item], exportItemType, { single: true, allowRemoteLyrics: !localMode });
         if (isTutorialStyle) {
           await saveJsonFile(jsonFileName(fileName, safeFileName(item.title)), payload);
         } else {
@@ -1137,7 +1170,7 @@ export default function PlayListScreen() {
         safeAlert("No se pudo exportar", error?.message || "Inténtalo de nuevo.");
       }
     },
-    [exportItemType, isTutorialStyle],
+    [exportItemType, isTutorialStyle, localMode],
   );
 
   const defaultExportName = isNews
@@ -1159,7 +1192,7 @@ export default function PlayListScreen() {
               exportedAt: new Date().toISOString(),
               playlists: playlists.map((item) => toExportedPlaylist(item, exportItemType)),
             }
-          : await makePlaylistBackupV2(playlists, exportType);
+          : await makePlaylistBackupV2(playlists, exportType, { allowRemoteLyrics: !localMode });
         if (isTutorialStyle) {
           await saveJsonFile(jsonFileName(fileName, defaultExportName), payload);
         } else {
@@ -1172,7 +1205,7 @@ export default function PlayListScreen() {
         );
       }
     },
-    [defaultExportName, exportItemType, exportType, isTutorialStyle, playlists],
+    [defaultExportName, exportItemType, exportType, isTutorialStyle, localMode, playlists],
   );
 
   const openExportAll = useCallback(() => {
@@ -1282,7 +1315,8 @@ export default function PlayListScreen() {
 
       if (importMode === "replace") {
         if (localMode) {
-          await localRepo.replaceAll(collection, imported.map(item => ({ ...item, collectionType: collection })));
+          await localRepo.replaceAll(collection, imported.map(item => ({ ...item, collectionType: collection,
+            tracks: item.tracks.map(track => ({ ...track, lyricsDisabled: true })) })));
           await refreshLocalPlaylists();
           safeAlert("Importación terminada", `${imported.length} colecciones restauradas en IndexedDB. Convex permanece intacto.`);
           return;
@@ -1326,7 +1360,8 @@ export default function PlayListScreen() {
           continue;
         }
         if (localMode) {
-          await localRepo.create({ ...playlist, collectionType: collection });
+          await localRepo.create({ ...playlist, collectionType: collection,
+            tracks: playlist.tracks.map(track => ({ ...track, lyricsDisabled: true })) });
         } else {
           await createPlaylist({
             clientId,
@@ -2205,7 +2240,7 @@ export default function PlayListScreen() {
                           </Text>
                           <Text style={styles.lyricsHint}>
                             {track.localLyrics
-                              ? "Guardada en IndexedDB · privada en este navegador"
+                              ? "Disponible en IndexedDB o pendiente de guardar la playlist"
                               : canEditLyricsLocally
                                 ? "Crear, pegar o importar .lrc · guardado local"
                                 : "Opcional · máximo 512 KB"}
@@ -2320,6 +2355,7 @@ export default function PlayListScreen() {
               placeholder={"[00:00.00]Primera línea\n[00:05.20]Segunda línea"}
               style={styles.lyricsTextArea}
             />
+            <Text style={styles.editorSubtitle}>La letra se guarda junto con la playlist al confirmar «Guardar» en la pantalla anterior.</Text>
             <View style={styles.lyricsEditorActions}>
               <Pressable
                 onPress={importLyricsIntoEditor}
@@ -2340,7 +2376,7 @@ export default function PlayListScreen() {
                 <Text
                   style={[styles.lyricsSecondaryText, { color: "#dc2626" }]}
                 >
-                  Borrar local
+                  Quitar letra
                 </Text>
               </Pressable>
               <Pressable
@@ -2348,7 +2384,7 @@ export default function PlayListScreen() {
                 style={styles.lyricsSaveButton}
               >
                 <Ionicons name="save-outline" size={18} color="#fff" />
-                <Text style={styles.lyricsSaveText}>Guardar</Text>
+                <Text style={styles.lyricsSaveText}>Aplicar</Text>
               </Pressable>
             </View>
           </View>
