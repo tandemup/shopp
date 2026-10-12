@@ -1,37 +1,43 @@
-// Import a complete, already-validated playlist backup without any Convex writes.
+// All playlist and LRC writes are committed atomically in IndexedDB.
+// A failed import never leaves half a collection behind.
 import * as repository from "@/src/storage/playlists/playlistRepository";
-import { getLocalLyrics, saveLocalLyrics } from "@/src/storage/lyricsStorage";
-const signature = p => `${String(p.title || "").toLowerCase()}|${(p.tracks || []).map(t=>t.videoId || t.playlistId).join(",")}`;
-export async function importPlaylistsLocally({ playlists, existing = [], collection }) {
+import { getLyricsStorageKey } from "@/src/storage/lyricsStorage";
+
+const length = value => new TextEncoder().encode(String(value || "")).length;
+export async function importPlaylistsLocally({ playlists, collection, replace = false }) {
   if (!["playlist", "classical"].includes(collection)) throw new Error("Colección local incorrecta");
-  const known = new Set(existing.map(signature));
-  let added=0, skipped=0, lyricsRestored=0, conflicts=0;
-  for (const playlist of playlists) {
-    if (playlist.collectionType !== collection) throw new Error("El tipo del respaldo no corresponde a esta colección.");
-    const sig=signature(playlist);
-    // Restore all missing LRCs first, even for playlists that already exist locally.
-    for (const track of playlist.tracks) {
-      if (!track.lyricsBackup) continue;
-      const current = await getLocalLyrics(track);
-      if (current && String(current.text || "").trim()) {
-        if (current.text !== track.lyricsBackup.text) conflicts++;
-        continue; // Never overwrite local edits without asking.
-      }
-      await saveLocalLyrics(track, track.lyricsBackup.text, { fileName: track.lyricsBackup.fileName });
-      lyricsRestored++;
-    }
-    if (known.has(sig)) { skipped++; continue; }
-    await repository.create({
+  const lyricsByKey = new Map();
+  const prepared = playlists.map(playlist => {
+    if (playlist.collectionType !== collection) throw new Error("El respaldo corresponde a otra colección.");
+    return {
       title: playlist.title,
       collectionType: collection,
       shareable: playlist.shareable === true,
-      ...(collection === "classical" ? Object.fromEntries(["composer","performer","conductor","orchestra","period","year"].map(k=>[k,playlist[k]||""])) : {}),
-      tracks: playlist.tracks.map(({ lyricsBackup, ...track })=>({
-        ...track,
-        ...(lyricsBackup ? {lyricsFileName:lyricsBackup.fileName, lyricsMimeType:"text/plain", lyricsSize:new TextEncoder().encode(lyricsBackup.text).length} : {}),
-      })),
-    });
-    known.add(sig); added++;
-  }
-  return { added, skipped, lyricsRestored, conflicts };
+      ...(collection === 'classical'
+        ? Object.fromEntries(['composer', 'performer', 'conductor', 'orchestra', 'period', 'year'].map(k => [k, playlist[k] || '']))
+        : {}),
+      tracks: playlist.tracks.map(track => {
+        const { lyricsBackup, ...clean } = track;
+        if (lyricsBackup) {
+          const key = getLyricsStorageKey(track);
+          const record = {
+            text: lyricsBackup.text, fileName: lyricsBackup.fileName,
+            mimeType: 'text/plain', updatedAt: Date.now(),
+            videoId: track.videoId || null, playlistId: track.playlistId || null,
+          };
+          const previous = lyricsByKey.get(key);
+          if (previous && (previous.record.text !== record.text || previous.record.fileName !== record.fileName)) {
+            throw new Error(`El respaldo contiene letras LRC contradictorias para ${track.title}.`);
+          }
+          lyricsByKey.set(key, { key, record });
+          return {
+            ...clean, lyricsFileName: record.fileName,
+            lyricsMimeType: 'text/plain', lyricsSize: length(record.text),
+          };
+        }
+        return clean;
+      }),
+    };
+  });
+  return repository.importBatch(collection, prepared, [...lyricsByKey.values()], { replace });
 }

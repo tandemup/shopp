@@ -17,13 +17,13 @@ import { useFocusEffect } from "@react-navigation/native";
 import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 import { libraryJsonApi } from "@/src/services/libraryJsonApi";
+import * as localRepo from "@/src/storage/playlists/playlistRepository";
 
 const RTC_CONFIG = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
 const P2P_CHUNK_SIZE = 48 * 1024;
-const CLIENT_ID_KEY = "shopp-playlist-client-id";
 
 // Los mensajes del RTCDataChannel se codifican explícitamente como UTF-8.
 // Así evitamos que Safari/iPad interprete á, é, í, ó, ú, ñ, ü como Latin-1.
@@ -88,24 +88,6 @@ function getOrCreateDeviceId() {
     window.localStorage.setItem(key, value);
   }
   return value;
-}
-
-function createPlaylistClientId() {
-  return globalThis.crypto?.randomUUID?.() || `playlist_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-}
-
-function getPlaylistClientId() {
-  if (Platform.OS !== "web" || typeof window === "undefined") return null;
-  try {
-    let value = window.localStorage.getItem(CLIENT_ID_KEY);
-    if (!value) {
-      value = createPlaylistClientId();
-      window.localStorage.setItem(CLIENT_ID_KEY, value);
-    }
-    return value;
-  } catch {
-    return createPlaylistClientId();
-  }
 }
 
 function toP2PPlaylist(playlist) {
@@ -228,7 +210,24 @@ export default function P2PPlaylistExchangeScreen() {
   const [chatText, setChatText] = useState("");
   const [chatMessages, setChatMessages] = useState([]);
   const [deviceId] = useState(() => getOrCreateDeviceId());
-  const [playlistClientId] = useState(() => getPlaylistClientId());
+  const [musicPlaylists, setMusicPlaylists] = useState(undefined);
+  const refreshMusicPlaylists = useCallback(async () => {
+    const data = await localRepo.list("playlist");
+    setMusicPlaylists(data);
+    return data;
+  }, []);
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    localRepo.list("playlist").then(items => {
+      if (active) setMusicPlaylists(items);
+    }).catch(error => {
+      if (active) {
+        setMusicPlaylists([]);
+        safeAlert("IndexedDB", error?.message || "No se pudieron cargar las playlists locales.");
+      }
+    });
+    return () => { active = false; };
+  }, []));
   const [busy, setBusy] = useState(false);
   const handshakeInFlightRef = useRef(false);
   const [connection, setConnection] = useState("idle");
@@ -242,12 +241,6 @@ export default function P2PPlaylistExchangeScreen() {
     currentUser?.isAdmin === true ||
     currentUser?.permissions?.p2pPlaylistExchange === true;
   const p2pQueryArgs = hasP2PAccess && deviceId ? { deviceId } : "skip";
-  const musicPlaylists = useQuery(
-    api.playlists.listMine,
-    hasP2PAccess && playlistClientId
-      ? { clientId: playlistClientId, collectionType: "playlist" }
-      : "skip",
-  );
 
   const shareablePlaylists = useMemo(
     () => Array.isArray(musicPlaylists)
@@ -261,7 +254,8 @@ export default function P2PPlaylistExchangeScreen() {
 
   const updateSharedFolder = async (playlist, add) => {
     try {
-      await setPlaylistShareable({ playlistId: playlist._id, clientId: playlistClientId || undefined, shareable: add });
+      await localRepo.update(playlist._id, { shareable: add });
+      await refreshMusicPlaylists();
       if (!add) setSelectedPlaylistIds((current) => { const next = new Set(current); next.delete(String(playlist._id)); return next; });
     } catch (error) {
       safeAlert("Compartidos", error?.message || "No se pudo actualizar la carpeta.");
@@ -299,8 +293,6 @@ export default function P2PPlaylistExchangeScreen() {
   const respondToPairing = useMutation(api.nearbyShare.respondToPairing);
   const sendSignal = useMutation(api.nearbyShare.sendSignal);
   const closePairing = useMutation(api.nearbyShare.closePairing);
-  const createPlaylist = useMutation(api.playlists.create);
-  const setPlaylistShareable = useMutation(api.playlists.setShareable);
   const [showAddToShared, setShowAddToShared] = useState(false);
 
   const peerRef = useRef(null);
@@ -515,9 +507,10 @@ export default function P2PPlaylistExchangeScreen() {
         if (message?.type === "PLAYLIST" && message.playlist?.tracks) {
           const imported = normalizeReceivedPlaylist(message.playlist);
           const signature = playlistSignature(imported);
+          const latestLocal = await localRepo.list("playlist");
           const alreadyExists =
             importedPlaylistSignaturesRef.current.has(signature) ||
-            musicPlaylistsRef.current.some((playlist) => playlistSignature(playlist) === signature);
+            latestLocal.some((playlist) => playlistSignature(playlist) === signature);
 
           setReceivedPlaylists((current) => [message.playlist, ...current]);
 
@@ -531,12 +524,8 @@ export default function P2PPlaylistExchangeScreen() {
 
           importedPlaylistSignaturesRef.current.add(signature);
           try {
-            await createPlaylist({
-              clientId: playlistClientId || undefined,
-              title: imported.title,
-              tracks: imported.tracks,
-              collectionType: "playlist",
-            });
+            await localRepo.create(imported);
+            await refreshMusicPlaylists();
             safeAlert(
               "Playlist recibida y guardada",
               `«${imported.title}» · ${imported.tracks.length} items. Ya está disponible en Music playlist.`,
@@ -551,7 +540,7 @@ export default function P2PPlaylistExchangeScreen() {
         safeAlert("Sincronización P2P", error?.message || "No se pudo procesar el mensaje recibido.");
       }
     };
-  }, [alias, channels, createPlaylist, handleLibraryMessage, handleUnexpectedDisconnect, myPresence?.displayName, playlistClientId]);
+  }, [alias, channels, handleLibraryMessage, handleUnexpectedDisconnect, myPresence?.displayName, refreshMusicPlaylists]);
 
   const createPeer = useCallback((pairing, initiator) => {
     if (peerRef.current) return peerRef.current;
