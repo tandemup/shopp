@@ -1570,7 +1570,7 @@ export default function PlayListScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={[styles.header, compactHeader && styles.headerCompact]}>
-        <View style={[styles.headerText, compactHeader && styles.headerTextCompact]}>
+        <View style={compactHeader ? styles.headerTextCompact : styles.headerText}>
           <Text style={styles.heading}>{collectionTitle}</Text>
           <Text style={styles.subtitle}>
             {isNews
@@ -2459,11 +2459,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
+  // No heredar `flex: 1` de headerText: en una columna RN Web deja
+  // `flexBasis: 0%` y Safari/iOS puede dibujar el texto fuera de su alto.
   headerTextCompact: {
     width: "100%",
     minWidth: 0,
     flexGrow: 0,
     flexShrink: 0,
+    flexBasis: "auto",
     alignSelf: "stretch",
   },
   headerActionsMobileViewport: {
