@@ -34,3 +34,21 @@ test('La exportación local no descarga letras de Convex implícitamente',async(
   assert.match(transfer,/allowRemoteLyrics: false/);
   assert.doesNotMatch(transfer,/api\.playlists|convex\.query|convex\.mutation/);
 });
+
+
+test('Importación v1 y diagnóstico web no tocan Convex ni escriben fuera de la transacción',async()=>{
+ const ui=await read('screens/playlist/PlayListScreen.js');
+ assert.match(ui,/const checkLocalIntegrity = useCallback/);
+ assert.match(ui,/localRepo\.auditLocalPlaylists\(collection\)/);
+ assert.match(ui,/const prepared = imported\.map\(item =>/);
+ assert.match(ui,/localRepo\.importBatch\(collection, prepared, \[\], \{ replace: importMode === "replace" \}\)/);
+ assert.doesNotMatch(ui,/localRepo\.create\(\{ \.\.\.playlist, collectionType: collection/);
+ const repo=await read('storage/playlists/playlistRepository.web.js');
+ assert.match(repo,/export async function auditLocalPlaylists\(type\)/);
+ assert.match(repo,/transaction\(\[STORE, LRC\], 'readonly'/);
+ assert.doesNotMatch(repo,/convex\.|api\.playlists/);
+ for(const source of ['storage/playlists/playlistRepository.web.js',
+  'storage/lyricsStorage.web.js','storage/indexedDbStorage.web.js']){
+   assert.match(await read(source),/onversionchange = \(\) => .*\.close\(\)/);
+ }
+});
