@@ -1,6 +1,6 @@
 // IndexedDB v2: retains the existing "entries" object store for LRC.
 const DB = 'shopp-local-storage';
-const VERSION = 2;
+const VERSION = 3;
 const STORE = 'playlists';
 const LRC = 'entries';
 const JOURNAL = 'playlist-migrations';
@@ -11,10 +11,11 @@ function open() {
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(LRC)) db.createObjectStore(LRC);
-      if (!db.objectStoreNames.contains(STORE)) {
-        const s = db.createObjectStore(STORE, { keyPath: 'id' });
-        s.createIndex('by_collection', 'collectionType', { unique: false });
-      }
+      const playlists = db.objectStoreNames.contains(STORE)
+        ? req.transaction.objectStore(STORE)
+        : db.createObjectStore(STORE, { keyPath: 'id' });
+      if (!playlists.indexNames.contains('by_collection'))
+        playlists.createIndex('by_collection', 'collectionType', { unique: false });
       if (!db.objectStoreNames.contains(JOURNAL)) db.createObjectStore(JOURNAL, { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
@@ -89,6 +90,52 @@ export async function stageBackup(type, items, lyrics, migrationId) {
       });
       journal.put({id:migrationId,collectionType:type,count:items.length,at:Date.now(),status:'staged'});
       done({count:items.length,lyrics:lyrics.length,migrationId});
+    };
+  });
+}
+
+
+// Merge or replace a whole collection and its LRC in ONE IndexedDB transaction.
+// Music and classical share the database, but never replace one another.
+const playlistSignature = p => `${String(p.title || "").trim().toLowerCase()}|${(p.tracks || []).map(t => t.videoId || t.playlistId || "").join(",")}`;
+export async function importBatch(type, items, lyrics, { replace = false } = {}) {
+  assertType(type);
+  if (!Array.isArray(items) || items.some(p => p.collectionType !== type) || !Array.isArray(lyrics)) {
+    throw new Error('Datos de importación no válidos');
+  }
+  return transaction([STORE, LRC], 'readwrite', (tx, done) => {
+    const store = tx.objectStore(STORE);
+    const lrc = tx.objectStore(LRC);
+    const request = store.index('by_collection').getAll(type);
+    request.onsuccess = () => {
+      const current = request.result || [];
+      const known = new Set(replace ? [] : current.map(playlistSignature));
+      if (replace) current.forEach(p => store.delete(p.id));
+      const result = { added: 0, skipped: 0, lyricsRestored: 0, conflicts: 0, replaced: replace ? current.length : 0 };
+      for (const item of items) {
+        const signature = playlistSignature(item);
+        if (known.has(signature)) { result.skipped++; continue; }
+        const now = Date.now();
+        const id = makeId();
+        store.add({ ...item, id, _id: id, createdAt: now, updatedAt: now });
+        known.add(signature);
+        result.added++;
+      }
+      // Existing local lyrics win, including for playlists that are duplicates.
+      // Read and write requests are queued while this transaction is active.
+      for (const { key, record } of lyrics) {
+        const req = lrc.get(key);
+        req.onsuccess = () => {
+          const existing = req.result;
+          if (existing && String(existing.text || '').trim()) {
+            if (existing.text !== record.text) result.conflicts++;
+          } else {
+            lrc.put(record, key);
+            result.lyricsRestored++;
+          }
+        };
+      }
+      done(result);
     };
   });
 }

@@ -1,5 +1,5 @@
 const DB_NAME = "shopp-local-storage";
-const DB_VERSION = 2; // Compartida con lyricsStorage.web.js y playlistRepository.web.js
+const DB_VERSION = 3; // Compartida con lyricsStorage.web.js y playlistRepository.web.js
 const STORE_NAME = "entries";
 
 function openDatabase() {
@@ -12,25 +12,36 @@ function openDatabase() {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const database = request.result;
-      if (!database.objectStoreNames.contains(STORE_NAME)) {
-        database.createObjectStore(STORE_NAME);
-      }
+      if (!database.objectStoreNames.contains(STORE_NAME)) database.createObjectStore(STORE_NAME);
+      const playlists = database.objectStoreNames.contains("playlists")
+        ? request.transaction.objectStore("playlists")
+        : database.createObjectStore("playlists", { keyPath: "id" });
+      if (!playlists.indexNames.contains("by_collection"))
+        playlists.createIndex("by_collection", "collectionType", { unique: false });
+      if (!database.objectStoreNames.contains("playlist-migrations"))
+        database.createObjectStore("playlist-migrations", { keyPath: "id" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error("Cierra las demás pestañas de Shopp para actualizar IndexedDB."));
   });
 }
 
 function transaction(mode, action) {
-  return openDatabase().then((database) =>
-    new Promise((resolve, reject) => {
-      const request = action(
-        database.transaction(STORE_NAME, mode).objectStore(STORE_NAME),
-      );
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    }).finally(() => database.close()),
-  );
+  return openDatabase().then(database => new Promise((resolve, reject) => {
+    const tx = database.transaction(STORE_NAME, mode);
+    let result;
+    tx.oncomplete = () => { database.close(); resolve(result); };
+    tx.onabort = () => { database.close(); reject(tx.error || new Error("IndexedDB abortó la transacción")); };
+    tx.onerror = () => {};
+    try {
+      const request = action(tx.objectStore(STORE_NAME));
+      request.onsuccess = () => { result = request.result; };
+    } catch (error) {
+      try { tx.abort(); } catch { /* already aborted */ }
+      reject(error);
+    }
+  }));
 }
 
 export const webStorage = {

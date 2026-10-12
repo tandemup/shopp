@@ -1,5 +1,5 @@
 const DB_NAME = "shopp-local-storage";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = "entries";
 const PREFIX = "@shopping/playlist-lyrics/";
 
@@ -13,14 +13,16 @@ function openDb() {
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
-      if (!db.objectStoreNames.contains("playlists")) {
-        const store = db.createObjectStore("playlists", { keyPath: "id" });
-        store.createIndex("by_collection", "collectionType", { unique: false });
-      }
+      const playlists = db.objectStoreNames.contains("playlists")
+        ? request.transaction.objectStore("playlists")
+        : db.createObjectStore("playlists", { keyPath: "id" });
+      if (!playlists.indexNames.contains("by_collection"))
+        playlists.createIndex("by_collection", "collectionType", { unique: false });
       if (!db.objectStoreNames.contains("playlist-migrations")) db.createObjectStore("playlist-migrations", { keyPath: "id" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || new Error("No se pudo abrir IndexedDB."));
+    request.onblocked = () => reject(new Error("Cierra las otras pestañas de Shopp para actualizar IndexedDB."));
   });
 }
 
@@ -37,23 +39,23 @@ export function getLyricsStorageKey(track) {
 
 async function withStore(mode, callback) {
   const db = await openDb();
-  try {
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, mode);
-      const store = tx.objectStore(STORE_NAME);
-      let result;
-      try {
-        result = callback(store, resolve, reject);
-      } catch (error) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, mode);
+    let value;
+    tx.oncomplete = () => { db.close(); resolve(value); };
+    tx.onabort = () => { db.close(); reject(tx.error || new Error("Operación cancelada en IndexedDB.")); };
+    tx.onerror = () => {};
+    try {
+      // A successful request is not durable until the whole transaction commits.
+      callback(tx.objectStore(STORE_NAME), result => { value = result; }, error => {
+        try { tx.abort(); } catch { /* transaction already aborted */ }
         reject(error);
-      }
-      tx.onerror = () => reject(tx.error || new Error("Error de IndexedDB."));
-      tx.onabort = () => reject(tx.error || new Error("Operación cancelada en IndexedDB."));
-      if (result !== undefined) resolve(result);
-    });
-  } finally {
-    db.close();
-  }
+      });
+    } catch (error) {
+      try { tx.abort(); } catch { /* already aborted */ }
+      reject(error);
+    }
+  });
 }
 
 export async function getLocalLyrics(track) {
