@@ -463,17 +463,27 @@ export default function PlaybackProvider({ children }) {
   const tabletLandscape = tablet && width > height &&
     (!tabletColumnSelector || desktopColumns === 2);
   const tabletPortrait = tablet && !tabletLandscape;
+  // El iPad en vertical tiene bastante anchura, pero la altura debe
+  // compartirse entre el vídeo fijo y la cola desplazable. Aplicamos este
+  // ajuste exclusivamente en vertical: no cambia el layout horizontal.
+  const ipadPortrait = tablet && height > width;
+  const ipadPortraitVideoWidth = ipadPortrait
+    ? Math.min(
+        Math.max(320, width - 48),
+        720,
+        Math.max(390, (height * 0.275 * 16) / 9),
+      )
+    : null;
   const mediaLayout = desktop || tablet;
   const oneColumnDesktop = desktop && desktopColumns === 1;
   const twoColumnDesktop = desktop && desktopColumns === 2;
   const oneColumnLayout = oneColumnDesktop || tabletOneColumn;
-  // Safari iOS necesita un único ScrollView vertical en las pantallas
-  // móviles. Un ScrollView interior deshabilitado puede interceptar gestos
-  // táctiles aunque la columna exterior permita desplazarse.
-  // En landscape de tableta y en dos columnas ya usamos el panel exterior
-  // como superficie de scroll; solo el escritorio de una columna necesita
-  // el ScrollView interno independiente de las pistas.
-  const queueHasOwnScroll = oneColumnLayout;
+  // En iPad vertical y en los diseños de una columna, el vídeo queda fijo
+  // y la cola es el único ScrollView. Evitamos scrolls verticales anidados:
+  // Safari y Chrome iOS difieren cuando un ScrollView externo contiene otro.
+  // En iPhone seguimos con el diseño móvil (vídeo fijo + lista desplazable).
+  const fixedVideoColumn = mediaLayout && (oneColumnLayout || tabletPortrait);
+  const queueHasOwnScroll = fixedVideoColumn;
 
   // El reproductor compartido conserva controles compactos y de tamaño fijo.
   // El ancho de la columna puede crecer con la ventana, pero las imágenes,
@@ -515,6 +525,9 @@ export default function PlaybackProvider({ children }) {
       oneColumnVideoConfig.min,
       Math.min(width - 96, width * oneColumnVideoConfig.factor),
     ),
+    // En ventanas bajas (iPad apaisado o laptop), reservamos altura para
+    // al menos varias canciones sin deformar la proporción 16:9 del vídeo.
+    Math.max(360, (height * 0.44 * 16) / 9),
   );
   const bottom =
     Platform.OS === "web"
@@ -630,9 +643,10 @@ export default function PlaybackProvider({ children }) {
   // derecho puede colapsar su contentContainer a la altura del contenido y
   // dejar una franja vacía debajo. Un View normal permite que flex: 1 se
   // propague desde expandedBody hasta la lista de pistas.
-  // En Chrome (ancho tipo tableta, 1 col) el panel debe ser View, NO
-  // ScrollView: el único scroller estará dentro de la lista de canciones.
-  const TrackPaneComponent = twoColumnDesktop || tabletOneColumn ? View : ScrollView;
+  // En todos los modos de una columna (incluido iPad vertical), el panel
+  // exterior es View y la lista interna es el único ScrollView.
+  // En dos columnas se conserva el comportamiento que ya funciona.
+  const TrackPaneComponent = twoColumnDesktop || fixedVideoColumn ? View : ScrollView;
   const QueueRowsComponent = queueHasOwnScroll ? ScrollView : View;
 
   // DIAGNÓSTICO TEMPORAL DEL LAYOUT
@@ -671,6 +685,37 @@ export default function PlaybackProvider({ children }) {
     insets.bottom,
     queueRowsMaxHeight,
   ]);
+
+  // Las pistas individuales de los álbumes clásicos también deben formar
+  // parte del mismo scroll cuando el vídeo permanece fijo en una columna.
+  const albumVideoRows = track?.kind === "album" && ids.length > 0 ? (
+    <View style={styles.albumVideos}>
+      <Text style={styles.trackTitle}>Vídeos de {track.title}</Text>
+      {ids.map((id, index) => (
+        <Pressable
+          key={`${id}:${index}`}
+          onPress={() => player.current?.selectVideo(index)}
+          accessibilityRole="button"
+          accessibilityLabel={`Reproducir vídeo ${index + 1}`}
+          style={[
+            styles.track,
+            styles.albumVideoRow,
+            index === albumIndex && styles.activeTrack,
+          ]}
+        >
+          <Image
+            source={{ uri: `https://i.ytimg.com/vi/${id}/mqdefault.jpg` }}
+            style={styles.thumbnail}
+          />
+          <Text style={styles.trackText}>
+            {index === albumIndex && status.videoTitle
+              ? status.videoTitle
+              : `Vídeo ${index + 1}`}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  ) : null;
 
   return (
     <PlaybackContext.Provider value={context}>
@@ -830,6 +875,16 @@ export default function PlaybackProvider({ children }) {
                           styles.desktopVideoFrame,
                           tablet && styles.tabletVideoFrame,
                           oneColumnLayout && { width: oneColumnVideoWidth },
+                          tabletPortrait && {
+                            maxWidth: Math.min(720, Math.max(360, (height * 0.55 * 16) / 9)),
+                          },
+                          // En vertical, limitar el vídeo al 27,5 % del alto
+                          // útil aproximado; el espacio restante corresponde
+                          // a la playlist, que conserva su propio scroll.
+                          ipadPortrait && {
+                            width: ipadPortraitVideoWidth,
+                            maxWidth: ipadPortraitVideoWidth,
+                          },
                         ]}
                       >
                         <YouTubeSurface
@@ -868,12 +923,15 @@ export default function PlaybackProvider({ children }) {
                     twoColumnDesktop && styles.desktopTrackList,
                     twoColumnDesktop && styles.desktopTrackListTwoColumns,
                     twoColumnDesktop && styles.desktopTrackPaneNativeScroll,
-                    // En modo tableta/1 columna: cola centrada dentro de un
-                    // View acotado; solo su ScrollView interno tiene overflow.
-                    tabletOneColumn && styles.trackList,
-                    tabletOneColumn && styles.tabletTrackList,
+                    // En una columna no desplazamos el panel exterior.
+                    // Solo la lista interior recibe los gestos de scroll.
+                    fixedVideoColumn && styles.fixedVideoQueuePane,
+                    fixedVideoColumn && styles.trackList,
+                    tablet && fixedVideoColumn && styles.tabletTrackList,
+                    desktop && fixedVideoColumn && styles.desktopTrackList,
+                    fixedVideoColumn && styles.fixedVideoQueuePaneSpacing,
                   ]}
-                  {...(!(twoColumnDesktop || tabletOneColumn)
+                  {...(!(twoColumnDesktop || fixedVideoColumn)
                     ? {
                         contentContainerStyle: [
                           styles.trackList,
@@ -1255,7 +1313,7 @@ export default function PlaybackProvider({ children }) {
                     style={[
                       styles.queueSection,
                       twoColumnDesktop && styles.queueSectionTwoColumns,
-                      tabletOneColumn && styles.queueSectionTabletOneColumn,
+                      fixedVideoColumn && styles.queueSectionTabletOneColumn,
                     ]}
                   >
                     <QueueRowsComponent
@@ -1266,19 +1324,18 @@ export default function PlaybackProvider({ children }) {
                         // El layout de laptop/Chrome necesita aprovechar
                         // TODO el alto restante; el maxHeight heredado de
                         // tabletPortrait limitaba la lista a ~260 px.
-                        mediaLayout && queueHasOwnScroll && !tabletOneColumn
-                          ? { maxHeight: queueRowsMaxHeight }
-                          : null,
+                        // La altura depende del flex restante del panel;
+                        // el maxHeight anterior cortaba la lista en iPad.
                         (twoColumnDesktop || tabletLandscape) && styles.queueRowsScrollTwoColumns,
                         oneColumnLayout && styles.queueRowsScrollOneColumn,
-                        tabletOneColumn && styles.queueRowsScrollTabletOneColumn,
+                        fixedVideoColumn && styles.queueRowsScrollTabletOneColumn,
                       ]}
                       {...(!queueHasOwnScroll
                         ? {}
                         : {
                             contentContainerStyle: styles.queueRows,
                             nestedScrollEnabled: true,
-                            scrollEnabled: tabletOneColumn || (mediaLayout && session.tracks.length > 5),
+                            scrollEnabled: true,
                             showsVerticalScrollIndicator: false,
                             keyboardShouldPersistTaps: "handled",
                           })}
@@ -1358,40 +1415,10 @@ export default function PlaybackProvider({ children }) {
                           </View>
                         );
                       })}
+                      {fixedVideoColumn ? albumVideoRows : null}
                     </QueueRowsComponent>
                   </View>
-                  {track.kind === "album" && ids.length > 0 ? (
-                    <View style={styles.albumVideos}>
-                      <Text style={styles.trackTitle}>
-                        Vídeos de {track.title}
-                      </Text>
-                      {ids.map((id, index) => (
-                        <Pressable
-                          key={`${id}:${index}`}
-                          onPress={() => player.current?.selectVideo(index)}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Reproducir vídeo ${index + 1}`}
-                          style={[
-                            styles.track,
-                            styles.albumVideoRow,
-                            index === albumIndex && styles.activeTrack,
-                          ]}
-                        >
-                          <Image
-                            source={{
-                              uri: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
-                            }}
-                            style={styles.thumbnail}
-                          />
-                          <Text style={styles.trackText}>
-                            {index === albumIndex && status.videoTitle
-                              ? status.videoTitle
-                              : `Vídeo ${index + 1}`}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  ) : null}
+                  {!fixedVideoColumn ? albumVideoRows : null}
                 </TrackPaneComponent>
                 </>
               ) : null}
@@ -1542,6 +1569,9 @@ const styles = StyleSheet.create({
   tabletBodyPortrait: {
     flexDirection: "column",
     alignItems: "center",
+    minHeight: 0,
+    overflow: "hidden",
+    gap: 8,
   },
   tabletBodyOneColumn: {
     minHeight: 0,
@@ -1578,7 +1608,10 @@ const styles = StyleSheet.create({
   tabletTrackPanePortrait: {
     width: "100%",
     maxWidth: 720,
+    alignSelf: "center",
     flex: 1,
+    minHeight: 0,
+    overflow: "hidden",
   },
   tabletTrackPaneOneColumn: {
     flex: 1,
@@ -1586,6 +1619,17 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     overflow: "hidden",
     ...Platform.select({ web: { overflowY: "hidden", overflowX: "hidden" } }),
+  },
+  fixedVideoQueuePane: {
+    flex: 1,
+    minHeight: 0,
+    overflow: "hidden",
+    ...Platform.select({ web: { overflowY: "hidden", overflowX: "hidden" } }),
+  },
+  fixedVideoQueuePaneSpacing: {
+    paddingTop: 4,
+    paddingBottom: 4,
+    gap: 4,
   },
   tabletTrackPaneLandscape: {
     flex: 1,
