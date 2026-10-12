@@ -21,9 +21,17 @@ function openDatabase() {
       if (!database.objectStoreNames.contains("playlist-migrations"))
         database.createObjectStore("playlist-migrations", { keyPath: "id" });
     };
-    request.onsuccess = () => resolve(request.result);
+    let blocked = false;
+    request.onsuccess = () => {
+      if (blocked) { request.result.close(); return; }
+      request.result.onversionchange = () => request.result.close();
+      resolve(request.result);
+    };
     request.onerror = () => reject(request.error);
-    request.onblocked = () => reject(new Error("Cierra las demás pestañas de Shopp para actualizar IndexedDB."));
+    request.onblocked = () => {
+      blocked = true;
+      reject(new Error("Cierra las demás pestañas de Shopp para actualizar IndexedDB."));
+    };
   });
 }
 

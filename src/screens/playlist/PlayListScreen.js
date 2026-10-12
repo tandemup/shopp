@@ -425,6 +425,25 @@ export default function PlayListScreen() {
       : "skip",
   );
   const playlists = localMode ? localPlaylists : remotePlaylists;
+  const [checkingLocal, setCheckingLocal] = useState(false);
+  const checkLocalIntegrity = useCallback(async () => {
+    if (!localMode || checkingLocal) return;
+    setCheckingLocal(true);
+    try {
+      const state = await localRepo.auditLocalPlaylists(collection);
+      const samples = state.missing.map(item => `\n• ${item.playlist}, pista ${item.track}`).join("");
+      safeAlert("Integridad IndexedDB",
+        `${state.playlists} colecciones · ${state.tracks} pistas.\n` +
+        `LRC referenciadas: ${state.lyricsReferenced}; encontradas: ${state.lyricsFound}; faltantes: ${state.lyricsMissing}.\n` +
+        `Claves LRC individuales sin referencia (ambas colecciones): ${state.orphanedScopedKeys}.` +
+        (state.lyricsMissing ? `\nRevisa las pistas afectadas:${samples}` : "\nNo se detectaron LRC declaradas que falten.") +
+        "\nComprobación local y de solo lectura; no mide el tráfico de otras utilidades hacia Convex.");
+    } catch (error) {
+      safeAlert("No se pudo verificar IndexedDB", error?.message || "Error al leer la base local.");
+    } finally {
+      setCheckingLocal(false);
+    }
+  }, [checkingLocal, collection, localMode]);
   const migrateFromConvex = useCallback(() => {
     if (!localMode || !clientId || migratingConvex || localError) return;
     safeConfirm(
@@ -1318,14 +1337,22 @@ export default function PlayListScreen() {
         isNews ? ["shopp-youtube-tutorials"] : [],
       );
 
+      if (localMode) {
+        // JSON v1 no incorpora el contenido LRC. Guardamos TODO el lote
+        // atómicamente; si falla una pista no queda una importación parcial.
+        const prepared = imported.map(item => ({
+          ...item, collectionType: collection,
+          tracks: item.tracks.map(track => ({ ...track, lyricsDisabled: true })),
+        }));
+        const result = await localRepo.importBatch(collection, prepared, [], { replace: importMode === "replace" });
+        await refreshLocalPlaylists();
+        safeAlert("Importación terminada", `${result.added} playlists guardadas y ${result.skipped} duplicadas omitidas. ` +
+          (importMode === "replace" ? `${result.replaced} listas previas sustituidas. ` : "") +
+          "Importación transaccional en IndexedDB; Convex no se modificó.");
+        return;
+      }
+
       if (importMode === "replace") {
-        if (localMode) {
-          await localRepo.replaceAll(collection, imported.map(item => ({ ...item, collectionType: collection,
-            tracks: item.tracks.map(track => ({ ...track, lyricsDisabled: true })) })));
-          await refreshLocalPlaylists();
-          safeAlert("Importación terminada", `${imported.length} colecciones restauradas en IndexedDB. Convex permanece intacto.`);
-          return;
-        }
         await replacePlaylists({
           clientId,
           ...(isTutorialStyle
@@ -1364,22 +1391,16 @@ export default function PlayListScreen() {
           skipped += 1;
           continue;
         }
-        if (localMode) {
-          await localRepo.create({ ...playlist, collectionType: collection,
-            tracks: playlist.tracks.map(track => ({ ...track, lyricsDisabled: true })) });
-        } else {
-          await createPlaylist({
-            clientId,
-            ...(isTutorialStyle
-              ? { contentType: isNews ? "news" : "tutorial" }
-              : {}),
-            ...playlist,
-          });
-        }
+        await createPlaylist({
+          clientId,
+          ...(isTutorialStyle
+            ? { contentType: isNews ? "news" : "tutorial" }
+            : {}),
+          ...playlist,
+        });
         existingSignatures.add(signature);
         added += 1;
       }
-      if (localMode) await refreshLocalPlaylists();
       safeAlert(
         "Importación terminada",
         `${added} ${
@@ -1546,6 +1567,14 @@ export default function PlayListScreen() {
               <Ionicons name="copy-outline" size={21} color="#2563eb" />
               <Text style={styles.secondaryButtonText}>
                 Copiar entre listas
+              </Text>
+            </Pressable>
+          ) : null}
+          {localMode ? (
+            <Pressable onPress={checkLocalIntegrity} disabled={checkingLocal} style={styles.secondaryButton}>
+              <Ionicons name="shield-checkmark-outline" size={21} color="#2563eb" />
+              <Text style={styles.secondaryButtonText}>
+                {checkingLocal ? "Verificando…" : "Verificar datos"}
               </Text>
             </Pressable>
           ) : null}

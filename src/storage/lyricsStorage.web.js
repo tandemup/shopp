@@ -20,9 +20,17 @@ function openDb() {
         playlists.createIndex("by_collection", "collectionType", { unique: false });
       if (!db.objectStoreNames.contains("playlist-migrations")) db.createObjectStore("playlist-migrations", { keyPath: "id" });
     };
-    request.onsuccess = () => resolve(request.result);
+    let blocked = false;
+    request.onsuccess = () => {
+      if (blocked) { request.result.close(); return; }
+      request.result.onversionchange = () => request.result.close();
+      resolve(request.result);
+    };
     request.onerror = () => reject(request.error || new Error("No se pudo abrir IndexedDB."));
-    request.onblocked = () => reject(new Error("Cierra las otras pestañas de Shopp para actualizar IndexedDB."));
+    request.onblocked = () => {
+      blocked = true;
+      reject(new Error("Cierra las otras pestañas de Shopp para actualizar IndexedDB."));
+    };
   });
 }
 

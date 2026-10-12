@@ -18,9 +18,19 @@ function open() {
         playlists.createIndex('by_collection', 'collectionType', { unique: false });
       if (!db.objectStoreNames.contains(JOURNAL)) db.createObjectStore(JOURNAL, { keyPath: 'id' });
     };
-    req.onsuccess = () => resolve(req.result);
+    let blocked = false;
+    req.onsuccess = () => {
+      // Another tab may have blocked the upgrade. Never leak the connection
+      // from a request whose promise was already rejected.
+      if (blocked) { req.result.close(); return; }
+      req.result.onversionchange = () => req.result.close();
+      resolve(req.result);
+    };
     req.onerror = () => reject(req.error || new Error('Error al abrir IndexedDB'));
-    req.onblocked = () => reject(new Error('Cierra las otras pestañas de Shopp para actualizar IndexedDB'));
+    req.onblocked = () => {
+      blocked = true;
+      reject(new Error('Cierra las otras pestañas de Shopp para actualizar IndexedDB'));
+    };
   });
 }
 function transaction(names, mode, fn) {
@@ -247,5 +257,50 @@ export async function saveWithLyrics(id, item, lyricsChanges = []) {
       }
       done(nextId);
     };
+  });
+}
+
+// Diagnóstico de solo lectura. No descarga LRC, no escribe datos ni consulta
+// Convex; comprueba ambos tipos de colección antes de marcar claves huérfanas.
+export async function auditLocalPlaylists(type) {
+  assertType(type);
+  return transaction([STORE, LRC], 'readonly', (tx, done) => {
+    const recordsReq = tx.objectStore(STORE).getAll();
+    const keysReq = tx.objectStore(LRC).getAllKeys();
+    let records, keys;
+    const inspect = () => {
+      if (!records || !keys) return;
+      const all = records;
+      const selected = all.filter(p => p.collectionType === type);
+      const stored = new Set(keys.filter(k => typeof k === 'string'));
+      const referenced = referencedLyrics(all);
+      const orphanedScopedKeys = [...stored].filter(k => isScopedLyricsKey(k) && !referenced.has(k)).length;
+      let tracks = 0, lyricsReferenced = 0, lyricsFound = 0;
+      const missing = [];
+      for (const playlist of selected) {
+        for (const [index, track] of (playlist.tracks || []).entries()) {
+          tracks++;
+          if (track.lyricsDisabled === true) continue;
+          const hasDeclaredLyrics = Boolean(track.lyricsKey || track.lyricsFileName ||
+            track.lyricsStorageId || track.lyricsSize || track.lyricsMimeType);
+          if (!hasDeclaredLyrics) continue;
+          lyricsReferenced++;
+          const key = isScopedLyricsKey(track.lyricsKey)
+            ? track.lyricsKey
+            : track.videoId ? `@shopping/playlist-lyrics/video:${track.videoId}`
+            : track.playlistId ? `@shopping/playlist-lyrics/playlist:${track.playlistId}`
+            : null;
+          if (key && stored.has(key)) lyricsFound++;
+          else if (missing.length < 10) missing.push({
+            playlist: String(playlist.title || 'Sin título'), track: index + 1,
+          });
+        }
+      }
+      done({ collection: type, playlists: selected.length, tracks,
+        lyricsReferenced, lyricsFound, lyricsMissing: lyricsReferenced - lyricsFound,
+        orphanedScopedKeys, missing });
+    };
+    recordsReq.onsuccess = () => { records = recordsReq.result; inspect(); };
+    keysReq.onsuccess = () => { keys = keysReq.result; inspect(); };
   });
 }
