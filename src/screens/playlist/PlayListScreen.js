@@ -1050,7 +1050,12 @@ export default function PlayListScreen() {
             } else if (track.lyricsFileName) {
               // Evitar guardar metadatos de letras cuyo contenido falta.
               throw new Error(`Falta el archivo LRC local para el elemento ${index + 1}. Restaura el respaldo o migra desde Convex.`);
-            } else lyrics = {};
+            } else {
+              // Nueva pista sin letra: no heredar por accidente una LRC
+              // antigua compartida que utiliza el mismo ID de YouTube.
+              // Los registros heredados existentes permanecen intactos.
+              lyrics = { lyricsDisabled: true };
+            }
           }
         } else {
           lyrics = await uploadLyrics(track.lyrics, index);

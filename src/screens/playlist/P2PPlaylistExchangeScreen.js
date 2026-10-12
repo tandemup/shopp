@@ -18,6 +18,12 @@ import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 import { libraryJsonApi } from "@/src/services/libraryJsonApi";
 import * as localRepo from "@/src/storage/playlists/playlistRepository";
+import {
+  receivePortableP2PMessage,
+  sendPortableP2PPlaylist,
+  restorePortableP2PPlaylist,
+  createPlaylistAckTracker,
+} from "@/src/services/playlistP2PTransfer";
 
 const RTC_CONFIG = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -88,27 +94,6 @@ function getOrCreateDeviceId() {
     window.localStorage.setItem(key, value);
   }
   return value;
-}
-
-function toP2PPlaylist(playlist) {
-  return {
-    version: 1,
-    type: "shopp-youtube-playlist",
-    title: String(playlist?.title || "Playlist").trim() || "Playlist",
-    tracks: Array.isArray(playlist?.tracks)
-      ? playlist.tracks.map((track, index) => ({
-          kind: track?.kind === "album" ? "album" : "single",
-          title: String(track?.title || `Item ${index + 1}`).trim() || `Item ${index + 1}`,
-          videoId: track?.videoId || undefined,
-          playlistId: track?.playlistId || undefined,
-          url:
-            track?.url ||
-            (track?.playlistId
-              ? `https://www.youtube.com/playlist?list=${track.playlistId}`
-              : `https://www.youtube.com/watch?v=${track?.videoId || ""}`),
-        }))
-      : [],
-  };
 }
 
 function extractYouTubeIds(track) {
@@ -213,14 +198,19 @@ export default function P2PPlaylistExchangeScreen() {
   const [chatMessages, setChatMessages] = useState([]);
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const [musicPlaylists, setMusicPlaylists] = useState(undefined);
+  // Shareable Music and Classical records are read from local storage only.
+  const readLocalPlaylists = useCallback(async () => {
+    const [music, classical] = await Promise.all([localRepo.list("playlist"), localRepo.list("classical")]);
+    return [...music, ...classical];
+  }, []);
   const refreshMusicPlaylists = useCallback(async () => {
-    const data = await localRepo.list("playlist");
+    const data = await readLocalPlaylists();
     setMusicPlaylists(data);
     return data;
-  }, []);
+  }, [readLocalPlaylists]);
   useFocusEffect(useCallback(() => {
     let active = true;
-    localRepo.list("playlist").then(items => {
+    readLocalPlaylists().then(items => {
       if (active) setMusicPlaylists(items);
     }).catch(error => {
       if (active) {
@@ -229,7 +219,7 @@ export default function P2PPlaylistExchangeScreen() {
       }
     });
     return () => { active = false; };
-  }, []));
+  }, [readLocalPlaylists]));
   const [busy, setBusy] = useState(false);
   const handshakeInFlightRef = useRef(false);
   const [connection, setConnection] = useState("idle");
@@ -303,6 +293,9 @@ export default function P2PPlaylistExchangeScreen() {
   const queuedIceCandidatesRef = useRef([]);
   const offerStartedForRef = useRef(null);
   const incomingLibrarySyncRef = useRef(new Map());
+  const incomingPlaylistTransfersRef = useRef(new Map());
+  const playlistAcksRef = useRef(createPlaylistAckTracker());
+  const incomingMessageQueueRef = useRef(Promise.resolve());
   const musicPlaylistsRef = useRef([]);
   const importedPlaylistSignaturesRef = useRef(new Set());
   const pairingsRef = useRef([]);
@@ -336,6 +329,8 @@ export default function P2PPlaylistExchangeScreen() {
     peerRef.current = null;
     appliedSignalsRef.current.clear();
     queuedIceCandidatesRef.current = [];
+    incomingPlaylistTransfersRef.current.clear();
+    playlistAcksRef.current.rejectAll();
     offerStartedForRef.current = null;
     setConnection("idle");
     // onclose puede dispararse de forma asíncrona después de close().
@@ -461,6 +456,43 @@ export default function P2PPlaylistExchangeScreen() {
     return false;
   }, [sendLibrarySnapshot]);
 
+  const handlePlaylistTransfer = useCallback(async (message) => {
+    const isTransfer = typeof message?.type === "string" && message.type.startsWith("PLAYLIST_V2_");
+    if (!isTransfer || message.type === "PLAYLIST_V2_ACK") return false;
+    try {
+      const received = receivePortableP2PMessage(incomingPlaylistTransfersRef.current, message);
+      if (!received.handled) return false;
+      if (!received.payload) return true;
+      const imported = await restorePortableP2PPlaylist(received.payload);
+      // Once IndexedDB has committed, acknowledge immediately: a transient
+      // UI refresh error must not transform a successful save into a NACK.
+      const channel = dataChannelRef.current;
+      if (channel?.readyState === "open") sendP2PJson(channel, {
+        type: "PLAYLIST_V2_ACK", transferId: message.transferId,
+        ok: true, status: imported.result.added ? "saved" : "duplicate",
+      });
+      setReceivedPlaylists(current => [received.payload, ...current].slice(0, 20));
+      await refreshMusicPlaylists().catch(error => {
+        safeAlert("IndexedDB", `La playlist se guardó, pero no se pudo actualizar la lista: ${error?.message || "error"}`);
+      });
+      const name = imported.collection === "classical" ? "Classical Music" : "Music Playlist";
+      if (imported.result.added) {
+        safeAlert("Playlist P2P guardada", `«${imported.title}» · ${imported.itemCount} items, con letras LRC. Disponible en ${name}.`);
+      } else {
+        safeAlert("Playlist ya existente", `«${imported.title}» ya está guardada en ${name}; no se ha creado un duplicado.`);
+      }
+      return true;
+    } catch (error) {
+      const channel = dataChannelRef.current;
+      if (channel?.readyState === "open" && /^[A-Za-z0-9_-]{1,90}$/.test(String(message.transferId || ""))) {
+        try { sendP2PJson(channel, { type: "PLAYLIST_V2_ACK", transferId: message.transferId,
+          ok: false, error: String(error?.message || "Error IndexedDB").slice(0, 220) }); }
+        catch { /* peer may have disconnected */ }
+      }
+      throw error;
+    }
+  }, [refreshMusicPlaylists]);
+
   const bindDataChannel = useCallback((channel) => {
     dataChannelRef.current = channel;
     channel.onopen = () => {
@@ -475,7 +507,7 @@ export default function P2PPlaylistExchangeScreen() {
             for (const offered of invitation.offeredPlaylists) {
               const playlist = musicPlaylistsRef.current.find((item) => String(item._id) === offered.id && item.shareable === true);
               if (!playlist) throw new Error(`La playlist «${offered.title}» ya no está disponible para compartir.`);
-              sendP2PJson(channel, { type: "PLAYLIST", playlist: toP2PPlaylist(playlist) });
+              await sendPortableP2PPlaylist(channel, playlist, sendP2PJson, { waitForAck: playlistAcksRef.current.register });
               await new Promise((resolve) => setTimeout(resolve, 40));
             }
           } catch (error) {
@@ -493,11 +525,20 @@ export default function P2PPlaylistExchangeScreen() {
       handleUnexpectedDisconnect();
     };
     channel.binaryType = "arraybuffer";
-    channel.onmessage = async (event) => {
-      try {
-        const messageText = await decodeP2PMessage(event.data);
+    channel.onmessage = (event) => {
+      // Blob.arrayBuffer() is async in Safari. Queue frames strictly in order;
+      // otherwise END can overtake CHUNK and falsely abort a valid transfer.
+      const data = event.data;
+      incomingMessageQueueRef.current = incomingMessageQueueRef.current.then(async () => {
+        if (dataChannelRef.current !== channel) return;
+        const messageText = await decodeP2PMessage(data);
         const message = JSON.parse(messageText);
+        if (message?.type === "PLAYLIST_V2_ACK") {
+          playlistAcksRef.current.accept(message);
+          return;
+        }
         if (await handleLibraryMessage(message)) return;
+        if (await handlePlaylistTransfer(message)) return;
         if (message?.type === "PROFILE") {
           setChatMessages((current) => [{ id: `profile-${Date.now()}`, kind: "profile", incoming: true, profile: message.profile }, ...current.filter((m) => m.kind !== "profile")]);
           return;
@@ -537,12 +578,11 @@ export default function P2PPlaylistExchangeScreen() {
             throw error;
           }
         }
-      } catch (error) {
-        setLibrarySync((current) => ({ ...(current || {}), state: "failed", error: error?.message }));
-        safeAlert("Sincronización P2P", error?.message || "No se pudo procesar el mensaje recibido.");
-      }
+      }).catch((error) => {
+        safeAlert("Mensaje P2P", error?.message || "No se pudo procesar el mensaje recibido.");
+      });
     };
-  }, [alias, channels, handleLibraryMessage, handleUnexpectedDisconnect, myPresence?.displayName, refreshMusicPlaylists]);
+  }, [alias, channels, handleLibraryMessage, handlePlaylistTransfer, handleUnexpectedDisconnect, myPresence?.displayName, refreshMusicPlaylists]);
 
   const createPeer = useCallback((pairing, initiator) => {
     if (peerRef.current) return peerRef.current;
@@ -805,13 +845,15 @@ export default function P2PPlaylistExchangeScreen() {
     setBusy(true);
     try {
       for (const playlist of selectedPlaylists) {
-        sendP2PJson(channel, { type: "PLAYLIST", playlist: toP2PPlaylist(playlist) });
+        await sendPortableP2PPlaylist(channel, playlist, sendP2PJson, { waitForAck: playlistAcksRef.current.register });
         await new Promise((resolve) => setTimeout(resolve, 30));
       }
       safeAlert(
         "Playlists enviadas",
-        `${selectedPlaylists.length} ${selectedPlaylists.length === 1 ? "playlist enviada" : "playlists enviadas"} por P2P.`,
+        `${selectedPlaylists.length} ${selectedPlaylists.length === 1 ? "playlist enviada" : "playlists enviadas"} con sus letras LRC por P2P.`,
       );
+    } catch (error) {
+      safeAlert("Intercambio P2P", error?.message || "No se pudo completar la transferencia de LRC.");
     } finally {
       setBusy(false);
     }
@@ -892,7 +934,7 @@ export default function P2PPlaylistExchangeScreen() {
               privatePlaylists.map((playlist) => (
                 <Pressable key={String(playlist._id)} onPress={() => updateSharedFolder(playlist, true)} style={styles.playlistRow}>
                   <Ionicons name="add-circle-outline" size={20} color="#2563eb" />
-                  <View style={styles.playlistInfo}><Text style={styles.playlistName}>{playlist.title || "Playlist"}</Text></View>
+                  <View style={styles.playlistInfo}><Text style={styles.playlistName}>{playlist.title || "Playlist"}{playlist.collectionType === "classical" ? " · Classical" : ""}</Text></View>
                   <Text style={styles.selectAllText}>Añadir</Text>
                 </Pressable>
               ))}
@@ -901,7 +943,7 @@ export default function P2PPlaylistExchangeScreen() {
         {musicPlaylists === undefined ? (
           <ActivityIndicator color="#2563eb" />
         ) : shareablePlaylists.length === 0 ? (
-          <Text style={styles.muted}>La carpeta está vacía. Añade playlists desde aquí o desde el menú de cada lista.</Text>
+          <Text style={styles.muted}>La carpeta está vacía. Añade listas de Music o Classical desde aquí o desde el menú de cada colección.</Text>
         ) : (
           <View style={styles.playlistList}>
             {shareablePlaylists.map((playlist) => {
@@ -915,7 +957,7 @@ export default function P2PPlaylistExchangeScreen() {
                   </View>
                   <View style={styles.playlistInfo}>
                     <Text style={styles.playlistName} numberOfLines={1}>{playlist.title || "Playlist"}</Text>
-                    <Text style={styles.playlistMeta}>{itemCount} {itemCount === 1 ? "item" : "items"}</Text>
+                    <Text style={styles.playlistMeta}>{playlist.collectionType === "classical" ? "Classical · " : "Music · "}{itemCount} {itemCount === 1 ? "item" : "items"}</Text>
                   </View>
                   <Pressable accessibilityRole="button" accessibilityLabel={`Quitar ${playlist.title} de Compartidos`}
                     onPress={() => updateSharedFolder(playlist, false)} style={{ padding: 8 }}>
@@ -951,7 +993,7 @@ export default function P2PPlaylistExchangeScreen() {
       </View> : null}
 
       {receivedPlaylists.length > 0 ? <View style={styles.card}><Text style={styles.cardTitle}>Playlists recibidas por P2P</Text>{receivedPlaylists.map((playlist, index) => <View key={`${playlist.title || "playlist"}-${index}`} style={styles.receivedRow}><View style={styles.playlistInfo}><Text style={styles.playlistName} numberOfLines={1}>{playlist.title || "Playlist"}</Text><Text style={styles.playlistMeta}>{playlist.tracks?.length || 0} items</Text></View><Pressable onPress={() => downloadJson(playlist)} style={styles.downloadButton}><Ionicons name="download-outline" size={18} color="#1d4ed8" /><Text style={styles.downloadButtonText}>JSON</Text></Pressable></View>)}</View> : null}
-      <Text style={styles.note}>Las playlists incluidas en una invitación aceptada se envían por WebRTC al establecerse la conexión. Al recibirlas, Shopp las guarda automáticamente en “Music playlist” del usuario receptor y evita duplicados exactos. La opción “Sincronizar Biblioteca” combina la Biblioteca local de ambos dispositivos.</Text>
+      <Text style={styles.note}>Las playlists incluidas en una invitación aceptada se envían por WebRTC al establecerse la conexión. Al recibirlas, Shopp las guarda en IndexedDB, dentro de Music Playlist o Classical Music según corresponda, y evita duplicados exactos. La opción “Sincronizar Biblioteca” combina la Biblioteca local de ambos dispositivos.</Text>
       <Modal visible={!!incomingInvitation} transparent animationType="fade" statusBarTranslucent onRequestClose={() => { if (incomingInvitation && !busy) void respond(incomingInvitation, false); }}>
         <View style={[styles.modalBackdrop, shortInvitation && styles.modalBackdropCompact]}>
           {incomingInvitation ? <View style={[styles.invitationModal, { width: invitationWidth, maxHeight: invitationHeight }, compactInvitation && styles.invitationModalCompact]}>
