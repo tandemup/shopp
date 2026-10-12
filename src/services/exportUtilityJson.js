@@ -6,6 +6,8 @@ import { api } from "@/convex/_generated/api";
 import { libraryJsonApi } from "@/src/services/libraryJsonApi";
 import { makePlaylistBackupV2 } from "@/src/services/playlistBackupV2";
 import { savePlaylistArchive } from "@/src/services/playlistArchiveZip";
+import * as localRepo from "@/src/storage/playlists/playlistRepository";
+import { getPlaylistSource } from "@/src/services/playlistSource";
 
 export const JSON_EXPORT_UTILITIES = [
   { id: "biblioteca", label: "Biblioteca" },
@@ -82,21 +84,27 @@ export async function readUtilityExport(id, { convex, getScannedHistory, activeL
     data = await getScannedHistory();
     if (!Array.isArray(data)) throw new Error("El historial de escaneos no es válido.");
   } else {
-    if (!convex) throw new Error("No está disponible la conexión a Convex.");
-    const clientId = await playlistClientId();
-    if (id === "music" || id === "classic") {
-      data = await convex.query(api.playlists.listMine, {
-        ...(clientId ? { clientId } : {}),
-        collectionType: id === "classic" ? "classical" : "playlist",
-      });
+    const type = id === "classic" ? "classical" : "playlist";
+    if ((id === "music" || id === "classic") && getPlaylistSource(type) === "local") {
+      data = await localRepo.list(type);
+      if (!data.length) throw new Error("No existen playlists locales para exportar. No se ha consultado Convex.");
     } else {
-      data = await convex.query(api.tutorials.listMine, {
-        ...(clientId ? { clientId } : {}),
-        contentType: id === "noticias" ? "news" : "tutorial",
-      });
+      if (!convex) throw new Error("No está disponible la conexión a Convex.");
+      const clientId = await playlistClientId();
+      if (id === "music" || id === "classic") {
+        data = await convex.query(api.playlists.listMine, {
+          ...(clientId ? { clientId } : {}),
+          collectionType: type,
+        });
+      } else {
+        data = await convex.query(api.tutorials.listMine, {
+          ...(clientId ? { clientId } : {}),
+          contentType: id === "noticias" ? "news" : "tutorial",
+        });
+      }
+      if (!Array.isArray(data)) throw new Error("No se pudieron recuperar los datos de la utilidad.");
+      data = data.map(playlistItem);
     }
-    if (!Array.isArray(data)) throw new Error("No se pudieron recuperar los datos de la utilidad.");
-    data = data.map(playlistItem);
   }
   if (id === "music" || id === "classic") {
     return makePlaylistBackupV2(data, formats[id]);

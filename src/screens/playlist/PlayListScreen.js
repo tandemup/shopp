@@ -29,6 +29,9 @@ import { savePlaylistArchive } from "@/src/services/playlistArchiveZip";
 import { readPlaylistImportAsset } from "@/src/services/playlistArchiveImport";
 import { validatePlaylistBackupV2, importPlaylistBackupV2 } from "@/src/services/playlistImportV2";
 import { stagePlaylistBackupV2Locally } from "@/src/services/stagePlaylistsLocally";
+import * as localRepo from "@/src/storage/playlists/playlistRepository";
+import { getPlaylistSource, setPlaylistSource } from "@/src/services/playlistSource";
+import { importPlaylistsLocally } from "@/src/services/playlistLocalImport";
 
 import TutorialTransferScreen from "./TutorialTransferScreen";
 import EditorVideoPreview from "./EditorVideoPreview";
@@ -387,14 +390,69 @@ export default function PlayListScreen() {
         ? "shopp-youtube-classical-playlist"
         : "shopp-youtube-playlist";
   const [clientId, setClientId] = useState(getWebClientId);
-  const playlists = useQuery(
+  const collection = isClassical ? "classical" : "playlist";
+  // Opt-in, browser-specific cutover. Never changes data stored in Convex.
+  const [playlistSource, setPlaylistSourceState] = useState(() =>
+    getPlaylistSource(isClassical ? "classical" : "playlist"),
+  );
+  const localMode = !isTutorialStyle && playlistSource === "local" && Platform.OS === "web";
+  const [localPlaylists, setLocalPlaylists] = useState(undefined);
+  const [switchingSource, setSwitchingSource] = useState(false);
+  const refreshLocalPlaylists = useCallback(async () => {
+    const items = await localRepo.list(collection);
+    setLocalPlaylists(items);
+    return items;
+  }, [collection]);
+  useEffect(() => {
+    if (isTutorialStyle || !localMode) return;
+    let active = true;
+    setLocalPlaylists(undefined);
+    localRepo.list(collection)
+      .then((items) => {
+        if (!active) return;
+        if (!items.length) {
+          // Do not show an empty collection silently when migration was not staged.
+          setPlaylistSource(collection, "convex");
+          setPlaylistSourceState("convex");
+          safeAlert("Copia local no disponible", "Prepara y verifica primero una copia JSON v2 de esta colección. Se mantiene Convex como origen.");
+        } else {
+          setLocalPlaylists(items);
+        }
+      })
+      .catch((error) => {
+        if (!active) return;
+        setPlaylistSource(collection, "convex");
+        setPlaylistSourceState("convex");
+        safeAlert("No se pudo abrir IndexedDB", error?.message || "Se conserva el origen Convex.");
+      });
+    return () => { active = false; };
+  }, [collection, isTutorialStyle, localMode]);
+  const remotePlaylists = useQuery(
     contentApi.listMine,
-    clientId
+    clientId && !localMode
       ? isTutorialStyle
         ? { clientId, contentType: isNews ? "news" : "tutorial" }
-        : { clientId, collectionType: isClassical ? "classical" : "playlist" }
+        : { clientId, collectionType: collection }
       : "skip",
   );
+  const playlists = localMode ? localPlaylists : remotePlaylists;
+  const changePlaylistSource = useCallback(async (next) => {
+    if (Platform.OS !== "web" || isTutorialStyle || next === playlistSource || switchingSource) return;
+    setSwitchingSource(true);
+    try {
+      if (next === "local") {
+        const items = await localRepo.list(collection);
+        if (!items.length) throw new Error("No hay una copia local verificada de esta colección. Utiliza «Preparar copia local» antes de activar el modo local.");
+        setLocalPlaylists(items);
+      }
+      setPlaylistSource(collection, next);
+      setPlaylistSourceState(next);
+    } catch (error) {
+      safeAlert("No se pudo cambiar de origen", error?.message || "No se modificó el origen de datos.");
+    } finally {
+      setSwitchingSource(false);
+    }
+  }, [collection, isTutorialStyle, playlistSource, switchingSource]);
   const createPlaylist = useMutation(contentApi.create);
   const setPlaylistShareable = useMutation(api.playlists.setShareable);
   const replacePlaylists = useMutation(contentApi.replaceMine);
@@ -408,6 +466,9 @@ export default function PlayListScreen() {
   const generateUploadUrl = useMutation(contentApi.generateUploadUrl);
   const [editorVisible, setEditorVisible] = useState(false);
   const { width } = useWindowDimensions();
+  // En móvil y tablet pequeña, las acciones no deben desbordar el ancho.
+  const compactHeader = width < 900;
+  const HeaderActionsContainer = compactHeader ? ScrollView : View;
   const canEditLyricsLocally =
     Platform.OS === "web" && width >= 960 && !isTutorialStyle;
   const [lyricsEditorIndex, setLyricsEditorIndex] = useState(null);
@@ -577,6 +638,7 @@ export default function PlayListScreen() {
         title:
           track.title ||
           `${isTutorialStyle ? "Vídeo" : "Elemento"} ${index + 1}`,
+        lyricsFileName: track.lyricsFileName || null,
         url:
           track.url ||
           (track.playlistId
@@ -933,7 +995,25 @@ export default function PlayListScreen() {
       for (let index = 0; index < tracks.length; index += 1) {
         const track = tracks[index];
         const parsed = parseYouTubeUrl(track.url.trim());
-        const lyrics = await uploadLyrics(track.lyrics, index);
+        let lyrics;
+        if (localMode) {
+          // In local mode never request a Convex upload URL or upload an LRC.
+          let record = track.localLyrics;
+          if (track.lyrics && !track.lyrics.existing && track.lyrics.uri) {
+            const response = await fetch(track.lyrics.uri);
+            if (!response.ok) throw new Error(`No se pudo leer el LRC del elemento ${index + 1}.`);
+            const text = await response.text();
+            if (new TextEncoder().encode(text).length > 512 * 1024) throw new Error("La letra LRC supera 512 KB.");
+            record = await saveLocalLyrics({ kind: track.kind, videoId: parsed.videoId, playlistId: parsed.playlistId }, text, { fileName: track.lyrics.fileName });
+          }
+          lyrics = record?.fileName
+            ? { lyricsFileName: record.fileName, lyricsMimeType: "text/plain", lyricsSize: new TextEncoder().encode(record.text || "").length }
+            : track.lyricsFileName && !track.lyrics?.existing
+              ? { lyricsFileName: track.lyricsFileName }
+              : {};
+        } else {
+          lyrics = await uploadLyrics(track.lyrics, index);
+        }
         normalizedTracks.push({
           kind: isNews ? "single" : track.kind === "album" ? "album" : "single",
           videoId: parsed.videoId || undefined,
@@ -958,7 +1038,18 @@ export default function PlayListScreen() {
             }
           : {}),
       };
-      if (editingId) await updatePlaylist({ playlistId: editingId, ...args });
+      if (localMode) {
+        // Keep all edits local. The original Convex documents are never overwritten.
+        const localItem = {
+          title: args.title,
+          tracks: normalizedTracks,
+          collectionType: collection,
+          ...(isClassical ? classicalDetails : {}),
+        };
+        if (editingId) await localRepo.update(editingId, localItem);
+        else await localRepo.create(localItem);
+        await refreshLocalPlaylists();
+      } else if (editingId) await updatePlaylist({ playlistId: editingId, ...args });
       else await createPlaylist(args);
       setEditorVisible(false);
     } catch (error) {
@@ -979,6 +1070,9 @@ export default function PlayListScreen() {
     isClassical,
     isNews,
     isTutorialStyle,
+    localMode,
+    collection,
+    refreshLocalPlaylists,
     title,
     tracks,
     updatePlaylist,
@@ -995,13 +1089,18 @@ export default function PlayListScreen() {
         async () => {
           setDeletingId(item._id);
           try {
-            await removePlaylist({
-              playlistId: item._id,
-              clientId,
-              ...(isTutorialStyle
-                ? { contentType: isNews ? "news" : "tutorial" }
-                : {}),
-            });
+            if (localMode) {
+              await localRepo.remove(item._id);
+              await refreshLocalPlaylists();
+            } else {
+              await removePlaylist({
+                playlistId: item._id,
+                clientId,
+                ...(isTutorialStyle
+                  ? { contentType: isNews ? "news" : "tutorial" }
+                  : {}),
+              });
+            }
           } catch (error) {
             safeAlert(
               "No se pudo borrar",
@@ -1013,7 +1112,7 @@ export default function PlayListScreen() {
         },
         { confirmText: "Borrar", destructive: true },
       ),
-    [clientId, collectionLabel, isNews, isTutorialStyle, removePlaylist],
+    [clientId, collectionLabel, isNews, isTutorialStyle, removePlaylist, localMode, refreshLocalPlaylists],
   );
 
   const exportPlaylist = useCallback(
@@ -1094,6 +1193,11 @@ export default function PlayListScreen() {
   const reorderPlaylist = useCallback(
     async (item, nextTracks) => {
       try {
+        if (localMode) {
+          await localRepo.update(item._id, { tracks: nextTracks });
+          await refreshLocalPlaylists();
+          return;
+        }
         await updatePlaylist({
           playlistId: item._id,
           clientId,
@@ -1138,7 +1242,7 @@ export default function PlayListScreen() {
         );
       }
     },
-    [clientId, isClassical, isNews, isTutorialStyle, updatePlaylist],
+    [clientId, isClassical, isNews, isTutorialStyle, updatePlaylist, localMode, refreshLocalPlaylists],
   );
 
   const importJsonFile = useCallback(async (asset, importMode = "combine") => {
@@ -1152,8 +1256,11 @@ export default function PlayListScreen() {
         }
         if (!Array.isArray(playlists)) throw new Error("Espera a que se carguen las playlists actuales antes de importar.");
         const validated = validatePlaylistBackupV2(payload, payload.type === exportType ? exportType : exportItemType, { minimumTracks, maximumTracks });
-        const result = await importPlaylistBackupV2({ playlists: validated, existing: playlists, clientId, createPlaylist, generateUploadUrl, setPlaylistShareable });
-        safeAlert("Importación v2 terminada", `${result.added} playlists añadidas, ${result.skipped} duplicadas omitidas y ${result.lyricsRestored} letras LRC restauradas. Los datos anteriores de Convex no se han eliminado.`);
+        const result = localMode
+          ? await importPlaylistsLocally({ playlists: validated, existing: playlists, collection })
+          : await importPlaylistBackupV2({ playlists: validated, existing: playlists, clientId, createPlaylist, generateUploadUrl, setPlaylistShareable });
+        if (localMode) await refreshLocalPlaylists();
+        safeAlert("Importación v2 terminada", `${result.added} playlists añadidas, ${result.skipped} duplicadas omitidas y ${result.lyricsRestored} letras LRC restauradas.${result.conflicts ? ` ${result.conflicts} letras locales distintas se conservaron sin sobrescribir.` : ""} ${localMode ? "No se escribió ningún dato en Convex." : "Los datos anteriores de Convex no se han eliminado."}`);
         return;
       }
       const imported = parseImportedPayload(
@@ -1167,6 +1274,7 @@ export default function PlayListScreen() {
       );
 
       if (importMode === "replace") {
+        if (localMode) throw new Error("Para proteger los datos locales, utiliza Combinar. Reemplazar se habilitará después de validar una restauración transaccional.");
         await replacePlaylists({
           clientId,
           ...(isTutorialStyle
@@ -1205,16 +1313,21 @@ export default function PlayListScreen() {
           skipped += 1;
           continue;
         }
-        await createPlaylist({
-          clientId,
-          ...(isTutorialStyle
-            ? { contentType: isNews ? "news" : "tutorial" }
-            : {}),
-          ...playlist,
-        });
+        if (localMode) {
+          await localRepo.create({ ...playlist, collectionType: collection });
+        } else {
+          await createPlaylist({
+            clientId,
+            ...(isTutorialStyle
+              ? { contentType: isNews ? "news" : "tutorial" }
+              : {}),
+            ...playlist,
+          });
+        }
         existingSignatures.add(signature);
         added += 1;
       }
+      if (localMode) await refreshLocalPlaylists();
       safeAlert(
         "Importación terminada",
         `${added} ${
@@ -1251,6 +1364,9 @@ export default function PlayListScreen() {
     exportItemType,
     exportType,
     generateUploadUrl,
+    localMode,
+    collection,
+    refreshLocalPlaylists,
     isClassical,
     isNews,
     isTutorialStyle,
@@ -1378,8 +1494,8 @@ export default function PlayListScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.header}>
-        <View style={styles.headerText}>
+      <View style={[styles.header, compactHeader && styles.headerCompact]}>
+        <View style={[styles.headerText, compactHeader && styles.headerTextCompact]}>
           <Text style={styles.heading}>{collectionTitle}</Text>
           <Text style={styles.subtitle}>
             {isNews
@@ -1391,7 +1507,18 @@ export default function PlayListScreen() {
                   : "Combina canciones individuales y álbumes de YouTube."}
           </Text>
         </View>
-        <View style={styles.headerActions}>
+        <HeaderActionsContainer
+          style={compactHeader ? styles.headerActionsScroll : styles.headerActions}
+          {...(compactHeader
+            ? {
+                horizontal: true,
+                showsHorizontalScrollIndicator: true,
+                keyboardShouldPersistTaps: "handled",
+                directionalLockEnabled: true,
+                contentContainerStyle: styles.headerActionsScrollContent,
+              }
+            : {})}
+        >
           {isTutorials ? (
             <Pressable
               onPress={() => setTransferVisible(true)}
@@ -1404,6 +1531,20 @@ export default function PlayListScreen() {
             </Pressable>
           ) : null}
           {!isTutorialStyle && Platform.OS === "web" ? (
+            <View style={styles.sourceSwitch}>
+              <Pressable onPress={() => changePlaylistSource("convex")} disabled={switchingSource}
+                accessibilityRole="button" accessibilityLabel="Origen de datos Convex"
+                style={[styles.sourceSwitchOption, !localMode && styles.sourceSwitchActive]}>
+                <Text style={[styles.sourceSwitchText, !localMode && styles.sourceSwitchTextActive]}>Convex</Text>
+              </Pressable>
+              <Pressable onPress={() => changePlaylistSource("local")} disabled={switchingSource}
+                accessibilityRole="button" accessibilityLabel="Origen de datos local IndexedDB"
+                style={[styles.sourceSwitchOption, localMode && styles.sourceSwitchActive]}>
+                <Text style={[styles.sourceSwitchText, localMode && styles.sourceSwitchTextActive]}>Local</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {!isTutorialStyle && Platform.OS === "web" && !localMode ? (
             <Pressable
               onPress={stageLocalBackup}
               disabled={stagingLocal}
@@ -1445,8 +1586,14 @@ export default function PlayListScreen() {
                     : "Nueva playlist"}
             </Text>
           </Pressable>
-        </View>
+        </HeaderActionsContainer>
       </View>
+      {localMode ? (
+        <View style={styles.localModeNotice}>
+          <Ionicons name="information-circle-outline" size={16} color="#92400e" />
+          <Text style={styles.localModeNoticeText}>Modo local: los cambios solo se guardan en este navegador. El intercambio P2P aún utiliza Convex; exporta una copia ZIP periódicamente.</Text>
+        </View>
+      ) : null}
       {playlists === undefined ? (
         <View style={styles.center}>
           <ActivityIndicator color="#dc2626" />
@@ -1492,11 +1639,16 @@ export default function PlayListScreen() {
                 shareable={item.shareable === true}
                 onToggleShareable={!isTutorialStyle ? async (shareable) => {
                   try {
-                    await setPlaylistShareable({
-                      playlistId: item._id,
-                      clientId: clientId || undefined,
-                      shareable,
-                    });
+                    if (localMode) {
+                      await localRepo.update(item._id, { shareable });
+                      await refreshLocalPlaylists();
+                    } else {
+                      await setPlaylistShareable({
+                        playlistId: item._id,
+                        clientId: clientId || undefined,
+                        shareable,
+                      });
+                    }
                   } catch (error) {
                     safeAlert("Carpeta Compartidos", error?.message || "No se pudo actualizar la carpeta.");
                   }
@@ -2242,6 +2394,13 @@ export default function PlayListScreen() {
 }
 
 const styles = StyleSheet.create({
+  localModeNotice: { flexDirection: "row", gap: 8, alignItems: "center", backgroundColor: "#fffbeb", borderBottomWidth: 1, borderBottomColor: "#fde68a", paddingHorizontal: 16, paddingVertical: 6 },
+  localModeNoticeText: { flexShrink: 1, fontSize: 11, color: "#92400e" },
+  sourceSwitch: { flexDirection: "row", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 6, overflow: "hidden", alignSelf: "center", marginRight: 6 },
+  sourceSwitchOption: { paddingVertical: 9, paddingHorizontal: 12, backgroundColor: "#f8fafc" },
+  sourceSwitchActive: { backgroundColor: "#2563eb" },
+  sourceSwitchText: { color: "#334155", fontWeight: "700", fontSize: 12 },
+  sourceSwitchTextActive: { color: "#ffffff" },
   classicalDetails: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -2276,6 +2435,23 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   headerText: { flex: 1, minWidth: 220 },
+  headerCompact: {
+    flexDirection: "column",
+    flexWrap: "nowrap",
+    alignItems: "stretch",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  headerTextCompact: { flex: 0, width: "100%", minWidth: 0 },
+  headerActionsScroll: { width: "100%", maxWidth: "100%", flexGrow: 0 },
+  headerActionsScrollContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingRight: 24,
+    paddingVertical: 2,
+  },
   heading: { fontSize: 22, fontWeight: "900", color: "#111827" },
   subtitle: { marginTop: 3, fontSize: 12, color: "#64748b" },
   headerActions: {
