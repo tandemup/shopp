@@ -101,7 +101,7 @@ function SyncedLyricLine({ track, uri, time, compact = false }) {
     return () => {
       cancelled = true;
     };
-  }, [track?.videoId, track?.playlistId, track?.url, uri]);
+  }, [track?.videoId, track?.playlistId, track?.url, track?.lyricsKey, track?.lyricsDisabled, uri]);
   if (!lines.length) return null;
   let index = -1;
   lines.forEach((line, i) => {
@@ -124,6 +124,7 @@ function SyncedLyricLine({ track, uri, time, compact = false }) {
 
 
 function trackHasLyricsReference(track) {
+  if (track?.lyricsDisabled === true) return false;
   return Boolean(
     track?.lyricsFileName ||
       track?.lyricsStorageId ||
@@ -166,6 +167,7 @@ function LyricsAvailabilityMark({ track }) {
     track?.lyricsUri,
     track?.lyricsUrl,
     track?.lyricsKey,
+    track?.lyricsDisabled,
     track?.hasLyrics,
   ]);
 
@@ -205,7 +207,7 @@ function QueueLyricsPreview({ track, uri, time }) {
     return () => {
       cancelled = true;
     };
-  }, [track?.videoId, track?.playlistId, track?.url, uri]);
+  }, [track?.videoId, track?.playlistId, track?.url, track?.lyricsKey, track?.lyricsDisabled, uri]);
 
   let activeIndex = -1;
   lines.forEach((line, i) => {
@@ -260,7 +262,7 @@ function DesktopLyricsPanel({ track, uri, time, title }) {
     return () => {
       cancelled = true;
     };
-  }, [track?.videoId, track?.playlistId, track?.url, uri]);
+  }, [track?.videoId, track?.playlistId, track?.url, track?.lyricsKey, track?.lyricsDisabled, uri]);
   let activeIndex = -1;
   lines.forEach((line, i) => {
     if (line.time <= time + 0.08) activeIndex = i;
@@ -370,7 +372,15 @@ export default function PlaybackProvider({ children }) {
   }, []);
   const open = useCallback(
     (playlist, { isTutorial = false } = {}) => {
+      // Music/Classical PWA reproduce exclusivamente LRC locales. Aunque
+      // una colección migrada conserve URLs antiguas de almacenamiento Convex,
+      // no se descargan durante la reproducción habitual.
+      const localCollection = Platform.OS === "web" &&
+        ["playlist", "classical"].includes(playlist?.collectionType);
       const tracks = (playlist?.tracks || [])
+        .map(track => localCollection
+          ? { ...track, lyricsUri: undefined, lyricsUrl: undefined }
+          : track)
         .map(normalizeTrack)
         .filter(Boolean);
       if (!tracks.length) return;

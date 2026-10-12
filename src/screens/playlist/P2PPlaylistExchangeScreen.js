@@ -158,7 +158,9 @@ function normalizeReceivedPlaylist(playlist) {
   if (tracks.length === 0) throw new Error("La playlist recibida no contiene items válidos.");
   return {
     title: String(playlist?.title || "Playlist recibida").trim() || "Playlist recibida",
-    tracks,
+    // A P2P v1 transfer contains no LRC: do not accidentally attach old
+    // video-wide lyrics already saved on the receiving browser.
+    tracks: tracks.map(track => ({ ...track, lyricsDisabled: true })),
     collectionType: "playlist",
   };
 }

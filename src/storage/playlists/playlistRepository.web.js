@@ -62,15 +62,47 @@ export async function update(id, changes) {
     };
   });
 }
-export async function remove(id) { return transaction([STORE], 'readwrite', tx => tx.objectStore(STORE).delete(id)); }
+const isScopedLyricsKey = key =>
+  typeof key === 'string' && /^@shopping\/playlist-lyrics\/track:[A-Za-z0-9_-]+$/.test(key);
+const referencedLyrics = records => new Set(records.flatMap(p =>
+  (p.tracks || []).filter(t => !t.lyricsDisabled && isScopedLyricsKey(t.lyricsKey)).map(t => t.lyricsKey)));
+const oldLyrics = playlist => new Set((playlist?.tracks || []).map(t => t.lyricsKey).filter(isScopedLyricsKey));
+
+// An LRC is reclaimed only when no remaining playlist (Music or Classical)
+// refers to it. This is atomic with deletion of the playlist itself.
+export async function remove(id) {
+  return transaction([STORE, LRC], 'readwrite', (tx, done) => {
+    const store = tx.objectStore(STORE), lrc = tx.objectStore(LRC);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const existing = request.result || [];
+      const target = existing.find(p => p.id === id);
+      if (!target) { tx.abort(); return; }
+      store.delete(id);
+      const inUse = referencedLyrics(existing.filter(p => p.id !== id));
+      for (const key of oldLyrics(target)) if (!inUse.has(key)) lrc.delete(key);
+      done(true);
+    };
+  });
+}
 export async function replaceAll(type, items) {
   assertType(type);
   if (!Array.isArray(items) || items.some(x=>x.collectionType!==type)) throw new Error('Colección incorrecta');
-  return transaction([STORE], 'readwrite', (tx, done) => {
-    const store=tx.objectStore(STORE), index=store.index('by_collection'), req=index.openCursor(IDBKeyRange.only(type));
-    req.onsuccess=()=>{ const cursor=req.result; if(cursor){ cursor.delete(); cursor.continue(); } else {
-      items.forEach(item => { const id=item.id || makeId(); store.put({...item,id,_id:id}); }); done(items.length);
-    }};
+  return transaction([STORE, LRC], 'readwrite', (tx, done) => {
+    const store = tx.objectStore(STORE), lrc = tx.objectStore(LRC);
+    const req = store.getAll();
+    req.onsuccess = () => {
+      const all = req.result || [], former = all.filter(p => p.collectionType === type);
+      former.forEach(p => store.delete(p.id));
+      const next = items.map(item => { const id = item.id || makeId();
+        return { ...item, id, _id: id }; });
+      next.forEach(item => store.put(item));
+      const inUse = referencedLyrics([...all.filter(p => p.collectionType !== type), ...next]);
+      for (const p of former) for (const key of oldLyrics(p)) {
+        if (!inUse.has(key)) lrc.delete(key);
+      }
+      done(items.length);
+    };
   });
 }
 // Atomic staging: do not overwrite existing music/classical records, and preserve the old LRC store.
@@ -103,30 +135,41 @@ export async function importBatch(type, items, lyrics, { replace = false } = {})
   if (!Array.isArray(items) || items.some(p => p.collectionType !== type) || !Array.isArray(lyrics)) {
     throw new Error('Datos de importación no válidos');
   }
+  if (lyrics.some(entry => !isScopedLyricsKey(entry?.key) ||
+    typeof entry?.record?.text !== 'string' ||
+    new TextEncoder().encode(entry.record.text).length > 512 * 1024 ||
+    !String(entry.record.fileName || '').toLowerCase().endsWith('.lrc'))) {
+    throw new Error('LRC de importación inválida');
+  }
   return transaction([STORE, LRC], 'readwrite', (tx, done) => {
-    const store = tx.objectStore(STORE);
-    const lrc = tx.objectStore(LRC);
-    const request = store.index('by_collection').getAll(type);
+    const store = tx.objectStore(STORE), lrc = tx.objectStore(LRC);
+    const request = store.getAll();
     request.onsuccess = () => {
-      const current = request.result || [];
+      const all = request.result || [];
+      const current = all.filter(p => p.collectionType === type);
       const known = new Set(replace ? [] : current.map(playlistSignature));
       if (replace) current.forEach(p => store.delete(p.id));
-      const result = { added: 0, skipped: 0, lyricsRestored: 0, conflicts: 0, replaced: replace ? current.length : 0 };
+      const result = { added: 0, skipped: 0, lyricsRestored: 0, conflicts: 0,
+        replaced: replace ? current.length : 0 };
+      const added = [];
       for (const item of items) {
         const signature = playlistSignature(item);
         if (known.has(signature)) { result.skipped++; continue; }
-        const now = Date.now();
-        const id = makeId();
-        store.add({ ...item, id, _id: id, createdAt: now, updatedAt: now });
+        const now = Date.now(), id = makeId();
+        const record = { ...item, id, _id: id, createdAt: now, updatedAt: now };
+        store.add(record);
+        added.push(record);
         known.add(signature);
         result.added++;
       }
-      // Existing local lyrics win, including for playlists that are duplicates.
-      // Read and write requests are queued while this transaction is active.
+      const retained = [...all.filter(p => !replace || p.collectionType !== type), ...added];
+      const inUse = referencedLyrics(retained);
       for (const { key, record } of lyrics) {
-        const req = lrc.get(key);
-        req.onsuccess = () => {
-          const existing = req.result;
+        // Do not write orphan LRC data from skipped duplicate playlists.
+        if (!inUse.has(key)) continue;
+        const get = lrc.get(key);
+        get.onsuccess = () => {
+          const existing = get.result;
           if (existing && String(existing.text || '').trim()) {
             if (existing.text !== record.text) result.conflicts++;
           } else {
@@ -135,7 +178,74 @@ export async function importBatch(type, items, lyrics, { replace = false } = {})
           }
         };
       }
+      if (replace) {
+        for (const old of current) for (const key of oldLyrics(old)) {
+          if (!inUse.has(key)) lrc.delete(key);
+        }
+      }
       done(result);
+    };
+  });
+}
+
+// Persistir una colección y sus cambios LRC en la MISMA transacción.
+// No se aplica ningún cambio si la playlist no existe o falla una escritura.
+export async function saveWithLyrics(id, item, lyricsChanges = []) {
+  assertType(item.collectionType);
+  if (!Array.isArray(item.tracks) || !Array.isArray(lyricsChanges)) throw new Error('Datos de playlist inválidos');
+  const prepared = lyricsChanges.map(change => {
+    // New writes are per-track. Legacy video-wide keys are read-only to
+    // prevent editing one playlist from altering another playlist's lyrics.
+    const key = change.key;
+    if (typeof key !== 'string' || !/^@shopping\/playlist-lyrics\/track:[A-Za-z0-9_-]+$/.test(key)) {
+      throw new Error('Clave LRC individual no válida');
+    }
+    if (change.remove) return {key, remove:true};
+    const record = change.record;
+    if (!record || typeof record.text !== 'string' ||
+      new TextEncoder().encode(record.text).length > 512*1024 ||
+      !String(record.fileName || '').toLowerCase().endsWith('.lrc')) {
+      throw new Error('Contenido LRC inválido');
+    }
+    return {key, record};
+  });
+  const distinct = new Map();
+  for (const change of prepared) {
+    const prior = distinct.get(change.key);
+    if (prior && (prior.remove !== change.remove ||
+      (!change.remove && (prior.record.text !== change.record.text || prior.record.fileName !== change.record.fileName)))) {
+      throw new Error('Dos pistas usan la misma clave LRC con cambios distintos');
+    }
+    distinct.set(change.key, change);
+  }
+  const now = Date.now();
+  const nextId = id || item.id || makeId();
+  return transaction([STORE, LRC], 'readwrite', (tx, done) => {
+    const store = tx.objectStore(STORE), lrc = tx.objectStore(LRC);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const all = request.result || [];
+      const existing = id ? all.find(p => p.id === id) : null;
+      if (id && !existing) { tx.abort(); return; }
+      if (existing && existing.collectionType !== item.collectionType) { tx.abort(); return; }
+      const record = { ...existing, ...item, id: nextId, _id: nextId,
+        collectionType: item.collectionType,
+        createdAt: existing?.createdAt || now, updatedAt: now };
+      // Include ALL collections and the new state of this playlist before
+      // deleting any scoped key. Shared/legacy video keys are never removed.
+      const inUse = referencedLyrics([...all.filter(p => p.id !== nextId), record]);
+      store.put(record);
+      for (const change of distinct.values()) {
+        if (change.remove) {
+          if (!inUse.has(change.key)) lrc.delete(change.key);
+        } else {
+          lrc.put(change.record, change.key);
+        }
+      }
+      for (const key of oldLyrics(existing)) {
+        if (!inUse.has(key)) lrc.delete(key);
+      }
+      done(nextId);
     };
   });
 }

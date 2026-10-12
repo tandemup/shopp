@@ -33,6 +33,7 @@ export function validatePlaylistBackupV2(payload, expectedType, { minimumTracks 
         playlistId: parsedUrl.playlistId || undefined,
         title: String(track.title || '').trim() || `Elemento ${i+1}`,
         lyricsBackup: backup || null,
+        lyricsDisabled: !backup && track.lyricsDisabled === true,
       };
     });
     return {

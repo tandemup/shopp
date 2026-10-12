@@ -9,11 +9,22 @@ function identityPart(track) {
   return "unknown";
 }
 
+export function newLyricsStorageKey() {
+  const id = typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${PREFIX}track:${id}`;
+}
+
 export function getLyricsStorageKey(track) {
+  if (typeof track?.lyricsKey === "string" &&
+      /^@shopping\/playlist-lyrics\/track:[A-Za-z0-9_-]+$/.test(track.lyricsKey)) {
+    return track.lyricsKey;
+  }
   return `${PREFIX}${identityPart(track)}`;
 }
 
 export async function getLocalLyrics(track) {
+  if (track?.lyricsDisabled === true) return null;
   const raw = await AsyncStorage.getItem(getLyricsStorageKey(track));
   if (!raw) return null;
   try { return JSON.parse(raw); } catch { return null; }

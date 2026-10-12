@@ -33,7 +33,18 @@ function identityPart(track) {
   return "unknown";
 }
 
+export function newLyricsStorageKey() {
+  const id = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${PREFIX}track:${id}`;
+}
+
 export function getLyricsStorageKey(track) {
+  const scoped = track?.lyricsKey;
+  if (typeof scoped === 'string' && /^@shopping\/playlist-lyrics\/track:[A-Za-z0-9_-]+$/.test(scoped)) {
+    return scoped;
+  }
   return `${PREFIX}${identityPart(track)}`;
 }
 
@@ -59,6 +70,8 @@ async function withStore(mode, callback) {
 }
 
 export async function getLocalLyrics(track) {
+  // Explicitly detached LRC must never reappear from a legacy shared-video key.
+  if (track?.lyricsDisabled === true) return null;
   const key = getLyricsStorageKey(track);
   return withStore("readonly", (store, resolve, reject) => {
     const request = store.get(key);

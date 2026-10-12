@@ -108,7 +108,8 @@ export async function readUtilityExport(id, { convex, getScannedHistory, activeL
     }
   }
   if (id === "music" || id === "classic") {
-    return makePlaylistBackupV2(data, formats[id]);
+    const source = getPlaylistSource(id === "classic" ? "classical" : "playlist");
+    return makePlaylistBackupV2(data, formats[id], { allowRemoteLyrics: source !== "local" });
   }
   return {
     app: "Shopp",
