@@ -31,6 +31,7 @@ import SearchCombinedBar from "@/src/components/features/search/SearchCombinedBa
 
 import { ROUTES } from "@/src/navigation/ROUTES";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
+import { shareShoppingList } from "@/src/services/shareShoppingList";
 
 const getPriceTotal = (item) => {
   if (typeof item?.priceInfo?.total === "number") {
@@ -222,6 +223,7 @@ const ShoppingListCard = ({
   onToggleItem,
   onEditItem,
   onCheckout,
+  onShare,
 }) => {
   const items = list.items || [];
 
@@ -242,6 +244,19 @@ const ShoppingListCard = ({
             onPressStoreInfo={onPressStoreInfo}
           />
         </View>
+
+        <Pressable
+          onPress={onShare}
+          accessibilityRole="button"
+          accessibilityLabel="Enviar lista a un amigo"
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.shareListButton,
+            pressed && styles.shareListButtonPressed,
+          ]}
+        >
+          <Ionicons name="share-social-outline" size={21} color="#2563EB" />
+        </Pressable>
       </View>
 
       <View style={styles.separator} />
@@ -411,6 +426,19 @@ export default function ShoppingListScreen() {
     });
   };
 
+  const handleShare = async () => {
+    if (!list) return;
+    try {
+      const result = await shareShoppingList(list);
+      if (result === "copied") {
+        safeAlert("Lista copiada", "Puedes pegarla ahora en WhatsApp, correo o Mensajes.");
+      }
+    } catch (error) {
+      console.warn("Error compartiendo lista", error);
+      safeAlert("No se pudo compartir", "Comprueba que puedes compartir o copiar contenido en este dispositivo.");
+    }
+  };
+
   const handleCheckout = () => {
     if (!list) return;
 
@@ -493,6 +521,7 @@ export default function ShoppingListScreen() {
             onToggleItem={handleToggleItem}
             onEditItem={handleEditItem}
             onCheckout={handleCheckout}
+            onShare={handleShare}
           />
         </ScrollView>
       </SafeAreaView>
@@ -598,6 +627,20 @@ const styles = StyleSheet.create({
     backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  shareListButton: {
+    width: 40,
+    height: 40,
+    marginLeft: 8,
+    backgroundColor: "#EFF6FF",
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  shareListButtonPressed: {
+    backgroundColor: "#DBEAFE",
   },
 
   separator: {
