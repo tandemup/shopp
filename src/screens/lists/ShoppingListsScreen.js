@@ -22,6 +22,7 @@ import { safeAlert, safeMenu } from "@/src/components/ui/alert/safeAlert";
 import { DEFAULT_CURRENCY } from "@/src/constants/currency";
 import { useLists } from "@/src/context/ListsContext";
 import { ROUTES } from "@/src/navigation/ROUTES";
+import { shareShoppingList, copyShoppingList } from "@/src/services/shareShoppingList";
 import { buildHeaderConfig } from "@/src/utils/layout/headerStyles";
 import { APP_FEATURES, hasFeatureAccess } from "@/src/utils/featureAccess";
 
@@ -623,6 +624,28 @@ export default function ShoppingListsScreen() {
     [deleteList],
   );
 
+  const handleShareList = useCallback(async (list) => {
+    try {
+      const result = await shareShoppingList(list);
+      if (result === "copied") {
+        safeAlert("Lista copiada", "La lista se ha copiado al portapapeles. Puedes pegarla en WhatsApp, correo o Mensajes.");
+      }
+    } catch (error) {
+      console.warn("Error compartiendo lista", error);
+      safeAlert("No se pudo compartir", "Vuelve a intentarlo o utiliza la opción Copiar lista.");
+    }
+  }, []);
+
+  const handleCopyList = useCallback(async (list) => {
+    try {
+      await copyShoppingList(list);
+      safeAlert("Lista copiada", "Ahora puedes pegar la lista en cualquier conversación o correo.");
+    } catch (error) {
+      console.warn("Error copiando lista", error);
+      safeAlert("No se pudo copiar", "El portapapeles no está disponible en este dispositivo.");
+    }
+  }, []);
+
   const openEditName = useCallback((list) => {
     setEditingList(list);
     setEditName(list?.name || "");
@@ -636,6 +659,18 @@ export default function ShoppingListsScreen() {
           text: "Editar nombre",
           style: "default",
           onPress: () => openEditName(list),
+        },
+        {
+          key: "share",
+          text: "Enviar a un amigo",
+          style: "default",
+          onPress: () => handleShareList(list),
+        },
+        {
+          key: "copy",
+          text: "Copiar lista",
+          style: "default",
+          onPress: () => handleCopyList(list),
         },
         {
           key: "archive",
@@ -656,7 +691,7 @@ export default function ShoppingListsScreen() {
         },
       ]);
     },
-    [handleArchive, handleDelete, openEditName],
+    [handleArchive, handleCopyList, handleDelete, handleShareList, openEditName],
   );
 
   const handleAddList = useCallback(() => {

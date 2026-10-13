@@ -6,6 +6,7 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  useWindowDimensions,
   StyleSheet,
   Text,
   TextInput,
@@ -75,8 +76,30 @@ const BACK_PANEL_TONES = [
   { id: "sage", label: "Verde salvia", bg: "#eef5ee", title: "#1f3a2f", meta: "#64746a", accent: "#4e6b5d" },
   { id: "pearl", label: "Perla", bg: "#f7f2f5", title: "#3d2d39", meta: "#786674", accent: "#655664" },
   { id: "mist", label: "Gris niebla", bg: "#f3f4f6", title: "#1f2937", meta: "#6b7280", accent: "#4b5563" },
+  { id: "transparent", label: "Transparente", bg: "transparent", title: "#1f2937", meta: "#64748b", accent: "#475569" },
 ];
 const DEFAULT_BACK_PANEL_TONE = BACK_PANEL_TONES[0].id;
+
+// El anverso y el panel derecho del reverso tienen colores independientes.
+// La opción Original conserva el degradado utilizado hasta ahora al imprimir.
+const ORIGINAL_FRONT_BACKGROUND = "linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%)";
+const FRONT_TONES = [
+  { id: "original", label: "Original (degradado)", bg: "#f8fafc", printBackground: ORIGINAL_FRONT_BACKGROUND },
+  { id: "white", label: "Blanco", bg: "#ffffff" },
+  ...BACK_PANEL_TONES.map(({ id, label, bg }) => ({ id, label, bg })),
+];
+const DEFAULT_FRONT_TONE = "original";
+
+// Representación del degradado original en la vista previa web, sin dependencias nuevas.
+const FRONT_GRADIENT_PREVIEW_URI = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560" preserveAspectRatio="none"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f8fafc"/><stop offset="100%" stop-color="#eff6ff"/></linearGradient></defs><rect width="900" height="560" fill="url(#bg)"/></svg>'
+)}`;
+
+// El tablero de ajedrez representa transparencia solo en la muestra del selector.
+// No aparece sobre la tarjeta ni se imprime.
+const TRANSPARENT_SWATCH_URI = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><rect width="24" height="24" fill="#ffffff"/><path d="M0 0h12v12H0zM12 12h12v12H12z" fill="#cbd5e1"/></svg>'
+)}`;
 
 function nextOffset(value, delta) {
   return Math.max(MIN_BACK_OFFSET_MM, Math.min(MAX_BACK_OFFSET_MM,
@@ -92,6 +115,10 @@ function getBackPanelTone(toneId) {
   return BACK_PANEL_TONES.find((option) => option.id === toneId) || BACK_PANEL_TONES[0];
 }
 
+function getFrontTone(toneId) {
+  return FRONT_TONES.find((option) => option.id === toneId) || FRONT_TONES[0];
+}
+
 function buildPrintHtml({
   title,
   author,
@@ -103,12 +130,14 @@ function buildPrintHtml({
   copies,
   frontCropMarks,
   backCropMarks,
+  showBackGridOnFront,
   doubleSided,
   duplexFlip,
   backOffsetX,
   backOffsetY,
   backInsetEnabled,
   backInsetMm,
+  frontBackground,
   backPanelBg,
   backPanelTitleColor,
   backPanelMetaColor,
@@ -121,6 +150,7 @@ function buildPrintHtml({
   const safeSubtitle = esc(subtitle);
   const safeEmail = esc(contactEmail);
   const safeLanding = esc(landingUrl);
+  const frontBg = esc(frontBackground || "linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%)");
   const panelBg = esc(backPanelBg || "#f6f0dd");
   const panelTitleColor = esc(backPanelTitleColor || "#1f2937");
   const panelMetaColor = esc(backPanelMetaColor || "#64748b");
@@ -141,6 +171,18 @@ function buildPrintHtml({
     : "";
   const backCutGrid = !isCard && backCropMarks
     ? `<div class="cut-guides" aria-hidden="true">${[0, 90, 179.9].map(x => `<i class="cut-guide v" style="left:${x}mm"></i>`).join("")}${[0, 56, 112, 168, 224, 279.9].map(y => `<i class="cut-guide h" style="top:${y}mm"></i>`).join("")}</div>`
+    : "";
+
+  // Proyección de la cuadrícula del REVERSO sobre la cara frontal del papel.
+  // En A4, al voltear por el borde largo se refleja X; por el corto se refleja Y.
+  // Incluir dx/dy permite ver en el anverso exactamente dónde quedaría el reverso
+  // con la calibración seleccionada. No modifica la geometría de ninguna tarjeta.
+  const backGridOnFront = !isCard && doubleSided && showBackGridOnFront
+    ? (() => {
+        const left = duplexFlip === "short" ? 15 + dx : 15 - dx;
+        const top = duplexFlip === "short" ? 8.5 - dy : 8.5 + dy;
+        return `<div class="reverse-grid-guide" aria-hidden="true" style="left:${left}mm;top:${top}mm;">${[0, 90, 179.88].map(x => `<i class="reverse-grid-line v" style="left:${x}mm"></i>`).join("")}${[0, 56, 112, 168, 224, 279.88].map(y => `<i class="reverse-grid-line h" style="top:${y}mm"></i>`).join("")}</div>`;
+      })()
     : "";
 
   // ANVERSO: presentación de Shopp, email y landing page.
@@ -178,7 +220,7 @@ function buildPrintHtml({
     const slots = Array.from({length: perSheet}, (_, i) =>
       offset + i < count ? cards[isDistinct ? offset + i : 0] : null
     );
-    pages.push(`<div class="sheet front-sheet"><div class="cards-grid">${slots.map((entry) => entry ? front() : blank()).join("")}${frontCutGrid}</div></div>`);
+    pages.push(`<div class="sheet front-sheet"><div class="cards-grid">${slots.map((entry) => entry ? front() : blank()).join("")}${frontCutGrid}</div>${backGridOnFront}</div>`);
     if (doubleSided) {
       const backSlots = Array(perSheet).fill(null);
       slots.forEach((entry, i) => {
@@ -207,7 +249,12 @@ function buildPrintHtml({
     .cut-guide{display:block;position:absolute;background:#555}
     .cut-guide.v{top:0;width:.10mm;height:280mm}
     .cut-guide.h{left:0;width:180mm;height:.10mm}
-    .front{display:flex;align-items:center;padding:7mm;background:linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%)}
+    /* Guía opcional discontinua y tenue, colocada sobre el ANVERSO. */
+    .reverse-grid-guide{position:absolute;width:180mm;height:280mm;z-index:6;pointer-events:none}
+    .reverse-grid-line{display:block;position:absolute;border:0;padding:0;margin:0}
+    .reverse-grid-line.v{top:0;height:280mm;width:0;border-left:.12mm dashed #b4becb}
+    .reverse-grid-line.h{left:0;width:180mm;height:0;border-top:.12mm dashed #b4becb}
+    .front{display:flex;align-items:center;padding:7mm;background:${frontBg}}
     .shopp-mark{width:18mm;height:18mm;border-radius:5mm;background:#2563eb;color:#fff;display:flex;align-items:center;justify-content:center;font-size:25pt;font-weight:900;flex:0 0 18mm;margin-right:6mm}
     .front-copy{min-width:0;flex:1}.brand{font-size:15pt;color:#2563eb;font-weight:900;margin-bottom:1.5mm}.front h1{font-size:10.5pt;line-height:1.18;margin:0 0 1.5mm}.front-text{font-size:7.4pt;color:#64748b;margin:0 0 3mm}
     .contact{display:flex;align-items:baseline;gap:2mm;margin-top:1.2mm;min-width:0}.contact span{font-size:6.5pt;text-transform:uppercase;color:#64748b;font-weight:700;min-width:9mm}.contact strong{font-size:7.5pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -223,6 +270,8 @@ function buildPrintHtml({
 }
 export default function PrintMusicCardScreen() {
   const route = useRoute();
+  const { width: viewportWidth } = useWindowDimensions();
+  const previewCardWidth = Math.min(340, Math.max(260, viewportWidth - 64));
   const playlist = route.params?.playlist || {};
   const isClassical = Boolean(route.params?.isClassical);
   const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
@@ -279,6 +328,7 @@ export default function PrintMusicCardScreen() {
   const [copies, setCopies] = useState(10);
   const [frontCropMarks, setFrontCropMarks] = useState(false);
   const [backCropMarks, setBackCropMarks] = useState(false);
+  const [showBackGridOnFront, setShowBackGridOnFront] = useState(false);
   const [doubleSided, setDoubleSided] = useState(true);
   const [duplexFlip, setDuplexFlip] = useState("long");
   const [backOffsetX, setBackOffsetX] = useState(DEFAULT_BACK_OFFSET_X_MM);
@@ -286,6 +336,7 @@ export default function PrintMusicCardScreen() {
   const [backInsetEnabled, setBackInsetEnabled] = useState(true);
   const [backInsetMm, setBackInsetMm] = useState(DEFAULT_BACK_INSET_MM);
   const [backPanelToneId, setBackPanelToneId] = useState(DEFAULT_BACK_PANEL_TONE);
+  const [frontToneId, setFrontToneId] = useState(DEFAULT_FRONT_TONE);
   const [coverUri, setCoverUri] = useState(
     String(
       playlist.cover ||
@@ -298,6 +349,7 @@ export default function PrintMusicCardScreen() {
   const [contactEmail, setContactEmail] = useState(DEFAULT_CONTACT_EMAIL);
   const [landingUrl, setLandingUrl] = useState(initialLandingUrl);
   const backPanelTone = useMemo(() => getBackPanelTone(backPanelToneId), [backPanelToneId]);
+  const frontTone = useMemo(() => getFrontTone(frontToneId), [frontToneId]);
 
   const cardEntries = useMemo(() => {
     const origin = normalizePublicBase(publicBaseUrl);
@@ -389,13 +441,15 @@ export default function PrintMusicCardScreen() {
       format,
       copies,
       frontCropMarks,
-  backCropMarks,
+      backCropMarks,
+      showBackGridOnFront,
       doubleSided,
       duplexFlip,
       backOffsetX,
       backOffsetY,
       backInsetEnabled,
       backInsetMm,
+      frontBackground: frontTone.printBackground || frontTone.bg,
       backPanelBg: backPanelTone.bg,
       backPanelTitleColor: backPanelTone.title,
       backPanelMetaColor: backPanelTone.meta,
@@ -420,127 +474,245 @@ export default function PrintMusicCardScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.heading}>Tarjeta musical</Text>
-        <Text style={styles.help}>
-          Tarjeta dúplex de 90 × 56 mm: anverso con información de Shopp y
-          reverso con carátula y QR. Puedes configurar el estilo visual del reverso y calibrar su posición en A4 sin variar el tamaño de las tarjetas.
-        </Text>
+        <View style={styles.pageIntro}>
+          <View style={styles.pageTitleRow}>
+            <View style={styles.pageIcon}><Ionicons name="card-outline" size={23} color="#2563eb" /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.heading}>Tarjetas musicales</Text>
+              <Text style={styles.help}>Diseña tarjetas de 90 × 56 mm con la imagen, el QR y los datos de Shopp.</Text>
+            </View>
+          </View>
+        </View>
+
         <View style={styles.fields}>
-          <Text style={styles.label}>Contenido de las tarjetas</Text>
-          {[["songs", "Canciones distintas (hasta 10 por hoja A4)"], ["single", "Primera canción (copias)"], ["playlist", "Playlist completa (copias)"]].map(([value, label]) => (
-            <Pressable key={value} onPress={() => {setCardMode(value);setPublished(false);}} style={styles.optionRow}>
-              <Ionicons name={cardMode === value ? "radio-button-on" : "radio-button-off"} color="#2563eb" size={20}/>
-              <Text style={styles.optionTitle}>{label}</Text>
-            </Pressable>
-          ))}
-          <Text style={styles.label}>Destino del QR</Text>
-          {[["landing", "Página Shopp con YouTube y reproductor público"], ["youtube", "YouTube directamente"], ["shopp", "Reproductor público Shopp directamente"]].map(([value,label])=>(
-            <Pressable key={value} onPress={() => setQrDestination(value)} style={styles.optionRow}>
-              <Ionicons name={qrDestination === value ? "radio-button-on" : "radio-button-off"} color="#2563eb" size={20}/>
-              <Text style={styles.optionTitle}>{label}</Text>
-            </Pressable>
-          ))}
-          <Text style={styles.label}>URL de Shopp publicada (HTTPS, no localhost para imprimir)</Text>
-          <TextInput value={publicBaseUrl} onChangeText={(value)=>{setPublicBaseUrl(value);setPublished(false);}} style={styles.input} keyboardType="url" autoCapitalize="none" placeholder="https://mi-shopp.netlify.app" />
-          {cardMode === "playlist" && qrDestination !== "youtube" ? <View style={{gap:8,marginTop:8}}>
-            <Text style={styles.note}>Esta playlist vive en IndexedDB: para que funcione en otra persona debes descargar su ficha pública y desplegarla en Netlify. No se publican letras LRC ni datos privados.</Text>
-            <Pressable style={styles.secondaryButton} onPress={downloadPublicManifest}><Ionicons name="download-outline" color="#2563eb" size={18}/><Text style={styles.secondaryButtonText}>Descargar ficha JSON pública</Text></Pressable>
-            <Pressable style={styles.secondaryButton} onPress={verifyPublicManifest} disabled={busy}><Ionicons name="checkmark-circle-outline" color="#2563eb" size={18}/><Text style={styles.secondaryButtonText}>{busy ? "Comprobando..." : "Comprobar publicación"}</Text></Pressable>
-            <Text style={styles.note}>{published ? "✓ Ficha publicada y comprobada" : `Ruta: public/music-cards/${publicId}.json`}</Text>
-          </View> : null}
-          <Text style={styles.note}>En el modo canciones distintas se imprimirán {Math.min(cardEntries.length,99)} tarjetas diferentes; una por pista válida.</Text>
-          <Text style={styles.label}>Autor</Text>
-          <TextInput
-            value={author}
-            onChangeText={setAuthor}
-            style={styles.input}
-            placeholder="Alan Parsons Project"
-            placeholderTextColor="#999"
-          />
-          <Text style={styles.label}>Single</Text>
-          <TextInput
-            value={single}
-            onChangeText={setSingle}
-            style={styles.input}
-            placeholder="Eye in the Sky"
-            placeholderTextColor="#999"
-          />
-          <Text style={styles.label}>Subtítulo</Text>
-          <TextInput
-            value={subtitle}
-            onChangeText={setSubtitle}
-            style={styles.input}
-            placeholderTextColor="#999"
-          />
-          <Text style={styles.label}>Email de contacto (anverso)</Text>
-          <TextInput
-            value={contactEmail}
-            onChangeText={setContactEmail}
-            style={styles.input}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            placeholder="info@ramshopp.com"
-            placeholderTextColor="#999"
-          />
-          <Text style={styles.label}>Landing page de Shopp (anverso)</Text>
-          <TextInput
-            value={landingUrl}
-            onChangeText={setLandingUrl}
-            style={styles.input}
-            autoCapitalize="none"
-            keyboardType="url"
-            placeholder="https://..."
-            placeholderTextColor="#999"
-          />
-          <Text style={styles.label}>Carátula del single (reverso)</Text>
-          <View style={styles.coverActions}>
-            <Pressable onPress={pickCover} style={styles.secondaryButton}>
-              <Ionicons name="image-outline" size={18} color="#2563eb" />
-              <Text style={styles.secondaryButtonText}>
-                {coverUri ? "Cambiar carátula" : "Seleccionar carátula"}
+          <View style={styles.formSection}>
+            <View style={styles.sectionHeading}>
+              <Ionicons name="albums-outline" size={21} color="#2563eb" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle}>Contenido de las tarjetas</Text>
+                <Text style={styles.sectionSubtitle}>Selecciona lo que quieres imprimir.</Text>
+              </View>
+            </View>
+            <View style={styles.choicesGrid}>
+              {[
+                ["songs", "Canciones distintas", "Una tarjeta por canción válida", "musical-notes-outline"],
+                ["single", "Primera canción", "Varias copias de un tema", "disc-outline"],
+                ["playlist", "Playlist completa", "Un QR para toda la lista", "list-outline"],
+              ].map(([value, label, detail, icon]) => (
+                <Pressable
+                  key={value}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: cardMode === value }}
+                  onPress={() => { setCardMode(value); setPublished(false); }}
+                  style={[styles.choiceTile, cardMode === value && styles.choiceTileActive]}
+                >
+                  <View style={styles.choiceTop}>
+                    <Ionicons name={icon} size={19} color={cardMode === value ? "#1d4ed8" : "#64748b"} />
+                    <Ionicons name={cardMode === value ? "radio-button-on" : "radio-button-off"} size={19} color={cardMode === value ? "#2563eb" : "#94a3b8"} />
+                  </View>
+                  <Text style={styles.choiceTitle}>{label}</Text>
+                  <Text style={styles.choiceDescription}>{detail}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.inlineHint}>
+              <Ionicons name="information-circle-outline" size={16} color="#64748b" />
+              <Text style={styles.inlineHintText}>
+                {cardMode === "songs"
+                  ? `${Math.min(cardEntries.length, 99)} canciones válidas; hasta 10 tarjetas por hoja A4.`
+                  : cardMode === "single"
+                    ? "Puedes elegir cuántas copias hacer desde el cuadro de impresión."
+                    : "Para compartir la playlist debes publicar su ficha JSON si el QR abre Shopp."}
               </Text>
-            </Pressable>
-            {coverUri ? (
-              <Pressable
-                onPress={() => setCoverUri("")}
-                style={styles.removeCover}
-              >
-                <Text style={styles.removeCoverText}>Quitar</Text>
-              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.formSection}>
+            <View style={styles.sectionHeading}>
+              <Ionicons name="qr-code-outline" size={21} color="#2563eb" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle}>Destino del código QR</Text>
+                <Text style={styles.sectionSubtitle}>Elige qué verá quien escanee la tarjeta.</Text>
+              </View>
+            </View>
+            <View style={styles.choicesGrid}>
+              {[
+                ["landing", "Página Shopp", "YouTube y reproductor público", "globe-outline"],
+                ["youtube", "YouTube", "Abrir la canción directamente", "logo-youtube"],
+                ["shopp", "Reproductor Shopp", "Abrir el reproductor público", "play-circle-outline"],
+              ].map(([value, label, detail, icon]) => (
+                <Pressable
+                  key={value}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: qrDestination === value }}
+                  onPress={() => { setQrDestination(value); setPublished(false); }}
+                  style={[styles.choiceTile, qrDestination === value && styles.choiceTileActive]}
+                >
+                  <View style={styles.choiceTop}>
+                    <Ionicons name={icon} size={19} color={qrDestination === value ? "#1d4ed8" : "#64748b"} />
+                    <Ionicons name={qrDestination === value ? "radio-button-on" : "radio-button-off"} size={19} color={qrDestination === value ? "#2563eb" : "#94a3b8"} />
+                  </View>
+                  <Text style={styles.choiceTitle}>{label}</Text>
+                  <Text style={styles.choiceDescription}>{detail}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.inputField}>
+              <Text style={styles.fieldLabel}>Dirección pública de Shopp</Text>
+              <TextInput
+                value={publicBaseUrl}
+                onChangeText={(value) => { setPublicBaseUrl(value); setPublished(false); }}
+                style={styles.input}
+                keyboardType="url"
+                autoCapitalize="none"
+                placeholder="https://mi-shopp.netlify.app"
+                placeholderTextColor="#94a3b8"
+              />
+              <Text style={styles.fieldHelp}>Para entregar tarjetas, utiliza la URL HTTPS publicada, no localhost.</Text>
+            </View>
+            {cardMode === "playlist" && qrDestination !== "youtube" ? (
+              <View style={styles.infoBox}>
+                <Text style={styles.infoBoxTitle}>Publicación de la playlist</Text>
+                <Text style={styles.infoBoxText}>Descarga la ficha JSON, cópiala a public/music-cards/ y despliega Netlify. No se publican letras LRC ni datos privados.</Text>
+                <View style={styles.actionRow}>
+                  <Pressable style={styles.secondaryButton} onPress={downloadPublicManifest}>
+                    <Ionicons name="download-outline" color="#2563eb" size={17} />
+                    <Text style={styles.secondaryButtonText}>Descargar ficha JSON</Text>
+                  </Pressable>
+                  <Pressable style={[styles.secondaryButton, busy && styles.disabled]} onPress={verifyPublicManifest} disabled={busy}>
+                    <Ionicons name="checkmark-circle-outline" color="#2563eb" size={17} />
+                    <Text style={styles.secondaryButtonText}>{busy ? "Comprobando..." : "Comprobar publicación"}</Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.fieldHelp}>{published ? "✓ Ficha publicada y comprobada" : `Ruta: public/music-cards/${publicId}.json`}</Text>
+              </View>
             ) : null}
           </View>
 
-          <Text style={styles.label}>Estilo del reverso</Text>
-          <Pressable style={styles.optionRow} onPress={() => setBackInsetEnabled((v) => !v)}>
-            <Ionicons name={backInsetEnabled ? "checkbox" : "square-outline"} size={23} color="#2563eb" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.optionTitle}>Margen blanco alrededor del reverso</Text>
-              <Text style={styles.optionHelp}>Añade un marco blanco limpio alrededor de la cara trasera.</Text>
+          <View style={styles.formSection}>
+            <View style={styles.sectionHeading}>
+              <Ionicons name="create-outline" size={21} color="#2563eb" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle}>Textos e imágenes</Text>
+                <Text style={styles.sectionSubtitle}>Datos musicales en el reverso y contacto en el anverso.</Text>
+              </View>
             </View>
-          </Pressable>
-          {backInsetEnabled ? (
-            <View style={styles.calibrationRow}>
-              <Text style={styles.calibrationLabel}>Margen</Text>
-              <Pressable onPress={() => setBackInsetMm((v) => nextBackInset(v, -CALIBRATION_STEP_MM))} style={styles.calibrationButton}><Ionicons name="remove" size={18} color="#0f172a"/></Pressable>
-              <Text style={styles.calibrationValue}>{backInsetMm.toFixed(1)} mm</Text>
-              <Pressable onPress={() => setBackInsetMm((v) => nextBackInset(v, CALIBRATION_STEP_MM))} style={styles.calibrationButton}><Ionicons name="add" size={18} color="#0f172a"/></Pressable>
+            <Text style={styles.subsectionTitle}>Reverso · Música</Text>
+            <View style={styles.inputGrid}>
+              <View style={styles.inputField}>
+                <Text style={styles.fieldLabel}>Autor</Text>
+                <TextInput value={author} onChangeText={setAuthor} style={styles.input} placeholder="Alan Parsons Project" placeholderTextColor="#94a3b8" />
+              </View>
+              <View style={styles.inputField}>
+                <Text style={styles.fieldLabel}>Single</Text>
+                <TextInput value={single} onChangeText={setSingle} style={styles.input} placeholder="Eye in the Sky" placeholderTextColor="#94a3b8" />
+              </View>
+              <View style={styles.inputField}>
+                <Text style={styles.fieldLabel}>Subtítulo</Text>
+                <TextInput value={subtitle} onChangeText={setSubtitle} style={styles.input} placeholder="1 item" placeholderTextColor="#94a3b8" />
+              </View>
             </View>
-          ) : null}
-          <Text style={styles.label}>Color del panel derecho del reverso</Text>
-          <View style={styles.toneGrid}>
-            {BACK_PANEL_TONES.map((tone) => (
-              <Pressable key={tone.id} onPress={() => setBackPanelToneId(tone.id)} style={[styles.toneChip, backPanelToneId === tone.id && styles.toneChipActive]}>
-                <View style={[styles.toneSwatch, { backgroundColor: tone.bg }]} />
-                <Text style={styles.toneLabel}>{tone.label}</Text>
-              </Pressable>
-            ))}
+            <View style={styles.imagePickerRow}>
+              <View style={{ flex: 1, minWidth: 150 }}>
+                <Text style={styles.fieldLabel}>Carátula del single</Text>
+                <Text style={styles.fieldHelp}>Se muestra a la izquierda del QR.</Text>
+              </View>
+              <View style={styles.actionRow}>
+                <Pressable onPress={pickCover} style={styles.secondaryButton}>
+                  <Ionicons name="image-outline" size={17} color="#2563eb" />
+                  <Text style={styles.secondaryButtonText}>{coverUri ? "Cambiar carátula" : "Elegir carátula"}</Text>
+                </Pressable>
+                {coverUri ? (
+                  <Pressable onPress={() => setCoverUri("")} style={styles.removeCover}>
+                    <Text style={styles.removeCoverText}>Quitar</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+            <View style={styles.sectionDivider} />
+            <Text style={styles.subsectionTitle}>Anverso · Contacto</Text>
+            <View style={styles.inputGrid}>
+              <View style={styles.inputField}>
+                <Text style={styles.fieldLabel}>Correo electrónico</Text>
+                <TextInput value={contactEmail} onChangeText={setContactEmail} style={styles.input} autoCapitalize="none" keyboardType="email-address" placeholder="info@ramshopp.com" placeholderTextColor="#94a3b8" />
+              </View>
+              <View style={styles.inputField}>
+                <Text style={styles.fieldLabel}>Página de Shopp</Text>
+                <TextInput value={landingUrl} onChangeText={setLandingUrl} style={styles.input} autoCapitalize="none" keyboardType="url" placeholder="https://..." placeholderTextColor="#94a3b8" />
+              </View>
+            </View>
           </View>
-          <Text style={styles.note}>Las líneas de corte se pueden activar por separado para anverso y reverso desde la ventana de impresión; ahora vienen desactivadas por defecto.</Text>
+
+          <View style={styles.formSection}>
+            <View style={styles.sectionHeading}>
+              <Ionicons name="color-palette-outline" size={21} color="#2563eb" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle}>Colores y acabado</Text>
+                <Text style={styles.sectionSubtitle}>Personaliza cada cara por separado.</Text>
+              </View>
+            </View>
+            <Text style={styles.subsectionTitle}>Fondo del anverso</Text>
+            <View style={styles.toneGrid}>
+              {FRONT_TONES.map((tone) => (
+                <Pressable key={tone.id} onPress={() => setFrontToneId(tone.id)} accessibilityRole="radio" accessibilityState={{ selected: frontToneId === tone.id }} style={[styles.toneChip, frontToneId === tone.id && styles.toneChipActive]}>
+                  <View style={[styles.toneSwatch, { backgroundColor: tone.bg, overflow: "hidden" }]}>
+                    {tone.id === "original" && Platform.OS === "web" ? <Image source={{ uri: FRONT_GRADIENT_PREVIEW_URI }} style={styles.frontToneGradientSwatch} resizeMode="stretch" /> : tone.id === "transparent" ? <Image source={{ uri: TRANSPARENT_SWATCH_URI }} style={styles.frontToneGradientSwatch} resizeMode="stretch" /> : null}
+                  </View>
+                  <Text style={styles.toneLabel}>{tone.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.sectionDivider} />
+            <Text style={styles.subsectionTitle}>Panel derecho del reverso</Text>
+            <View style={styles.toneGrid}>
+              {BACK_PANEL_TONES.map((tone) => (
+                <Pressable key={tone.id} onPress={() => setBackPanelToneId(tone.id)} accessibilityRole="radio" accessibilityState={{ selected: backPanelToneId === tone.id }} style={[styles.toneChip, backPanelToneId === tone.id && styles.toneChipActive]}>
+                  <View style={[styles.toneSwatch, { backgroundColor: tone.bg, overflow: "hidden" }]}>
+                    {tone.id === "transparent" ? <Image source={{ uri: TRANSPARENT_SWATCH_URI }} style={styles.frontToneGradientSwatch} resizeMode="stretch" /> : null}
+                  </View>
+                  <Text style={styles.toneLabel}>{tone.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Pressable style={styles.toggleRow} onPress={() => setBackInsetEnabled((v) => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: backInsetEnabled }}>
+              <Ionicons name={backInsetEnabled ? "checkbox" : "square-outline"} size={23} color="#2563eb" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.toggleLabel}>Margen blanco en el reverso</Text>
+                <Text style={styles.fieldHelp}>Un marco alrededor de la imagen y del panel QR.</Text>
+              </View>
+            </Pressable>
+            {backInsetEnabled ? (
+              <View style={styles.compactControlRow}>
+                <Text style={styles.fieldLabel}>Ancho del margen</Text>
+                <View style={styles.counter}>
+                  <Pressable accessibilityLabel="Reducir margen" onPress={() => setBackInsetMm(v => nextBackInset(v, -CALIBRATION_STEP_MM))} style={styles.counterButton}><Ionicons name="remove" size={18} color="#0f172a" /></Pressable>
+                  <Text style={styles.counterValue}>{backInsetMm.toFixed(1)} mm</Text>
+                  <Pressable accessibilityLabel="Aumentar margen" onPress={() => setBackInsetMm(v => nextBackInset(v, CALIBRATION_STEP_MM))} style={styles.counterButton}><Ionicons name="add" size={18} color="#0f172a" /></Pressable>
+                </View>
+              </View>
+            ) : null}
+            <View style={styles.inlineHint}>
+              <Ionicons name="information-circle-outline" size={16} color="#64748b" />
+              <Text style={styles.inlineHintText}>Transparente no aplica tinta de fondo. Las líneas de corte se configuran al imprimir.</Text>
+            </View>
+          </View>
         </View>
+
+        <View style={styles.previewSection}>
+          <View style={styles.sectionHeading}>
+            <Ionicons name="eye-outline" size={21} color="#2563eb" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionTitle}>Vista previa de la tarjeta</Text>
+              <Text style={styles.sectionSubtitle}>Así se verán las dos caras con los colores elegidos.</Text>
+            </View>
+          </View>
         <View style={styles.previewRow}>
           <View>
             <Text style={styles.sideLabel}>ANVERSO</Text>
-            <View style={[styles.card, styles.shoppFrontCard]}>
+            <View style={[styles.card, styles.shoppFrontCard, { width: previewCardWidth, backgroundColor: frontTone.bg }]}>
+              {frontTone.id === "original" && Platform.OS === "web" ? (
+                <Image source={{ uri: FRONT_GRADIENT_PREVIEW_URI }} style={styles.frontGradientPreview} resizeMode="stretch" pointerEvents="none" />
+              ) : null}
               <View style={styles.shoppLogo}>
                 <Text style={styles.shoppLogoText}>S</Text>
               </View>
@@ -573,7 +745,7 @@ export default function PrintMusicCardScreen() {
           </View>
           <View>
             <Text style={styles.sideLabel}>REVERSO</Text>
-            <View style={[styles.card, styles.musicBackCard, backInsetEnabled && { padding: Math.round(backInsetMm * 6) }]}>
+            <View style={[styles.card, styles.musicBackCard, { width: previewCardWidth }, backInsetEnabled && { padding: Math.round(backInsetMm * 6) }]}>
               <View style={styles.backInnerPreview}>
                 <View style={styles.coverPanelPreview}>
                   {coverUri ? (
@@ -626,6 +798,7 @@ export default function PrintMusicCardScreen() {
             </View>
           </View>
         </View>
+        </View>
         <Text style={styles.note}>
           El QR abrirá el destino seleccionado. Para compartir playlists completas
           en otro dispositivo, publica antes su ficha JSON estática en Netlify.
@@ -658,172 +831,128 @@ export default function PrintMusicCardScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Preparar impresión</Text>
+                <Text style={styles.modalHeaderHelp}>Formato, caras, corte y alineación.</Text>
+              </View>
+              <Pressable onPress={() => setPrintOpen(false)} accessibilityLabel="Cerrar impresión" style={styles.modalClose}>
+                <Ionicons name="close" size={22} color="#475569" />
+              </Pressable>
+            </View>
             <ScrollView contentContainerStyle={styles.modalScrollContent} keyboardShouldPersistTaps="handled">
-            <Text style={styles.modalTitle}>Imprimir tarjeta</Text>
-            <Text style={styles.modalLabel}>Formato</Text>
-            <Pressable
-              style={styles.optionRow}
-              onPress={() => setFormat("card")}
-            >
-              <Ionicons
-                name={
-                  format === "card" ? "radio-button-on" : "radio-button-off"
-                }
-                size={22}
-                color="#2563eb"
-              />
-              <View>
-                <Text style={styles.optionTitle}>Tarjeta 90 × 56 mm</Text>
-                <Text style={styles.optionHelp}>
-                  Una tarjeta a tamaño físico exacto.
-                </Text>
+              <Text style={styles.modalSectionTitle}>1. Formato de papel</Text>
+              <View style={styles.modalChoiceRow}>
+                {[
+                  ["a4", "Hoja A4", "Hasta 10 tarjetas", "grid-outline"],
+                  ["card", "Tarjeta", "90 × 56 mm", "card-outline"],
+                ].map(([value, label, detail, icon]) => (
+                  <Pressable key={value} onPress={() => setFormat(value)} accessibilityRole="radio" accessibilityState={{ selected: format === value }} style={[styles.modalChoice, format === value && styles.choiceTileActive]}>
+                    <View style={styles.choiceTop}>
+                      <Ionicons name={icon} size={19} color="#2563eb" />
+                      <Ionicons name={format === value ? "radio-button-on" : "radio-button-off"} size={18} color="#2563eb" />
+                    </View>
+                    <Text style={styles.choiceTitle}>{label}</Text>
+                    <Text style={styles.choiceDescription}>{detail}</Text>
+                  </Pressable>
+                ))}
               </View>
-            </Pressable>
-            <Pressable style={styles.optionRow} onPress={() => setFormat("a4")}>
-              <Ionicons
-                name={format === "a4" ? "radio-button-on" : "radio-button-off"}
-                size={22}
-                color="#2563eb"
-              />
-              <View>
-                <Text style={styles.optionTitle}>Hoja A4</Text>
-                <Text style={styles.optionHelp}>
-                  Distribuye copias para imprimir y recortar.
-                </Text>
-              </View>
-            </Pressable>
-            <Text style={styles.modalLabel}>Caras</Text>
-            <Pressable
-              style={styles.optionRow}
-              onPress={() => setDoubleSided((v) => !v)}
-            >
-              <Ionicons
-                name={doubleSided ? "checkbox" : "square-outline"}
-                size={23}
-                color="#2563eb"
-              />
-              <View>
-                <Text style={styles.optionTitle}>
-                  Imprimir anverso y reverso
-                </Text>
-                <Text style={styles.optionHelp}>
-                  Genera primero los anversos de Shopp y después los reversos
-                  musicales alineados para dúplex.
-                </Text>
-              </View>
-            </Pressable>
 
-            {format === "a4" ? (
-              <>
-                <Text style={styles.modalLabel}>{cardMode === "songs" ? "Temas de la lista (una tarjeta por tema)" : "Número de copias"}</Text>
-                <View style={styles.counter}>
-                  <Pressable
-                    disabled={cardMode === "songs"}
-                    onPress={() => changeCopies(-1)}
-                    style={styles.counterButton}
-                  >
-                    <Ionicons name="remove" size={20} color="#0f172a" />
-                  </Pressable>
-                  <Text style={styles.counterValue}>{cardMode === "songs" ? Math.min(cardEntries.length,99) : copies}</Text>
-                  <Pressable
-                    disabled={cardMode === "songs"}
-                    onPress={() => changeCopies(1)}
-                    style={styles.counterButton}
-                  >
-                    <Ionicons name="add" size={20} color="#0f172a" />
-                  </Pressable>
+              {format === "a4" ? (
+                <View style={styles.modalFieldRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>{cardMode === "songs" ? "Tarjetas diferentes" : "Número de copias"}</Text>
+                    <Text style={styles.fieldHelp}>{cardMode === "songs" ? "Una por canción válida" : "Distribuidas en hojas de 10"}</Text>
+                  </View>
+                  <View style={styles.counter}>
+                    <Pressable disabled={cardMode === "songs"} onPress={() => changeCopies(-1)} style={[styles.counterButton, cardMode === "songs" && styles.disabled]}><Ionicons name="remove" size={18} color="#0f172a" /></Pressable>
+                    <Text style={styles.counterValue}>{cardMode === "songs" ? Math.min(cardEntries.length,99) : copies}</Text>
+                    <Pressable disabled={cardMode === "songs"} onPress={() => changeCopies(1)} style={[styles.counterButton, cardMode === "songs" && styles.disabled]}><Ionicons name="add" size={18} color="#0f172a" /></Pressable>
+                  </View>
                 </View>
-                <Pressable
-                  style={styles.optionRow}
-                  onPress={() => setFrontCropMarks((v) => !v)}
-                >
-                  <Ionicons
-                    name={frontCropMarks ? "checkbox" : "square-outline"}
-                    size={23}
-                    color="#2563eb"
-                  />
-                  <Text style={styles.optionTitle}>
-                    Líneas de corte en el anverso
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={styles.optionRow}
-                  onPress={() => setBackCropMarks((v) => !v)}
-                >
-                  <Ionicons
-                    name={backCropMarks ? "checkbox" : "square-outline"}
-                    size={23}
-                    color="#2563eb"
-                  />
-                  <Text style={styles.optionTitle}>
-                    Líneas de corte en el reverso
-                  </Text>
-                </Pressable>
-                <Text style={styles.optionHelp}>
-                  Una sola línea de 0,10 mm entre tarjetas, sin añadir grosor a sus dimensiones. Puedes activarlas por separado en cada cara.
-                </Text>
-                {doubleSided ? (
-                  <>
-                    <Text style={styles.modalLabel}>Volteo dúplex</Text>
-                    <Pressable
-                      style={styles.optionRow}
-                      onPress={() => setDuplexFlip("long")}
-                    >
-                      <Ionicons
-                        name={
-                          duplexFlip === "long"
-                            ? "radio-button-on"
-                            : "radio-button-off"
-                        }
-                        size={22}
-                        color="#2563eb"
-                      />
-                      <Text style={styles.optionTitle}>Borde largo</Text>
-                    </Pressable>
-                    <Pressable
-                      style={styles.optionRow}
-                      onPress={() => setDuplexFlip("short")}
-                    >
-                      <Ionicons
-                        name={
-                          duplexFlip === "short"
-                            ? "radio-button-on"
-                            : "radio-button-off"
-                        }
-                        size={22}
-                        color="#2563eb"
-                      />
-                      <Text style={styles.optionTitle}>Borde corto</Text>
-                    </Pressable>
-                    <Text style={styles.modalLabel}>Ajustar posición del reverso (A4)</Text>
-                    <Text style={styles.optionHelp}>Ajusta en pasos de 0,5 mm. X 0 e Y 0 significan sin desplazamiento. Solo se mueve el reverso.</Text>
-                    <View style={styles.calibrationRow}>
-                      <Text style={styles.calibrationLabel}>Horizontal</Text>
-                      <Pressable accessibilityLabel="Mover reverso 0,5 mm a la izquierda" onPress={() => setBackOffsetX(v => nextOffset(v, -CALIBRATION_STEP_MM))} style={styles.calibrationButton}><Ionicons name="remove" size={18} color="#0f172a"/></Pressable>
-                      <Text style={styles.calibrationValue}>{backOffsetX > 0 ? "+" : ""}{backOffsetX.toFixed(1)} mm</Text>
-                      <Pressable accessibilityLabel="Mover reverso 0,5 mm a la derecha" onPress={() => setBackOffsetX(v => nextOffset(v, CALIBRATION_STEP_MM))} style={styles.calibrationButton}><Ionicons name="add" size={18} color="#0f172a"/></Pressable>
-                    </View>
-                    <View style={styles.calibrationRow}>
-                      <Text style={styles.calibrationLabel}>Vertical</Text>
-                      <Pressable accessibilityLabel="Subir reverso 0,5 mm" onPress={() => setBackOffsetY(v => nextOffset(v, -CALIBRATION_STEP_MM))} style={styles.calibrationButton}><Ionicons name="remove" size={18} color="#0f172a"/></Pressable>
-                      <Text style={styles.calibrationValue}>{backOffsetY > 0 ? "+" : ""}{backOffsetY.toFixed(1)} mm</Text>
-                      <Pressable accessibilityLabel="Bajar reverso 0,5 mm" onPress={() => setBackOffsetY(v => nextOffset(v, CALIBRATION_STEP_MM))} style={styles.calibrationButton}><Ionicons name="add" size={18} color="#0f172a"/></Pressable>
-                    </View>
-                    <Pressable onPress={() => { setBackOffsetX(DEFAULT_BACK_OFFSET_X_MM); setBackOffsetY(DEFAULT_BACK_OFFSET_Y_MM); }} style={styles.resetCalibration}><Text style={styles.resetCalibrationText}>Restablecer ajustes: X 0 mm · Y 0 mm</Text></Pressable>
-                  </>
-                ) : null}
-                <Text style={styles.capacity}>
-                  Cabida: 10 tarjetas por página A4 (2 × 5), listas para cortar
-                  con tijera.
-                </Text>
-              </>
-            ) : null}
+              ) : null}
 
+              <View style={styles.modalDivider} />
+              <Text style={styles.modalSectionTitle}>2. Caras de impresión</Text>
+              <Pressable onPress={() => setDoubleSided(v => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: doubleSided }} style={styles.modalToggleRow}>
+                <Ionicons name={doubleSided ? "checkbox" : "square-outline"} size={23} color="#2563eb" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.toggleLabel}>Imprimir anverso y reverso</Text>
+                  <Text style={styles.fieldHelp}>Genera ambas caras listas para impresión dúplex.</Text>
+                </View>
+              </Pressable>
+              {format === "a4" && doubleSided ? (
+                <View style={styles.modalSubgroup}>
+                  <Text style={styles.fieldLabel}>Volteo de la hoja</Text>
+                  <View style={styles.segmentRow}>
+                    {[ ["long", "Borde largo"], ["short", "Borde corto"] ].map(([value, label]) => (
+                      <Pressable key={value} onPress={() => setDuplexFlip(value)} accessibilityRole="radio" accessibilityState={{ selected: duplexFlip === value }} style={[styles.segmentOption, duplexFlip === value && styles.segmentOptionActive]}>
+                        <Ionicons name={duplexFlip === value ? "radio-button-on" : "radio-button-off"} size={17} color="#2563eb" />
+                        <Text style={[styles.segmentText, duplexFlip === value && styles.segmentTextActive]}>{label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
+              {format === "a4" ? (
+                <>
+                  <View style={styles.modalDivider} />
+                  <Text style={styles.modalSectionTitle}>3. Líneas de corte y guías</Text>
+                  <Text style={styles.fieldHelp}>Las líneas de corte son opcionales e independientes, con 0,10 mm de grosor.</Text>
+                  <View style={styles.modalSubgroup}>
+                    <Pressable onPress={() => setFrontCropMarks(v => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: frontCropMarks }} style={styles.compactCheckRow}>
+                      <Ionicons name={frontCropMarks ? "checkbox" : "square-outline"} size={22} color="#2563eb" />
+                      <Text style={styles.toggleLabel}>Anverso</Text>
+                    </Pressable>
+                    {doubleSided ? (
+                      <Pressable onPress={() => setBackCropMarks(v => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: backCropMarks }} style={styles.compactCheckRow}>
+                        <Ionicons name={backCropMarks ? "checkbox" : "square-outline"} size={22} color="#2563eb" />
+                        <Text style={styles.toggleLabel}>Reverso</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  {doubleSided ? (
+                    <Pressable
+                      onPress={() => setShowBackGridOnFront(v => !v)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: showBackGridOnFront }}
+                      style={styles.modalToggleRow}
+                    >
+                      <Ionicons name={showBackGridOnFront ? "checkbox" : "square-outline"} size={23} color="#2563eb" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.toggleLabel}>Mostrar cuadrícula del reverso en el anverso</Text>
+                        <Text style={styles.fieldHelp}>Guía gris discontinua (2 × 5) para comprobar la alineación. Respeta el volteo y la calibración X/Y. Se imprimirá en el anverso.</Text>
+                      </View>
+                    </Pressable>
+                  ) : null}
+
+                  {doubleSided ? (
+                    <>
+                      <View style={styles.modalDivider} />
+                      <Text style={styles.modalSectionTitle}>4. Calibración del reverso</Text>
+                      <Text style={styles.fieldHelp}>Ajustes en pasos de 0,5 mm. Solo desplazan el reverso, sin cambiar el tamaño de la hoja ni de las tarjetas.</Text>
+                      <View style={styles.calibrationRow}>
+                        <Text style={styles.calibrationLabel}>Horizontal (X)</Text>
+                        <Pressable accessibilityLabel="Mover reverso 0,5 mm a la izquierda" onPress={() => setBackOffsetX(v => nextOffset(v, -CALIBRATION_STEP_MM))} style={styles.calibrationButton}><Ionicons name="remove" size={18} color="#0f172a" /></Pressable>
+                        <Text style={styles.calibrationValue}>{backOffsetX > 0 ? "+" : ""}{backOffsetX.toFixed(1)} mm</Text>
+                        <Pressable accessibilityLabel="Mover reverso 0,5 mm a la derecha" onPress={() => setBackOffsetX(v => nextOffset(v, CALIBRATION_STEP_MM))} style={styles.calibrationButton}><Ionicons name="add" size={18} color="#0f172a" /></Pressable>
+                      </View>
+                      <View style={styles.calibrationRow}>
+                        <Text style={styles.calibrationLabel}>Vertical (Y)</Text>
+                        <Pressable accessibilityLabel="Subir reverso 0,5 mm" onPress={() => setBackOffsetY(v => nextOffset(v, -CALIBRATION_STEP_MM))} style={styles.calibrationButton}><Ionicons name="remove" size={18} color="#0f172a" /></Pressable>
+                        <Text style={styles.calibrationValue}>{backOffsetY > 0 ? "+" : ""}{backOffsetY.toFixed(1)} mm</Text>
+                        <Pressable accessibilityLabel="Bajar reverso 0,5 mm" onPress={() => setBackOffsetY(v => nextOffset(v, CALIBRATION_STEP_MM))} style={styles.calibrationButton}><Ionicons name="add" size={18} color="#0f172a" /></Pressable>
+                      </View>
+                      <Pressable onPress={() => { setBackOffsetX(DEFAULT_BACK_OFFSET_X_MM); setBackOffsetY(DEFAULT_BACK_OFFSET_Y_MM); }} style={styles.resetCalibration}><Text style={styles.resetCalibrationText}>Restablecer ajustes: X 0 mm · Y 0 mm</Text></Pressable>
+                    </>
+                  ) : null}
+                  <Text style={styles.capacity}>Hoja A4: 2 columnas × 5 filas (10 tarjetas por página).</Text>
+                </>
+              ) : null}
+            </ScrollView>
             <View style={styles.modalActions}>
-              <Pressable
-                onPress={() => setPrintOpen(false)}
-                style={styles.cancelButton}
-              >
+              <Pressable onPress={() => setPrintOpen(false)} style={styles.cancelButton}>
                 <Text style={styles.cancelText}>Cancelar</Text>
               </Pressable>
               <Pressable onPress={print} style={styles.previewButton}>
@@ -831,7 +960,6 @@ export default function PrintMusicCardScreen() {
                 <Text style={styles.buttonText}>Vista previa / Imprimir</Text>
               </Pressable>
             </View>
-            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -840,16 +968,62 @@ export default function PrintMusicCardScreen() {
 }
 
 const styles = StyleSheet.create({
+  pageIntro: { width: "100%", maxWidth: 820, paddingHorizontal: 2, marginBottom: 2 },
+  pageTitleRow: { flexDirection: "row", gap: 12, alignItems: "center" },
+  pageIcon: { width: 44, height: 44, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "#dbeafe" },
+  formSection: { width: "100%", padding: 18, gap: 14, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 14 },
+  sectionHeading: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginBottom: 2 },
+  sectionTitle: { fontSize: 18, fontWeight: "700", color: "#0f172a" },
+  sectionSubtitle: { fontSize: 12, color: "#64748b", marginTop: 3, lineHeight: 18 },
+  subsectionTitle: { fontSize: 14, fontWeight: "700", color: "#334155" },
+  sectionDivider: { height: 1, backgroundColor: "#e2e8f0", marginVertical: 3 },
+  choicesGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
+  choiceTile: { flexBasis: 190, flexGrow: 1, minWidth: 180, minHeight: 100, borderRadius: 10, borderWidth: 1, borderColor: "#dbe3ed", backgroundColor: "#f8fafc", padding: 12, gap: 5 },
+  choiceTileActive: { borderColor: "#2563eb", borderWidth: 2, backgroundColor: "#eff6ff" },
+  choiceTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 },
+  choiceTitle: { fontSize: 13, fontWeight: "700", color: "#1e293b" },
+  choiceDescription: { fontSize: 11, lineHeight: 16, color: "#64748b" },
+  inlineHint: { flexDirection: "row", alignItems: "flex-start", gap: 7, backgroundColor: "#f8fafc", borderRadius: 8, padding: 10 },
+  inlineHintText: { flex: 1, color: "#64748b", fontSize: 12, lineHeight: 17 },
+  inputGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  inputField: { flex: 1, minWidth: 220, gap: 6 },
+  fieldLabel: { fontSize: 13, fontWeight: "600", color: "#334155" },
+  fieldHelp: { fontSize: 11, color: "#64748b", lineHeight: 16 },
+  infoBox: { gap: 10, padding: 13, backgroundColor: "#f1f5f9", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0" },
+  infoBoxTitle: { color: "#334155", fontSize: 13, fontWeight: "700" },
+  infoBoxText: { color: "#475569", fontSize: 12, lineHeight: 18 },
+  actionRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
+  imagePickerRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 12 },
+  toggleRow: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 12, borderRadius: 9 },
+  toggleLabel: { fontSize: 13, color: "#1e293b", fontWeight: "600" },
+  compactControlRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" },
+  previewSection: { width: "100%", maxWidth: 820, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 14, padding: 18, gap: 16 },
+  modalHeader: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 20, paddingTop: 18, paddingBottom: 15, borderBottomWidth: 1, borderColor: "#e2e8f0" },
+  modalHeaderHelp: { color: "#64748b", fontSize: 12 },
+  modalClose: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#f1f5f9", alignItems: "center", justifyContent: "center" },
+  modalSectionTitle: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
+  modalChoiceRow: { flexDirection: "row", gap: 9 },
+  modalChoice: { flex: 1, minWidth: 0, borderRadius: 10, borderWidth: 1, borderColor: "#dbe3ed", backgroundColor: "#f8fafc", padding: 12, gap: 4 },
+  modalFieldRow: { flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "space-between", flexWrap: "wrap" },
+  modalDivider: { height: 1, backgroundColor: "#e2e8f0", marginVertical: 4 },
+  modalToggleRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 10, backgroundColor: "#f8fafc", borderRadius: 8 },
+  modalSubgroup: { gap: 10 },
+  segmentRow: { flexDirection: "row", gap: 8 },
+  segmentOption: { flex: 1, flexDirection: "row", gap: 7, alignItems: "center", justifyContent: "center", padding: 10, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, backgroundColor: "#fff" },
+  segmentOptionActive: { borderColor: "#2563eb", backgroundColor: "#eff6ff" },
+  segmentText: { fontSize: 12, fontWeight: "600", color: "#475569" },
+  segmentTextActive: { color: "#1d4ed8" },
+  compactCheckRow: { flexDirection: "row", gap: 9, alignItems: "center", paddingVertical: 3 },
   screen: { flex: 1, backgroundColor: "#f8fafc" },
-  content: { padding: 20, alignItems: "center", gap: 14 },
-  heading: { fontSize: 26, fontWeight: "700", alignSelf: "stretch" },
-  help: { color: "#64748b", alignSelf: "stretch", maxWidth: 720 },
-  fields: { width: "100%", maxWidth: 720, gap: 6 },
+  content: { padding: 16, alignItems: "center", gap: 16, paddingBottom: 40 },
+  heading: { fontSize: 25, fontWeight: "800", color: "#0f172a" },
+  help: { color: "#64748b", fontSize: 12, lineHeight: 18, marginTop: 3 },
+  fields: { width: "100%", maxWidth: 820, gap: 14 },
   label: { fontWeight: "600", marginTop: 4 },
   input: {
     borderWidth: 1,
     borderColor: "#cbd5e1",
-    borderRadius: 8,
+    borderRadius: 9,
     backgroundColor: "#fff",
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -857,7 +1031,7 @@ const styles = StyleSheet.create({
   },
   previewRow: {
     width: "100%",
-    maxWidth: 760,
+    maxWidth: 780,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 18,
@@ -925,9 +1099,9 @@ const styles = StyleSheet.create({
   },
   coverEmptyText: { color: "#64748b", fontWeight: "600" },
   backInfoPreview: {
-    width: 128,
+    width: "38%",
     height: "100%",
-    paddingHorizontal: 10,
+    paddingHorizontal: 6,
     paddingVertical: 12,
     alignItems: "center",
     justifyContent: "space-between",
@@ -950,7 +1124,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   qrPanelPreview: {
-    width: 104,
+    width: "100%",
     backgroundColor: "#fff",
     borderRadius: 7,
     padding: 6,
@@ -983,11 +1157,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   secondaryButtonText: { color: "#2563eb", fontWeight: "600" },
-  toneGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6, marginBottom: 8 },
+  toneGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   toneChip: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff" },
   toneChipActive: { borderColor: "#2563eb", backgroundColor: "#eff6ff" },
   toneSwatch: { width: 16, height: 16, borderRadius: 999, borderWidth: 1, borderColor: "rgba(15,23,42,.10)" },
   toneLabel: { color: "#334155", fontSize: 13, fontWeight: "600" },
+  frontGradientPreview: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%" },
+  frontToneGradientSwatch: { width: "100%", height: "100%" },
   removeCover: { paddingHorizontal: 10, paddingVertical: 9 },
   removeCoverText: { color: "#b91c1c", fontWeight: "600" },
   card: {
@@ -1040,7 +1216,7 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: "100%",
-    maxWidth: 520,
+    maxWidth: 540,
     maxHeight: "90%",
     backgroundColor: "#fff",
     borderRadius: 14,
@@ -1050,9 +1226,9 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 8,
   },
-  modalScrollContent: { padding: 22 },
+  modalScrollContent: { padding: 20, gap: 12, paddingBottom: 22 },
   calibrationRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 8 },
-  calibrationLabel: { width: 86, color: "#334155", fontWeight: "600" },
+  calibrationLabel: { width: 110, color: "#334155", fontSize: 12, fontWeight: "600" },
   calibrationValue: { minWidth: 74, textAlign: "center", color: "#0f172a", fontWeight: "700" },
   calibrationButton: { width: 36, height: 34, alignItems: "center", justifyContent: "center", backgroundColor: "#f1f5f9", borderRadius: 6, borderWidth: 1, borderColor: "#cbd5e1" },
   resetCalibration: { paddingVertical: 10, alignItems: "center" },
@@ -1061,7 +1237,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     color: "#0f172a",
-    marginBottom: 18,
+    marginBottom: 0,
   },
   modalLabel: {
     fontSize: 14,
@@ -1106,8 +1282,12 @@ const styles = StyleSheet.create({
   modalActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
+    flexWrap: "wrap",
     gap: 10,
-    marginTop: 22,
+    paddingHorizontal: 20,
+    paddingVertical: 13,
+    borderTopWidth: 1,
+    borderColor: "#e2e8f0",
   },
   cancelButton: {
     paddingHorizontal: 16,
