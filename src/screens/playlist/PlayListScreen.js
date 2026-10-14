@@ -9,6 +9,7 @@ import {
   ScrollView,
   Share,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -337,6 +338,10 @@ function parseImportedPayload(
 }
 
 export default function PlayListScreen() {
+  const { width: viewportWidth } = useWindowDimensions();
+  // En teléfonos y tablets, el título y la botonera se apilan: los botones
+  // permanecen en una única fila y se desplazan con el gesto horizontal.
+  const compactHeader = viewportWidth < 850;
   const route = useRoute();
   const navigation = useNavigation();
   const isTutorials = route.name === ROUTES.TUTORIALS;
@@ -1545,8 +1550,8 @@ export default function PlayListScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.header}>
-        <View style={styles.headerText}>
+      <View style={[styles.header, compactHeader && styles.headerCompact]}>
+        <View style={[styles.headerText, compactHeader && styles.headerTextCompact]}>
           <Text style={styles.heading}>{collectionTitle}</Text>
           <Text style={styles.subtitle}>
             {isNews
@@ -1558,7 +1563,16 @@ export default function PlayListScreen() {
                   : "Combina canciones individuales y álbumes de YouTube."}
           </Text>
         </View>
-        <View style={styles.headerActions}>
+        <ScrollView
+          horizontal
+          directionalLockEnabled
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="always"
+          style={[styles.headerActionsScroll, compactHeader && styles.headerActionsScrollCompact]}
+          contentContainerStyle={styles.headerActions}
+          accessibilityLabel="Acciones: desplaza horizontalmente para ver todos los botones"
+        >
           {isTutorials ? (
             <Pressable
               onPress={() => setTransferVisible(true)}
@@ -1616,7 +1630,7 @@ export default function PlayListScreen() {
                     : "Nueva playlist"}
             </Text>
           </Pressable>
-        </View>
+        </ScrollView>
       </View>
       {localMode ? (
         <View style={styles.localModeNotice}>
@@ -2467,19 +2481,37 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
     backgroundColor: "#fff",
-    flexWrap: "wrap",
   },
-  headerText: { flex: 1, minWidth: 220 },
+  headerCompact: {
+    flexDirection: "column",
+    alignItems: "stretch",
+  },
+  headerText: { width: 280, maxWidth: "100%", flexShrink: 1 },
+  headerTextCompact: { width: "100%", flexShrink: 0 },
   heading: { fontSize: 22, fontWeight: "900", color: "#111827" },
   subtitle: { marginTop: 3, fontSize: 12, color: "#64748b" },
+  headerActionsScroll: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: "100%",
+    alignSelf: "center",
+  },
+  headerActionsScrollCompact: {
+    width: "100%",
+    flexGrow: 0,
+    flexShrink: 0,
+    alignSelf: "stretch",
+  },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    flexWrap: "wrap",
+    flexWrap: "nowrap",
+    paddingRight: 16,
   },
   secondaryButton: {
     minHeight: 44,
+    flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -2489,16 +2521,17 @@ const styles = StyleSheet.create({
     borderColor: "#bfdbfe",
     backgroundColor: "#eff6ff",
   },
-  secondaryButtonText: { fontSize: 13, fontWeight: "800", color: "#2563eb" },
+  secondaryButtonText: { fontSize: 13, fontWeight: "800", color: "#2563eb", flexShrink: 0 },
   newButton: {
     minHeight: 42,
+    flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 14,
     backgroundColor: "#dc2626",
   },
-  newButtonText: { fontWeight: "800", color: "#fff" },
+  newButtonText: { fontWeight: "800", color: "#fff", flexShrink: 0 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   searchSection: {
     width: 440,
