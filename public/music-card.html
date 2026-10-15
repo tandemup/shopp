@@ -1,43 +1,296 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Escucha música con Shopp</title><meta name="robots" content="noindex"><style>
-:root{color-scheme:light}*{box-sizing:border-box}body{margin:0;font:16px system-ui,-apple-system,Arial;background:#f1f5f9;color:#0f172a}
-main{max-width:480px;margin:35px auto;padding:25px;background:#fff;border-radius:20px;box-shadow:0 4px 24px #0f172a18;text-align:center}
-h1{margin:4px 0 10px;color:#2563eb}h2{font-size:21px;margin:14px 0 4px}p{color:#475569}img{display:block;max-width:260px;width:80%;aspect-ratio:16/9;object-fit:cover;margin:16px auto;border-radius:10px}
-a.action{display:block;text-decoration:none;color:white;background:#dc2626;border-radius:12px;padding:15px;font-weight:700;margin-top:12px}
-button.action.shopp{background:#2563eb;border:0;width:100%;font:inherit;cursor:pointer} .player{width:100%;aspect-ratio:16/9;border:0;border-radius:12px;margin-top:14px;background:#0f172a} .player-note{font-size:13px}[hidden]{display:none!important}.info{font-size:13px}.error{color:#b91c1c}footer{margin-top:24px;font-size:12px;color:#64748b}
-</style></head><body><main><h1>Shopp Music</h1><p>Una canción para compartir contigo</p><img id="cover" alt="Portada del vídeo" hidden><h2 id="title">Cargando…</h2><p id="author"></p><p id="detail"></p><a id="youtube" class="action" hidden rel="noopener noreferrer" target="_blank">Abrir en YouTube</a><button id="shopp" type="button" class="action shopp" hidden>Reproducir aquí</button><iframe id="player" class="player" hidden title="Reproductor de YouTube" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe><p id="player-note" class="player-note" hidden>Si el vídeo no permite reproducción integrada, utiliza «Abrir en YouTube».</p><p class="info">La reproducción puede requerir tocar el botón de reproducir.</p><p id="error" class="error" role="alert"></p><footer>Shopp · Música y Classical Music</footer></main>
-<script>
-(() => {
- 'use strict';
- const q = new URLSearchParams(location.search), videoRe = /^[\w-]{11}$/, listRe = /^[\w-]{10,120}$/, publicRe = /^[a-z0-9][a-z0-9-]{5,63}$/;
- const $ = id => document.getElementById(id);
- const err = msg => { $('title').textContent='Tarjeta no disponible'; $('error').textContent=msg; $('youtube').hidden=true; $('shopp').hidden=true; };
- const show = (t,a,v,list,detail) => {
-   $('title').textContent=String(t||'Música compartida').slice(0,120);
-   $('author').textContent=String(a||'').slice(0,100);
-   $('detail').textContent=detail||'';
-   $('youtube').href=v?`https://www.youtube.com/watch?v=${v}`:`https://www.youtube.com/playlist?list=${list}`;
-   $('youtube').textContent=detail?'Escuchar primer tema en YouTube':'Abrir en YouTube';
-   $('youtube').hidden=false;
-   if(v){$('cover').src=`https://i.ytimg.com/vi/${v}/hqdefault.jpg`; $('cover').hidden=false;}
-   const embed=v?`https://www.youtube-nocookie.com/embed/${v}?playsinline=1&rel=0`:`https://www.youtube-nocookie.com/embed/videoseries?list=${list}&playsinline=1`;
-   $('shopp').onclick=()=>{ $('player').src=embed; $('player').hidden=false; $('player-note').hidden=false; $('shopp').hidden=true; $('player').scrollIntoView({behavior:'smooth',block:'nearest'}); };
-   $('shopp').hidden=false;
- };
- const p=q.get('p');
- if(p){
-   if(!publicRe.test(p)){err('Identificador de playlist inválido.');return;}
-   fetch(`/music-cards/${encodeURIComponent(p)}.json`,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('La playlist todavía no se ha publicado.');return r.json();}).then(data=>{
-     if(data.schema!=='shopp-public-music-card'||data.version!==1||data.id!==p||!Array.isArray(data.tracks))throw new Error('Formato de playlist no válido.');
-     const track=data.tracks.find(x=>videoRe.test(x.videoId||'')||listRe.test(x.playlistId||''));
-     if(!track)throw new Error('Playlist sin vídeos válidos.');
-     show(data.title,data.author,videoRe.test(track.videoId||'')?track.videoId:'',listRe.test(track.playlistId||'')?track.playlistId:'',`${data.tracks.length} temas · ${data.collectionType==='classical'?'Classical Music':'Music Playlist'}`);
-   }).catch(e=>err(e.message));
- }else{
-   const v=q.get('v')||'',list=q.get('ytpl')||'';
-   if(!videoRe.test(v)&&!listRe.test(list)){err('El QR no contiene un vídeo válido.');return;}
-   show(q.get('t'),q.get('a'),videoRe.test(v)?v:'',listRe.test(list)?list:'','');
- }
-})();
-</script></body></html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Escucha música con Shopp</title>
+    <meta name="robots" content="noindex" />
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          16px system-ui,
+          -apple-system,
+          Arial;
+        background: #f1f5f9;
+        color: #0f172a;
+      }
+      main {
+        max-width: 480px;
+        margin: 35px auto;
+        padding: 25px;
+        background: #fff;
+        border-radius: 20px;
+        box-shadow: 0 4px 24px #0f172a18;
+        text-align: center;
+      }
+      h1 {
+        margin: 4px 0 10px;
+        color: #2563eb;
+      }
+      h2 {
+        font-size: 21px;
+        margin: 14px 0 4px;
+      }
+      p {
+        color: #475569;
+      }
+      img {
+        display: block;
+        max-width: 260px;
+        width: 80%;
+        aspect-ratio: 16/9;
+        object-fit: cover;
+        margin: 16px auto;
+        border-radius: 10px;
+      }
+      .play-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        width: 100%;
+        margin-top: 12px;
+      }
+      .play-actions > .action {
+        width: 100%;
+        min-height: 52px;
+        margin: 0 !important;
+      }
+      a.action {
+        display: block;
+        text-decoration: none;
+        color: white;
+        background: #dc2626;
+        border-radius: 12px;
+        padding: 15px;
+        font-weight: 700;
+        margin-top: 12px;
+      }
+      button#shopp.action.shopp {
+        appearance: none;
+        -webkit-appearance: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        width: 100%;
+        height: auto;
+        min-height: 52px;
+        margin: 12px 0 0;
+        padding: 15px 20px;
+        border: 0;
+        border-radius: 12px;
+        background: #2563eb;
+        color: #fff;
+        font-family: inherit;
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 22px;
+        text-align: center;
+        cursor: pointer;
+        white-space: normal;
+      }
+      .player {
+        width: 100%;
+        aspect-ratio: 16/9;
+        border: 0;
+        border-radius: 12px;
+        margin-top: 14px;
+        background: #0f172a;
+      }
+      .player-note {
+        font-size: 13px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      .info {
+        font-size: 13px;
+      }
+      .error {
+        color: #b91c1c;
+      }
+      footer {
+        margin-top: 24px;
+        font-size: 12px;
+        color: #64748b;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Shopp Music</h1>
+      <p>Una canción para compartir contigo</p>
+      <img id="cover" alt="Portada del vídeo" hidden />
+      <h2 id="title">Cargando…</h2>
+      <p id="author"></p>
+      <p id="detail"></p>
+      <div class="play-actions">
+      <a
+        id="youtube"
+        class="action"
+        hidden
+        rel="noopener noreferrer"
+        target="_blank"
+        >Abrir en YouTube</a
+      ><button id="shopp" type="button" class="action shopp" hidden>
+        Reproducir aquí</button
+      >
+      </div>
+      <iframe
+        id="player"
+        class="player"
+        hidden
+        title="Reproductor de YouTube"
+        allow="
+          accelerometer;
+          autoplay;
+          clipboard-write;
+          encrypted-media;
+          gyroscope;
+          picture-in-picture;
+          web-share;
+        "
+        referrerpolicy="strict-origin-when-cross-origin"
+        allowfullscreen
+      ></iframe>
+      <p id="player-note" class="player-note" hidden>
+        Si el vídeo no permite reproducción integrada, utiliza «Abrir en
+        YouTube».
+      </p>
+      <p class="info">
+        La reproducción puede requerir tocar el botón de reproducir.
+      </p>
+      <p id="error" class="error" role="alert"></p>
+      <footer>Shopp · Música y Classical Music</footer>
+    </main>
+    <script>
+      (() => {
+        "use strict";
+        const q = new URLSearchParams(location.search),
+          videoRe = /^[\w-]{11}$/,
+          listRe = /^[\w-]{10,120}$/,
+          publicRe = /^[a-z0-9][a-z0-9-]{5,63}$/;
+        const $ = (id) => document.getElementById(id);
+        const err = (msg) => {
+          $("title").textContent = "Tarjeta no disponible";
+          $("error").textContent = msg;
+          $("youtube").hidden = true;
+          $("shopp").hidden = true;
+        };
+        const show = (t, a, v, list, detail) => {
+          $("title").textContent = String(t || "Música compartida").slice(
+            0,
+            120,
+          );
+          $("author").textContent = String(a || "").slice(0, 100);
+          $("detail").textContent = detail || "";
+          $("youtube").href = v
+            ? `https://www.youtube.com/watch?v=${v}`
+            : `https://www.youtube.com/playlist?list=${list}`;
+          $("youtube").textContent = detail
+            ? "Escuchar primer tema en YouTube"
+            : "Abrir en YouTube";
+          $("youtube").hidden = false;
+          if (v) {
+            $("cover").src = `https://i.ytimg.com/vi/${v}/hqdefault.jpg`;
+            $("cover").hidden = false;
+          }
+          const embed = v
+            ? `https://www.youtube-nocookie.com/embed/${v}?playsinline=1&rel=0`
+            : `https://www.youtube-nocookie.com/embed/videoseries?list=${list}&playsinline=1`;
+          $("shopp").onclick = () => {
+            $("player").src = embed;
+            $("player").hidden = false;
+            $("player-note").hidden = false;
+            $("shopp").hidden = true;
+            $("player").scrollIntoView({
+              behavior: "smooth",
+              block: "nearest",
+            });
+          };
+          $("shopp").hidden = false;
+        };
+        const p = q.get("p");
+        if (p) {
+          if (!publicRe.test(p)) {
+            err("Identificador de playlist inválido.");
+            return;
+          }
+          fetch(`/music-cards/${encodeURIComponent(p)}.json`, {
+            cache: "no-store",
+          })
+            .then(async (r) => {
+              if (!r.ok)
+                throw new Error(
+                  `La ficha pública no está disponible (HTTP ${r.status}).`,
+                );
+              const contentType = (
+                r.headers.get("content-type") || ""
+              ).toLowerCase();
+              if (!contentType.includes("json"))
+                throw new Error(
+                  "La ficha JSON de esta playlist no está publicada en Netlify. Descárgala desde Shopp, cópiala a public/music-cards/ y vuelve a desplegar.",
+                );
+              try {
+                return await r.json();
+              } catch {
+                throw new Error(
+                  "La ficha publicada no contiene un JSON válido.",
+                );
+              }
+            })
+            .then((data) => {
+              if (
+                data.schema !== "shopp-public-music-card" ||
+                data.version !== 1 ||
+                data.id !== p ||
+                !Array.isArray(data.tracks)
+              )
+                throw new Error("Formato de playlist no válido.");
+              const track = data.tracks.find(
+                (x) =>
+                  videoRe.test(x.videoId || "") ||
+                  listRe.test(x.playlistId || ""),
+              );
+              if (!track) throw new Error("Playlist sin vídeos válidos.");
+              show(
+                data.title,
+                data.author,
+                videoRe.test(track.videoId || "") ? track.videoId : "",
+                listRe.test(track.playlistId || "") ? track.playlistId : "",
+                `${data.tracks.length} temas · ${data.collectionType === "classical" ? "Classical Music" : "Music Playlist"}`,
+              );
+            })
+            .catch((e) =>
+              err(
+                e instanceof TypeError
+                  ? "No se pudo acceder a la ficha pública. Comprueba la conexión y el despliegue."
+                  : e.message,
+              ),
+            );
+        } else {
+          const v = q.get("v") || "",
+            list = q.get("ytpl") || "";
+          if (!videoRe.test(v) && !listRe.test(list)) {
+            err("El QR no contiene un vídeo válido.");
+            return;
+          }
+          show(
+            q.get("t"),
+            q.get("a"),
+            videoRe.test(v) ? v : "",
+            listRe.test(list) ? list : "",
+            "",
+          );
+        }
+      })();
+    </script>
+  </body>
+</html>
