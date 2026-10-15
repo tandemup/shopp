@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Image, Pressable, StyleSheet, View } from "react-native";
+import { Image, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { I18nText as Text } from "@/src/i18n";
 import { usePlayback } from "@/src/components/playback/PlaybackProvider";
@@ -21,6 +21,9 @@ function splitAuthorAndSingle(value) {
 
 export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, onCreateCard, shareable = false, onToggleShareable, isTutorial = false, isNews = false }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { width: viewportWidth } = useWindowDimensions();
+  const compactCard = viewportWidth < 520;
+  const coverWidth = viewportWidth < 375 ? 112 : 136;
   const playback = usePlayback();
   const displayName = String(playlist?.title || "").trim() || userName || "Mi playlist";
   const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
@@ -49,21 +52,21 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
   if (!activeTrack) return null;
   return (
     <View style={[styles.card, isNews && styles.newsCard]}>
-      <Pressable onPress={() => playback.open(playlist, { isTutorial })} style={styles.summary}>
+      <Pressable onPress={() => playback.open(playlist, { isTutorial })} style={[styles.summary, compactCard && styles.summaryPhone]}>
         {activeTrack.videoId ? (
           <Image
             source={{
               uri: `https://i.ytimg.com/vi/${activeTrack.videoId}/mqdefault.jpg`,
             }}
-            style={styles.cover}
+            style={[styles.cover, compactCard && styles.coverPhone, compactCard && { width: coverWidth }]}
             resizeMode="contain"
           />
         ) : (
-          <View style={styles.coverFallback}>
+          <View style={[styles.coverFallback, compactCard && styles.coverPhone, compactCard && { width: coverWidth }]}>
             <Ionicons name="albums" size={36} color="#fff" />
           </View>
         )}
-        <View style={styles.summaryText}>
+        <View style={[styles.summaryText, compactCard && styles.summaryTextPhone]}>
           <View style={styles.metaRow}>
             <Text style={styles.user} numberOfLines={1} ellipsizeMode="tail">
               {displayName}
@@ -76,6 +79,7 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
                 onPress={(event) => { event.stopPropagation(); setMenuOpen((open) => !open); }}
                 disabled={deleting}
                 style={styles.menuButton}
+                hitSlop={7}
               >
                 <Ionicons name="ellipsis-vertical" size={19} color="#475569" />
               </Pressable>
@@ -102,6 +106,7 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
                   onToggleShareable(!shareable);
                 }}
                 style={styles.shareControl}
+                hitSlop={6}
               >
                 <Ionicons
                   name={shareable ? "checkbox" : "square-outline"}
@@ -157,6 +162,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   newsCard: { width: CARD_WIDTH },
+  summaryPhone: { height: 100 },
+  coverPhone: { height: 100 },
+  summaryTextPhone: { height: 100, paddingHorizontal: 8, paddingVertical: 3 },
   summary: {
     height: CARD_HEIGHT,
     overflow: "hidden",

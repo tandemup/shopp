@@ -337,11 +337,91 @@ function parseImportedPayload(
   });
 }
 
+/**
+ * React Native Web ScrollView puede medir su fila de botones al ancho de la
+ * pantalla en Safari iOS. En web usamos overflow-x nativo y un contenido que
+ * siempre conserva su ancho intrínseco (max-content). Android/iOS nativos
+ * continúan usando ScrollView.
+ */
+function HeaderActionsScroller({ compact, scrollRef, children }) {
+  if (Platform.OS === "web") {
+    return React.createElement(
+      "div",
+      {
+        ref: scrollRef,
+        role: "region",
+        "aria-label": "Acciones de la lista; desplaza horizontalmente para ver más botones",
+        tabIndex: 0,
+        style: {
+          width: compact ? "100%" : undefined,
+          flex: compact ? "0 0 auto" : "1 1 0%",
+          minWidth: 0,
+          maxWidth: "100%",
+          alignSelf: compact ? "stretch" : "center",
+          overflowX: "auto",
+          overflowY: "hidden",
+          WebkitOverflowScrolling: "touch",
+          touchAction: "pan-x",
+          overscrollBehaviorX: "contain",
+          scrollbarWidth: "none",
+        },
+      },
+      React.createElement(
+        "div",
+        {
+          style: {
+            display: "inline-flex",
+            flexDirection: "row",
+            alignItems: "center",
+            flexWrap: "nowrap",
+            gap: 7,
+            width: "max-content",
+            minWidth: "100%",
+            paddingRight: 16,
+            boxSizing: "border-box",
+          },
+        },
+        children,
+      ),
+    );
+  }
+  return (
+    <ScrollView
+      ref={scrollRef}
+      horizontal
+      nestedScrollEnabled
+      directionalLockEnabled
+      showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps="always"
+      style={[styles.headerActionsScroll, compact && styles.headerActionsScrollCompact]}
+      contentContainerStyle={styles.headerActions}
+      accessibilityLabel="Acciones de la lista; desplaza horizontalmente para ver más botones"
+    >
+      {children}
+    </ScrollView>
+  );
+}
+
 export default function PlayListScreen() {
   const { width: viewportWidth } = useWindowDimensions();
   // En teléfonos y tablets, el título y la botonera se apilan: los botones
   // permanecen en una única fila y se desplazan con el gesto horizontal.
   const compactHeader = viewportWidth < 850;
+  const narrowMobile = viewportWidth < 600;
+  const headerActionsRef = useRef(null);
+  const scrollHeaderActions = (direction) => {
+    if (Platform.OS === "web") {
+      const element = headerActionsRef.current;
+      if (element) {
+        const next = Math.max(0, Math.min(element.scrollWidth - element.clientWidth, element.scrollLeft + direction * 220));
+        // Asignación directa: funciona también si scrollTo({behavior}) no está soportado.
+        element.scrollLeft = next;
+      }
+    } else {
+      headerActionsRef.current?.scrollTo?.({ x: Math.max(0, direction * 220), animated: true });
+    }
+  };
+  const [localNoticeExpanded, setLocalNoticeExpanded] = useState(false);
   const route = useRoute();
   const navigation = useNavigation();
   const isTutorials = route.name === ROUTES.TUTORIALS;
@@ -361,7 +441,7 @@ export default function PlayListScreen() {
     : isTutorials
       ? "Mis tutoriales"
       : isClassical
-        ? "Mis playlists classic"
+        ? "Mis playlists clásicas"
         : "Mis playlists";
   const itemLabel = isTutorialStyle ? "vídeo" : "elemento";
   const exportType = isNews
@@ -1550,7 +1630,7 @@ export default function PlayListScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={[styles.header, compactHeader && styles.headerCompact]}>
+      <View style={[styles.header, compactHeader && styles.headerCompact, narrowMobile && styles.headerPhone]}>
         <View style={[styles.headerText, compactHeader && styles.headerTextCompact]}>
           <Text style={styles.heading}>{collectionTitle}</Text>
           <Text style={styles.subtitle}>
@@ -1563,16 +1643,15 @@ export default function PlayListScreen() {
                   : "Combina canciones individuales y álbumes de YouTube."}
           </Text>
         </View>
-        <ScrollView
-          horizontal
-          directionalLockEnabled
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="always"
-          style={[styles.headerActionsScroll, compactHeader && styles.headerActionsScrollCompact]}
-          contentContainerStyle={styles.headerActions}
-          accessibilityLabel="Acciones: desplaza horizontalmente para ver todos los botones"
-        >
+        <HeaderActionsScroller compact={compactHeader} scrollRef={headerActionsRef}>
+          {compactHeader ? (
+            <Pressable onPress={openNew} disabled={Boolean(localError)} accessibilityRole="button" style={styles.newButton}>
+              <Ionicons name="add-circle-outline" size={20} color="#fff" />
+              <Text style={styles.newButtonText}>
+                {isNews ? "Añadir noticia" : isTutorials ? "Nuevo tutorial" : isClassical ? "Nueva colección" : "Nueva playlist"}
+              </Text>
+            </Pressable>
+          ) : null}
           {isTutorials ? (
             <Pressable
               onPress={() => setTransferVisible(true)}
@@ -1618,24 +1697,63 @@ export default function PlayListScreen() {
               </Text>
             </Pressable>
           ) : null}
-          <Pressable onPress={openNew} disabled={Boolean(localError)} style={styles.newButton}>
-            <Ionicons name="add-circle-outline" size={20} color="#fff" />
-            <Text style={styles.newButtonText}>
-              {isNews
-                ? "Añadir noticia"
-                : isTutorials
-                  ? "Nuevo tutorial"
-                  : isClassical
-                    ? "Nueva colección"
-                    : "Nueva playlist"}
-            </Text>
-          </Pressable>
-        </ScrollView>
+          {!compactHeader ? (
+            <Pressable onPress={openNew} disabled={Boolean(localError)} accessibilityRole="button" style={styles.newButton}>
+              <Ionicons name="add-circle-outline" size={20} color="#fff" />
+              <Text style={styles.newButtonText}>
+                {isNews ? "Añadir noticia" : isTutorials ? "Nuevo tutorial" : isClassical ? "Nueva colección" : "Nueva playlist"}
+              </Text>
+            </Pressable>
+          ) : null}
+        </HeaderActionsScroller>
+        {narrowMobile ? (
+          <View style={styles.horizontalHint}>
+            <Ionicons name="swap-horizontal-outline" size={13} color="#64748b" />
+            <Text style={styles.horizontalHintText}>Desliza para ver más acciones</Text>
+            {Platform.OS === "web" ? (
+              <View style={styles.headerScrollArrows}>
+                <Pressable
+                  onPress={() => scrollHeaderActions(-1)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ver acciones anteriores"
+                  style={styles.headerScrollArrow}
+                >
+                  <Ionicons name="chevron-back" size={18} color="#2563eb" />
+                </Pressable>
+                <Pressable
+                  onPress={() => scrollHeaderActions(1)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ver más acciones"
+                  style={styles.headerScrollArrow}
+                >
+                  <Ionicons name="chevron-forward" size={18} color="#2563eb" />
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </View>
       {localMode ? (
-        <View style={styles.localModeNotice}>
+        <View style={[styles.localModeNotice, narrowMobile && styles.localModeNoticePhone]}>
           <Ionicons name="information-circle-outline" size={16} color="#92400e" />
-          <Text style={styles.localModeNoticeText}>IndexedDB: playlists y LRC locales de este navegador. Convex solo se consulta si pulsas «Migrar desde Convex»; P2P utiliza Convex únicamente para señalización. Exporta ZIP periódicamente.</Text>
+          <View style={styles.localModeNoticeContent}>
+            <Text style={styles.localModeNoticeText}>
+              {narrowMobile && !localNoticeExpanded
+                ? "Datos guardados en este navegador (IndexedDB). Exporta copias ZIP."
+                : "IndexedDB: playlists y LRC locales de este navegador. Convex solo se consulta si pulsas «Migrar desde Convex»; P2P utiliza Convex únicamente para señalización. Exporta ZIP periódicamente."}
+            </Text>
+          </View>
+          {narrowMobile ? (
+            <Pressable
+              onPress={() => setLocalNoticeExpanded((expanded) => !expanded)}
+              accessibilityRole="button"
+              accessibilityLabel={localNoticeExpanded ? "Ocultar detalles de almacenamiento" : "Mostrar detalles de almacenamiento"}
+              style={styles.localModeNoticeToggle}
+            >
+              <Text style={styles.localModeNoticeToggleText}>{localNoticeExpanded ? "Menos" : "Más"}</Text>
+              <Ionicons name={localNoticeExpanded ? "chevron-up" : "chevron-down"} size={14} color="#92400e" />
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
       {localError ? (
@@ -1654,6 +1772,7 @@ export default function PlayListScreen() {
           keyExtractor={(item) => item._id}
           contentContainerStyle={[
             styles.list,
+            narrowMobile && styles.listPhone,
             !filteredPlaylists.length && styles.emptyList,
           ]}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
@@ -2444,7 +2563,11 @@ export default function PlayListScreen() {
 
 const styles = StyleSheet.create({
   localModeNotice: { flexDirection: "row", gap: 8, alignItems: "center", backgroundColor: "#fffbeb", borderBottomWidth: 1, borderBottomColor: "#fde68a", paddingHorizontal: 16, paddingVertical: 6 },
-  localModeNoticeText: { flexShrink: 1, fontSize: 11, color: "#92400e" },
+  localModeNoticePhone: { paddingHorizontal: 12, paddingVertical: 5, alignItems: "flex-start" },
+  localModeNoticeContent: { flex: 1, minWidth: 0 },
+  localModeNoticeText: { flexShrink: 1, fontSize: 11, color: "#92400e", lineHeight: 15 },
+  localModeNoticeToggle: { flexDirection: "row", gap: 2, alignItems: "center", minHeight: 28, paddingHorizontal: 4 },
+  localModeNoticeToggleText: { fontSize: 11, fontWeight: "800", color: "#92400e" },
   sourceSwitch: { flexDirection: "row", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 6, overflow: "hidden", alignSelf: "center", marginRight: 6 },
   sourceSwitchOption: { paddingVertical: 9, paddingHorizontal: 12, backgroundColor: "#f8fafc" },
   sourceSwitchActive: { backgroundColor: "#2563eb" },
@@ -2486,6 +2609,7 @@ const styles = StyleSheet.create({
     flexDirection: "column",
     alignItems: "stretch",
   },
+  headerPhone: { paddingHorizontal: 12, paddingVertical: 11, gap: 9 },
   headerText: { width: 280, maxWidth: "100%", flexShrink: 1 },
   headerTextCompact: { width: "100%", flexShrink: 0 },
   heading: { fontSize: 22, fontWeight: "900", color: "#111827" },
@@ -2508,6 +2632,19 @@ const styles = StyleSheet.create({
     gap: 7,
     flexWrap: "nowrap",
     paddingRight: 16,
+  },
+  horizontalHint: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: -3 },
+  horizontalHintText: { fontSize: 10, color: "#64748b", flex: 1 },
+  headerScrollArrows: { flexDirection: "row", alignItems: "center", gap: 6 },
+  headerScrollArrow: {
+    width: 34,
+    height: 28,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 5,
   },
   secondaryButton: {
     minHeight: 44,
@@ -2578,6 +2715,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   list: { width: "100%", maxWidth: 760, alignSelf: "center", padding: 14 },
+  listPhone: { paddingHorizontal: 10, paddingTop: 12, paddingBottom: 30 },
   playerCard: { alignItems: "center" },
   emptyList: { flexGrow: 1 },
   empty: { alignItems: "center", padding: 24 },

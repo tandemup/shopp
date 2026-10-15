@@ -1,4 +1,4 @@
-const CACHE_NAME = "shopp-app-v3";
+const CACHE_NAME = "shopp-app-v4";
 const APP_SHELL = ["/", "/index.html", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -31,11 +31,18 @@ self.addEventListener("fetch", (event) => {
   )
     return;
 
+  // No almacenar el manifiesto de versión. Debe poder avisar de cambios
+  // incluso a una PWA que sigue abierta desde hace días.
+  if (new URL(request.url).pathname === "/version.json") {
+    event.respondWith(fetch(request, { cache: "no-store" }));
+    return;
+  }
+
   // React Navigation uses client-side routes. When a document is requested
   // directly, serve the Expo shell so refresh/deep links continue to work.
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(() =>
+      fetch(request, { cache: "no-store" }).catch(() =>
         caches
           .match("/index.html")
           .then((cached) => cached || caches.match("/")),
