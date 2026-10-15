@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Image,
   Modal,
@@ -38,6 +38,17 @@ function qrUrl(value, size = 360) {
   return `https://quickchart.io/qr?size=${size}&margin=1&text=${encodeURIComponent(value)}`;
 }
 
+// La leyenda impresa coincide con el destino real configurado para el QR.
+// Dos líneas permiten leerla sin reducir el tamaño del propio código QR.
+function getQrActionLabel(destination) {
+  switch (destination) {
+    case "youtube": return "Escuchar en\nYouTube";
+    case "shopp": return "Escuchar en\nShopp";
+    case "landing":
+    default: return "Ver en\nShopp";
+  }
+}
+
 function esc(value) {
   return String(value ?? "").replace(
     /[&<>\"']/g,
@@ -62,101 +73,62 @@ function splitAuthorAndSingle(value) {
 
 // Calibración independiente de las dimensiones de las tarjetas.
 const DEFAULT_BACK_OFFSET_X_MM = 0;
-const DEFAULT_BACK_OFFSET_Y_MM = 0; // Sin desplazamiento adicional por defecto
+const DEFAULT_BACK_OFFSET_Y_MM = 2.5; // Calibración vertical inicial del reverso (+2,5 mm)
 const MIN_BACK_OFFSET_MM = -3;
 const MAX_BACK_OFFSET_MM = 3;
 const CALIBRATION_STEP_MM = 0.5;
-// Margen para pruebas de registro de impresión; no cambia el tamaño de la tarjeta.
-const DEFAULT_BACK_INSET_MM = 10;
+const DEFAULT_BACK_INSET_MM = 10; // Marco exterior predeterminado de 10 mm en el reverso
 const MIN_BACK_INSET_MM = 0;
 const MAX_BACK_INSET_MM = 10;
-const DEFAULT_BACK_MARGIN_COLOR = "#FFF4B8"; // Amarillo claro: visible al escanear.
 
-// Estilos INDEPENDIENTES: corte del anverso y proyección del reverso sobre él.
-// La cuadrícula real del reverso conserva el trazado negro y fino de siempre.
-const GUIDE_LINE_PATTERNS = [
+// Estilos independientes de las tres cuadrículas. Las longitudes están en mm.
+const GRID_WIDTH_OPTIONS = [0.05, 0.10, 0.12, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50];
+const GRID_PATTERN_OPTIONS = [
   { id: "solid", label: "Continua" },
   { id: "dashed", label: "Discontinua" },
   { id: "dotted", label: "Punteada" },
 ];
-const GUIDE_LINE_COLORS = [
-  { id: "charcoal", label: "Gris oscuro", value: "#555555" },
-  { id: "gray", label: "Gris", value: "#6B7280" },
-  { id: "light", label: "Gris claro", value: "#B4BECB" },
-  { id: "blue", label: "Azul", value: "#2563EB" },
-  { id: "red", label: "Rojo", value: "#DC2626" },
+const GRID_COLOR_OPTIONS = [
+  { label: "Gris oscuro", value: "#555555" },
+  { label: "Gris claro", value: "#b4becb" },
+  { label: "Negro", value: "#111827" },
+  { label: "Azul", value: "#2563eb" },
+  { label: "Rojo", value: "#b91c1c" },
+  { label: "Verde", value: "#15803d" },
 ];
-const GUIDE_LINE_WIDTHS_MM = [0.1, 0.15, 0.2, 0.3];
-const DEFAULT_FRONT_GUIDE = { pattern: "solid", color: "#555555", widthMm: 0.1 };
-const DEFAULT_PROJECTED_GUIDE = { pattern: "dashed", color: "#B4BECB", widthMm: 0.15 };
+const DEFAULT_GRID_STYLES = {
+  front: { color: "#555555", width: 0.10, pattern: "solid" },
+  back: { color: "#555555", width: 0.10, pattern: "solid" },
+  overlay: { color: "#b4becb", width: 0.12, pattern: "dashed" },
+};
+function safeGridLineStyle(value, fallback) {
+  return {
+    color: /^#[0-9a-f]{6}$/i.test(value?.color || "") ? value.color : fallback.color,
+    width: GRID_WIDTH_OPTIONS.includes(value?.width) ? value.width : fallback.width,
+    pattern: GRID_PATTERN_OPTIONS.some(option => option.id === value?.pattern) ? value.pattern : fallback.pattern,
+  };
+}
+// SVG conserva el espesor vectorial en milímetros (CSS border redondea trazos
+// inferiores a 1 px en algunos navegadores). El viewBox está expresado en mm.
+function makeCutGridSvg(style) {
+  const dash = style.pattern === "dashed" ? ' stroke-dasharray="2 1"' :
+    style.pattern === "dotted" ? ' stroke-dasharray="0 1" stroke-linecap="round"' : "";
+  const gridPath = [
+    ...[0, 90, 180].map(x => `M${x} 0V280`),
+    ...[0, 56, 112, 168, 224, 280].map(y => `M0 ${y}H180`),
+  ].join(" ");
+  return `<svg class="grid-vector" xmlns="http://www.w3.org/2000/svg" width="180mm" height="280mm" viewBox="0 0 180 280" aria-hidden="true"><path d="${gridPath}" fill="none" stroke="${style.color}" stroke-width="${style.width}"${dash}/></svg>`;
+}
+const DEFAULT_COVER_OVERSCAN = 1.08; // Recorte adicional suave para ocultar halos blancos del original
 
-function safeGuidePattern(value, fallback) {
-  return GUIDE_LINE_PATTERNS.some((item) => item.id === value) ? value : fallback;
-}
-function safeGuideColor(value, fallback) {
-  return GUIDE_LINE_COLORS.some((item) => item.value === value) ? value : fallback;
-}
-function safeGuideWidthMm(value, fallback) {
-  const mm = Number(value);
-  return GUIDE_LINE_WIDTHS_MM.includes(mm) ? mm : fallback;
-}
-
-// Control reutilizable para configurar las líneas impresas en el anverso.
-function GuideLineAppearance({ label, pattern, onPattern, color, onColor, widthMm, onWidthMm }) {
-  return (
-    <View style={styles.guideAppearance}>
-      <Text style={styles.guideAppearanceTitle}>{label}</Text>
-      <Text style={styles.fieldLabel}>Tipo de línea</Text>
-      <View style={styles.guideChoiceRow}>
-        {GUIDE_LINE_PATTERNS.map((item) => (
-          <Pressable key={item.id} onPress={() => onPattern(item.id)} accessibilityRole="radio"
-            accessibilityState={{ selected: pattern === item.id }}
-            style={[styles.guideChoice, pattern === item.id && styles.guideChoiceSelected]}>
-            <View style={[styles.guideChoiceSample, { borderTopColor: color, borderTopWidth: Math.max(1, widthMm * 10), borderStyle: item.id }]} />
-            <Text style={styles.guideChoiceText}>{item.label}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Text style={styles.fieldLabel}>Color</Text>
-      <View style={styles.guideChoiceRow}>
-        {GUIDE_LINE_COLORS.map((item) => (
-          <Pressable key={item.id} onPress={() => onColor(item.value)} accessibilityRole="radio"
-            accessibilityLabel={item.label} accessibilityState={{ selected: color === item.value }}
-            style={[styles.guideColorChoice, color === item.value && styles.guideChoiceSelected]}>
-            <View style={[styles.guideColorSwatch, { backgroundColor: item.value }]} />
-            <Text style={styles.guideColorLabel}>{item.label}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Text style={styles.fieldLabel}>Grosor</Text>
-      <View style={styles.guideChoiceRow}>
-        {GUIDE_LINE_WIDTHS_MM.map((mm) => (
-          <Pressable key={mm} onPress={() => onWidthMm(mm)} accessibilityRole="radio"
-            accessibilityState={{ selected: widthMm === mm }}
-            style={[styles.guideWidthChoice, widthMm === mm && styles.guideChoiceSelected]}>
-            <Text style={styles.guideChoiceText}>{mm.toFixed(2).replace(".", ",")} mm</Text>
-          </Pressable>
-        ))}
-      </View>
-      <View style={styles.guidePreviewRow}>
-        <Text style={styles.guidePreviewLabel}>Muestra</Text>
-        <View style={styles.guidePreviewStrokeWrap}>
-          <View style={[styles.guidePreviewStroke, { borderTopColor: color, borderTopWidth: Math.max(1, widthMm * 12), borderStyle: pattern }]} />
-        </View>
-      </View>
-    </View>
-  );
-}
-const BACK_MARGIN_COLORS = [
-  { label: "Amarillo", value: "#FFF4B8" },
-  { label: "Verde", value: "#DFF5E3" },
-  { label: "Rosa", value: "#FCE1E7" },
-  { label: "Azul", value: "#DCEBFF" },
-  { label: "Gris", value: "#E5E7EB" },
-  { label: "Blanco", value: "#FFFFFF" },
-];
-function validHexColor(color) {
-  return /^#[0-9a-f]{6}$/i.test(String(color || "").trim());
+function getCoverOverscan(width, height) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return DEFAULT_COVER_OVERSCAN;
+  }
+  const aspect = width / height;
+  if (aspect >= 0.95 && aspect <= 1.05) return 1.12;
+  if (aspect >= 0.8 && aspect <= 1.25) return 1.10;
+  return 1.06;
 }
 
 const BACK_PANEL_TONES = [
@@ -168,6 +140,15 @@ const BACK_PANEL_TONES = [
   { id: "transparent", label: "Transparente", bg: "transparent", title: "#1f2937", meta: "#64748b", accent: "#475569" },
 ];
 const DEFAULT_BACK_PANEL_TONE = BACK_PANEL_TONES[0].id;
+
+// Color independiente del marco del reverso. La carátula se recorta a un
+// cuadrado centrado; nunca se estira ni deja bandas laterales.
+const BACK_FRAME_TONES = [
+  { id: "yellow", label: "Amarillo pálido", bg: "#fff2bd" },
+  { id: "white", label: "Blanco", bg: "#ffffff" },
+  ...BACK_PANEL_TONES,
+];
+const DEFAULT_BACK_FRAME_TONE = "yellow";
 
 // El anverso y el panel derecho del reverso tienen colores independientes.
 // La opción Original conserva el degradado utilizado hasta ahora al imprimir.
@@ -204,6 +185,10 @@ function getBackPanelTone(toneId) {
   return BACK_PANEL_TONES.find((option) => option.id === toneId) || BACK_PANEL_TONES[0];
 }
 
+function getBackFrameTone(toneId) {
+  return BACK_FRAME_TONES.find((option) => option.id === toneId) || BACK_FRAME_TONES[0];
+}
+
 function getFrontTone(toneId) {
   return FRONT_TONES.find((option) => option.id === toneId) || FRONT_TONES[0];
 }
@@ -220,44 +205,47 @@ function buildPrintHtml({
   frontCropMarks,
   backCropMarks,
   showBackGridOnFront,
-  frontGuidePattern = DEFAULT_FRONT_GUIDE.pattern,
-  frontGuideColor = DEFAULT_FRONT_GUIDE.color,
-  frontGuideWidthMm = DEFAULT_FRONT_GUIDE.widthMm,
-  projectedGuidePattern = DEFAULT_PROJECTED_GUIDE.pattern,
-  projectedGuideColor = DEFAULT_PROJECTED_GUIDE.color,
-  projectedGuideWidthMm = DEFAULT_PROJECTED_GUIDE.widthMm,
+  gridStyles,
+  qrActionLabel,
   doubleSided,
   duplexFlip,
   backOffsetX,
   backOffsetY,
   backInsetEnabled,
   backInsetMm,
-  backMarginColor,
   frontBackground,
   backPanelBg,
+  backFrameBg,
   backPanelTitleColor,
   backPanelMetaColor,
   backPanelAccentColor,
   coverUri,
   contactEmail,
   landingUrl,
+  coverOverscan = DEFAULT_COVER_OVERSCAN,
 }) {
   const safeTitle = esc(title);
   const safeSubtitle = esc(subtitle);
   const safeEmail = esc(contactEmail);
   const safeLanding = esc(landingUrl);
   const frontBg = esc(frontBackground || "linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%)");
-  const panelBg = esc(backPanelBg || "#f6f0dd");
+  const panelBg = esc(backPanelBg ?? "#f6f0dd");
+  const frameBg = esc(backFrameBg ?? "#fff2bd");
   const panelTitleColor = esc(backPanelTitleColor || "#1f2937");
   const panelMetaColor = esc(backPanelMetaColor || "#64748b");
   const panelAccentColor = esc(backPanelAccentColor || "#475569");
+  const printedQrAction = esc(qrActionLabel || "Ver en\nShopp").replace(/\n/g, "<br>");
+  const safeCoverScale = Number.isFinite(coverOverscan) ? Math.max(1, Math.min(1.2, coverOverscan)) : DEFAULT_COVER_OVERSCAN;
   const backInset = backInsetEnabled ? Math.max(MIN_BACK_INSET_MM, Math.min(MAX_BACK_INSET_MM, Number(backInsetMm) || 0)) : 0;
-  const marginBg = validHexColor(backMarginColor) ? String(backMarginColor).trim() : DEFAULT_BACK_MARGIN_COLOR;
-  // Con 10 mm quedan 70 × 36 mm útiles. Compactar el panel QR sin deformar imágenes.
-  const compactBack = backInset >= 8;
-  const mediumBack = backInset >= 5;
-  const backInfoWidth = compactBack ? "41%" : mediumBack ? "37%" : "33%";
-  const backQrMm = compactBack ? 19 : mediumBack ? 21 : 22;
+  // Cada tarjeta mide 90 × 56 mm: reservando un cuadrado junto a un panel de 34 mm.
+  // El margen se resta a los 4 lados y no cambia el tamaño exterior de la tarjeta.
+  const coverSizeMm = 56 - 2 * backInset;
+  // Con márgenes grandes, se reserva espacio vertical para autor, título, QR y leyenda.
+  const qrSizeMm = Math.max(17.5, 20.5 - Math.max(0, backInset - 4) * 0.5);
+  const compactBack = backInset >= 7;
+  const frontLineSvg = makeCutGridSvg(safeGridLineStyle(gridStyles?.front, DEFAULT_GRID_STYLES.front));
+  const backLineSvg = makeCutGridSvg(safeGridLineStyle(gridStyles?.back, DEFAULT_GRID_STYLES.back));
+  const overlayLineSvg = makeCutGridSvg(safeGridLineStyle(gridStyles?.overlay, DEFAULT_GRID_STYLES.overlay));
   const isCard = format === "card";
   const isDistinct = Boolean(distinctCards);
   const count = isCard ? 1 : isDistinct ? cards.length : Math.max(1, Math.min(99, Number(copies) || 1));
@@ -268,17 +256,11 @@ function buildPrintHtml({
   // Una página de tamaño A4 completo evita el desbordamiento de Chrome.
   const dx = Number.isFinite(backOffsetX) ? Math.max(MIN_BACK_OFFSET_MM, Math.min(MAX_BACK_OFFSET_MM, backOffsetX)) : 0;
   const dy = Number.isFinite(backOffsetY) ? Math.max(MIN_BACK_OFFSET_MM, Math.min(MAX_BACK_OFFSET_MM, backOffsetY)) : DEFAULT_BACK_OFFSET_Y_MM;
-  const fPattern = safeGuidePattern(frontGuidePattern, DEFAULT_FRONT_GUIDE.pattern);
-  const fColor = safeGuideColor(frontGuideColor, DEFAULT_FRONT_GUIDE.color);
-  const fWidth = safeGuideWidthMm(frontGuideWidthMm, DEFAULT_FRONT_GUIDE.widthMm);
-  const pPattern = safeGuidePattern(projectedGuidePattern, DEFAULT_PROJECTED_GUIDE.pattern);
-  const pColor = safeGuideColor(projectedGuideColor, DEFAULT_PROJECTED_GUIDE.color);
-  const pWidth = safeGuideWidthMm(projectedGuideWidthMm, DEFAULT_PROJECTED_GUIDE.widthMm);
   const frontCutGrid = !isCard && frontCropMarks
-    ? `<div class="cut-guides" aria-hidden="true">${[0, 90, 179.9].map(x => `<i class="cut-guide v" style="left:${x}mm"></i>`).join("")}${[0, 56, 112, 168, 224, 279.9].map(y => `<i class="cut-guide h" style="top:${y}mm"></i>`).join("")}</div>`
+    ? `<div class="cut-guides" aria-hidden="true">${frontLineSvg}</div>`
     : "";
   const backCutGrid = !isCard && backCropMarks
-    ? `<div class="cut-guides" aria-hidden="true">${[0, 90, 179.9].map(x => `<i class="cut-guide v" style="left:${x}mm"></i>`).join("")}${[0, 56, 112, 168, 224, 279.9].map(y => `<i class="cut-guide h" style="top:${y}mm"></i>`).join("")}</div>`
+    ? `<div class="cut-guides" aria-hidden="true">${backLineSvg}</div>`
     : "";
 
   // Proyección de la cuadrícula del REVERSO sobre la cara frontal del papel.
@@ -289,7 +271,7 @@ function buildPrintHtml({
     ? (() => {
         const left = duplexFlip === "short" ? 15 + dx : 15 - dx;
         const top = duplexFlip === "short" ? 8.5 - dy : 8.5 + dy;
-        return `<div class="reverse-grid-guide" aria-hidden="true" style="left:${left}mm;top:${top}mm;">${[0, 90, 179.88].map(x => `<i class="reverse-grid-line v" style="left:${x}mm"></i>`).join("")}${[0, 56, 112, 168, 224, 279.88].map(y => `<i class="reverse-grid-line h" style="top:${y}mm"></i>`).join("")}</div>`;
+        return `<div class="reverse-grid-guide" aria-hidden="true" style="left:${left}mm;top:${top}mm;">${overlayLineSvg}</div>`;
       })()
     : "";
 
@@ -311,12 +293,12 @@ function buildPrintHtml({
     const cardTitle = esc(entry.title || title);
     const cardAuthor = esc(entry.author || author);
     const cardCover = esc(entry.cover || coverUri);
-    return `<div class="card-wrap"><div class="card back" style="padding:${backInset}mm;background:${backInset > 0 ? marginBg : "#fff"};">
+    return `<div class="card-wrap"><div class="card back" style="padding:${backInset}mm;background:${frameBg};">
     <div class="back-inner">
-      <div class="cover-panel">${cardCover ? `<img class="cover" src="${cardCover}" alt="Carátula"/>` : `<div class="cover placeholder">Shopp Music</div>`}</div>
-      <div class="back-info" style="background:${panelBg};">
+      <div class="cover-panel" style="width:${coverSizeMm}mm;flex:0 0 ${coverSizeMm}mm;background:${frameBg};">${cardCover ? `<img class="cover" src="${cardCover}" alt="Carátula" style="transform:scale(${safeCoverScale});"/>` : `<div class="cover placeholder">Shopp Music</div>`}</div>
+      <div class="back-info${compactBack ? " compact" : ""}" style="background:${panelBg};">
         <div class="music-meta">${cardAuthor ? `<span class="author" style="color:${panelAccentColor};">${cardAuthor}</span>` : ""}<strong style="color:${panelTitleColor};">${cardTitle}</strong>${safeSubtitle ? `<span class="subtitle" style="color:${panelMetaColor};">${safeSubtitle}</span>` : ""}</div>
-        <div class="qr-panel"><img src="${q}" alt="Código QR musical"/><span style="color:${panelAccentColor};">Escanea para escuchar</span></div>
+        <div class="qr-panel"><img src="${q}" style="width:${qrSizeMm}mm;height:${qrSizeMm}mm;" alt="Código QR musical"/><span style="color:${panelAccentColor};">${printedQrAction}</span></div>
       </div>
     </div>
   </div></div>`;
@@ -352,27 +334,24 @@ function buildPrintHtml({
     .sheet + .sheet{break-before:page;page-break-before:always}
     .card-wrap{position:relative;width:90mm;height:56mm;break-inside:avoid;page-break-inside:avoid}
     .card{width:90mm;height:56mm;border:0;background:#fff;overflow:hidden}
-    /* Las guías son superposiciones: no alteran ancho/alto ni separación de tarjetas. */
+    /* Una sola línea por límite, con espesor configurable; la tarjeta conserva su tamaño. */
     .cut-guides{position:absolute;inset:0;z-index:5;pointer-events:none}
-    .cut-guide{display:block;position:absolute;box-sizing:border-box;margin:0;padding:0}
-    .cut-guide.v{top:0;width:0;height:280mm}
-    .cut-guide.h{left:0;width:180mm;height:0}
-    .front-sheet .cut-guide.v{border-left:${fWidth}mm ${fPattern} ${fColor}}
-    .front-sheet .cut-guide.h{border-top:${fWidth}mm ${fPattern} ${fColor}}
-    .back-sheet .cut-guide.v{border-left:.10mm solid #555}
-    .back-sheet .cut-guide.h{border-top:.10mm solid #555}
-    /* Proyección opcional y estilizable de la cuadrícula del reverso en el anverso. */
+    /* Trazado vectorial a escala física: línea centrada exactamente en el corte. */
+    .grid-vector{display:block;position:absolute;top:0;left:0;width:180mm;height:280mm;overflow:visible;pointer-events:none}
+    /* Guía del reverso proyectada sobre el anverso, con estilo independiente. */
     .reverse-grid-guide{position:absolute;width:180mm;height:280mm;z-index:6;pointer-events:none}
-    .reverse-grid-line{display:block;position:absolute;border:0;padding:0;margin:0}
-    .reverse-grid-line.v{top:0;height:280mm;width:0;border-left:${pWidth}mm ${pPattern} ${pColor}}
-    .reverse-grid-line.h{left:0;width:180mm;height:0;border-top:${pWidth}mm ${pPattern} ${pColor}}
     .front{display:flex;align-items:center;padding:7mm;background:${frontBg}}
     .shopp-mark{width:18mm;height:18mm;border-radius:5mm;background:#2563eb;color:#fff;display:flex;align-items:center;justify-content:center;font-size:25pt;font-weight:900;flex:0 0 18mm;margin-right:6mm}
     .front-copy{min-width:0;flex:1}.brand{font-size:15pt;color:#2563eb;font-weight:900;margin-bottom:1.5mm}.front h1{font-size:10.5pt;line-height:1.18;margin:0 0 1.5mm}.front-text{font-size:7.4pt;color:#64748b;margin:0 0 3mm}
     .contact{display:flex;align-items:baseline;gap:2mm;margin-top:1.2mm;min-width:0}.contact span{font-size:6.5pt;text-transform:uppercase;color:#64748b;font-weight:700;min-width:9mm}.contact strong{font-size:7.5pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .back{display:block;background:#fff}.back-inner{width:100%;height:100%;display:flex;overflow:hidden}.cover-panel{flex:1;min-width:0;height:100%;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden}.cover{width:100%;height:100%;display:block;object-fit:contain}.placeholder{display:flex;align-items:center;justify-content:center;background:#e2e8f0;color:#64748b;font-size:18pt;font-weight:700}.back-info{width:${backInfoWidth};flex-shrink:0;min-width:0;height:100%;padding:${compactBack ? "1mm 1.2mm" : mediumBack ? "1.7mm 1.5mm" : "2.5mm 2mm"};display:flex;flex-direction:column;align-items:center;justify-content:space-between;overflow:hidden}
-    .music-meta{width:100%;display:flex;flex-direction:column;gap:${compactBack ? ".2mm" : ".8mm"};text-align:center;min-width:0}.music-meta strong{font-size:${compactBack ? "7.5pt" : mediumBack ? "8pt" : "9pt"};line-height:1.15;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.music-meta span{font-size:${compactBack ? "5.5pt" : "6.5pt"};line-height:1.15;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.music-meta .author{font-size:${compactBack ? "6pt" : "7pt"};font-weight:700}.music-meta .subtitle{font-size:${compactBack ? "5pt" : "6pt"}}
-    .qr-panel{width:100%;max-width:27mm;padding:${compactBack ? ".6mm" : "1mm"};border-radius:2mm;background:#fff;display:flex;flex-direction:column;align-items:center;gap:${compactBack ? ".25mm" : ".8mm"};box-shadow:0 0 0 .1mm rgba(15,23,42,.06) inset}.qr-panel img{display:block;width:${backQrMm}mm;height:${backQrMm}mm;max-width:100%;object-fit:contain}.qr-panel span{font-size:${compactBack ? "4.7pt" : "5.6pt"};line-height:1.1;text-align:center;font-weight:700}
+    /* Cuadrado físico con recorte centrado: misma geometría en pantalla e impresión.
+       Los originales cuadrados conservan toda la imagen. No se fuerza la proporción. */
+    .back{display:block;background:${frameBg}}.back-inner{width:100%;height:100%;display:flex;overflow:hidden}.cover-panel{min-width:0;height:100%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:${frameBg}}.cover{width:100%;height:100%;display:block;object-fit:cover;object-position:center}.placeholder{display:flex;align-items:center;justify-content:center;background:#e2e8f0;color:#64748b;font-size:13pt;font-weight:700;text-align:center}.back-info{flex:1;min-width:0;height:100%;padding:1.5mm;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:.4mm;overflow:hidden}
+    .music-meta{width:100%;min-height:0;flex:1 1 auto;display:flex;flex-direction:column;gap:.45mm;text-align:center;min-width:0;overflow:hidden}.music-meta strong{font-size:9pt;line-height:1.15;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.music-meta span{font-size:6.5pt;line-height:1.15;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.music-meta .author{font-size:7pt;font-weight:700}.music-meta .subtitle{font-size:6pt}
+    /* Con un marco ancho reducimos solo la tipografía musical y el QR, manteniendo
+       visibles el QR completo y sus dos líneas inferiores. */
+    .back-info.compact{padding:.8mm;gap:.2mm}.back-info.compact .music-meta{gap:.15mm}.back-info.compact .music-meta strong{font-size:7pt;line-height:1.08}.back-info.compact .music-meta .author{font-size:6pt;line-height:1.08}.back-info.compact .music-meta .subtitle{font-size:5pt;line-height:1.08}
+    .qr-panel{width:26mm;max-width:100%;flex:0 0 auto;min-height:0;margin-top:auto;padding:.6mm;border-radius:2mm;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.2mm;box-shadow:0 0 0 .1mm rgba(15,23,42,.06) inset}.qr-panel img{display:block;width:20.5mm;height:20.5mm;flex:0 0 auto}.qr-panel span{display:block;width:100%;font-size:5.6pt;line-height:1.1;text-align:center;font-weight:700;flex:0 0 auto;white-space:normal;overflow:visible}.back-info.compact .qr-panel span{font-size:5pt}
     .blank{background:#fff}
     @media screen{body{background:#e5e7eb;padding:${isCard ? "10mm" : "8mm"}}.sheet{background:#fff;margin:0 auto 8mm;${isCard ? "" : "box-shadow:0 2px 12px rgba(0,0,0,.12);"}}}
     @media print{body{background:#fff;padding:0}.sheet{margin:0;box-shadow:none}}
@@ -384,6 +363,7 @@ export default function PrintMusicCardScreen() {
   const route = useRoute();
   const { width: viewportWidth } = useWindowDimensions();
   const previewCardWidth = Math.min(340, Math.max(260, viewportWidth - 64));
+  const previewCardHeight = previewCardWidth * 56 / 90;
   const playlist = route.params?.playlist || {};
   const isClassical = Boolean(route.params?.isClassical);
   const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
@@ -441,21 +421,36 @@ export default function PrintMusicCardScreen() {
   const [frontCropMarks, setFrontCropMarks] = useState(false);
   const [backCropMarks, setBackCropMarks] = useState(false);
   const [showBackGridOnFront, setShowBackGridOnFront] = useState(false);
-  const [frontGuidePattern, setFrontGuidePattern] = useState(DEFAULT_FRONT_GUIDE.pattern);
-  const [frontGuideColor, setFrontGuideColor] = useState(DEFAULT_FRONT_GUIDE.color);
-  const [frontGuideWidthMm, setFrontGuideWidthMm] = useState(DEFAULT_FRONT_GUIDE.widthMm);
-  const [projectedGuidePattern, setProjectedGuidePattern] = useState(DEFAULT_PROJECTED_GUIDE.pattern);
-  const [projectedGuideColor, setProjectedGuideColor] = useState(DEFAULT_PROJECTED_GUIDE.color);
-  const [projectedGuideWidthMm, setProjectedGuideWidthMm] = useState(DEFAULT_PROJECTED_GUIDE.widthMm);
+  const [gridStyles, setGridStyles] = useState(() => ({
+    front: { ...DEFAULT_GRID_STYLES.front },
+    back: { ...DEFAULT_GRID_STYLES.back },
+    overlay: { ...DEFAULT_GRID_STYLES.overlay },
+  }));
+  const updateGridStyle = (side, property, value) => setGridStyles(previous => ({
+    ...previous,
+    [side]: { ...previous[side], [property]: value },
+  }));
+  const changeGridWidth = (side, step) => setGridStyles(previous => {
+    const current = previous[side].width;
+    const index = GRID_WIDTH_OPTIONS.indexOf(current);
+    const next = GRID_WIDTH_OPTIONS[Math.max(0, Math.min(GRID_WIDTH_OPTIONS.length - 1, (index >= 0 ? index : 1) + step))];
+    return { ...previous, [side]: { ...previous[side], width: next } };
+  });
   const [doubleSided, setDoubleSided] = useState(true);
   const [duplexFlip, setDuplexFlip] = useState("long");
   const [backOffsetX, setBackOffsetX] = useState(DEFAULT_BACK_OFFSET_X_MM);
   const [backOffsetY, setBackOffsetY] = useState(DEFAULT_BACK_OFFSET_Y_MM);
   const [backInsetEnabled, setBackInsetEnabled] = useState(true);
   const [backInsetMm, setBackInsetMm] = useState(DEFAULT_BACK_INSET_MM);
-  const [backMarginColor, setBackMarginColor] = useState(DEFAULT_BACK_MARGIN_COLOR);
   const [backPanelToneId, setBackPanelToneId] = useState(DEFAULT_BACK_PANEL_TONE);
+  const [backFrameToneId, setBackFrameToneId] = useState(DEFAULT_BACK_FRAME_TONE);
   const [frontToneId, setFrontToneId] = useState(DEFAULT_FRONT_TONE);
+  const previewInsetPx = backInsetEnabled ? backInsetMm * previewCardWidth / 90 : 0;
+  // Un cuadrado de 56 - 2*margen mm en una tarjeta de 90 x 56 mm.
+  // Base fija en el eje horizontal: flex: 0 (sin base) colapsaba la carátula en web.
+  const previewCoverSizePx = Math.max(0, previewCardHeight - 2 - 2 * previewInsetPx);
+  const previewQrSizePx = Math.max(17.5, 20.5 - Math.max(0, (backInsetEnabled ? backInsetMm : 0) - 4) * 0.5) * previewCardWidth / 90;
+  const previewCompactBack = backInsetEnabled && backInsetMm >= 7;
   const [coverUri, setCoverUri] = useState(
     String(
       playlist.cover ||
@@ -465,19 +460,42 @@ export default function PrintMusicCardScreen() {
         "",
     ),
   );
+  // Dimensiones reales (px) del archivo seleccionado; independientes de su
+  // presentación cuadrada en la tarjeta impresa.
+  const [coverDimensions, setCoverDimensions] = useState(null);
+  useEffect(() => {
+    if (!coverUri) {
+      setCoverDimensions(null);
+      return;
+    }
+    // ImagePicker ya proporciona las dimensiones, sin esperar otra descarga.
+    if (coverDimensions?.uri === coverUri) return;
+
+    let canceled = false;
+    Image.getSize(
+      coverUri,
+      (width, height) => {
+        if (!canceled) setCoverDimensions({ uri: coverUri, width, height });
+      },
+      () => {
+        if (!canceled) setCoverDimensions({ uri: coverUri, width: null, height: null });
+      },
+    );
+    return () => { canceled = true; };
+  }, [coverUri, coverDimensions?.uri]);
+  const coverSizeLabel = !coverUri
+    ? "Sin imagen seleccionada"
+    : coverDimensions?.uri !== coverUri
+      ? "Leyendo dimensiones…"
+      : Number.isFinite(coverDimensions.width) && Number.isFinite(coverDimensions.height)
+        ? `${coverDimensions.width} × ${coverDimensions.height} px`
+        : "Dimensiones no disponibles";
+  const coverRenderScale = useMemo(() => getCoverOverscan(coverDimensions?.width, coverDimensions?.height), [coverDimensions?.width, coverDimensions?.height]);
   const [contactEmail, setContactEmail] = useState(DEFAULT_CONTACT_EMAIL);
   const [landingUrl, setLandingUrl] = useState(initialLandingUrl);
   const backPanelTone = useMemo(() => getBackPanelTone(backPanelToneId), [backPanelToneId]);
+  const backFrameTone = useMemo(() => getBackFrameTone(backFrameToneId), [backFrameToneId]);
   const frontTone = useMemo(() => getFrontTone(frontToneId), [frontToneId]);
-  const marginColorValid = validHexColor(backMarginColor);
-  const activeMarginColor = marginColorValid ? backMarginColor.trim() : DEFAULT_BACK_MARGIN_COLOR;
-  // Conversión proporcional: 90 mm son previewCardWidth píxeles.
-  const previewPxPerMm = previewCardWidth / 90;
-  const previewInsetPx = backInsetEnabled ? backInsetMm * previewPxPerMm : 0;
-  const compactBackPreview = backInsetEnabled && backInsetMm >= 8;
-  const mediumBackPreview = backInsetEnabled && backInsetMm >= 5;
-  const previewQrPx = (compactBackPreview ? 19 : mediumBackPreview ? 21 : 22) * previewPxPerMm;
-  const previewInfoWidth = compactBackPreview ? "41%" : mediumBackPreview ? "37%" : "33%";
 
   const cardEntries = useMemo(() => {
     const origin = normalizePublicBase(publicBaseUrl);
@@ -503,6 +521,7 @@ export default function PrintMusicCardScreen() {
     }).filter(x => x.url);
   }, [validTracks, cardMode, qrDestination, publicBaseUrl, publicId, title, author, single, coverUri]);
   const targetUrl = cardEntries[0]?.url || "";
+  const qrActionLabel = getQrActionLabel(qrDestination);
 
   const downloadPublicManifest = () => {
     if (Platform.OS !== "web") return;
@@ -550,6 +569,11 @@ export default function PrintMusicCardScreen() {
       asset.base64 && asset.mimeType
         ? `data:${asset.mimeType};base64,${asset.base64}`
         : asset.uri;
+    if (Number.isFinite(asset.width) && Number.isFinite(asset.height)) {
+      setCoverDimensions({ uri, width: asset.width, height: asset.height });
+    } else {
+      setCoverDimensions(null);
+    }
     setCoverUri(uri);
   };
 
@@ -571,27 +595,24 @@ export default function PrintMusicCardScreen() {
       frontCropMarks,
       backCropMarks,
       showBackGridOnFront,
-      frontGuidePattern,
-      frontGuideColor,
-      frontGuideWidthMm,
-      projectedGuidePattern,
-      projectedGuideColor,
-      projectedGuideWidthMm,
+      gridStyles,
+      qrActionLabel,
       doubleSided,
       duplexFlip,
       backOffsetX,
       backOffsetY,
       backInsetEnabled,
       backInsetMm,
-      backMarginColor: activeMarginColor,
       frontBackground: frontTone.printBackground || frontTone.bg,
       backPanelBg: backPanelTone.bg,
+      backFrameBg: backFrameTone.bg,
       backPanelTitleColor: backPanelTone.title,
       backPanelMetaColor: backPanelTone.meta,
       backPanelAccentColor: backPanelTone.accent,
       coverUri,
       contactEmail,
       landingUrl,
+      coverOverscan: coverRenderScale,
     });
     const w = window.open("", "_blank");
     if (!w) {
@@ -604,6 +625,95 @@ export default function PrintMusicCardScreen() {
     w.document.write(html);
     w.document.close();
     setPrintOpen(false);
+  };
+
+  // Controles compartidos de edición; cada cuadrícula mantiene su propio estilo.
+  const renderGridStyleControls = (side) => {
+    const current = gridStyles[side];
+    const style = safeGridLineStyle(current, DEFAULT_GRID_STYLES[side]);
+    const atWidthIndex = GRID_WIDTH_OPTIONS.indexOf(current.width);
+    return (
+      <View style={styles.gridStylePanel}>
+        <Text style={styles.gridStyleTitle}>Tipo de línea</Text>
+        <Text style={styles.fieldLabel}>Color</Text>
+        <View style={styles.gridColorsRow}>
+          {GRID_COLOR_OPTIONS.map(option => (
+            <Pressable
+              key={option.value}
+              accessibilityRole="radio"
+              accessibilityLabel={`Color ${option.label}`}
+              accessibilityState={{ selected: current.color.toLowerCase() === option.value.toLowerCase() }}
+              onPress={() => updateGridStyle(side, "color", option.value)}
+              style={[styles.gridColorButton, current.color.toLowerCase() === option.value.toLowerCase() && styles.gridColorButtonActive]}
+            >
+              <View style={[styles.gridColorDot, { backgroundColor: option.value }]} />
+            </Pressable>
+          ))}
+          <TextInput
+            accessibilityLabel="Color hexadecimal de la cuadrícula"
+            value={current.color}
+            onChangeText={value => updateGridStyle(side, "color", value.slice(0, 7))}
+            placeholder="#555555"
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={7}
+            style={styles.gridHexInput}
+          />
+        </View>
+        {!/^#[0-9a-f]{6}$/i.test(current.color) ? (
+          <Text style={styles.gridInputHint}>Introduce un color hexadecimal completo (#RRGGBB). Se usará el color por defecto hasta que sea válido.</Text>
+        ) : null}
+        <View style={styles.gridWidthRow}>
+          <Text style={styles.fieldLabel}>Espesor</Text>
+          <View style={styles.gridWidthCounter}>
+            <Pressable
+              accessibilityLabel="Reducir espesor de línea"
+              disabled={atWidthIndex <= 0}
+              onPress={() => changeGridWidth(side, -1)}
+              style={[styles.gridWidthButton, atWidthIndex <= 0 && styles.disabled]}
+            >
+              <Ionicons name="remove" size={16} color="#0f172a" />
+            </Pressable>
+            <Text style={styles.gridWidthValue}>{current.width.toFixed(2)} mm</Text>
+            <Pressable
+              accessibilityLabel="Aumentar espesor de línea"
+              disabled={atWidthIndex >= GRID_WIDTH_OPTIONS.length - 1}
+              onPress={() => changeGridWidth(side, 1)}
+              style={[styles.gridWidthButton, atWidthIndex >= GRID_WIDTH_OPTIONS.length - 1 && styles.disabled]}
+            >
+              <Ionicons name="add" size={16} color="#0f172a" />
+            </Pressable>
+          </View>
+        </View>
+        <Text style={styles.fieldLabel}>Patrón</Text>
+        <View style={styles.gridPatternsRow}>
+          {GRID_PATTERN_OPTIONS.map(option => (
+            <Pressable
+              key={option.id}
+              onPress={() => updateGridStyle(side, "pattern", option.id)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: current.pattern === option.id }}
+              style={[styles.gridPatternButton, current.pattern === option.id && styles.gridPatternButtonActive]}
+            >
+              <View style={[styles.gridPatternSample, {
+                borderTopWidth: 2,
+                borderTopColor: style.color,
+                borderTopStyle: option.id,
+              }]} />
+              <Text style={[styles.gridPatternLabel, current.pattern === option.id && styles.gridPatternLabelActive]}>{option.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={styles.gridLinePreviewBox}>
+          <Text style={styles.gridPreviewLabel}>Vista previa del trazo</Text>
+          <View style={[styles.gridLinePreviewStroke, {
+            borderTopWidth: Math.max(1, current.width * 10),
+            borderTopColor: style.color,
+            borderTopStyle: style.pattern,
+          }]} />
+        </View>
+      </View>
+    );
   };
 
   return (
@@ -748,9 +858,22 @@ export default function PrintMusicCardScreen() {
               </View>
             </View>
             <View style={styles.imagePickerRow}>
-              <View style={{ flex: 1, minWidth: 150 }}>
+              <View style={styles.coverThumbnailBox}>
+                {coverUri ? (
+                  <Image
+                    source={{ uri: coverUri }}
+                    style={[styles.coverThumbnail, { transform: [{ scale: coverRenderScale }] }]}
+                    resizeMode="cover"
+                    accessibilityLabel="Miniatura de la carátula seleccionada"
+                  />
+                ) : (
+                  <Ionicons name="image-outline" size={28} color="#94a3b8" />
+                )}
+              </View>
+              <View style={styles.coverDetails}>
                 <Text style={styles.fieldLabel}>Carátula del single</Text>
-                <Text style={styles.fieldHelp}>Se muestra a la izquierda del QR.</Text>
+                <Text style={styles.coverDimensions}>{coverSizeLabel}</Text>
+                <Text style={styles.fieldHelp}>Vista cuadrada con recorte centrado, sin deformar la imagen.</Text>
               </View>
               <View style={styles.actionRow}>
                 <Pressable onPress={pickCover} style={styles.secondaryButton}>
@@ -758,7 +881,7 @@ export default function PrintMusicCardScreen() {
                   <Text style={styles.secondaryButtonText}>{coverUri ? "Cambiar carátula" : "Elegir carátula"}</Text>
                 </Pressable>
                 {coverUri ? (
-                  <Pressable onPress={() => setCoverUri("")} style={styles.removeCover}>
+                  <Pressable onPress={() => { setCoverDimensions(null); setCoverUri(""); }} style={styles.removeCover}>
                     <Text style={styles.removeCoverText}>Quitar</Text>
                   </Pressable>
                 ) : null}
@@ -798,6 +921,19 @@ export default function PrintMusicCardScreen() {
               ))}
             </View>
             <View style={styles.sectionDivider} />
+            <Text style={styles.subsectionTitle}>Marco y bandas laterales del reverso</Text>
+            <Text style={styles.fieldHelp}>Marco exterior de 10 mm por defecto; la carátula se ajusta a un cuadrado, sin franjas laterales.</Text>
+            <View style={styles.toneGrid}>
+              {BACK_FRAME_TONES.map((tone) => (
+                <Pressable key={tone.id} onPress={() => setBackFrameToneId(tone.id)} accessibilityRole="radio" accessibilityState={{ selected: backFrameToneId === tone.id }} style={[styles.toneChip, backFrameToneId === tone.id && styles.toneChipActive]}>
+                  <View style={[styles.toneSwatch, { backgroundColor: tone.bg, overflow: "hidden" }]}>
+                    {tone.id === "transparent" ? <Image source={{ uri: TRANSPARENT_SWATCH_URI }} style={styles.frontToneGradientSwatch} resizeMode="stretch" /> : null}
+                  </View>
+                  <Text style={styles.toneLabel}>{tone.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.sectionDivider} />
             <Text style={styles.subsectionTitle}>Panel derecho del reverso</Text>
             <View style={styles.toneGrid}>
               {BACK_PANEL_TONES.map((tone) => (
@@ -812,41 +948,23 @@ export default function PrintMusicCardScreen() {
             <Pressable style={styles.toggleRow} onPress={() => setBackInsetEnabled((v) => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: backInsetEnabled }}>
               <Ionicons name={backInsetEnabled ? "checkbox" : "square-outline"} size={23} color="#2563eb" />
               <View style={{ flex: 1 }}>
-                <Text style={styles.toggleLabel}>Marco de color en el reverso</Text>
-                <Text style={styles.fieldHelp}>Margen exterior alrededor de la imagen y del panel QR; no cambia la medida de corte.</Text>
+                <Text style={styles.toggleLabel}>Margen de color en el reverso</Text>
+                <Text style={styles.fieldHelp}>Un marco del color elegido alrededor de la imagen y del panel QR.</Text>
               </View>
             </Pressable>
             {backInsetEnabled ? (
-              <View style={styles.marginOptions}>
-                <View style={styles.compactControlRow}>
-                  <Text style={styles.fieldLabel}>Ancho del margen (0–10 mm)</Text>
-                  <View style={styles.counter}>
-                    <Pressable accessibilityLabel="Reducir margen" onPress={() => setBackInsetMm(v => nextBackInset(v, -CALIBRATION_STEP_MM))} style={styles.counterButton}><Ionicons name="remove" size={18} color="#0f172a" /></Pressable>
-                    <Text style={styles.counterValue}>{backInsetMm.toFixed(1)} mm</Text>
-                    <Pressable accessibilityLabel="Aumentar margen" onPress={() => setBackInsetMm(v => nextBackInset(v, CALIBRATION_STEP_MM))} style={styles.counterButton}><Ionicons name="add" size={18} color="#0f172a" /></Pressable>
-                  </View>
+              <View style={styles.compactControlRow}>
+                <Text style={styles.fieldLabel}>Ancho del margen</Text>
+                <View style={styles.counter}>
+                  <Pressable accessibilityLabel="Reducir margen" onPress={() => setBackInsetMm(v => nextBackInset(v, -CALIBRATION_STEP_MM))} style={styles.counterButton}><Ionicons name="remove" size={18} color="#0f172a" /></Pressable>
+                  <Text style={styles.counterValue}>{backInsetMm.toFixed(1)} mm</Text>
+                  <Pressable accessibilityLabel="Aumentar margen" onPress={() => setBackInsetMm(v => nextBackInset(v, CALIBRATION_STEP_MM))} style={styles.counterButton}><Ionicons name="add" size={18} color="#0f172a" /></Pressable>
                 </View>
-                <Text style={styles.fieldLabel}>Color del marco exterior</Text>
-                <View style={styles.toneGrid}>
-                  {BACK_MARGIN_COLORS.map((tone) => (
-                    <Pressable key={tone.value} onPress={() => setBackMarginColor(tone.value)} accessibilityRole="radio" accessibilityState={{ selected: activeMarginColor.toLowerCase() === tone.value.toLowerCase() && marginColorValid }} style={[styles.toneChip, activeMarginColor.toLowerCase() === tone.value.toLowerCase() && marginColorValid && styles.toneChipActive]}>
-                      <View style={[styles.toneSwatch, { backgroundColor: tone.value }]} />
-                      <Text style={styles.toneLabel}>{tone.label}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <View style={styles.marginHexRow}>
-                  <Text style={styles.fieldLabel}>Personalizado (HEX)</Text>
-                  <TextInput value={backMarginColor} onChangeText={setBackMarginColor} autoCapitalize="characters" autoCorrect={false} maxLength={7} placeholder="#FFF4B8" placeholderTextColor="#94a3b8" accessibilityLabel="Color personalizado para el margen en hexadecimal" style={[styles.input, styles.marginHexInput, !marginColorValid && styles.marginHexInvalid]} />
-                  <View style={[styles.marginColorSample, { backgroundColor: activeMarginColor }]} />
-                </View>
-                {!marginColorValid ? <Text style={styles.marginColorError}>Introduce un color hexadecimal válido, por ejemplo #FFF4B8.</Text> : null}
-                {backInsetMm >= 8 ? <Text style={styles.fieldHelp}>Con un margen de {backInsetMm.toFixed(1)} mm, el espacio para la imagen y el QR es menor. Comprueba que el QR impreso pueda escanearse.</Text> : null}
               </View>
             ) : null}
             <View style={styles.inlineHint}>
               <Ionicons name="information-circle-outline" size={16} color="#64748b" />
-              <Text style={styles.inlineHintText}>El color del marco se aplica solo al reverso. Para imprimirlo, activa los fondos/gráficos de fondo en Chrome. Las líneas de corte se configuran al imprimir.</Text>
+              <Text style={styles.inlineHintText}>Transparente no aplica tinta de fondo. Las líneas de corte se configuran al imprimir.</Text>
             </View>
           </View>
         </View>
@@ -862,7 +980,7 @@ export default function PrintMusicCardScreen() {
         <View style={styles.previewRow}>
           <View>
             <Text style={styles.sideLabel}>ANVERSO</Text>
-            <View style={[styles.card, styles.shoppFrontCard, { width: previewCardWidth, backgroundColor: frontTone.bg }]}>
+            <View style={[styles.card, styles.shoppFrontCard, { width: previewCardWidth, height: previewCardHeight, backgroundColor: frontTone.bg }]}>
               {frontTone.id === "original" && Platform.OS === "web" ? (
                 <Image source={{ uri: FRONT_GRADIENT_PREVIEW_URI }} style={styles.frontGradientPreview} resizeMode="stretch" pointerEvents="none" />
               ) : null}
@@ -898,13 +1016,21 @@ export default function PrintMusicCardScreen() {
           </View>
           <View>
             <Text style={styles.sideLabel}>REVERSO</Text>
-            <View style={[styles.card, styles.musicBackCard, { width: previewCardWidth, backgroundColor: backInsetEnabled && backInsetMm > 0 ? activeMarginColor : "#FFFFFF", padding: previewInsetPx }]}>
+            <View style={[styles.card, styles.musicBackCard, { width: previewCardWidth, height: previewCardHeight, backgroundColor: backFrameTone.bg, padding: previewInsetPx }]}>
               <View style={styles.backInnerPreview}>
-                <View style={styles.coverPanelPreview}>
+                <View style={[styles.coverPanelPreview, {
+                  width: previewCoverSizePx,
+                  minWidth: previewCoverSizePx,
+                  flexBasis: previewCoverSizePx,
+                  flexGrow: 0,
+                  flexShrink: 0,
+                  backgroundColor: backFrameTone.bg,
+                }]}>
                   {coverUri ? (
                     <Image
                       source={{ uri: coverUri }}
-                      style={styles.coverPreview}
+                      resizeMode="cover"
+                      style={[styles.coverPreview, { transform: [{ scale: coverRenderScale }] }]}
                     />
                   ) : (
                     <View style={[styles.coverPreview, styles.coverEmpty]}>
@@ -915,30 +1041,31 @@ export default function PrintMusicCardScreen() {
                     </View>
                   )}
                 </View>
-                <View style={[styles.backInfoPreview, { backgroundColor: backPanelTone.bg, width: previewInfoWidth, paddingVertical: compactBackPreview ? 4 : mediumBackPreview ? 7 : 12, paddingHorizontal: compactBackPreview ? 3 : 6 }]}>
+                <View style={[styles.backInfoPreview, { backgroundColor: backPanelTone.bg }, previewCompactBack && styles.backInfoCompactPreview]}>
                   <View style={styles.musicMetaPreview}>
                     {author ? (
-                      <Text style={[styles.musicAuthor, { color: backPanelTone.accent }]} numberOfLines={1}>
+                      <Text style={[styles.musicAuthor, { color: backPanelTone.accent }, previewCompactBack && styles.musicAuthorCompact]} numberOfLines={1}>
                         {author}
                       </Text>
                     ) : null}
-                    <Text style={[styles.musicTitle, compactBackPreview && { fontSize: 10, lineHeight: 12 }, { color: backPanelTone.title }]} numberOfLines={2}>
+                    <Text style={[styles.musicTitle, { color: backPanelTone.title }, previewCompactBack && styles.musicTitleCompact]} numberOfLines={2}>
                       {single || title}
                     </Text>
                     {subtitle ? (
-                      <Text style={[styles.musicSubtitle, compactBackPreview && { fontSize: 7, marginTop: 2 }, { color: backPanelTone.meta }]} numberOfLines={1}>
+                      <Text style={[styles.musicSubtitle, { color: backPanelTone.meta }, previewCompactBack && styles.musicSubtitleCompact]} numberOfLines={1}>
                         {subtitle}
                       </Text>
                     ) : null}
                   </View>
                   {targetUrl ? (
-                    <View style={[styles.qrPanelPreview, compactBackPreview && { padding: 3 }]}>
+                    <View style={styles.qrPanelPreview}>
                       <Image
                         source={{ uri: qrUrl(targetUrl) }}
-                        style={[styles.qrBack, { width: previewQrPx, height: previewQrPx, maxWidth: "100%" }]}
+                        style={[styles.qrBack, { width: previewQrSizePx, height: previewQrSizePx }]}
+                        resizeMode="contain"
                       />
-                      <Text style={[styles.qrHint, compactBackPreview && { fontSize: 6, lineHeight: 8, marginTop: 1 }, { color: backPanelTone.accent }]}>
-                        Escanea para escuchar
+                      <Text style={[styles.qrHint, { color: backPanelTone.accent }, previewCompactBack && styles.qrHintCompact]}>
+                        {qrActionLabel}
                       </Text>
                     </View>
                   ) : (
@@ -953,8 +1080,8 @@ export default function PrintMusicCardScreen() {
         </View>
         </View>
         <Text style={styles.note}>
-          El QR abrirá el destino seleccionado. Para compartir playlists completas
-          en otro dispositivo, publica antes su ficha JSON estática en Netlify.
+          Texto impreso bajo el QR: «{qrActionLabel.replace("\n", " ")}». Para compartir
+          playlists completas en otro dispositivo, publica antes su ficha JSON estática en Netlify.
         </Text>
         <Pressable
           disabled={!targetUrl || Platform.OS !== "web" || (cardMode === "playlist" && qrDestination !== "youtube" && !published)}
@@ -1052,49 +1179,38 @@ export default function PrintMusicCardScreen() {
                 <>
                   <View style={styles.modalDivider} />
                   <Text style={styles.modalSectionTitle}>3. Líneas de corte y guías</Text>
-                  <Text style={styles.fieldHelp}>Cada cuadrícula se puede mostrar u ocultar por separado. Las líneas se imprimen, pero no modifican las dimensiones de las tarjetas.</Text>
-
-                  <Pressable onPress={() => setFrontCropMarks(v => !v)} accessibilityRole="checkbox"
-                    accessibilityState={{ checked: frontCropMarks }} style={styles.modalToggleRow}>
-                    <Ionicons name={frontCropMarks ? "checkbox" : "square-outline"} size={23} color="#2563eb" />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.toggleLabel}>Líneas de corte del anverso</Text>
-                      <Text style={styles.fieldHelp}>Cuadrícula de referencia para cortar con la guillotina.</Text>
-                    </View>
-                  </Pressable>
-                  {frontCropMarks ? (
-                    <GuideLineAppearance label="Aspecto de las líneas del anverso"
-                      pattern={frontGuidePattern} onPattern={setFrontGuidePattern}
-                      color={frontGuideColor} onColor={setFrontGuideColor}
-                      widthMm={frontGuideWidthMm} onWidthMm={setFrontGuideWidthMm} />
-                  ) : null}
-
+                  <Text style={styles.fieldHelp}>Puedes activar cada cuadrícula y configurar su color, espesor y patrón por separado.</Text>
+                  <View style={styles.modalSubgroup}>
+                    <Pressable onPress={() => setFrontCropMarks(v => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: frontCropMarks }} style={styles.compactCheckRow}>
+                      <Ionicons name={frontCropMarks ? "checkbox" : "square-outline"} size={22} color="#2563eb" />
+                      <Text style={styles.toggleLabel}>Cuadrícula de corte en el anverso</Text>
+                    </Pressable>
+                    {frontCropMarks ? renderGridStyleControls("front") : null}
+                    {doubleSided ? (
+                      <>
+                        <Pressable onPress={() => setBackCropMarks(v => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: backCropMarks }} style={styles.compactCheckRow}>
+                          <Ionicons name={backCropMarks ? "checkbox" : "square-outline"} size={22} color="#2563eb" />
+                          <Text style={styles.toggleLabel}>Cuadrícula de corte en el reverso</Text>
+                        </Pressable>
+                        {backCropMarks ? renderGridStyleControls("back") : null}
+                      </>
+                    ) : null}
+                  </View>
                   {doubleSided ? (
-                    <>
-                      <Pressable onPress={() => setBackCropMarks(v => !v)} accessibilityRole="checkbox"
-                        accessibilityState={{ checked: backCropMarks }} style={styles.modalToggleRow}>
-                        <Ionicons name={backCropMarks ? "checkbox" : "square-outline"} size={23} color="#2563eb" />
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.toggleLabel}>Líneas de corte del reverso</Text>
-                          <Text style={styles.fieldHelp}>Mostrar u ocultar la cuadrícula negra en la propia cara del reverso.</Text>
-                        </View>
-                      </Pressable>
-                      <Pressable onPress={() => setShowBackGridOnFront(v => !v)} accessibilityRole="checkbox"
-                        accessibilityState={{ checked: showBackGridOnFront }} style={styles.modalToggleRow}>
-                        <Ionicons name={showBackGridOnFront ? "checkbox" : "square-outline"} size={23} color="#2563eb" />
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.toggleLabel}>Mostrar líneas del reverso en el anverso</Text>
-                          <Text style={styles.fieldHelp}>Proyección teórica para calibrar el registro dúplex. Independiente de las líneas impresas en el reverso; considera X/Y y el volteo de hoja.</Text>
-                        </View>
-                      </Pressable>
-                      {showBackGridOnFront ? (
-                        <GuideLineAppearance label="Aspecto de la proyección en el anverso"
-                          pattern={projectedGuidePattern} onPattern={setProjectedGuidePattern}
-                          color={projectedGuideColor} onColor={setProjectedGuideColor}
-                          widthMm={projectedGuideWidthMm} onWidthMm={setProjectedGuideWidthMm} />
-                      ) : null}
-                    </>
+                    <Pressable
+                      onPress={() => setShowBackGridOnFront(v => !v)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: showBackGridOnFront }}
+                      style={styles.modalToggleRow}
+                    >
+                      <Ionicons name={showBackGridOnFront ? "checkbox" : "square-outline"} size={23} color="#2563eb" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.toggleLabel}>Mostrar cuadrícula del reverso en el anverso</Text>
+                        <Text style={styles.fieldHelp}>Guía (2 × 5) para comprobar la alineación. Respeta el volteo y la calibración X/Y. Se imprime en el anverso.</Text>
+                      </View>
+                    </Pressable>
                   ) : null}
+                  {doubleSided && showBackGridOnFront ? renderGridStyleControls("overlay") : null}
 
                   {doubleSided ? (
                     <>
@@ -1113,7 +1229,7 @@ export default function PrintMusicCardScreen() {
                         <Text style={styles.calibrationValue}>{backOffsetY > 0 ? "+" : ""}{backOffsetY.toFixed(1)} mm</Text>
                         <Pressable accessibilityLabel="Bajar reverso 0,5 mm" onPress={() => setBackOffsetY(v => nextOffset(v, CALIBRATION_STEP_MM))} style={styles.calibrationButton}><Ionicons name="add" size={18} color="#0f172a" /></Pressable>
                       </View>
-                      <Pressable onPress={() => { setBackOffsetX(DEFAULT_BACK_OFFSET_X_MM); setBackOffsetY(DEFAULT_BACK_OFFSET_Y_MM); }} style={styles.resetCalibration}><Text style={styles.resetCalibrationText}>Restablecer ajustes: X 0 mm · Y 0 mm</Text></Pressable>
+                      <Pressable onPress={() => { setBackOffsetX(DEFAULT_BACK_OFFSET_X_MM); setBackOffsetY(DEFAULT_BACK_OFFSET_Y_MM); }} style={styles.resetCalibration}><Text style={styles.resetCalibrationText}>Restablecer: X 0 mm · Y +2,5 mm</Text></Pressable>
                     </>
                   ) : null}
                   <Text style={styles.capacity}>Hoja A4: 2 columnas × 5 filas (10 tarjetas por página).</Text>
@@ -1163,6 +1279,20 @@ const styles = StyleSheet.create({
   infoBoxText: { color: "#475569", fontSize: 12, lineHeight: 18 },
   actionRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   imagePickerRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 12 },
+  coverThumbnailBox: {
+    width: 76,
+    height: 76,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#f1f5f9",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  coverThumbnail: { width: "100%", height: "100%" },
+  coverDetails: { flex: 1, minWidth: 170, gap: 4 },
+  coverDimensions: { fontSize: 12, color: "#1d4ed8", fontWeight: "700" },
   toggleRow: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 12, borderRadius: 9 },
   toggleLabel: { fontSize: 13, color: "#1e293b", fontWeight: "600" },
   compactControlRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" },
@@ -1183,21 +1313,6 @@ const styles = StyleSheet.create({
   segmentText: { fontSize: 12, fontWeight: "600", color: "#475569" },
   segmentTextActive: { color: "#1d4ed8" },
   compactCheckRow: { flexDirection: "row", gap: 9, alignItems: "center", paddingVertical: 3 },
-  guideAppearance: { gap: 9, padding: 12, marginLeft: 8, backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 9 },
-  guideAppearanceTitle: { fontSize: 13, fontWeight: "700", color: "#334155" },
-  guideChoiceRow: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  guideChoice: { minWidth: 96, flexGrow: 1, flexBasis: 120, padding: 9, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, alignItems: "center", gap: 7, backgroundColor: "#fff" },
-  guideChoiceSelected: { borderColor: "#2563eb", backgroundColor: "#eff6ff", borderWidth: 2 },
-  guideChoiceSample: { width: "80%", height: 1 },
-  guideChoiceText: { fontSize: 11, fontWeight: "600", color: "#334155" },
-  guideColorChoice: { flexDirection: "row", alignItems: "center", gap: 5, padding: 7, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, backgroundColor: "#fff" },
-  guideColorSwatch: { width: 17, height: 17, borderRadius: 4, borderWidth: 1, borderColor: "#94a3b8" },
-  guideColorLabel: { fontSize: 10, color: "#334155" },
-  guideWidthChoice: { flexGrow: 1, flexBasis: 75, paddingVertical: 9, paddingHorizontal: 5, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, alignItems: "center", backgroundColor: "#fff" },
-  guidePreviewRow: { flexDirection: "row", gap: 10, alignItems: "center", marginTop: 3 },
-  guidePreviewLabel: { fontSize: 11, fontWeight: "600", color: "#64748b" },
-  guidePreviewStrokeWrap: { flex: 1, minHeight: 20, justifyContent: "center", backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 5, paddingHorizontal: 12 },
-  guidePreviewStroke: { width: "100%", height: 1 },
   screen: { flex: 1, backgroundColor: "#f8fafc" },
   content: { padding: 16, alignItems: "center", gap: 16, paddingBottom: 40 },
   heading: { fontSize: 25, fontWeight: "800", color: "#0f172a" },
@@ -1267,14 +1382,16 @@ const styles = StyleSheet.create({
   musicBackCard: { padding: 0, overflow: "hidden", backgroundColor: "#fff" },
   backInnerPreview: { flex: 1, flexDirection: "row", overflow: "hidden" },
   coverPanelPreview: {
-    flex: 1,
+    // No usar flex: 0: React Native Web lo interpreta como base 0 y oculta la carátula.
+    flexGrow: 0,
+    flexShrink: 0,
     height: "100%",
     backgroundColor: "#f8fafc",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  coverPreview: { width: "100%", height: "100%", resizeMode: "contain" },
+  coverPreview: { width: "100%", height: "100%", resizeMode: "cover" },
   coverEmpty: {
     backgroundColor: "#e2e8f0",
     alignItems: "center",
@@ -1283,18 +1400,26 @@ const styles = StyleSheet.create({
   },
   coverEmptyText: { color: "#64748b", fontWeight: "600" },
   backInfoPreview: {
-    width: "38%",
+    flex: 1,
+    minWidth: 0,
     height: "100%",
-    paddingHorizontal: 6,
-    paddingVertical: 12,
+    paddingHorizontal: 5,
+    paddingVertical: 4,
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
+    gap: 2,
+    overflow: "hidden",
   },
-  musicMetaPreview: { width: "100%", alignItems: "center" },
+  backInfoCompactPreview: { paddingHorizontal: 3, paddingVertical: 2, gap: 1 },
+  musicMetaPreview: { width: "100%", alignItems: "center", flexGrow: 1, flexShrink: 1, minHeight: 0, overflow: "hidden" },
+  musicAuthorCompact: { fontSize: 8, marginBottom: 1, lineHeight: 9 },
+  musicTitleCompact: { fontSize: 10, lineHeight: 11 },
+  musicSubtitleCompact: { fontSize: 7, lineHeight: 9, marginTop: 1 },
+  qrHintCompact: { fontSize: 7, lineHeight: 8 },
   musicAuthor: {
     fontWeight: "700",
     fontSize: 10,
-    marginBottom: 4,
+    marginBottom: 2,
     textAlign: "center",
   },
   musicTitle: {
@@ -1304,24 +1429,29 @@ const styles = StyleSheet.create({
   },
   musicSubtitle: {
     fontSize: 9,
-    marginTop: 4,
+    marginTop: 2,
     textAlign: "center",
   },
   qrPanelPreview: {
     width: "100%",
     backgroundColor: "#fff",
     borderRadius: 7,
-    padding: 6,
+    padding: 3,
     alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    marginTop: 2, // el bloque del QR se reserva por debajo de los metadatos
   },
-  qrBack: { width: 76, height: 76 },
+  qrBack: { width: 68, height: 68 },
   qrHint: {
-    fontSize: 7,
+    fontSize: 8,
     lineHeight: 9,
     textAlign: "center",
     fontWeight: "700",
     color: "#334155",
-    marginTop: 3,
+    marginTop: 2,
+    flexShrink: 0,
+    width: "100%",
   },
   coverActions: {
     flexDirection: "row",
@@ -1342,12 +1472,6 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: { color: "#2563eb", fontWeight: "600" },
   toneGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  marginOptions: { gap: 10, padding: 12, backgroundColor: "#f8fafc", borderRadius: 9, borderWidth: 1, borderColor: "#e2e8f0" },
-  marginHexRow: { flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" },
-  marginHexInput: { width: 130, paddingVertical: 8 },
-  marginHexInvalid: { borderColor: "#dc2626" },
-  marginColorSample: { width: 34, height: 34, borderRadius: 6, borderWidth: 1, borderColor: "#cbd5e1" },
-  marginColorError: { color: "#b91c1c", fontSize: 11 },
   toneChip: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#fff" },
   toneChipActive: { borderColor: "#2563eb", backgroundColor: "#eff6ff" },
   toneSwatch: { width: 16, height: 16, borderRadius: 999, borderWidth: 1, borderColor: "rgba(15,23,42,.10)" },
@@ -1417,6 +1541,27 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   modalScrollContent: { padding: 20, gap: 12, paddingBottom: 22 },
+  gridStylePanel: { padding: 12, gap: 8, marginTop: 3, marginBottom: 8, marginLeft: 9, backgroundColor: "#f8fafc", borderRadius: 10, borderWidth: 1, borderColor: "#dbe3ed" },
+  gridStyleTitle: { fontSize: 13, fontWeight: "700", color: "#334155" },
+  gridColorsRow: { flexDirection: "row", flexWrap: "wrap", gap: 7, alignItems: "center" },
+  gridColorButton: { width: 31, height: 31, padding: 4, backgroundColor: "#fff", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  gridColorButtonActive: { borderWidth: 2, borderColor: "#2563eb", backgroundColor: "#eff6ff" },
+  gridColorDot: { width: 20, height: 20, borderRadius: 5 },
+  gridHexInput: { minWidth: 90, flexGrow: 1, flexBasis: 100, height: 34, paddingHorizontal: 9, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 7, backgroundColor: "#fff", fontSize: 13, color: "#0f172a" },
+  gridInputHint: { color: "#b45309", fontSize: 11, lineHeight: 16 },
+  gridWidthRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 8 },
+  gridWidthCounter: { flexDirection: "row", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 7, overflow: "hidden", backgroundColor: "#fff", alignItems: "center" },
+  gridWidthButton: { width: 33, height: 32, alignItems: "center", justifyContent: "center", backgroundColor: "#f1f5f9" },
+  gridWidthValue: { width: 92, textAlign: "center", fontSize: 13, color: "#0f172a", fontWeight: "700" },
+  gridPatternsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  gridPatternButton: { flexGrow: 1, flexBasis: 108, minWidth: 95, paddingVertical: 8, paddingHorizontal: 7, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 7, alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#fff" },
+  gridPatternButtonActive: { borderWidth: 2, borderColor: "#2563eb", backgroundColor: "#eff6ff" },
+  gridPatternLabel: { fontSize: 11, color: "#475569", fontWeight: "600" },
+  gridPatternLabelActive: { color: "#1d4ed8" },
+  gridPatternSample: { width: "85%", height: 1 },
+  gridLinePreviewBox: { gap: 8, padding: 9, borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 7, backgroundColor: "#fff" },
+  gridPreviewLabel: { fontSize: 11, color: "#64748b" },
+  gridLinePreviewStroke: { width: "100%", height: 1 },
   calibrationRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 8 },
   calibrationLabel: { width: 110, color: "#334155", fontSize: 12, fontWeight: "600" },
   calibrationValue: { minWidth: 74, textAlign: "center", color: "#0f172a", fontWeight: "700" },

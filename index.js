@@ -1,6 +1,7 @@
 import { registerRootComponent } from "expo";
 import "./web.css";
 import App from "./App";
+import { setupPwaUpdateNotifications } from "./src/services/pwaUpdates";
 
 const SHOPP_CHROME_COLOR = "#FFFBF3";
 
@@ -58,3 +59,6 @@ if (typeof window !== "undefined" && "serviceWorker" in navigator) {
     });
   });
 }
+
+// Comprueba si Netlify ha publicado otra compilación sin tocar IndexedDB.
+setupPwaUpdateNotifications();
