@@ -361,7 +361,7 @@ export default function PrintMusicCardScreen() {
   const isClassical = Boolean(route.params?.isClassical);
   const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
   const [cardMode, setCardMode] = useState("songs"); // 10 canciones distintas por hoja
-  const [qrDestination, setQrDestination] = useState("landing");
+  const [qrDestination, setQrDestination] = useState("youtube");
   const [publicBaseUrl, setPublicBaseUrl] = useState(initialLandingUrl);
   const [publicId, setPublicId] = useState(publicIdForCard);
   const [published, setPublished] = useState(false);
