@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Image,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -517,6 +518,26 @@ export default function PrintMusicCardScreen() {
     }).filter(x => x.url);
   }, [validTracks, cardMode, qrDestination, publicBaseUrl, publicId, title, author, single, coverUri]);
   const targetUrl = cardEntries[0]?.url || "";
+  // En iOS Chrome reconoce googlechromes://; Safari utiliza el enlace HTTPS normal.
+  const openQrBrowser = async (browser) => {
+    if (!/^https:\/\//i.test(targetUrl)) return;
+    try {
+      const chromeUrl = Platform.OS === "ios"
+        ? targetUrl.replace(/^https:\/\//i, "googlechromes://")
+        : targetUrl;
+      const url = browser === "chrome" ? chromeUrl : targetUrl;
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        window.open(targetUrl, "_blank", "noopener,noreferrer");
+      } else {
+        await Linking.openURL(url);
+      }
+    } catch (error) {
+      // Si Chrome no está instalado, se abre la URL HTTPS con el navegador disponible.
+      if (browser === "chrome") {
+        try { await Linking.openURL(targetUrl); } catch (_) {}
+      }
+    }
+  };
   const qrActionLabel = getQrActionLabel(qrDestination);
 
   const downloadPublicManifest = () => {
@@ -1073,6 +1094,19 @@ export default function PrintMusicCardScreen() {
           </View>
         </View>
         </View>
+        {targetUrl ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 12, marginBottom: 10, alignItems: "center" }}>
+            <Text style={{ color: "#475569", fontWeight: "600" }}>Probar enlace QR:</Text>
+            <Pressable accessibilityRole="link" onPress={() => openQrBrowser("safari")}
+              style={{ borderWidth: 1, borderColor: "#93c5fd", borderRadius: 9, paddingVertical: 10, paddingHorizontal: 14, backgroundColor: "#eff6ff" }}>
+              <Text style={{ color: "#1d4ed8", fontWeight: "700" }}>Abrir en Safari / navegador</Text>
+            </Pressable>
+            <Pressable accessibilityRole="link" onPress={() => openQrBrowser("chrome")}
+              style={{ borderWidth: 1, borderColor: "#93c5fd", borderRadius: 9, paddingVertical: 10, paddingHorizontal: 14, backgroundColor: "#eff6ff" }}>
+              <Text style={{ color: "#1d4ed8", fontWeight: "700" }}>Abrir en Chrome</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <Text style={styles.note}>
           Texto impreso bajo el QR: «{qrActionLabel.replace("\n", " ")}». Para compartir
           playlists completas en otro dispositivo, publica antes su ficha JSON estática en Netlify.

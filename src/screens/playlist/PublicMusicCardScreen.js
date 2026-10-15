@@ -78,6 +78,10 @@ export default function PublicMusicCardScreen() {
   const [index, setIndex] = useState(0);
   const [player, setPlayer] = useState(null); // null: elegir; 'shopp': iframe de YouTube
   const [error, setError] = useState("");
+  const [viewMode, setViewMode] = useState(() => {
+    const mode = getCardQuery()?.get("view");
+    return mode === "complete" ? "complete" : "simple";
+  });
 
   useEffect(() => {
     let active = true;
@@ -205,7 +209,30 @@ export default function PublicMusicCardScreen() {
               <Text style={styles.trackCount}>{data.tracks.length} {data.tracks.length === 1 ? "vídeo" : "vídeos"}</Text>
             </View>
 
-            <View style={[styles.mainArea, isWide && styles.mainAreaWide]}>
+            <View style={styles.modeSelector}>
+              <Text style={styles.modeTitle}>Vista del reproductor público</Text>
+              <View style={styles.modeButtons}>
+                {[["simple", "Simplificado"], ["complete", "Completo"]].map(([value, label]) => (
+                  <Pressable key={value} accessibilityRole="radio"
+                    accessibilityState={{ selected: viewMode === value }}
+                    onPress={() => {
+                      setViewMode(value);
+                      if (Platform.OS === "web" && typeof window !== "undefined") {
+                        const url = new URL(window.location.href);
+                        url.searchParams.set("view", value);
+                        window.history.replaceState(null, "", url.toString());
+                      }
+                    }}
+                    style={[styles.modeButton, viewMode === value && styles.modeButtonActive]}>
+                    <Text style={[styles.modeButtonText, viewMode === value && styles.modeButtonTextActive]}>{label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={styles.modeHint}>{viewMode === "complete"
+                ? "Vídeo y lista de canciones, con selección de pistas."
+                : "Reproductor sencillo, sin mostrar la lista de canciones."}</Text>
+            </View>
+            <View style={[styles.mainArea, isWide && viewMode === "complete" && styles.mainAreaWide]}>
               <View style={styles.playerArea}>
                 <View style={styles.playerCard}>
                   {player === "shopp" && embedSrc ? (
@@ -278,7 +305,7 @@ export default function PublicMusicCardScreen() {
                 </Text>
               </View>
 
-              {data.tracks.length > 1 ? (
+              {viewMode === "complete" && data.tracks.length > 1 ? (
                 <View style={[styles.playlistPanel, isWide && styles.playlistPanelWide]}>
                   <View style={styles.playlistHeader}>
                     <Text style={styles.playlistHeading}>Canciones</Text>
@@ -313,6 +340,14 @@ export default function PublicMusicCardScreen() {
 }
 
 const styles = StyleSheet.create({
+  modeSelector: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 14, padding: 13, marginBottom: 15, gap: 8 },
+  modeTitle: { color: "#0f172a", fontSize: 14, fontWeight: "800" },
+  modeButtons: { flexDirection: "row", gap: 8 },
+  modeButton: { flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 10, backgroundColor: "#f1f5f9", borderWidth: 1, borderColor: "#cbd5e1" },
+  modeButtonActive: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
+  modeButtonText: { color: "#334155", fontWeight: "700" },
+  modeButtonTextActive: { color: "#fff" },
+  modeHint: { color: "#64748b", fontSize: 12 },
   page: { flex: 1, backgroundColor: "#f1f5f9" },
   body: { minHeight: "100%", paddingHorizontal: 16, paddingVertical: 22, alignItems: "center" },
   container: { width: "100%", maxWidth: 1160, gap: 17 },
