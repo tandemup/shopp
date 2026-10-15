@@ -1,0 +1,60 @@
+{
+  "schema": "shopp-public-music-card",
+  "version": 1,
+  "id": "shopp-8dade547-8df3-430f-9f4b-3cccc20df62e",
+  "collectionType": "music",
+  "title": "Mis '80",
+  "author": "",
+  "tracks": [
+    {
+      "title": "Voyager",
+      "author": "",
+      "videoId": "Akclgs4C-Eo"
+    },
+    {
+      "title": "The Sun always shine on TV",
+      "author": "",
+      "videoId": "a3ir9HC9vYg"
+    },
+    {
+      "title": "Hunting Hi and Low",
+      "author": "",
+      "videoId": "s6VaeFCxta8"
+    },
+    {
+      "title": "Time",
+      "author": "",
+      "videoId": "zhRzORqNa0E"
+    },
+    {
+      "title": "Bette Davis Eyes",
+      "author": "",
+      "videoId": "EPOIS5taqA8"
+    },
+    {
+      "title": "Woman",
+      "author": "",
+      "videoId": "cZExm8vKwcY"
+    },
+    {
+      "title": "Eye in the Sky",
+      "author": "",
+      "videoId": "56hqrlQxMMI"
+    },
+    {
+      "title": "The Police - Every Breath You Take",
+      "author": "",
+      "videoId": "OMOGaugKpzs"
+    },
+    {
+      "title": "Don't Answer Me",
+      "author": "",
+      "videoId": "lmGOErHweCY"
+    },
+    {
+      "title": "Imagination",
+      "author": "",
+      "videoId": "uY4cVhXxW64"
+    }
+  ]
+}
