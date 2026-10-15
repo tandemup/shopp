@@ -21,16 +21,9 @@ import {
 } from "@/src/services/musicCardLinks";
 
 const DEFAULT_CONTACT_EMAIL = "info@ramshopp.com";
-const DEFAULT_LANDING_URL = "https://github.com/tandemup/shopp";
+const DEFAULT_LANDING_URL = "https://ramworks.netlify.app";
 
 function initialLandingUrl() {
-  if (
-    Platform.OS === "web" &&
-    typeof window !== "undefined" &&
-    window.location?.origin
-  ) {
-    return window.location.origin;
-  }
   return DEFAULT_LANDING_URL;
 }
 
@@ -373,6 +366,9 @@ export default function PrintMusicCardScreen() {
   const [publicId, setPublicId] = useState(publicIdForCard);
   const [published, setPublished] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, type = "info") =>
+    setNotice({ title, message: String(message || ""), type });
   const validTracks = useMemo(() => tracks.filter(t => videoIdFromTrack(t) || youtubePlaylistIdFromTrack(t)), [tracks]);
   const inferredMusic = useMemo(() => {
     const firstTrack = tracks[0] || {};
@@ -533,13 +529,13 @@ export default function PrintMusicCardScreen() {
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       setPublished(false);
-      window.alert(`Ficha descargada: ${publicId}.json\nCópiala a public/music-cards/ en el proyecto y despliega Netlify. Después pulsa «Comprobar publicación».`);
-    } catch (error) { window.alert(error.message || "No se pudo crear la ficha pública."); }
+      showNotice("Ficha JSON descargada", `${publicId}.json\nCópiala a public/music-cards/ y despliega Netlify. Después pulsa «Comprobar publicación».`, "success");
+    } catch (error) { showNotice("Error al descargar", error.message || "No se pudo crear la ficha pública.", "error"); }
   };
 
   const verifyPublicManifest = async () => {
     const url = getPublicManifestUrl(publicBaseUrl, publicId);
-    if (!url) { window.alert("Indica una URL pública HTTPS válida."); return; }
+    if (!url) { showNotice("URL no válida", "Indica una URL pública HTTPS válida.", "warning"); return; }
     setBusy(true);
     try {
       const response = await fetch(`${url}?check=${Date.now()}`, { cache: "no-store" });
@@ -548,8 +544,8 @@ export default function PrintMusicCardScreen() {
       const expected = buildPublicManifest(playlist, publicId, isClassical);
       if (JSON.stringify(data) !== JSON.stringify(expected)) throw new Error("La ficha publicada no coincide con esta playlist. Vuelve a exportarla y desplegarla.");
       setPublished(true);
-      window.alert("Ficha pública verificada. Puedes imprimir el QR de la playlist.");
-    } catch (error) {setPublished(false);window.alert(error.message || "No se pudo comprobar la publicación.");}
+      showNotice("Publicación verificada", "La ficha pública coincide con la playlist. Puedes imprimir su código QR.", "success");
+    } catch (error) {setPublished(false);showNotice("No se pudo comprobar la publicación", error?.message === "Failed to fetch" || error instanceof TypeError ? "No se ha podido conectar con Netlify. Comprueba la conexión, que la web esté desplegada y que el navegador permita la solicitud (CORS)." : (error.message || "No se pudo comprobar la publicación."), "error");}
     finally {setBusy(false);}
   };
 
@@ -580,7 +576,7 @@ export default function PrintMusicCardScreen() {
   const print = () => {
     if (Platform.OS !== "web" || typeof window === "undefined" || !targetUrl) return;
     if (cardMode === "playlist" && qrDestination !== "youtube" && !published) {
-      window.alert("Antes de imprimir, exporta la ficha JSON, publícala en Netlify y comprueba su URL.");
+      showNotice("Publicación pendiente", "Antes de imprimir, exporta la ficha JSON, publícala en Netlify y comprueba su URL.", "warning");
       return;
     }
     const html = buildPrintHtml({
@@ -616,9 +612,7 @@ export default function PrintMusicCardScreen() {
     });
     const w = window.open("", "_blank");
     if (!w) {
-      window.alert(
-        "El navegador ha bloqueado la ventana de impresión. Permite ventanas emergentes para Shopp e inténtalo de nuevo.",
-      );
+      showNotice("Ventana bloqueada", "Permite las ventanas emergentes para Shopp en tu navegador e inténtalo de nuevo.", "warning");
       return;
     }
     w.document.open();
@@ -1248,11 +1242,32 @@ export default function PrintMusicCardScreen() {
           </View>
         </View>
       </Modal>
+      <Modal visible={Boolean(notice)} transparent animationType="fade" onRequestClose={() => setNotice(null)}>
+        <View style={styles.noticeBackdrop}>
+          <View style={styles.noticeCard}>
+            <View style={styles.noticeHeading}>
+              <Ionicons name={notice?.type === "success" ? "checkmark-circle-outline" : notice?.type === "error" ? "alert-circle-outline" : "information-circle-outline"} size={26} color={notice?.type === "success" ? "#16a34a" : notice?.type === "error" ? "#dc2626" : "#2563eb"} />
+              <Text style={styles.noticeTitle}>{notice?.title}</Text>
+            </View>
+            <Text style={styles.noticeMessage}>{notice?.message}</Text>
+            <Pressable accessibilityRole="button" onPress={() => setNotice(null)} style={styles.noticeButton}>
+              <Text style={styles.noticeButtonText}>Aceptar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  noticeBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.48)", alignItems: "center", justifyContent: "center", padding: 20 },
+  noticeCard: { width: "100%", maxWidth: 440, backgroundColor: "#fff", borderRadius: 16, padding: 24, shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 16, elevation: 8 },
+  noticeHeading: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
+  noticeTitle: { fontSize: 18, fontWeight: "700", color: "#0f172a", flex: 1 },
+  noticeMessage: { fontSize: 15, color: "#475569", lineHeight: 23, marginBottom: 20 },
+  noticeButton: { backgroundColor: "#2563eb", paddingHorizontal: 22, paddingVertical: 12, borderRadius: 9, alignSelf: "flex-end" },
+  noticeButtonText: { color: "#fff", fontWeight: "700" },
   pageIntro: { width: "100%", maxWidth: 820, paddingHorizontal: 2, marginBottom: 2 },
   pageTitleRow: { flexDirection: "row", gap: 12, alignItems: "center" },
   pageIcon: { width: 44, height: 44, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "#dbeafe" },
