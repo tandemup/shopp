@@ -561,12 +561,16 @@ export default function PrintMusicCardScreen() {
     try {
       const response = await fetch(`${url}?check=${Date.now()}`, { cache: "no-store" });
       if (!response.ok) throw new Error(`Ficha no encontrada (HTTP ${response.status}).`);
-      const data = await response.json();
+      const contentType = (response.headers.get("content-type") || "").toLowerCase();
+      if (!contentType.includes("json")) throw new Error("Netlify ha devuelto una página HTML en lugar de la ficha JSON. Copia el archivo descargado a public/music-cards/ y vuelve a desplegar.");
+      let data;
+      try { data = await response.json(); }
+      catch { throw new Error("La ficha publicada no contiene un JSON válido."); }
       const expected = buildPublicManifest(playlist, publicId, isClassical);
       if (JSON.stringify(data) !== JSON.stringify(expected)) throw new Error("La ficha publicada no coincide con esta playlist. Vuelve a exportarla y desplegarla.");
       setPublished(true);
       showNotice("Publicación verificada", "La ficha pública coincide con la playlist. Puedes imprimir su código QR.", "success");
-    } catch (error) {setPublished(false);showNotice("No se pudo comprobar la publicación", error?.message === "Failed to fetch" || error instanceof TypeError ? "No se ha podido conectar con Netlify. Comprueba la conexión, que la web esté desplegada y que el navegador permita la solicitud (CORS)." : (error.message || "No se pudo comprobar la publicación."), "error");}
+    } catch (error) {setPublished(false);showNotice("No se pudo comprobar la publicación", error?.message === "Failed to fetch" || error instanceof TypeError ? "No se pudo consultar Netlify. Comprueba la conexión y la dirección pública. Si el navegador indica CORS, revisa también la configuración del servidor." : (error.message || "No se pudo comprobar la publicación."), "error");}
     finally {setBusy(false);}
   };
 
