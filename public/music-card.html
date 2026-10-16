@@ -58,21 +58,6 @@
         margin-top: 12px;
       }
       .play-actions > .action {
-        width: 100%;
-        min-height: 52px;
-        margin: 0 !important;
-      }
-      a.action {
-        display: block;
-        text-decoration: none;
-        color: white;
-        background: #dc2626;
-        border-radius: 12px;
-        padding: 15px;
-        font-weight: 700;
-        margin-top: 12px;
-      }
-      button#shopp.action.shopp {
         appearance: none;
         -webkit-appearance: none;
         display: flex;
@@ -80,21 +65,27 @@
         justify-content: center;
         box-sizing: border-box;
         width: 100%;
-        height: auto;
         min-height: 52px;
-        margin: 12px 0 0;
+        margin: 0;
         padding: 15px 20px;
         border: 0;
         border-radius: 12px;
-        background: #2563eb;
         color: #fff;
-        font-family: inherit;
-        font-size: 16px;
-        font-weight: 700;
-        line-height: 22px;
+        font:
+          700 16px/22px system-ui,
+          -apple-system,
+          Arial,
+          sans-serif;
+        text-decoration: none;
         text-align: center;
         cursor: pointer;
-        white-space: normal;
+      }
+      .play-actions > #youtube {
+        background: #dc2626;
+      }
+      .play-actions > #shopp {
+        /* background: #2563eb; */
+        background: #475569;
       }
       .player {
         width: 100%;
@@ -132,16 +123,16 @@
       <p id="author"></p>
       <p id="detail"></p>
       <div class="play-actions">
-      <a
-        id="youtube"
-        class="action"
-        hidden
-        rel="noopener noreferrer"
-        target="_blank"
-        >Abrir en YouTube</a
-      ><button id="shopp" type="button" class="action shopp" hidden>
-        Reproducir aquí</button
-      >
+        <a
+          id="youtube"
+          class="action"
+          hidden
+          rel="noopener noreferrer"
+          target="_blank"
+          >Abrir en YouTube</a
+        ><button id="shopp" type="button" class="action shopp" hidden>
+          Reproducir aquí
+        </button>
       </div>
       <iframe
         id="player"
