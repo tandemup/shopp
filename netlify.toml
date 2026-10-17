@@ -31,6 +31,13 @@
   [headers.values]
     Cache-Control = "no-cache"
 
+[[headers]]
+  for = "/music-cards/*"
+
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Cache-Control = "public, max-age=60"
+
 [dev]
   framework = "expo"
   targetPort = 8081
