@@ -1,0 +1,60 @@
+{
+  "schema": "shopp-public-music-card",
+  "version": 1,
+  "id": "shopp-b50acae7be88bb63",
+  "collectionType": "music",
+  "title": "Gijón del Alma: 7 videos",
+  "author": "",
+  "tracks": [
+    {
+      "title": "Gijón del Alma",
+      "author": "",
+      "videoId": "RIl1EUIJhdw"
+    },
+    {
+      "title": "Gijón del Alma",
+      "author": "",
+      "videoId": "GzFqKsLG8L8"
+    },
+    {
+      "title": "Gijón del Alma",
+      "author": "",
+      "videoId": "iB4gfmiqfKw"
+    },
+    {
+      "title": "Gijón del Alma",
+      "author": "",
+      "videoId": "y00GmZU7nbY"
+    },
+    {
+      "title": "Gijón del Alma",
+      "author": "",
+      "videoId": "BlyR1E-INfs"
+    },
+    {
+      "title": "Gijón del Alma",
+      "author": "",
+      "videoId": "o5pYxY9t49c"
+    },
+    {
+      "title": "Gijón del Alma",
+      "author": "",
+      "videoId": "LJueLe4j7yc"
+    },
+    {
+      "title": "Single 8",
+      "author": "",
+      "videoId": "9q1sUEYSZmk"
+    },
+    {
+      "title": "Single 9",
+      "author": "",
+      "videoId": "xlqSANowpb0"
+    },
+    {
+      "title": "Single 10",
+      "author": "",
+      "videoId": "t9STU56p_Xc"
+    }
+  ]
+}
