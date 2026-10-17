@@ -7,6 +7,30 @@ const links = await import(`data:text/javascript;charset=utf-8,${encodeURICompon
 const base='https://test-shopp.netlify.app';
 const vid1='ABCDEFGHIJK',vid2='12345678901';
 
+// buildPrintHtml is tested in isolation from React Native. Supply the module's
+// real dimensional constants; grid drawing is unrelated to these QR tests.
+function printHtmlFactory(source, qrUrl, esc) {
+  const start = source.indexOf('function buildPrintHtml(');
+  const end = source.indexOf('export default function PrintMusicCardScreen()');
+  assert.ok(start >= 0 && end > start, 'buildPrintHtml must exist');
+  const names = [
+    'DEFAULT_COVER_OVERSCAN', 'MIN_BACK_INSET_MM', 'MAX_BACK_INSET_MM',
+    'MIN_BACK_OFFSET_MM', 'MAX_BACK_OFFSET_MM', 'DEFAULT_BACK_OFFSET_Y_MM',
+  ];
+  const declarations = names.map((name) => {
+    const match = source.match(new RegExp(`^const ${name}\\s*=\\s*([^;]+);`, 'm'));
+    assert.ok(match, `Missing print constant ${name}`);
+    return `const ${name} = ${match[1]};`;
+  }).join('\n');
+  const helpers = `
+    const DEFAULT_GRID_STYLES = { front: {}, back: {}, overlay: {} };
+    const safeGridLineStyle = (value, fallback) => value || fallback;
+    const makeCutGridSvg = () => '';
+  `;
+  return new Function('qrUrl', 'esc', `${declarations}\n${helpers}\n${source.slice(start, end)}\nreturn buildPrintHtml;`)(qrUrl, esc);
+}
+
+
 test('QR directo YouTube usa sólo IDs válidos',()=>{
   const url=links.buildSongCardUrl(base,{url:`https://youtu.be/${vid1}`},'Pista','Artista','youtube');
   assert.equal(url,`https://www.youtube.com/watch?v=${vid1}`);
@@ -44,8 +68,7 @@ test('No crea QR web desde URL HTTP remota insegura',()=>{
 });
 test('Vista de impresión contiene 10 canciones diferentes con códigos diferentes', async()=>{
   const printSource=await readFile(new URL('../src/screens/playlist/PrintMusicCardScreen.js',import.meta.url),'utf8');
-  const start=printSource.indexOf('function buildPrintHtml('),end=printSource.indexOf('export default function PrintMusicCardScreen()');
-  const fn=new Function('qrUrl','esc',printSource.slice(start,end)+'return buildPrintHtml;')(
+  const fn=printHtmlFactory(printSource,
     u=>`https://quickchart.io/qr?text=${encodeURIComponent(u)}`,
     v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
   );
@@ -58,8 +81,7 @@ test('Vista de impresión contiene 10 canciones diferentes con códigos diferent
 });
 test('Tamaño tarjeta individual renderiza sólo una tarjeta por cara',async()=>{
   const printSource=await readFile(new URL('../src/screens/playlist/PrintMusicCardScreen.js',import.meta.url),'utf8');
-  const start=printSource.indexOf('function buildPrintHtml('),end=printSource.indexOf('export default function PrintMusicCardScreen()');
-  const fn=new Function('qrUrl','esc',printSource.slice(start,end)+'return buildPrintHtml;')(
+  const fn=printHtmlFactory(printSource,
     v=>v,v=>String(v).replace(/&/g,'&amp;'));
   const html=fn({title:'T',subtitle:'',cards:[{title:'S',url:'https://a.example'}],distinctCards:false,format:'card',copies:10,doubleSided:true,duplexFlip:'long',cropMarks:false,contactEmail:'',landingUrl:''});
   assert.equal((html.match(/class="card-wrap"/g)||[]).length,2);

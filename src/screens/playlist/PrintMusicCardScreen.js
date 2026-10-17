@@ -18,7 +18,7 @@ import { useRoute } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import {
   buildSongCardUrl, buildPlaylistCardUrl, buildPublicManifest, getPublicManifestUrl,
-  normalizePublicBase, publicIdForCard, videoIdFromTrack, youtubePlaylistIdFromTrack,
+  normalizePublicBase, publicIdForPlaylist, videoIdFromTrack, youtubePlaylistIdFromTrack,
 } from "@/src/services/musicCardLinks";
 
 const DEFAULT_CONTACT_EMAIL = "info@ramshopp.com";
@@ -364,7 +364,7 @@ export default function PrintMusicCardScreen() {
   const [cardMode, setCardMode] = useState("songs"); // 10 canciones distintas por hoja
   const [qrDestination, setQrDestination] = useState("youtube");
   const [publicBaseUrl, setPublicBaseUrl] = useState(initialLandingUrl);
-  const [publicId, setPublicId] = useState(publicIdForCard);
+  const [publicId] = useState(() => publicIdForPlaylist(playlist));
   const [published, setPublished] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);

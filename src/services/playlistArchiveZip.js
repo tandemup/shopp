@@ -2,6 +2,7 @@
 // No external ZIP dependency; original IndexedDB/Convex data remains untouched.
 import { Platform } from "react-native";
 import * as Sharing from "expo-sharing";
+import { buildPublicManifest, publicIdForPlaylist, videoIdFromTrack, youtubePlaylistIdFromTrack } from "./musicCardLinks";
 
 function safeName(name) {
   return (String(name || "lyrics")
@@ -74,6 +75,20 @@ export function makePlaylistArchive(backup) {
   }
   const playlists = Array.isArray(backup.playlists) ? backup.playlists : [backup];
   const entries = [["playlist.json", JSON.stringify(backup, null, 2)]];
+  // Fichas públicas listas para copiar a public/music-cards/ en Netlify.
+  // Se generan exclusivamente a partir de las pistas del JSON de respaldo.
+  // No incluyen letras, IDs de usuario ni metadatos internos.
+  const isClassical = /classical|classic/i.test(String(backup.type || ""));
+  const isMusic = /music|youtube-playlist|classical|classic/i.test(String(backup.type || ""));
+  if (isMusic) {
+    for (const playlist of playlists) {
+      const playable = (playlist?.tracks || []).some(t => videoIdFromTrack(t) || youtubePlaylistIdFromTrack(t));
+      if (!playable) continue; // El respaldo debe funcionar incluso sin vídeos publicables.
+      const id = publicIdForPlaylist(playlist);
+      const manifest = buildPublicManifest(playlist, id, isClassical);
+      entries.push([`music-cards/${id}.json`, JSON.stringify(manifest, null, 2)]);
+    }
+  }
   const used = new Set();
   let count = 0;
   for (const [pIndex, playlist] of playlists.entries()) {

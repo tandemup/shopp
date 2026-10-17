@@ -37,6 +37,22 @@ export function normalizePublicBase(input) {
   } catch { return ""; }
 }
 
+// Identificador reproducible: un mismo playlist genera siempre el mismo enlace
+// público desde Exportar JSON y desde Crear tarjeta. No expone el ID privado.
+export function publicIdForPlaylist(playlist) {
+  const source = String(playlist?._id || playlist?.id || playlist?.sourceConvexId || "").trim();
+  if (!source) return publicIdForCard(); // Respaldo para colecciones aún no guardadas.
+  const hash = (input, seed) => {
+    let h = seed >>> 0;
+    for (let i = 0; i < input.length; i++) {
+      h ^= input.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h.toString(16).padStart(8, "0");
+  };
+  return `shopp-${hash(source, 2166136261)}${hash(source, 0x9e3779b9)}`;
+}
+
 export function publicIdForCard() {
   if (typeof globalThis.crypto?.randomUUID === "function") return `shopp-${globalThis.crypto.randomUUID()}`;
   return `shopp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
