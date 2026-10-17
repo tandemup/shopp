@@ -2,12 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
+const linkSource = await readFile(new URL('../src/services/musicCardLinks.js', import.meta.url), 'utf8');
+const links = await import(`data:text/javascript;charset=utf-8,${encodeURIComponent(linkSource)}`);
 const writer = (await readFile(new URL('../src/services/playlistArchiveZip.js', import.meta.url), 'utf8'))
   .replace(/^import\s+[^;]+;\s*$/gm, '')
   .replace(/export\s+(?=(?:async\s+)?function|const|let)/g, '');
 const reader = (await readFile(new URL('../src/services/playlistArchiveImport.js', import.meta.url), 'utf8'))
   .replace(/export\s+(?=(?:async\s+)?function|const|let)/g, '');
-const {makePlaylistArchive, crc32} = new Function('Platform','Sharing', `${writer}\nreturn {makePlaylistArchive,crc32};`)({OS:'web'},{});
+const {makePlaylistArchive, crc32} = new Function('Platform','Sharing','buildPublicManifest','publicIdForPlaylist','videoIdFromTrack','youtubePlaylistIdFromTrack', `${writer}\nreturn {makePlaylistArchive,crc32};`)({OS:'web'},{},links.buildPublicManifest,links.publicIdForPlaylist,links.videoIdFromTrack,links.youtubePlaylistIdFromTrack);
 const {decodePlaylistArchive} = new Function(`${reader}\nreturn {decodePlaylistArchive};`)();
 
 const backup = {
@@ -78,4 +80,25 @@ test('Un ZIP cortado (sin directorio central o sin final) no modifica el almacen
 test('Las pistas nuevas sin letra se marcan para no heredar LRC globales', async()=>{
   const code=await readFile(new URL('../src/screens/playlist/PlayListScreen.js',import.meta.url),'utf8');
   assert.match(code,/Nueva pista sin letra:[\s\S]*?lyrics = \{ lyricsDisabled: true \};/);
+});
+
+
+test('Exportar ZIP añade ficha pública y la importación conserva el respaldo',()=>{
+  const original = {...backup, type:'shopp-youtube-playlist', playlists:[{...backup.playlists[0], _id:'playlist-123', id:'playlist-123'}]};
+  const a=zipOf(original);
+  const entries=[];let pos=0;
+  while(read32(a,pos)===0x04034b50){
+    const n=read16(a,pos+26), len=read32(a,pos+18);
+    const name=new TextDecoder().decode(a.subarray(pos+30,pos+30+n));
+    const value=new TextDecoder().decode(a.subarray(pos+30+n,pos+30+n+len));
+    entries.push({name,value});pos+=30+n+len;
+  }
+  const expectedId=links.publicIdForPlaylist(original.playlists[0]);
+  const pub=entries.find(e=>e.name===`music-cards/${expectedId}.json`);
+  assert.ok(pub, 'ficha pública incluida');
+  const manifest=JSON.parse(pub.value);
+  assert.equal(manifest.tracks[0].videoId,'ABCDEFGHIJK');
+  assert.equal(manifest.id,expectedId);
+  assert.ok(!pub.value.includes('lyricsBackup'));
+  assert.deepEqual(decodePlaylistArchive(a),original);
 });
