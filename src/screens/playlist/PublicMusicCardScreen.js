@@ -80,7 +80,7 @@ export default function PublicMusicCardScreen() {
   const [error, setError] = useState("");
   const [viewMode, setViewMode] = useState(() => {
     const mode = getCardQuery()?.get("view");
-    return mode === "complete" ? "complete" : "simple";
+    return ["simple", "complete", "app-one", "app-two"].includes(mode) ? mode : "simple";
   });
 
   useEffect(() => {
@@ -150,6 +150,9 @@ export default function PublicMusicCardScreen() {
     return () => { active = false; };
   }, []);
 
+  const appView = viewMode === "app-one" || viewMode === "app-two";
+  const twoColumnApp = viewMode === "app-two" && width >= 740;
+  const showTracks = viewMode === "complete" || appView;
   const currentTrack = data?.tracks?.[index];
   const embedSrc = useMemo(() => embeddedUrl(currentTrack), [currentTrack]);
   const externalSrc = useMemo(() => youtubeUrl(currentTrack), [currentTrack]);
@@ -216,7 +219,7 @@ export default function PublicMusicCardScreen() {
             <View style={styles.modeSelector}>
               <Text style={styles.modeTitle}>Vista del reproductor público</Text>
               <View style={styles.modeButtons}>
-                {[["simple", "Simplificado"], ["complete", "Completo"]].map(([value, label]) => (
+                {[["simple", "Simplificado"], ["complete", "Completo"], ["app-one", "App · 1 col"], ["app-two", "App · 2 col"]].map(([value, label]) => (
                   <Pressable key={value} accessibilityRole="radio"
                     accessibilityState={{ selected: viewMode === value }}
                     onPress={() => {
@@ -234,11 +237,18 @@ export default function PublicMusicCardScreen() {
               </View>
               <Text style={styles.modeHint}>{viewMode === "complete"
                 ? "Vídeo y lista de canciones, con selección de pistas."
-                : "Reproductor sencillo, sin mostrar la lista de canciones."}</Text>
+                : viewMode === "simple" ? "Reproductor sencillo, sin mostrar la lista de canciones."
+                : viewMode === "app-one" ? "Vista de Music Playlist: vídeo y lista en una columna."
+                : "Vista de Music Playlist: vídeo y lista en dos columnas (una en móviles)."}</Text>
             </View>
-            <View style={[styles.mainArea, isWide && viewMode === "complete" && styles.mainAreaWide]}>
-              <View style={styles.playerArea}>
-                <View style={styles.playerCard}>
+            <View style={[
+              styles.mainArea,
+              (isWide && viewMode === "complete" || twoColumnApp) && styles.mainAreaWide,
+              appView && styles.appArea,
+              appView && !twoColumnApp && styles.appAreaStacked,
+            ]}>
+              <View style={[styles.playerArea, appView && styles.appPlayerArea, appView && !twoColumnApp && styles.appPlayerCentered]}>
+                <View style={[styles.playerCard, appView && styles.appPlayerCard]}>
                   {player === "shopp" && embedSrc ? (
                     <>
                       {Platform.OS === "web" ? (
@@ -257,10 +267,10 @@ export default function PublicMusicCardScreen() {
                           })}
                         </View>
                       ) : null}
-                      <View style={styles.playerToolbar}>
+                      <View style={[styles.playerToolbar, appView && styles.appToolbar]}>
                         <View style={styles.nowPlaying}>
                           <Ionicons name="play-circle" size={20} color="#2563eb" />
-                          <Text style={styles.nowPlayingText} numberOfLines={1}>
+                          <Text style={[styles.nowPlayingText, appView && styles.appText]} numberOfLines={1}>
                             {currentTrack?.title || data.title}
                           </Text>
                         </View>
@@ -269,20 +279,20 @@ export default function PublicMusicCardScreen() {
                           <Text style={styles.changeText}>Cambiar reproductor</Text>
                         </Pressable>
                       </View>
-                      <Pressable onPress={openInYouTube} style={styles.fallbackButton} accessibilityRole="button">
+                      <Pressable onPress={openInYouTube} style={[styles.fallbackButton, appView && styles.appFallback]} accessibilityRole="button">
                         <Ionicons name="logo-youtube" size={18} color="#b91c1c" />
                         <Text style={styles.fallbackText}>Abrir este vídeo en YouTube</Text>
                         <Ionicons name="open-outline" size={16} color="#b91c1c" />
                       </Pressable>
                     </>
                   ) : (
-                    <View style={styles.selectionPanel}>
+                    <View style={[styles.selectionPanel, appView && styles.appSelection]}>
                       <View style={styles.musicIcon}><Ionicons name="musical-notes" size={31} color="#2563eb" /></View>
-                      <Text style={styles.selectionTitle}>¿Dónde quieres reproducirlo?</Text>
-                      <Text style={styles.selectionSub}>
+                      <Text style={[styles.selectionTitle, appView && styles.appText]}>¿Dónde quieres reproducirlo?</Text>
+                      <Text style={[styles.selectionSub, appView && styles.appMuted]}>
                         {currentTrack?.title || data.title}
                       </Text>
-                      <Text style={styles.selectionHelp}>Elige cómo abrir el vídeo de YouTube.</Text>
+                      <Text style={[styles.selectionHelp, appView && styles.appMuted]}>Elige cómo abrir el vídeo de YouTube.</Text>
                       <View style={styles.playerOptions}>
                         <Pressable onPress={() => setPlayer("shopp")} style={[styles.optionButton, styles.shoppOption]} accessibilityRole="button">
                           <Ionicons name="play-circle-outline" size={25} color="#ffffff" />
@@ -304,16 +314,16 @@ export default function PublicMusicCardScreen() {
                     </View>
                   )}
                 </View>
-                <Text style={styles.footnote}>
+                {!appView && <Text style={styles.footnote}>
                   La reproducción integrada utiliza el reproductor oficial de YouTube. Algunos vídeos no permiten insertarse en otras páginas; en ese caso, ábrelos en YouTube.
-                </Text>
+                </Text>}
               </View>
 
-              {viewMode === "complete" && data.tracks.length > 1 ? (
-                <View style={[styles.playlistPanel, isWide && styles.playlistPanelWide]}>
+              {showTracks && (appView || data.tracks.length > 1) ? (
+                <View style={[styles.playlistPanel, viewMode === "complete" && isWide && styles.playlistPanelWide, appView && styles.appPlaylistPanel, twoColumnApp && styles.appPlaylistWide, appView && !twoColumnApp && styles.appPlaylistCentered]}>
                   <View style={styles.playlistHeader}>
-                    <Text style={styles.playlistHeading}>Canciones</Text>
-                    <Text style={styles.playlistCount}>{data.tracks.length} vídeos</Text>
+                    <Text style={[styles.playlistHeading, appView && styles.appText]}>Canciones</Text>
+                    <Text style={[styles.playlistCount, appView && styles.appMuted]}>{data.tracks.length} vídeos</Text>
                   </View>
                   {data.tracks.map((item, i) => (
                     <Pressable
@@ -321,16 +331,16 @@ export default function PublicMusicCardScreen() {
                       onPress={() => chooseTrack(i)}
                       accessibilityRole="button"
                       accessibilityState={{ selected: index === i }}
-                      style={[styles.trackRow, index === i && styles.trackRowSelected]}
+                      style={[styles.trackRow, index === i && styles.trackRowSelected, appView && styles.appTrackRow, appView && index === i && styles.appTrackSelected]}
                     >
-                      <Text style={[styles.trackNumber, index === i && styles.trackNumberSelected]}>{i + 1}</Text>
+                      <Text style={[styles.trackNumber, index === i && styles.trackNumberSelected, appView && styles.appMuted]}>{i + 1}</Text>
                       <View style={styles.trackDescription}>
-                        <Text style={[styles.trackTitle, index === i && styles.trackTitleSelected]} numberOfLines={2}>
+                        <Text style={[styles.trackTitle, index === i && styles.trackTitleSelected, appView && styles.appText]} numberOfLines={2}>
                           {item.title || `Tema ${i + 1}`}
                         </Text>
-                        {item.author ? <Text style={styles.trackAuthor} numberOfLines={1}>{item.author}</Text> : null}
+                        {item.author ? <Text style={[styles.trackAuthor, appView && styles.appMuted]} numberOfLines={1}>{item.author}</Text> : null}
                       </View>
-                      <Ionicons name={index === i ? "play-circle" : "play-circle-outline"} size={22} color={index === i ? "#2563eb" : "#94a3b8"} />
+                      <Ionicons name={index === i ? "play-circle" : "play-circle-outline"} size={22} color={appView ? (index === i ? "#ec1680" : "#9ca3af") : (index === i ? "#2563eb" : "#94a3b8")} />
                     </Pressable>
                   ))}
                 </View>
@@ -344,10 +354,26 @@ export default function PublicMusicCardScreen() {
 }
 
 const styles = StyleSheet.create({
+  // Vistas de prueba inspiradas en Music Playlist; no acceden a IndexedDB ni requieren sesión.
+  appArea: { backgroundColor: "#101013", padding: 15, borderRadius: 12, gap: 14 },
+  appAreaStacked: { alignItems: "center" },
+  appPlayerArea: { flexBasis: 0, flexGrow: 1 },
+  appPlayerCentered: { width: "100%", maxWidth: 660, flexBasis: "auto" },
+  appPlayerCard: { backgroundColor: "#141416", borderColor: "#28282e" },
+  appToolbar: { backgroundColor: "#17171b" },
+  appText: { color: "#f8fafc" },
+  appMuted: { color: "#a1a1aa" },
+  appFallback: { borderColor: "#34343a" },
+  appSelection: { backgroundColor: "#17171b" },
+  appPlaylistPanel: { backgroundColor: "#101013", borderColor: "#28282e" },
+  appPlaylistWide: { width: "48%", flexShrink: 0 },
+  appPlaylistCentered: { width: "100%", maxWidth: 660 },
+  appTrackRow: { backgroundColor: "#19191d", borderColor: "#34343a" },
+  appTrackSelected: { backgroundColor: "#291522", borderColor: "#ec1680" },
   modeSelector: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 14, padding: 13, marginBottom: 15, gap: 8 },
   modeTitle: { color: "#0f172a", fontSize: 14, fontWeight: "800" },
-  modeButtons: { flexDirection: "row", gap: 8 },
-  modeButton: { flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 10, backgroundColor: "#f1f5f9", borderWidth: 1, borderColor: "#cbd5e1" },
+  modeButtons: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  modeButton: { flexGrow: 1, flexBasis: "46%", alignItems: "center", paddingVertical: 12, borderRadius: 10, backgroundColor: "#f1f5f9", borderWidth: 1, borderColor: "#cbd5e1" },
   modeButtonActive: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
   modeButtonText: { color: "#334155", fontWeight: "700" },
   modeButtonTextActive: { color: "#fff" },
