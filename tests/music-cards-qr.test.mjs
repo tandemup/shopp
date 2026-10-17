@@ -64,3 +64,22 @@ test('Tamaño tarjeta individual renderiza sólo una tarjeta por cara',async()=>
   const html=fn({title:'T',subtitle:'',cards:[{title:'S',url:'https://a.example'}],distinctCards:false,format:'card',copies:10,doubleSided:true,duplexFlip:'long',cropMarks:false,contactEmail:'',landingUrl:''});
   assert.equal((html.match(/class="card-wrap"/g)||[]).length,2);
 });
+
+test('Carátulas públicas opcionales: HTTPS o ruta pública; nunca datos locales',()=>{
+  assert.equal(links.publicCoverUrl('data:image/png;base64,SGVsbG8='),'');
+  assert.equal(links.publicCoverUrl('blob:https://test-shopp.netlify.app/id'),'');
+  assert.equal(links.publicCoverUrl('file:///private/covers/a.png'),'');
+  assert.equal(links.publicCoverUrl('/../secret.png'),'');
+  assert.equal(links.publicCoverUrl('https://example.org/cover.webp'),'https://example.org/cover.webp');
+  const p={tracks:[{videoId:vid1,title:'Voyager',coverUrl:'https://example.org/cover.webp'},{videoId:vid2,coverUrl:'data:image/png;base64,AAAA'}]};
+  const m=links.buildPublicManifest(p,'shopp-abc12345');
+  assert.equal(m.version,1);
+  assert.equal(m.tracks[0].coverUrl,'https://example.org/cover.webp');
+  assert.equal(m.tracks[1].coverUrl,undefined);
+});
+
+test('El QR directo conserva título y autor para el reproductor público', async()=>{
+ const screen=await readFile(new URL('../src/screens/playlist/PublicMusicCardScreen.js',import.meta.url),'utf8');
+ assert.match(screen,/normalizeTrack\(raw \? \{ \.\.\.raw, title, author \} : null\)/);
+ assert.match(screen,/contentType\.includes\("json"\)/);
+});

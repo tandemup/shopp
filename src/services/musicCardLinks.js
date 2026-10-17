@@ -71,6 +71,17 @@ export function getPublicManifestUrl(base, publicId) {
   return `${normalizePublicBase(base)}/music-cards/${publicId}.json`;
 }
 
+// Sólo referencias de imagen publicables; nunca data:, blob:, file: ni rutas privadas.
+export function publicCoverUrl(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw || raw.length > 2048 || raw.startsWith("//")) return "";
+  if (/^\/(?!\/)[a-zA-Z0-9_./%-]+$/.test(raw) && !raw.split("/").includes("..")) return raw;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && !url.username && !url.password ? url.toString() : "";
+  } catch { return ""; }
+}
+
 export function buildPublicManifest(playlist, publicId, isClassical = false) {
   if (!PUBLIC_ID.test(String(publicId))) throw new Error("Identificador público inválido");
   const tracks = (Array.isArray(playlist?.tracks) ? playlist.tracks : [])
@@ -82,6 +93,7 @@ export function buildPublicManifest(playlist, publicId, isClassical = false) {
         title: text(track.title || "Canción", 120),
         author: text(track.author || track.artist || playlist?.composer || playlist?.artist || "", 100),
         ...(videoId ? { videoId } : { playlistId }),
+        ...(publicCoverUrl(track.coverUrl) ? { coverUrl: publicCoverUrl(track.coverUrl) } : {}),
       };
     }).filter(Boolean).slice(0, 100);
   if (!tracks.length) throw new Error("La playlist no contiene vídeos de YouTube válidos");

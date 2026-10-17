@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -43,12 +43,12 @@ function normalizeTrack(track) {
   return null;
 }
 
-function embeddedUrl(track, autoPlay = false) {
+function embeddedUrl(track) {
   if (track?.videoId) {
-    return `https://www.youtube-nocookie.com/embed/${track.videoId}?playsinline=1&rel=0&enablejsapi=1${autoPlay ? "&autoplay=1" : ""}`;
+    return `https://www.youtube-nocookie.com/embed/${track.videoId}?playsinline=1&rel=0`;
   }
   if (track?.playlistId) {
-    return `https://www.youtube-nocookie.com/embed/videoseries?list=${track.playlistId}&playsinline=1&enablejsapi=1${autoPlay ? "&autoplay=1" : ""}`;
+    return `https://www.youtube-nocookie.com/embed/videoseries?list=${track.playlistId}&playsinline=1`;
   }
   return "";
 }
@@ -76,9 +76,6 @@ export default function PublicMusicCardScreen() {
   const [status, setStatus] = useState("loading");
   const [data, setData] = useState(null);
   const [index, setIndex] = useState(0);
-  const [autoAdvance, setAutoAdvance] = useState(false);
-  const iframeRef = useRef(null);
-  const endedHandled = useRef(false);
   const [player, setPlayer] = useState(null); // null: elegir; 'shopp': iframe de YouTube
   const [error, setError] = useState("");
   const [viewMode, setViewMode] = useState(() => {
@@ -105,6 +102,8 @@ export default function PublicMusicCardScreen() {
       fetch(`/music-cards/${encodeURIComponent(publicId)}.json`, { cache: "no-store" })
         .then((response) => {
           if (!response.ok) throw new Error("Playlist no publicada. Comprueba su ficha JSON en Netlify.");
+          const contentType = (response.headers.get("content-type") || "").toLowerCase();
+          if (!contentType.includes("json")) throw new Error("La dirección pública devuelve HTML, no una ficha JSON de playlist.");
           return response.json();
         })
         .then((manifest) => {
@@ -133,11 +132,13 @@ export default function PublicMusicCardScreen() {
       const playlistId = query.get("ytpl") || "";
       const raw = VIDEO_RE.test(videoId) ? { videoId } :
         PLAYLIST_RE.test(playlistId) ? { playlistId } : null;
-      const track = normalizeTrack(raw);
+      const title = clean(query.get("t") || "Canción compartida");
+      const author = clean(query.get("a"), 100);
+      const track = normalizeTrack(raw ? { ...raw, title, author } : null);
       if (track) {
         setData({
-          title: clean(query.get("t") || "Canción compartida"),
-          author: clean(query.get("a"), 100),
+          title,
+          author,
           tracks: [track],
         });
         setStatus("ready");
@@ -150,36 +151,7 @@ export default function PublicMusicCardScreen() {
   }, []);
 
   const currentTrack = data?.tracks?.[index];
-  const embedSrc = useMemo(() => embeddedUrl(currentTrack, autoAdvance), [currentTrack, autoAdvance]);
-
-  // YouTube IFrame Player API: subscribe to playback state via postMessage.
-  // Ignore messages from any iframe other than the currently mounted player.
-  useEffect(() => {
-    if (Platform.OS !== "web" || player !== "shopp") return undefined;
-    const frame = iframeRef.current;
-    if (!frame) return undefined;
-    const onMessage = (event) => {
-      if (!/^https:\/\/(www\.)?youtube(-nocookie)?\.com$/.test(event.origin)) return;
-      if (event.source !== frame.contentWindow) return;
-      let message;
-      try { message = typeof event.data === "string" ? JSON.parse(event.data) : event.data; } catch { return; }
-      if (message?.event !== "onStateChange") return;
-      if (message.info === 1) endedHandled.current = false;
-      if (message.info !== 0 || endedHandled.current) return;
-      endedHandled.current = true;
-      if (index < (data?.tracks.length || 0) - 1) {
-        setAutoAdvance(true);
-        setIndex((previous) => previous + 1);
-      }
-    };
-    window.addEventListener("message", onMessage);
-    const subscribe = () => {
-      try { frame.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: "shopp-public" }), "https://www.youtube-nocookie.com"); } catch {}
-    };
-    frame.addEventListener("load", subscribe);
-    subscribe();
-    return () => { window.removeEventListener("message", onMessage); frame.removeEventListener("load", subscribe); };
-  }, [player, index, data]);
+  const embedSrc = useMemo(() => embeddedUrl(currentTrack), [currentTrack]);
   const externalSrc = useMemo(() => youtubeUrl(currentTrack), [currentTrack]);
 
   function openInYouTube() {
@@ -195,8 +167,6 @@ export default function PublicMusicCardScreen() {
 
   function chooseTrack(nextIndex) {
     if (nextIndex === index) return;
-    endedHandled.current = false;
-    setAutoAdvance(true);
     setIndex(nextIndex);
     // Si se ha elegido Shopp, el iframe se actualiza al tema seleccionado.
     // Si todavía no se ha elegido, se muestran las opciones de reproductor.
@@ -275,7 +245,6 @@ export default function PublicMusicCardScreen() {
                         <View style={styles.videoFrame}>
                           {React.createElement("iframe", {
                             key: embedSrc,
-                            ref: iframeRef,
                             src: embedSrc,
                             title: `YouTube: ${currentTrack?.title || data.title}`,
                             allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
@@ -340,15 +309,12 @@ export default function PublicMusicCardScreen() {
                 </Text>
               </View>
 
-              {viewMode === "complete" ? (
+              {viewMode === "complete" && data.tracks.length > 1 ? (
                 <View style={[styles.playlistPanel, isWide && styles.playlistPanelWide]}>
                   <View style={styles.playlistHeader}>
                     <Text style={styles.playlistHeading}>Canciones</Text>
                     <Text style={styles.playlistCount}>{data.tracks.length} vídeos</Text>
                   </View>
-                  {data.tracks.length === 1 ? (
-                    <Text style={styles.modeHint}>Este enlace contiene un solo vídeo. Para reproducir varias canciones consecutivamente, imprime una tarjeta de «Playlist completa» y publica su ficha JSON.</Text>
-                  ) : null}
                   {data.tracks.map((item, i) => (
                     <Pressable
                       key={`${i}-${item.videoId || item.playlistId}`}
