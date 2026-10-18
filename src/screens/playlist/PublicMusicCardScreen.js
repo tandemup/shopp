@@ -17,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 // oficial de YouTube o en la aplicación/sitio web de YouTube.
 const VIDEO_RE = /^[A-Za-z0-9_-]{11}$/;
 const PLAYLIST_RE = /^[A-Za-z0-9_-]{10,120}$/;
-const LRC_PATH_RE = /^\/music-cards\/lyrics\/shopp-[a-z0-9-]{5,63}\/\d{3}\.lrc$/;
+const LRC_PATH_RE = /^\/music-cards\/lyrics\/(?:shopp-[a-z0-9-]{5,63}\/\d{3}|[A-Za-z0-9_-]{1,110})\.lrc$/;
 const PUBLIC_RE = /^[a-z0-9][a-z0-9-]{5,63}$/;
 
 function clean(value, max = 120) {
@@ -102,6 +102,10 @@ export default function PublicMusicCardScreen() {
   const [requestAutoPlay, setRequestAutoPlay] = useState(false);
   const [positionSeconds, setPositionSeconds] = useState(0);
   const [lrcLines, setLrcLines] = useState([]);
+  const [lyricsStatus, setLyricsStatus] = useState("none");
+  const [lyricsError, setLyricsError] = useState("");
+  const [youtubeClockReceived, setYoutubeClockReceived] = useState(false);
+  const lyricsDebug = getCardQuery()?.get("debugLrc") === "1";
   const [viewMode, setViewMode] = useState(() => {
     const mode = getCardQuery()?.get("view");
     return ["simple", "complete", "app-one", "app-two"].includes(mode) ? mode : "simple";
@@ -184,14 +188,36 @@ export default function PublicMusicCardScreen() {
 
   useEffect(() => {
     setPositionSeconds(0);
+    setYoutubeClockReceived(false);
     setLrcLines([]);
+    setLyricsError("");
     const url = currentTrack?.lyricsUrl;
-    if (!url) return undefined;
+    if (!url) {
+      setLyricsStatus("none");
+      return undefined;
+    }
+    setLyricsStatus("loading");
     const controller = new AbortController();
-    fetch(url, { signal: controller.signal }).then(response => {
-      if (!response.ok) throw new Error("LRC no disponible");
-      return response.text();
-    }).then(text => setLrcLines(parsePublicLrc(text))).catch(() => {});
+    fetch(url, { signal: controller.signal, cache: "no-store" })
+      .then(async response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status} al descargar ${url}`);
+        const contentType = (response.headers.get("content-type") || "").toLowerCase();
+        if (contentType.includes("text/html")) throw new Error(`Se recibió HTML en vez de LRC: ${url}`);
+        return response.text();
+      })
+      .then(content => {
+        const lines = parsePublicLrc(content);
+        if (!lines.length) throw new Error(`No se encontraron marcas temporales en ${url}`);
+        if (!controller.signal.aborted) {
+          setLrcLines(lines);
+          setLyricsStatus("ready");
+        }
+      })
+      .catch(cause => {
+        if (controller.signal.aborted) return;
+        setLyricsStatus("error");
+        setLyricsError(cause?.message || "No se pudo descargar la letra LRC");
+      });
     return () => controller.abort();
   }, [currentTrack?.lyricsUrl]);
 
@@ -210,6 +236,7 @@ export default function PublicMusicCardScreen() {
       }
       if (message?.event === "infoDelivery" && Number.isFinite(message.info?.currentTime)) {
         setPositionSeconds(message.info.currentTime);
+        setYoutubeClockReceived(true);
       }
       const state = message?.event === "onStateChange" ? Number(message.info) : message?.info?.playerState;
       if (state === 0 && advanceAutomatically && tracksRef.current.length > trackIndexRef.current + 1) {
@@ -350,6 +377,10 @@ export default function PublicMusicCardScreen() {
                         </View>
                       ) : null}
                       {activeLyric ? <Text style={styles.lyricLine} numberOfLines={2}>{activeLyric}</Text> : null}
+                      {lyricsStatus === "error" ? <Text style={styles.lyricsError}>No se pudieron cargar las letras. {lyricsDebug ? lyricsError : "Comprueba la publicación del LRC."}</Text> : null}
+                      {lyricsDebug && <Text style={styles.lyricsDiagnostic}>
+                        {`LRC: ${lyricsStatus} · ${lrcLines.length} líneas · tiempo: ${positionSeconds.toFixed(1)} s · reloj YouTube: ${youtubeClockReceived ? "OK" : "sin datos"} · URL: ${currentTrack?.lyricsUrl || "(sin lyricsUrl)"}`}
+                      </Text>}
                       <View style={[styles.playerToolbar, appView && styles.appToolbar]}>
                         <View style={styles.nowPlaying}>
                           <Ionicons name="play-circle" size={20} color="#2563eb" />
@@ -445,6 +476,8 @@ export default function PublicMusicCardScreen() {
 }
 
 const styles = StyleSheet.create({
+  lyricsError: { color: "#b91c1c", fontSize: 12, padding: 8, textAlign: "center" },
+  lyricsDiagnostic: { color: "#f59e0b", fontSize: 11, padding: 8, backgroundColor: "#29220f" },
   lyricLine: { paddingHorizontal: 12, paddingVertical: 7, textAlign: "center", fontSize: 14, fontStyle: "italic", color: "#eab308", backgroundColor: "#17171b" },
   autoPlayControl: { flexDirection: "row", alignItems: "center", gap: 8, padding: 9 },
   autoPlayText: { color: "#334155", fontSize: 12 },
