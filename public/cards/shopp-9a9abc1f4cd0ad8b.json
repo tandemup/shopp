@@ -1,0 +1,20 @@
+{
+  "schema": "shopp-public-music-card",
+  "version": 1,
+  "id": "shopp-9a9abc1f4cd0ad8b",
+  "collectionType": "music",
+  "title": "a-ha",
+  "author": "",
+  "tracks": [
+    {
+      "title": "The Sun always shine on TV",
+      "author": "",
+      "videoId": "a3ir9HC9vYg"
+    },
+    {
+      "title": "Take on me",
+      "author": "",
+      "videoId": "djV11Xbc914"
+    }
+  ]
+}
