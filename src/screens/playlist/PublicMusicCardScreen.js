@@ -459,6 +459,7 @@ export default function PublicMusicCardScreen() {
                       <View style={styles.trackDescription}>
                         <Text style={[styles.trackTitle, index === i && styles.trackTitleSelected, appView && styles.appText]} numberOfLines={2}>
                           {item.title || `Tema ${i + 1}`}
+                          {item.lyricsUrl ? <Text style={styles.trackLrcIndicator} accessibilityLabel="Letras LRC disponibles">  ♪</Text> : null}
                         </Text>
                         {item.author ? <Text style={[styles.trackAuthor, appView && styles.appMuted]} numberOfLines={1}>{item.author}</Text> : null}
                       </View>
@@ -564,5 +565,6 @@ const styles = StyleSheet.create({
   trackDescription: { flex: 1, minWidth: 0, gap: 3 },
   trackTitle: { color: "#1e293b", fontWeight: "700", fontSize: 14 },
   trackTitleSelected: { color: "#1d4ed8" },
+  trackLrcIndicator: { color: "#facc15", fontSize: 13, fontWeight: "700" },
   trackAuthor: { color: "#64748b", fontSize: 12 },
 });
