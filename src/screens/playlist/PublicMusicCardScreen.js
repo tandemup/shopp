@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -17,10 +17,25 @@ import { Ionicons } from "@expo/vector-icons";
 // oficial de YouTube o en la aplicación/sitio web de YouTube.
 const VIDEO_RE = /^[A-Za-z0-9_-]{11}$/;
 const PLAYLIST_RE = /^[A-Za-z0-9_-]{10,120}$/;
+const LRC_PATH_RE = /^\/music-cards\/lyrics\/shopp-[a-z0-9-]{5,63}\/\d{3}\.lrc$/;
 const PUBLIC_RE = /^[a-z0-9][a-z0-9-]{5,63}$/;
 
 function clean(value, max = 120) {
   return String(value ?? "").trim().slice(0, max);
+}
+
+export function parsePublicLrc(source) {
+  const lines = [];
+  for (const line of String(source || "").split(/\r?\n/)) {
+    const stamps = [...line.matchAll(/\[(\d{1,3}):(\d{2})(?:\.(\d{1,3}))?\]/g)];
+    const text = line.replace(/\[(\d{1,3}):(\d{2})(?:\.(\d{1,3}))?\]/g, "").trim();
+    if (!text) continue;
+    for (const match of stamps) {
+      const fraction = match[3] ? Number(`0.${match[3]}`) : 0;
+      lines.push({ seconds: Number(match[1]) * 60 + Number(match[2]) + fraction, text });
+    }
+  }
+  return lines.sort((a, b) => a.seconds - b.seconds);
 }
 
 function normalizeTrack(track) {
@@ -31,6 +46,7 @@ function normalizeTrack(track) {
       videoId,
       title: clean(track?.title || "Vídeo de YouTube"),
       author: clean(track?.author, 100),
+      lyricsUrl: LRC_PATH_RE.test(track?.lyricsUrl || "") ? track.lyricsUrl : "",
     };
   }
   if (PLAYLIST_RE.test(playlistId)) {
@@ -38,14 +54,15 @@ function normalizeTrack(track) {
       playlistId,
       title: clean(track?.title || "Playlist de YouTube"),
       author: clean(track?.author, 100),
+      lyricsUrl: LRC_PATH_RE.test(track?.lyricsUrl || "") ? track.lyricsUrl : "",
     };
   }
   return null;
 }
 
-function embeddedUrl(track) {
+function embeddedUrl(track, autoPlay = false) {
   if (track?.videoId) {
-    return `https://www.youtube-nocookie.com/embed/${track.videoId}?playsinline=1&rel=0`;
+    return `https://www.youtube-nocookie.com/embed/${track.videoId}?playsinline=1&rel=0&enablejsapi=1${autoPlay ? "&autoplay=1" : ""}`;
   }
   if (track?.playlistId) {
     return `https://www.youtube-nocookie.com/embed/videoseries?list=${track.playlistId}&playsinline=1`;
@@ -78,6 +95,13 @@ export default function PublicMusicCardScreen() {
   const [index, setIndex] = useState(0);
   const [player, setPlayer] = useState(null); // null: elegir; 'shopp': iframe de YouTube
   const [error, setError] = useState("");
+  const frameRef = useRef(null);
+  const trackIndexRef = useRef(0);
+  const tracksRef = useRef([]);
+  const [advanceAutomatically, setAdvanceAutomatically] = useState(true);
+  const [requestAutoPlay, setRequestAutoPlay] = useState(false);
+  const [positionSeconds, setPositionSeconds] = useState(0);
+  const [lrcLines, setLrcLines] = useState([]);
   const [viewMode, setViewMode] = useState(() => {
     const mode = getCardQuery()?.get("view");
     return ["simple", "complete", "app-one", "app-two"].includes(mode) ? mode : "simple";
@@ -154,7 +178,58 @@ export default function PublicMusicCardScreen() {
   const twoColumnApp = viewMode === "app-two" && width >= 740;
   const showTracks = viewMode === "complete" || appView;
   const currentTrack = data?.tracks?.[index];
-  const embedSrc = useMemo(() => embeddedUrl(currentTrack), [currentTrack]);
+  const embedSrc = useMemo(() => embeddedUrl(currentTrack, requestAutoPlay), [currentTrack, requestAutoPlay]);
+  trackIndexRef.current = index;
+  tracksRef.current = data?.tracks || [];
+
+  useEffect(() => {
+    setPositionSeconds(0);
+    setLrcLines([]);
+    const url = currentTrack?.lyricsUrl;
+    if (!url) return undefined;
+    const controller = new AbortController();
+    fetch(url, { signal: controller.signal }).then(response => {
+      if (!response.ok) throw new Error("LRC no disponible");
+      return response.text();
+    }).then(text => setLrcLines(parsePublicLrc(text))).catch(() => {});
+    return () => controller.abort();
+  }, [currentTrack?.lyricsUrl]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || player !== "shopp") return undefined;
+    const send = (func, args = []) => frameRef.current?.contentWindow?.postMessage(
+      JSON.stringify({ event: "command", func, args }), "https://www.youtube-nocookie.com");
+    const handler = event => {
+      if (event.source !== frameRef.current?.contentWindow ||
+          !["https://www.youtube-nocookie.com", "https://www.youtube.com"].includes(event.origin)) return;
+      let message;
+      try { message = typeof event.data === "string" ? JSON.parse(event.data) : event.data; }
+      catch { return; }
+      if (message?.event === "onReady") {
+        send("addEventListener", ["onStateChange"]);
+      }
+      if (message?.event === "infoDelivery" && Number.isFinite(message.info?.currentTime)) {
+        setPositionSeconds(message.info.currentTime);
+      }
+      const state = message?.event === "onStateChange" ? Number(message.info) : message?.info?.playerState;
+      if (state === 0 && advanceAutomatically && tracksRef.current.length > trackIndexRef.current + 1) {
+        setRequestAutoPlay(true);
+        setIndex(trackIndexRef.current + 1);
+      }
+    };
+    window.addEventListener("message", handler);
+    const timer = window.setInterval(() => send("getCurrentTime"), 500);
+    return () => { window.removeEventListener("message", handler); window.clearInterval(timer); };
+  }, [player, advanceAutomatically]);
+
+  const activeLyric = useMemo(() => {
+    let line = "";
+    for (const entry of lrcLines) {
+      if (entry.seconds > positionSeconds) break;
+      line = entry.text;
+    }
+    return line;
+  }, [lrcLines, positionSeconds]);
   const externalSrc = useMemo(() => youtubeUrl(currentTrack), [currentTrack]);
 
   function openInYouTube() {
@@ -170,6 +245,7 @@ export default function PublicMusicCardScreen() {
 
   function chooseTrack(nextIndex) {
     if (nextIndex === index) return;
+    setRequestAutoPlay(false);
     setIndex(nextIndex);
     // Si se ha elegido Shopp, el iframe se actualiza al tema seleccionado.
     // Si todavía no se ha elegido, se muestran las opciones de reproductor.
@@ -256,6 +332,12 @@ export default function PublicMusicCardScreen() {
                           {React.createElement("iframe", {
                             key: embedSrc,
                             src: embedSrc,
+                            ref: node => {
+                              frameRef.current = node;
+                              if (node) node.onload = () => node.contentWindow?.postMessage(
+                                JSON.stringify({ event: "listening", id: "shopp-public" }),
+                                "https://www.youtube-nocookie.com");
+                            },
                             title: `YouTube: ${currentTrack?.title || data.title}`,
                             allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
                             allowFullScreen: true,
@@ -267,6 +349,7 @@ export default function PublicMusicCardScreen() {
                           })}
                         </View>
                       ) : null}
+                      {activeLyric ? <Text style={styles.lyricLine} numberOfLines={2}>{activeLyric}</Text> : null}
                       <View style={[styles.playerToolbar, appView && styles.appToolbar]}>
                         <View style={styles.nowPlaying}>
                           <Ionicons name="play-circle" size={20} color="#2563eb" />
@@ -314,6 +397,14 @@ export default function PublicMusicCardScreen() {
                     </View>
                   )}
                 </View>
+                {data.tracks.length > 1 && <Pressable
+                  onPress={() => setAdvanceAutomatically(value => !value)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: advanceAutomatically }}
+                  style={styles.autoPlayControl}>
+                  <Ionicons name={advanceAutomatically ? "checkbox" : "square-outline"} size={20} color="#2563eb" />
+                  <Text style={[styles.autoPlayText, appView && styles.appText]}>Continuar con la siguiente canción automáticamente</Text>
+                </Pressable>}
                 {!appView && <Text style={styles.footnote}>
                   La reproducción integrada utiliza el reproductor oficial de YouTube. Algunos vídeos no permiten insertarse en otras páginas; en ese caso, ábrelos en YouTube.
                 </Text>}
@@ -354,6 +445,9 @@ export default function PublicMusicCardScreen() {
 }
 
 const styles = StyleSheet.create({
+  lyricLine: { paddingHorizontal: 12, paddingVertical: 7, textAlign: "center", fontSize: 14, fontStyle: "italic", color: "#eab308", backgroundColor: "#17171b" },
+  autoPlayControl: { flexDirection: "row", alignItems: "center", gap: 8, padding: 9 },
+  autoPlayText: { color: "#334155", fontSize: 12 },
   // Vistas de prueba inspiradas en Music Playlist; no acceden a IndexedDB ni requieren sesión.
   appArea: { backgroundColor: "#101013", padding: 15, borderRadius: 12, gap: 14 },
   appAreaStacked: { alignItems: "center" },

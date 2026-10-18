@@ -86,6 +86,16 @@ export function makePlaylistArchive(backup) {
       if (!playable) continue; // El respaldo debe funcionar incluso sin vídeos publicables.
       const id = publicIdForPlaylist(playlist);
       const manifest = buildPublicManifest(playlist, id, isClassical);
+      // La parte pública del ZIP es opcional de desplegar: los LRC son texto
+      // potencialmente protegido por derechos. Publícalos solo con autorización.
+      const playableTracks = (playlist.tracks || []).filter(t => videoIdFromTrack(t) || youtubePlaylistIdFromTrack(t)).slice(0, 100);
+      playableTracks.forEach((track, index) => {
+        if (typeof track?.lyricsBackup?.text !== "string" || !track.lyricsBackup.text.trim()) return;
+        const filename = `${String(index + 1).padStart(3, "0")}.lrc`;
+        const url = `/music-cards/lyrics/${id}/${filename}`;
+        manifest.tracks[index].lyricsUrl = url;
+        entries.push([`music-cards/lyrics/${id}/${filename}`, track.lyricsBackup.text]);
+      });
       entries.push([`music-cards/${id}.json`, JSON.stringify(manifest, null, 2)]);
     }
   }
