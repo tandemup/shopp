@@ -1,0 +1,16 @@
+{
+  "schema": "shopp-public-music-card",
+  "version": 1,
+  "id": "shopp-4b27e5f9443e9cc5",
+  "collectionType": "music",
+  "title": "a-ha",
+  "author": "",
+  "tracks": [
+    {
+      "title": "The Sun always shine on TV",
+      "author": "",
+      "videoId": "a3ir9HC9vYg",
+      "lyricsUrl": "/music-cards/lyrics/shopp-4b27e5f9443e9cc5/001.lrc"
+    }
+  ]
+}
