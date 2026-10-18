@@ -1,4 +1,0 @@
-Copia en esta carpeta los archivos JSON descargados en «Crear tarjeta» cuando
-quieras publicar una playlist completa de Shopp en Netlify.
-Una playlist no se publica automáticamente desde IndexedDB.
-No añadas letras LRC ni información privada en los manifiestos públicos.

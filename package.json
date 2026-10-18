@@ -28,7 +28,7 @@
     "@react-navigation/native-stack": "^7.3.16",
     "@zxing/browser": "0.2.0",
     "@zxing/library": "0.22.0",
-    "convex": "^1.42.2",
+    "convex": "^1.47.0",
     "expo": "~57.0.26",
     "expo-asset": "^57.0.7",
     "expo-av": "^16.0.8",

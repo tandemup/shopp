@@ -17,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRoute } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import {
-  buildSongCardUrl, buildPlaylistCardUrl, buildPublicManifest, getPublicManifestUrl,
+  buildSongCardUrl, buildPlaylistCardUrl, buildPublicManifest, comparePublicPlaylist, getPublicManifestUrl,
   normalizePublicBase, publicIdForPlaylist, videoIdFromTrack, youtubePlaylistIdFromTrack,
 } from "@/src/services/musicCardLinks";
 
@@ -567,7 +567,8 @@ export default function PrintMusicCardScreen() {
       try { data = await response.json(); }
       catch { throw new Error("La ficha publicada no contiene un JSON válido."); }
       const expected = buildPublicManifest(playlist, publicId, isClassical);
-      if (JSON.stringify(data) !== JSON.stringify(expected)) throw new Error("La ficha publicada no coincide con esta playlist. Vuelve a exportarla y desplegarla.");
+      const comparison = comparePublicPlaylist(expected, data);
+      if (!comparison.ok) throw new Error(`${comparison.reason} Vuelve a exportar y desplegar la ficha.`);
       setPublished(true);
       showNotice("Publicación verificada", "La ficha pública coincide con la playlist. Puedes imprimir su código QR.", "success");
     } catch (error) {setPublished(false);showNotice("No se pudo comprobar la publicación", error?.message === "Failed to fetch" || error instanceof TypeError ? "No se pudo consultar Netlify. Comprueba la conexión y la dirección pública. Si el navegador indica CORS, revisa también la configuración del servidor." : (error.message || "No se pudo comprobar la publicación."), "error");}
@@ -837,7 +838,7 @@ export default function PrintMusicCardScreen() {
             {cardMode === "playlist" && qrDestination !== "youtube" ? (
               <View style={styles.infoBox}>
                 <Text style={styles.infoBoxTitle}>Publicación de la playlist</Text>
-                <Text style={styles.infoBoxText}>Descarga la ficha JSON, cópiala a public/music-cards/ y despliega Netlify. No se publican letras LRC ni datos privados.</Text>
+                <Text style={styles.infoBoxText}>Descarga la ficha JSON, cópiala a public/music-cards/ y despliega Netlify. El JSON descargado no incluye LRC. Para publicar letras autorizadas usa la carpeta music-cards del ZIP Exportar JSON.</Text>
                 <View style={styles.actionRow}>
                   <Pressable style={styles.secondaryButton} onPress={downloadPublicManifest}>
                     <Ionicons name="download-outline" color="#2563eb" size={17} />
