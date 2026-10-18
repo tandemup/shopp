@@ -122,3 +122,26 @@ export function buildPublicManifest(playlist, publicId, isClassical = false) {
     tracks,
   };
 }
+
+
+// Compara el contenido musical, no los metadatos auxiliares de publicación
+// (lyricsUrl, coverUrl). Un QR válido sigue siendo estable tras añadir LRC.
+export function comparePublicPlaylist(expected, published) {
+  if (!published || published.schema !== "shopp-public-music-card" || published.version !== 1 || published.id !== expected.id) {
+    return { ok: false, reason: "La ficha pública no corresponde a esta playlist." };
+  }
+  if (published.collectionType !== expected.collectionType || published.title !== expected.title || published.author !== expected.author) {
+    return { ok: false, reason: "Han cambiado el título o los metadatos de la playlist." };
+  }
+  if (!Array.isArray(published.tracks) || published.tracks.length !== expected.tracks.length) {
+    return { ok: false, reason: "Ha cambiado el número de canciones de la playlist." };
+  }
+  for (let i = 0; i < expected.tracks.length; i++) {
+    const a = expected.tracks[i], b = published.tracks[i];
+    if (!b || a.title !== b.title || a.author !== b.author ||
+        (a.videoId || "") !== (b.videoId || "") || (a.playlistId || "") !== (b.playlistId || "")) {
+      return { ok: false, reason: `La canción ${i + 1} o su posición difiere de la versión publicada.` };
+    }
+  }
+  return { ok: true, reason: "La playlist pública coincide con la local." };
+}

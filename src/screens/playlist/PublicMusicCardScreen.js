@@ -19,6 +19,17 @@ const VIDEO_RE = /^[A-Za-z0-9_-]{11}$/;
 const PLAYLIST_RE = /^[A-Za-z0-9_-]{10,120}$/;
 const LRC_PATH_RE = /^\/music-cards\/lyrics\/(?:shopp-[a-z0-9-]{5,63}\/\d{3}|[A-Za-z0-9_-]{1,110})\.lrc$/;
 const PUBLIC_RE = /^[a-z0-9][a-z0-9-]{5,63}$/;
+// Solo carátulas públicas HTTPS o rutas absolutas de la propia web.
+function safeCoverUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value || value.length > 2048 || value.startsWith("//")) return "";
+  if (/^\/(?!\/)[a-zA-Z0-9_./%-]+$/.test(value) && !value.split("/").includes("..")) return value;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.toString() : "";
+  } catch { return ""; }
+}
+
 
 function clean(value, max = 120) {
   return String(value ?? "").trim().slice(0, max);
@@ -47,6 +58,7 @@ function normalizeTrack(track) {
       title: clean(track?.title || "Vídeo de YouTube"),
       author: clean(track?.author, 100),
       lyricsUrl: LRC_PATH_RE.test(track?.lyricsUrl || "") ? track.lyricsUrl : "",
+      coverUrl: safeCoverUrl(track?.coverUrl),
     };
   }
   if (PLAYLIST_RE.test(playlistId)) {
@@ -55,6 +67,7 @@ function normalizeTrack(track) {
       title: clean(track?.title || "Playlist de YouTube"),
       author: clean(track?.author, 100),
       lyricsUrl: LRC_PATH_RE.test(track?.lyricsUrl || "") ? track.lyricsUrl : "",
+      coverUrl: safeCoverUrl(track?.coverUrl),
     };
   }
   return null;
