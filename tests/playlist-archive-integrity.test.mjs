@@ -33,7 +33,7 @@ function mutateCompanionKeepValidCRC(archive) {
     entries.push({name,pos,start:pos+30+nameLen+extraLen,len});
     pos += 30+nameLen+extraLen+len;
   }
-  const target=entries.find(e=>e.name.endsWith('.lrc'));
+  const target=entries.find(e=>e.name.startsWith('lyrics/') && e.name.endsWith('.lrc'));
   assert.ok(target);
   // Change one ASCII byte of the extra human-readable .lrc, not the copy
   // within playlist.json. Recalculate CRC correctly to test semantic check.
@@ -101,4 +101,22 @@ test('Exportar ZIP añade ficha pública y la importación conserva el respaldo'
   assert.equal(manifest.id,expectedId);
   assert.ok(!pub.value.includes('lyricsBackup'));
   assert.deepEqual(decodePlaylistArchive(a),original);
+});
+
+
+test('Exportación pública incluye LRC de forma separada y la ficha lo referencia',()=>{
+  const a=zipOf(backup);
+  const entries=[];let pos=0;
+  while(read32(a,pos)===0x04034b50){
+    const n=read16(a,pos+26), len=read32(a,pos+18);
+    const name=new TextDecoder().decode(a.subarray(pos+30,pos+30+n));
+    const value=new TextDecoder().decode(a.subarray(pos+30+n,pos+30+n+len));
+    entries.push({name,value});pos+=30+n+len;
+  }
+  const manifest=JSON.parse(entries.find(x=>/^music-cards\/shopp-.*\.json$/.test(x.name)).value);
+  const path=manifest.tracks[0].lyricsUrl;
+  assert.match(path,/^\/music-cards\/lyrics\/shopp-.*\/001\.lrc$/);
+  assert.equal(entries.find(x=>x.name===path.slice(1)).value,backup.playlists[0].tracks[0].lyricsBackup.text);
+  assert.ok(!JSON.stringify(manifest).includes('Hola 🎵'));
+  assert.deepEqual(decodePlaylistArchive(a),backup);
 });

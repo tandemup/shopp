@@ -58,6 +58,8 @@ export function decodePlaylistArchive(buffer) {
       jsonText = decoder.decode(content);
     } else if (name.startsWith("lyrics/") && name.toLowerCase().endsWith(".lrc")) {
       lyricsFiles.push(decoder.decode(content));
+    } else if (/^music-cards\/lyrics\/shopp-[a-z0-9-]{5,63}\/\d{3}\.lrc$/.test(name)) {
+      // Recurso público opcional, no modifica la copia privada restaurada.
     } else if (/^music-cards\/shopp-[a-z0-9-]{5,63}\.json$/.test(name)) {
       // Ficha pública auxiliar: no sustituye al playlist.json privado.
       const manifest = JSON.parse(decoder.decode(content));
