@@ -113,6 +113,7 @@ export default function PublicMusicCardScreen() {
   const tracksRef = useRef([]);
   const [advanceAutomatically, setAdvanceAutomatically] = useState(true);
   const [requestAutoPlay, setRequestAutoPlay] = useState(false);
+  const [playbackState, setPlaybackState] = useState("unstarted"); // YouTube: playing, paused, buffering, ended
   const [positionSeconds, setPositionSeconds] = useState(0);
   const [lrcLines, setLrcLines] = useState([]);
   const [lyricsStatus, setLyricsStatus] = useState("none");
@@ -196,10 +197,12 @@ export default function PublicMusicCardScreen() {
   const showTracks = viewMode === "complete" || appView;
   const currentTrack = data?.tracks?.[index];
   const embedSrc = useMemo(() => embeddedUrl(currentTrack, requestAutoPlay), [currentTrack, requestAutoPlay]);
+  const currentPlaying = playbackState === "playing" || playbackState === "buffering";
   trackIndexRef.current = index;
   tracksRef.current = data?.tracks || [];
 
   useEffect(() => {
+    setPlaybackState("unstarted");
     setPositionSeconds(0);
     setYoutubeClockReceived(false);
     setLrcLines([]);
@@ -252,6 +255,10 @@ export default function PublicMusicCardScreen() {
         setYoutubeClockReceived(true);
       }
       const state = message?.event === "onStateChange" ? Number(message.info) : message?.info?.playerState;
+      if (Number.isFinite(state)) {
+        const labels = { [-1]: "unstarted", [0]: "ended", [1]: "playing", [2]: "paused", [3]: "buffering", [5]: "cued" };
+        if (labels[state]) setPlaybackState(labels[state]);
+      }
       if (state === 0 && advanceAutomatically && tracksRef.current.length > trackIndexRef.current + 1) {
         setRequestAutoPlay(true);
         setIndex(trackIndexRef.current + 1);
@@ -284,11 +291,22 @@ export default function PublicMusicCardScreen() {
   }
 
   function chooseTrack(nextIndex) {
-    if (nextIndex === index) return;
-    setRequestAutoPlay(false);
-    setIndex(nextIndex);
-    // Si se ha elegido Shopp, el iframe se actualiza al tema seleccionado.
-    // Si todavía no se ha elegido, se muestran las opciones de reproductor.
+    // Cada fila es un control Play/Pause, incluso si la playlist es pública.
+    if (nextIndex === index && player === "shopp") {
+      const method = currentPlaying ? "pauseVideo" : "playVideo";
+      // La API IFrame controla el estado real; no suponemos éxito hasta recibir onStateChange.
+      frameRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: method, args: [] }),
+        "https://www.youtube-nocookie.com"
+      );
+      return;
+    }
+    setPlaybackState("unstarted");
+    // Tras seleccionar una pista diferente, cargarla e intentar reproducirla.
+    // El navegador puede bloquear autoplay; quedará disponible el Play oficial.
+    setRequestAutoPlay(true);
+    if (nextIndex !== index) setIndex(nextIndex);
+    if (player !== "shopp") setPlayer("shopp");
   }
 
   function goHome() {
@@ -396,7 +414,7 @@ export default function PublicMusicCardScreen() {
                       </Text>}
                       <View style={[styles.playerToolbar, appView && styles.appToolbar]}>
                         <View style={styles.nowPlaying}>
-                          <Ionicons name="play-circle" size={20} color="#2563eb" />
+                          <Ionicons name={currentPlaying ? "pause-circle" : "play-circle"} size={20} color="#2563eb" />
                           <Text style={[styles.nowPlayingText, appView && styles.appText]} numberOfLines={1}>
                             {currentTrack?.title || data.title}
                           </Text>
@@ -421,7 +439,7 @@ export default function PublicMusicCardScreen() {
                       </Text>
                       <Text style={[styles.selectionHelp, appView && styles.appMuted]}>Elige cómo abrir el vídeo de YouTube.</Text>
                       <View style={styles.playerOptions}>
-                        <Pressable onPress={() => setPlayer("shopp")} style={[styles.optionButton, styles.shoppOption]} accessibilityRole="button">
+                        <Pressable onPress={() => { setRequestAutoPlay(false); setPlayer("shopp"); }} style={[styles.optionButton, styles.shoppOption]} accessibilityRole="button">
                           <Ionicons name="play-circle-outline" size={25} color="#ffffff" />
                           <View style={styles.optionTextContainer}>
                             <Text style={styles.optionTitleOnBlue}>Reproducir en Shopp</Text>
@@ -466,6 +484,7 @@ export default function PublicMusicCardScreen() {
                       onPress={() => chooseTrack(i)}
                       accessibilityRole="button"
                       accessibilityState={{ selected: index === i }}
+                      accessibilityLabel={`${index === i && currentPlaying && player === "shopp" ? "Pausar" : "Reproducir"} ${item.title || `Tema ${i + 1}`}`}
                       style={[styles.trackRow, index === i && styles.trackRowSelected, appView && styles.appTrackRow, appView && index === i && styles.appTrackSelected]}
                     >
                       <Text style={[styles.trackNumber, index === i && styles.trackNumberSelected, appView && styles.appMuted]}>{i + 1}</Text>
@@ -476,7 +495,7 @@ export default function PublicMusicCardScreen() {
                         </Text>
                         {item.author ? <Text style={[styles.trackAuthor, appView && styles.appMuted]} numberOfLines={1}>{item.author}</Text> : null}
                       </View>
-                      <Ionicons name={index === i ? "play-circle" : "play-circle-outline"} size={22} color={appView ? (index === i ? "#ec1680" : "#9ca3af") : (index === i ? "#2563eb" : "#94a3b8")} />
+                      <Ionicons name={index === i && currentPlaying && player === "shopp" ? "pause-circle" : (index === i ? "play-circle" : "play-circle-outline")} size={22} color={appView ? (index === i ? "#ec1680" : "#9ca3af") : (index === i ? "#2563eb" : "#94a3b8")} />
                     </Pressable>
                   ))}
                 </View>
