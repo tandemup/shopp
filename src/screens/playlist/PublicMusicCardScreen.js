@@ -410,18 +410,18 @@ export default function PublicMusicCardScreen() {
                     accessibilityRole="button"
                     accessibilityLabel="Repeat 1: repetir pista actual"
                     accessibilityState={{ selected: repeatOne }}
-                    style={[styles.controlChip, appView && styles.appControlChip, repeatOne && styles.controlChipActive]}>
-                    <Ionicons name="repeat" size={17} color={repeatOne ? "#2563eb" : (appView ? "#a1a1aa" : "#64748b")} />
-                    <Text style={[styles.controlOne, repeatOne && styles.controlActiveText]}>1</Text>
+                    style={[styles.controlChip, appView && styles.appControlChip, repeatOne && (appView ? styles.appControlChipActive : styles.controlChipActive)]}>
+                    <Ionicons name="repeat" size={17} color={repeatOne ? (appView ? "#f9a8d4" : "#2563eb") : (appView ? "#a1a1aa" : "#64748b")} />
+                    <Text style={[styles.controlOne, repeatOne && (appView ? styles.appControlActiveText : styles.controlActiveText)]}>1</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => setAdvanceAutomatically(value => !value)}
                     accessibilityRole="button"
                     accessibilityLabel="Autoplay next: continuar con la siguiente canción"
                     accessibilityState={{ selected: advanceAutomatically }}
-                    style={[styles.controlChip, appView && styles.appControlChip, advanceAutomatically && styles.controlChipActive]}>
-                    <Ionicons name="play-skip-forward-outline" size={18} color={advanceAutomatically ? "#2563eb" : (appView ? "#a1a1aa" : "#64748b")} />
-                    <Text style={[styles.controlCaption, appView && !advanceAutomatically && styles.appMuted, advanceAutomatically && styles.controlActiveText]}>Auto next</Text>
+                    style={[styles.controlChip, appView && styles.appControlChip, advanceAutomatically && (appView ? styles.appControlChipActive : styles.controlChipActive)]}>
+                    <Ionicons name="play-skip-forward-outline" size={18} color={advanceAutomatically ? (appView ? "#f9a8d4" : "#2563eb") : (appView ? "#a1a1aa" : "#64748b")} />
+                    <Text style={[styles.controlCaption, appView && !advanceAutomatically && styles.appMuted, advanceAutomatically && (appView ? styles.appControlActiveText : styles.controlActiveText)]}>Auto next</Text>
                   </Pressable>
                 </View>}
               </View>
@@ -536,16 +536,17 @@ export default function PublicMusicCardScreen() {
                       accessibilityLabel={`${index === i && currentPlaying && player === "shopp" ? "Pausar" : "Reproducir"} ${item.title || `Tema ${i + 1}`}`}
                       style={[styles.trackRow, index === i && styles.trackRowSelected, appView && styles.appTrackRow, appView && index === i && styles.appTrackSelected]}
                     >
+                      <View style={styles.trackRowContent}>
                       <Text style={[styles.trackNumber, index === i && styles.trackNumberSelected, appView && styles.appMuted]}>{i + 1}</Text>
                       <View style={styles.trackDescription}>
                         <Text style={[styles.trackTitle, index === i && styles.trackTitleSelected, appView && styles.appText]} numberOfLines={2}>
                           {item.title || `Tema ${i + 1}`}
-                          {item.lyricsUrl ? <Text style={styles.trackLrcIndicator} accessibilityLabel="Letras LRC disponibles">  ♪</Text> : null}
+                          {item.lyricsUrl ? <Text style={[styles.trackLrcIndicator, appView && styles.appTrackLrcIndicator]} accessibilityLabel="Letras LRC disponibles">  ♪</Text> : null}
                         </Text>
                         {item.author ? <Text style={[styles.trackAuthor, appView && styles.appMuted]} numberOfLines={1}>{item.author}</Text> : null}
                       </View>
                       <Ionicons name={index === i && currentPlaying && player === "shopp" ? "pause-circle" : (index === i ? "play-circle" : "play-circle-outline")} size={18} color={appView ? (index === i ? "#ec1680" : "#9ca3af") : (index === i ? "#2563eb" : "#94a3b8")} />
-                    </Pressable>
+                      </View>
                     {index === i && player === "shopp" && (
                       <View style={[styles.trackProgressArea, appView && styles.appTrackProgressArea]}>
                         <Text style={[styles.trackProgressText, appView && styles.appTimeText]} accessibilityLabel="Tiempo transcurrido">
@@ -561,6 +562,7 @@ export default function PublicMusicCardScreen() {
                         </Text>
                       </View>
                     )}
+                    </Pressable>
                   </React.Fragment>
                   ))}
                 </View>
@@ -574,8 +576,9 @@ export default function PublicMusicCardScreen() {
 }
 
 const styles = StyleSheet.create({
-  trackProgressArea: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 4, marginTop: -3, marginBottom: 3, borderRadius: 7, backgroundColor: "#eff6ff" },
-  appTrackProgressArea: { backgroundColor: "#231b23" },
+  trackRowContent: { flexDirection: "row", alignItems: "center", gap: 11, width: "100%" },
+  trackProgressArea: { flexDirection: "row", alignItems: "center", gap: 8, width: "100%", paddingHorizontal: 2, paddingTop: 2, paddingBottom: 3, backgroundColor: "transparent" },
+  appTrackProgressArea: { backgroundColor: "transparent" },
   trackProgressText: { color: "#64748b", fontSize: 10, fontWeight: "600", fontVariant: ["tabular-nums"], minWidth: 39, textAlign: "center" },
   trackProgressRail: { flex: 1, height: 3, borderRadius: 3, backgroundColor: "#9ca3af", overflow: "hidden" },
   trackProgressFill: { height: "100%", backgroundColor: "#2563eb" },
@@ -591,6 +594,8 @@ const styles = StyleSheet.create({
   controlChip: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, minHeight: 34, paddingHorizontal: 10, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 9, backgroundColor: "#f8fafc" },
   appControlChip: { backgroundColor: "#202025", borderColor: "#34343a" },
   controlChipActive: { backgroundColor: "#eff6ff", borderColor: "#93c5fd" },
+  appControlChipActive: { backgroundColor: "#452238", borderColor: "#ec1680" },
+  appControlActiveText: { color: "#f9a8d4" },
   controlOne: { fontSize: 11, fontWeight: "800", color: "#94a3b8" },
   controlCaption: { fontSize: 11, fontWeight: "600", color: "#64748b" },
   controlActiveText: { color: "#2563eb" },
@@ -671,13 +676,14 @@ const styles = StyleSheet.create({
   playlistHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 7, paddingHorizontal: 4 },
   playlistHeading: { fontSize: 17, fontWeight: "800", color: "#0f172a" },
   playlistCount: { color: "#64748b", fontSize: 12 },
-  trackRow: { flexDirection: "row", gap: 11, alignItems: "center", backgroundColor: "#f8fafc", paddingVertical: 8, paddingHorizontal: 10, minHeight: 43, borderRadius: 9, borderWidth: 1, borderColor: "#e2e8f0" },
+  trackRow: { flexDirection: "column", gap: 2, alignItems: "stretch", backgroundColor: "#f8fafc", paddingVertical: 8, paddingHorizontal: 10, minHeight: 43, borderRadius: 9, borderWidth: 1, borderColor: "#e2e8f0" },
   trackRowSelected: { backgroundColor: "#eff6ff", borderColor: "#2563eb" },
   trackNumber: { color: "#64748b", fontWeight: "700", width: 21, textAlign: "center" },
   trackNumberSelected: { color: "#2563eb" },
   trackDescription: { flex: 1, minWidth: 0, gap: 3 },
   trackTitle: { color: "#1e293b", fontWeight: "700", fontSize: 14 },
   trackTitleSelected: { color: "#1d4ed8" },
-  trackLrcIndicator: { color: "#facc15", fontSize: 13, fontWeight: "700" },
+  trackLrcIndicator: { color: "#a16207", fontSize: 14, fontWeight: "800" },
+  appTrackLrcIndicator: { color: "#fde047" },
   trackAuthor: { color: "#64748b", fontSize: 12 },
 });
