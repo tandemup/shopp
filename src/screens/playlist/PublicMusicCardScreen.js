@@ -112,6 +112,10 @@ export default function PublicMusicCardScreen() {
   const trackIndexRef = useRef(0);
   const tracksRef = useRef([]);
   const [advanceAutomatically, setAdvanceAutomatically] = useState(true);
+  const [repeatOne, setRepeatOne] = useState(false);
+  const advanceRef = useRef(true);
+  const repeatRef = useRef(false);
+  const endedHandledRef = useRef(false);
   const [requestAutoPlay, setRequestAutoPlay] = useState(false);
   const [playbackState, setPlaybackState] = useState("unstarted"); // YouTube: playing, paused, buffering, ended
   const [positionSeconds, setPositionSeconds] = useState(0);
@@ -200,9 +204,12 @@ export default function PublicMusicCardScreen() {
   const currentPlaying = playbackState === "playing" || playbackState === "buffering";
   trackIndexRef.current = index;
   tracksRef.current = data?.tracks || [];
+  advanceRef.current = advanceAutomatically;
+  repeatRef.current = repeatOne;
 
   useEffect(() => {
     setPlaybackState("unstarted");
+    endedHandledRef.current = false;
     setPositionSeconds(0);
     setYoutubeClockReceived(false);
     setLrcLines([]);
@@ -256,18 +263,26 @@ export default function PublicMusicCardScreen() {
       }
       const state = message?.event === "onStateChange" ? Number(message.info) : message?.info?.playerState;
       if (Number.isFinite(state)) {
+        if (state !== 0) endedHandledRef.current = false;
         const labels = { [-1]: "unstarted", [0]: "ended", [1]: "playing", [2]: "paused", [3]: "buffering", [5]: "cued" };
         if (labels[state]) setPlaybackState(labels[state]);
       }
-      if (state === 0 && advanceAutomatically && tracksRef.current.length > trackIndexRef.current + 1) {
-        setRequestAutoPlay(true);
-        setIndex(trackIndexRef.current + 1);
+      if (state === 0 && !endedHandledRef.current) {
+        endedHandledRef.current = true;
+        if (repeatRef.current) {
+          // Repetir la misma pista sin recargar el iframe ni perder los LRC.
+          send("seekTo", [0, true]);
+          send("playVideo");
+        } else if (advanceRef.current && tracksRef.current.length > trackIndexRef.current + 1) {
+          setRequestAutoPlay(true);
+          setIndex(trackIndexRef.current + 1);
+        }
       }
     };
     window.addEventListener("message", handler);
     const timer = window.setInterval(() => send("getCurrentTime"), 500);
     return () => { window.removeEventListener("message", handler); window.clearInterval(timer); };
-  }, [player, advanceAutomatically]);
+  }, [player]);
 
   const activeLyric = useMemo(() => {
     let line = "";
@@ -459,14 +474,26 @@ export default function PublicMusicCardScreen() {
                     </View>
                   )}
                 </View>
-                {data.tracks.length > 1 && <Pressable
-                  onPress={() => setAdvanceAutomatically(value => !value)}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: advanceAutomatically }}
-                  style={styles.autoPlayControl}>
-                  <Ionicons name={advanceAutomatically ? "checkbox" : "square-outline"} size={20} color="#2563eb" />
-                  <Text style={[styles.autoPlayText, appView && styles.appText]}>Continuar con la siguiente canción automáticamente</Text>
-                </Pressable>}
+                {data.tracks.length > 1 && <View style={styles.playbackControls}>
+                  <Pressable
+                    onPress={() => setRepeatOne(value => !value)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Repeat 1: repetir pista actual"
+                    accessibilityState={{ selected: repeatOne }}
+                    style={[styles.controlChip, appView && styles.appControlChip, repeatOne && styles.controlChipActive]}>
+                    <Ionicons name="repeat" size={17} color={repeatOne ? "#2563eb" : (appView ? "#a1a1aa" : "#64748b")} />
+                    <Text style={[styles.controlOne, repeatOne && styles.controlActiveText]}>1</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setAdvanceAutomatically(value => !value)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Autoplay next: continuar con la siguiente canción"
+                    accessibilityState={{ selected: advanceAutomatically }}
+                    style={[styles.controlChip, appView && styles.appControlChip, advanceAutomatically && styles.controlChipActive]}>
+                    <Ionicons name="play-skip-forward-outline" size={18} color={advanceAutomatically ? "#2563eb" : (appView ? "#a1a1aa" : "#64748b")} />
+                    <Text style={[styles.controlCaption, appView && !advanceAutomatically && styles.appMuted, advanceAutomatically && styles.controlActiveText]}>Auto next</Text>
+                  </Pressable>
+                </View>}
                 {!appView && <Text style={styles.footnote}>
                   La reproducción integrada utiliza el reproductor oficial de YouTube. Algunos vídeos no permiten insertarse en otras páginas; en ese caso, ábrelos en YouTube.
                 </Text>}
@@ -495,7 +522,7 @@ export default function PublicMusicCardScreen() {
                         </Text>
                         {item.author ? <Text style={[styles.trackAuthor, appView && styles.appMuted]} numberOfLines={1}>{item.author}</Text> : null}
                       </View>
-                      <Ionicons name={index === i && currentPlaying && player === "shopp" ? "pause-circle" : (index === i ? "play-circle" : "play-circle-outline")} size={22} color={appView ? (index === i ? "#ec1680" : "#9ca3af") : (index === i ? "#2563eb" : "#94a3b8")} />
+                      <Ionicons name={index === i && currentPlaying && player === "shopp" ? "pause-circle" : (index === i ? "play-circle" : "play-circle-outline")} size={18} color={appView ? (index === i ? "#ec1680" : "#9ca3af") : (index === i ? "#2563eb" : "#94a3b8")} />
                     </Pressable>
                   ))}
                 </View>
@@ -512,8 +539,13 @@ const styles = StyleSheet.create({
   lyricsError: { color: "#b91c1c", fontSize: 12, padding: 8, textAlign: "center" },
   lyricsDiagnostic: { color: "#f59e0b", fontSize: 11, padding: 8, backgroundColor: "#29220f" },
   lyricLine: { paddingHorizontal: 12, paddingVertical: 7, textAlign: "center", fontSize: 14, fontStyle: "italic", color: "#eab308", backgroundColor: "#17171b" },
-  autoPlayControl: { flexDirection: "row", alignItems: "center", gap: 8, padding: 9 },
-  autoPlayText: { color: "#334155", fontSize: 12 },
+  playbackControls: { flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 6, paddingHorizontal: 2 },
+  controlChip: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, minHeight: 34, paddingHorizontal: 10, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 9, backgroundColor: "#f8fafc" },
+  appControlChip: { backgroundColor: "#202025", borderColor: "#34343a" },
+  controlChipActive: { backgroundColor: "#eff6ff", borderColor: "#93c5fd" },
+  controlOne: { fontSize: 11, fontWeight: "800", color: "#94a3b8" },
+  controlCaption: { fontSize: 11, fontWeight: "600", color: "#64748b" },
+  controlActiveText: { color: "#2563eb" },
   // Vistas de prueba inspiradas en Music Playlist; no acceden a IndexedDB ni requieren sesión.
   appArea: { backgroundColor: "#101013", padding: 15, borderRadius: 12, gap: 14 },
   appAreaStacked: { alignItems: "center" },
@@ -590,7 +622,7 @@ const styles = StyleSheet.create({
   playlistHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 7, paddingHorizontal: 4 },
   playlistHeading: { fontSize: 17, fontWeight: "800", color: "#0f172a" },
   playlistCount: { color: "#64748b", fontSize: 12 },
-  trackRow: { flexDirection: "row", gap: 11, alignItems: "center", backgroundColor: "#f8fafc", paddingVertical: 12, paddingHorizontal: 11, borderRadius: 9, borderWidth: 1, borderColor: "#e2e8f0" },
+  trackRow: { flexDirection: "row", gap: 11, alignItems: "center", backgroundColor: "#f8fafc", paddingVertical: 8, paddingHorizontal: 10, minHeight: 43, borderRadius: 9, borderWidth: 1, borderColor: "#e2e8f0" },
   trackRowSelected: { backgroundColor: "#eff6ff", borderColor: "#2563eb" },
   trackNumber: { color: "#64748b", fontWeight: "700", width: 21, textAlign: "center" },
   trackNumberSelected: { color: "#2563eb" },
