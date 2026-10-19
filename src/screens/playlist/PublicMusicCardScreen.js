@@ -470,21 +470,31 @@ export default function PublicMusicCardScreen() {
                       </Text>}
                       <View style={[styles.playerToolbar, appView && styles.appToolbar]}>
                         <View style={styles.nowPlaying}>
-                          <Ionicons name={currentPlaying ? "pause-circle" : "play-circle"} size={20} color="#2563eb" />
+                          <Ionicons name={currentPlaying ? "pause-circle" : "play-circle"} size={17} color={appView ? "#f9a8d4" : "#2563eb"} />
                           <Text style={[styles.nowPlayingText, appView && styles.appText]} numberOfLines={1}>
                             {currentTrack?.title || data.title}
                           </Text>
                         </View>
-                        <Pressable onPress={() => setPlayer(null)} style={styles.changeButton} accessibilityRole="button">
-                          <Ionicons name="swap-horizontal" size={17} color="#2563eb" />
-                          <Text style={styles.changeText}>Cambiar reproductor</Text>
-                        </Pressable>
+                        <View style={styles.playerActions}>
+                          <Pressable
+                            onPress={() => setPlayer(null)}
+                            style={[styles.changeButton, appView && styles.appActionButton]}
+                            accessibilityRole="button"
+                            accessibilityLabel="Cambiar reproductor">
+                            <Ionicons name="swap-horizontal" size={15} color={appView ? "#f9a8d4" : "#1d4ed8"} />
+                            <Text style={[styles.changeText, appView && styles.appActionText]}>Cambiar</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={openInYouTube}
+                            style={[styles.youtubeCompactButton, appView && styles.appYoutubeButton]}
+                            accessibilityRole="button"
+                            accessibilityLabel="Abrir este vídeo en YouTube">
+                            <Ionicons name="logo-youtube" size={16} color={appView ? "#fca5a5" : "#b91c1c"} />
+                            <Text style={[styles.youtubeCompactText, appView && styles.appYoutubeText]}>YouTube</Text>
+                            <Ionicons name="open-outline" size={12} color={appView ? "#fca5a5" : "#b91c1c"} />
+                          </Pressable>
+                        </View>
                       </View>
-                      <Pressable onPress={openInYouTube} style={[styles.fallbackButton, appView && styles.appFallback]} accessibilityRole="button">
-                        <Ionicons name="logo-youtube" size={18} color="#b91c1c" />
-                        <Text style={styles.fallbackText}>Abrir este vídeo en YouTube</Text>
-                        <Ionicons name="open-outline" size={16} color="#b91c1c" />
-                      </Pressable>
                     </>
                   ) : (
                     <View style={[styles.selectionPanel, appView && styles.appSelection]}>
@@ -649,11 +659,18 @@ const styles = StyleSheet.create({
   playerArea: { minWidth: 0, flexGrow: 1, flexShrink: 1, gap: 8 },
   playerCard: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 14, overflow: "hidden" },
   videoFrame: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#0f172a" },
-  playerToolbar: { padding: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 },
-  nowPlaying: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 },
-  nowPlayingText: { color: "#0f172a", fontWeight: "700", fontSize: 14, flexShrink: 1 },
-  changeButton: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 9, paddingVertical: 8, borderRadius: 8, backgroundColor: "#eff6ff" },
-  changeText: { color: "#2563eb", fontSize: 12, fontWeight: "700" },
+  playerToolbar: { paddingVertical: 7, paddingHorizontal: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 },
+  playerActions: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  nowPlaying: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1, minWidth: 100 },
+  nowPlayingText: { color: "#0f172a", fontWeight: "700", fontSize: 12, flexShrink: 1 },
+  changeButton: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, minHeight: 30, borderRadius: 7, backgroundColor: "#eff6ff", borderWidth: 1, borderColor: "#bfdbfe" },
+  appActionButton: { backgroundColor: "#321d2b", borderColor: "#824367" },
+  appActionText: { color: "#fbcfe8" },
+  youtubeCompactButton: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, minHeight: 30, borderRadius: 7, backgroundColor: "#fff1f2", borderWidth: 1, borderColor: "#fecdd3" },
+  youtubeCompactText: { color: "#9f1239", fontWeight: "700", fontSize: 12 },
+  appYoutubeButton: { backgroundColor: "#351b22", borderColor: "#944052" },
+  appYoutubeText: { color: "#fecdd3" },
+  changeText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
   fallbackButton: { flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center", padding: 12, borderTopWidth: 1, borderColor: "#e2e8f0" },
   fallbackText: { color: "#b91c1c", fontWeight: "700", fontSize: 13 },
   selectionPanel: { paddingHorizontal: 18, paddingVertical: 27, alignItems: "center", gap: 8 },
