@@ -386,6 +386,7 @@ export default function PublicMusicCardScreen() {
 
             <View style={styles.modeSelector}>
               <Text style={styles.modeTitle}>Vista del reproductor público</Text>
+              <View style={styles.modeControlRow}>
               <View style={styles.modeButtons}>
                 {[["simple", "Simplificado"], ["complete", "Completo"], ["app-one", "App · 1 col"], ["app-two", "App · 2 col"]].map(([value, label]) => (
                   <Pressable key={value} accessibilityRole="radio"
@@ -402,6 +403,27 @@ export default function PublicMusicCardScreen() {
                     <Text style={[styles.modeButtonText, viewMode === value && styles.modeButtonTextActive]}>{label}</Text>
                   </Pressable>
                 ))}
+              </View>
+                {data.tracks.length > 1 && <View style={styles.playbackControls}>
+                  <Pressable
+                    onPress={() => setRepeatOne(value => !value)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Repeat 1: repetir pista actual"
+                    accessibilityState={{ selected: repeatOne }}
+                    style={[styles.controlChip, appView && styles.appControlChip, repeatOne && styles.controlChipActive]}>
+                    <Ionicons name="repeat" size={17} color={repeatOne ? "#2563eb" : (appView ? "#a1a1aa" : "#64748b")} />
+                    <Text style={[styles.controlOne, repeatOne && styles.controlActiveText]}>1</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setAdvanceAutomatically(value => !value)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Autoplay next: continuar con la siguiente canción"
+                    accessibilityState={{ selected: advanceAutomatically }}
+                    style={[styles.controlChip, appView && styles.appControlChip, advanceAutomatically && styles.controlChipActive]}>
+                    <Ionicons name="play-skip-forward-outline" size={18} color={advanceAutomatically ? "#2563eb" : (appView ? "#a1a1aa" : "#64748b")} />
+                    <Text style={[styles.controlCaption, appView && !advanceAutomatically && styles.appMuted, advanceAutomatically && styles.controlActiveText]}>Auto next</Text>
+                  </Pressable>
+                </View>}
               </View>
               <Text style={styles.modeHint}>{viewMode === "complete"
                 ? "Vídeo y lista de canciones, con selección de pistas."
@@ -441,14 +463,6 @@ export default function PublicMusicCardScreen() {
                           })}
                         </View>
                       ) : null}
-                      <View style={[styles.timeBar, appView && styles.appTimeBar]}>
-                        <Text style={[styles.timeText, appView && styles.appTimeText]} accessibilityLabel="Tiempo transcurrido">
-                          Transcurrido: {formatPlaybackTime(positionSeconds)}
-                        </Text>
-                        <Text style={[styles.timeText, appView && styles.appTimeText]} accessibilityLabel="Tiempo restante">
-                          Restante: {durationSeconds !== null ? `−${formatPlaybackTime(Math.max(0, durationSeconds - positionSeconds))}` : "--:--"}
-                        </Text>
-                      </View>
                       {activeLyric ? <Text style={styles.lyricLine} numberOfLines={2}>{activeLyric}</Text> : null}
                       {lyricsStatus === "error" ? <Text style={styles.lyricsError}>No se pudieron cargar las letras. {lyricsDebug ? lyricsError : "Comprueba la publicación del LRC."}</Text> : null}
                       {lyricsDebug && <Text style={styles.lyricsDiagnostic}>
@@ -501,26 +515,6 @@ export default function PublicMusicCardScreen() {
                     </View>
                   )}
                 </View>
-                {data.tracks.length > 1 && <View style={styles.playbackControls}>
-                  <Pressable
-                    onPress={() => setRepeatOne(value => !value)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Repeat 1: repetir pista actual"
-                    accessibilityState={{ selected: repeatOne }}
-                    style={[styles.controlChip, appView && styles.appControlChip, repeatOne && styles.controlChipActive]}>
-                    <Ionicons name="repeat" size={17} color={repeatOne ? "#2563eb" : (appView ? "#a1a1aa" : "#64748b")} />
-                    <Text style={[styles.controlOne, repeatOne && styles.controlActiveText]}>1</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setAdvanceAutomatically(value => !value)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Autoplay next: continuar con la siguiente canción"
-                    accessibilityState={{ selected: advanceAutomatically }}
-                    style={[styles.controlChip, appView && styles.appControlChip, advanceAutomatically && styles.controlChipActive]}>
-                    <Ionicons name="play-skip-forward-outline" size={18} color={advanceAutomatically ? "#2563eb" : (appView ? "#a1a1aa" : "#64748b")} />
-                    <Text style={[styles.controlCaption, appView && !advanceAutomatically && styles.appMuted, advanceAutomatically && styles.controlActiveText]}>Auto next</Text>
-                  </Pressable>
-                </View>}
                 {!appView && <Text style={styles.footnote}>
                   La reproducción integrada utiliza el reproductor oficial de YouTube. Algunos vídeos no permiten insertarse en otras páginas; en ese caso, ábrelos en YouTube.
                 </Text>}
@@ -533,6 +527,7 @@ export default function PublicMusicCardScreen() {
                     <Text style={[styles.playlistCount, appView && styles.appMuted]}>{data.tracks.length} vídeos</Text>
                   </View>
                   {data.tracks.map((item, i) => (
+                    <React.Fragment key={`${i}-${item.videoId || item.playlistId}`}>
                     <Pressable
                       key={`${i}-${item.videoId || item.playlistId}`}
                       onPress={() => chooseTrack(i)}
@@ -551,6 +546,22 @@ export default function PublicMusicCardScreen() {
                       </View>
                       <Ionicons name={index === i && currentPlaying && player === "shopp" ? "pause-circle" : (index === i ? "play-circle" : "play-circle-outline")} size={18} color={appView ? (index === i ? "#ec1680" : "#9ca3af") : (index === i ? "#2563eb" : "#94a3b8")} />
                     </Pressable>
+                    {index === i && player === "shopp" && (
+                      <View style={[styles.trackProgressArea, appView && styles.appTrackProgressArea]}>
+                        <Text style={[styles.trackProgressText, appView && styles.appTimeText]} accessibilityLabel="Tiempo transcurrido">
+                          {formatPlaybackTime(positionSeconds)}
+                        </Text>
+                        <View style={styles.trackProgressRail}>
+                          <View style={[styles.trackProgressFill, {
+                            width: `${durationSeconds > 0 ? Math.min(100, Math.max(0, positionSeconds / durationSeconds * 100)) : 0}%`,
+                          }]} />
+                        </View>
+                        <Text style={[styles.trackProgressText, appView && styles.appTimeText]} accessibilityLabel="Tiempo restante">
+                          {durationSeconds > 0 ? `−${formatPlaybackTime(Math.max(0, durationSeconds - positionSeconds))}` : "--:--"}
+                        </Text>
+                      </View>
+                    )}
+                  </React.Fragment>
                   ))}
                 </View>
               ) : null}
@@ -563,6 +574,11 @@ export default function PublicMusicCardScreen() {
 }
 
 const styles = StyleSheet.create({
+  trackProgressArea: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 4, marginTop: -3, marginBottom: 3, borderRadius: 7, backgroundColor: "#eff6ff" },
+  appTrackProgressArea: { backgroundColor: "#231b23" },
+  trackProgressText: { color: "#64748b", fontSize: 10, fontWeight: "600", fontVariant: ["tabular-nums"], minWidth: 39, textAlign: "center" },
+  trackProgressRail: { flex: 1, height: 3, borderRadius: 3, backgroundColor: "#9ca3af", overflow: "hidden" },
+  trackProgressFill: { height: "100%", backgroundColor: "#2563eb" },
   lyricsError: { color: "#b91c1c", fontSize: 12, padding: 8, textAlign: "center" },
   lyricsDiagnostic: { color: "#f59e0b", fontSize: 11, padding: 8, backgroundColor: "#29220f" },
   timeBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 5, backgroundColor: "#f8fafc" },
@@ -570,7 +586,8 @@ const styles = StyleSheet.create({
   timeText: { fontSize: 11, fontWeight: "600", color: "#64748b", fontVariant: ["tabular-nums"] },
   appTimeText: { color: "#a1a1aa" },
   lyricLine: { paddingHorizontal: 12, paddingVertical: 7, textAlign: "center", fontSize: 14, fontStyle: "italic", color: "#eab308", backgroundColor: "#17171b" },
-  playbackControls: { flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 6, paddingHorizontal: 2 },
+  modeControlRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
+  playbackControls: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 0, paddingHorizontal: 0 },
   controlChip: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, minHeight: 34, paddingHorizontal: 10, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 9, backgroundColor: "#f8fafc" },
   appControlChip: { backgroundColor: "#202025", borderColor: "#34343a" },
   controlChipActive: { backgroundColor: "#eff6ff", borderColor: "#93c5fd" },
