@@ -404,26 +404,7 @@ export default function PublicMusicCardScreen() {
                   </Pressable>
                 ))}
               </View>
-                {data.tracks.length > 1 && <View style={styles.playbackControls}>
-                  <Pressable
-                    onPress={() => setRepeatOne(value => !value)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Repeat 1: repetir pista actual"
-                    accessibilityState={{ selected: repeatOne }}
-                    style={[styles.controlChip, appView && styles.appControlChip, repeatOne && (appView ? styles.appControlChipActive : styles.controlChipActive)]}>
-                    <Ionicons name="repeat" size={17} color={repeatOne ? (appView ? "#f9a8d4" : "#2563eb") : (appView ? "#a1a1aa" : "#64748b")} />
-                    <Text style={[styles.controlOne, repeatOne && (appView ? styles.appControlActiveText : styles.controlActiveText)]}>1</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setAdvanceAutomatically(value => !value)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Autoplay next: continuar con la siguiente canción"
-                    accessibilityState={{ selected: advanceAutomatically }}
-                    style={[styles.controlChip, appView && styles.appControlChip, advanceAutomatically && (appView ? styles.appControlChipActive : styles.controlChipActive)]}>
-                    <Ionicons name="play-skip-forward-outline" size={18} color={advanceAutomatically ? (appView ? "#f9a8d4" : "#2563eb") : (appView ? "#a1a1aa" : "#64748b")} />
-                    <Text style={[styles.controlCaption, appView && !advanceAutomatically && styles.appMuted, advanceAutomatically && (appView ? styles.appControlActiveText : styles.controlActiveText)]}>Auto next</Text>
-                  </Pressable>
-                </View>}
+
               </View>
               <Text style={styles.modeHint}>{viewMode === "complete"
                 ? "Vídeo y lista de canciones, con selección de pistas."
@@ -534,7 +515,30 @@ export default function PublicMusicCardScreen() {
                 <View style={[styles.playlistPanel, viewMode === "complete" && isWide && styles.playlistPanelWide, appView && styles.appPlaylistPanel, twoColumnApp && styles.appPlaylistWide, appView && !twoColumnApp && styles.appPlaylistCentered]}>
                   <View style={styles.playlistHeader}>
                     <Text style={[styles.playlistHeading, appView && styles.appText]}>Canciones</Text>
-                    <Text style={[styles.playlistCount, appView && styles.appMuted]}>{data.tracks.length} vídeos</Text>
+                    <View style={styles.playlistHeaderActions}>
+                      {data.tracks.length > 1 && <View style={styles.playbackControls}>
+                      <Pressable
+                        onPress={() => setRepeatOne(value => !value)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Repetir pista actual"
+                        accessibilityHint="Activa o desactiva Repeat 1"
+                        accessibilityState={{ selected: repeatOne }}
+                        style={[styles.headerIconButton, appView && styles.headerIconButtonDark, repeatOne && (appView ? styles.headerIconActiveDark : styles.headerIconActiveLight)]}>
+                        <Ionicons name="repeat" size={21} color={repeatOne ? (appView ? "#f9a8d4" : "#1d4ed8") : (appView ? "#d4d4d8" : "#475569")} />
+                        <Text style={[styles.repeatOneLabel, { color: repeatOne ? (appView ? "#f9a8d4" : "#1d4ed8") : (appView ? "#d4d4d8" : "#475569") }]}>1</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setAdvanceAutomatically(value => !value)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Reproducir siguiente automáticamente"
+                        accessibilityHint="Activa o desactiva Auto next"
+                        accessibilityState={{ selected: advanceAutomatically }}
+                        style={[styles.headerIconButton, appView && styles.headerIconButtonDark, advanceAutomatically && (appView ? styles.headerIconActiveDark : styles.headerIconActiveLight)]}>
+                        <Ionicons name="play-skip-forward-outline" size={22} color={advanceAutomatically ? (appView ? "#f9a8d4" : "#1d4ed8") : (appView ? "#d4d4d8" : "#475569")} />
+                      </Pressable>
+                    </View>}
+                      <Text style={[styles.playlistCount, appView && styles.appMuted]}>{data.tracks.length} vídeos</Text>
+                    </View>
                   </View>
                   {data.tracks.map((item, i) => (
                     <React.Fragment key={`${i}-${item.videoId || item.playlistId}`}>
@@ -604,7 +608,7 @@ const styles = StyleSheet.create({
   controlChip: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, minHeight: 34, paddingHorizontal: 10, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 9, backgroundColor: "#f8fafc" },
   appControlChip: { backgroundColor: "#202025", borderColor: "#34343a" },
   controlChipActive: { backgroundColor: "#eff6ff", borderColor: "#93c5fd" },
-  appControlChipActive: { backgroundColor: "#452238", borderColor: "#ec1680" },
+  appControlChipActive: { backgroundColor: "#352031", borderColor: "#9d4979" },
   appControlActiveText: { color: "#f9a8d4" },
   controlOne: { fontSize: 11, fontWeight: "800", color: "#94a3b8" },
   controlCaption: { fontSize: 11, fontWeight: "600", color: "#64748b" },
@@ -663,13 +667,13 @@ const styles = StyleSheet.create({
   playerActions: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
   nowPlaying: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1, minWidth: 100 },
   nowPlayingText: { color: "#0f172a", fontWeight: "700", fontSize: 12, flexShrink: 1 },
-  changeButton: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, minHeight: 30, borderRadius: 7, backgroundColor: "#eff6ff", borderWidth: 1, borderColor: "#bfdbfe" },
-  appActionButton: { backgroundColor: "#321d2b", borderColor: "#824367" },
-  appActionText: { color: "#fbcfe8" },
-  youtubeCompactButton: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, minHeight: 30, borderRadius: 7, backgroundColor: "#fff1f2", borderWidth: 1, borderColor: "#fecdd3" },
-  youtubeCompactText: { color: "#9f1239", fontWeight: "700", fontSize: 12 },
-  appYoutubeButton: { backgroundColor: "#351b22", borderColor: "#944052" },
-  appYoutubeText: { color: "#fecdd3" },
+  changeButton: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, minHeight: 30, borderRadius: 7, backgroundColor: "#eff6ff", borderWidth: 1, borderColor: "#93c5fd" },
+  appActionButton: { backgroundColor: "#27232f", borderColor: "#765b88" },
+  appActionText: { color: "#e9d5ff" },
+  youtubeCompactButton: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, minHeight: 30, borderRadius: 7, backgroundColor: "#fff1f2", borderWidth: 1, borderColor: "#fda4af" },
+  youtubeCompactText: { color: "#be123c", fontWeight: "700", fontSize: 12 },
+  appYoutubeButton: { backgroundColor: "#351c25", borderColor: "#93465c" },
+  appYoutubeText: { color: "#fda4af" },
   changeText: { color: "#1d4ed8", fontSize: 12, fontWeight: "700" },
   fallbackButton: { flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center", padding: 12, borderTopWidth: 1, borderColor: "#e2e8f0" },
   fallbackText: { color: "#b91c1c", fontWeight: "700", fontSize: 13 },
@@ -690,10 +694,16 @@ const styles = StyleSheet.create({
   footnote: { fontSize: 12, lineHeight: 17, color: "#64748b", textAlign: "center", paddingHorizontal: 6 },
   playlistPanel: { width: "100%", backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#e2e8f0", padding: 11, gap: 6 },
   playlistPanelWide: { width: 350, flexShrink: 0 },
-  playlistHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 7, paddingHorizontal: 4 },
+  playlistHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, paddingVertical: 3, paddingHorizontal: 4 },
+  playlistHeaderActions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
+  headerIconButton: { width: 44, height: 44, borderRadius: 10, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#f1f5f9", flexDirection: "row", justifyContent: "center", alignItems: "center" },
+  headerIconButtonDark: { backgroundColor: "#24242b", borderColor: "#4b4b53" },
+  headerIconActiveLight: { backgroundColor: "#dbeafe", borderColor: "#60a5fa" },
+  headerIconActiveDark: { backgroundColor: "#422035", borderColor: "#e879ac" },
+  repeatOneLabel: { fontSize: 11, fontWeight: "800", marginLeft: -2 },
   playlistHeading: { fontSize: 17, fontWeight: "800", color: "#0f172a" },
   playlistCount: { color: "#64748b", fontSize: 12 },
-  trackRow: { flexDirection: "column", gap: 2, alignItems: "stretch", backgroundColor: "#f8fafc", paddingVertical: 8, paddingHorizontal: 10, minHeight: 43, borderRadius: 9, borderWidth: 1, borderColor: "#e2e8f0" },
+  trackRow: { flexDirection: "column", gap: 2, alignItems: "stretch", backgroundColor: "#f8fafc", paddingVertical: 8, paddingHorizontal: 10, minHeight: 44, borderRadius: 9, borderWidth: 1, borderColor: "#e2e8f0" },
   trackRowSelected: { backgroundColor: "#eff6ff", borderColor: "#2563eb" },
   trackNumber: { color: "#64748b", fontWeight: "700", width: 21, textAlign: "center" },
   trackNumberSelected: { color: "#2563eb" },
