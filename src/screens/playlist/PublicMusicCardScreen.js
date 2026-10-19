@@ -379,7 +379,7 @@ export default function PublicMusicCardScreen() {
                         window.history.replaceState(null, "", url.toString());
                       }
                     }}
-                    style={[styles.modeButton, viewMode === value && styles.modeButtonActive]}>
+                    style={[styles.modeButton, width < 620 && styles.modeButtonMobile, viewMode === value && styles.modeButtonActive]}>
                     <Text style={[styles.modeButtonText, viewMode === value && styles.modeButtonTextActive]}>{label}</Text>
                   </Pressable>
                 ))}
@@ -562,14 +562,15 @@ const styles = StyleSheet.create({
   appPlaylistCentered: { width: "100%", maxWidth: 660 },
   appTrackRow: { backgroundColor: "#19191d", borderColor: "#34343a" },
   appTrackSelected: { backgroundColor: "#291522", borderColor: "#ec1680" },
-  modeSelector: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 14, padding: 13, marginBottom: 15, gap: 8 },
-  modeTitle: { color: "#0f172a", fontSize: 14, fontWeight: "800" },
-  modeButtons: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  modeButton: { flexGrow: 1, flexBasis: "46%", alignItems: "center", paddingVertical: 12, borderRadius: 10, backgroundColor: "#f1f5f9", borderWidth: 1, borderColor: "#cbd5e1" },
+  modeSelector: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12, padding: 9, marginBottom: 12, gap: 5 },
+  modeTitle: { color: "#0f172a", fontSize: 13, fontWeight: "800" },
+  modeButtons: { flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" },
+  modeButton: { flexGrow: 0, flexShrink: 0, alignItems: "center", justifyContent: "center", minHeight: 32, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "#f1f5f9", borderWidth: 1, borderColor: "#cbd5e1" },
+  modeButtonMobile: { flexBasis: "47%", flexGrow: 1, flexShrink: 1 },
   modeButtonActive: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
-  modeButtonText: { color: "#334155", fontWeight: "700" },
+  modeButtonText: { color: "#334155", fontWeight: "700", fontSize: 12 },
   modeButtonTextActive: { color: "#fff" },
-  modeHint: { color: "#64748b", fontSize: 12 },
+  modeHint: { color: "#64748b", fontSize: 11 },
   page: { flex: 1, backgroundColor: "#f1f5f9" },
   body: { minHeight: "100%", paddingHorizontal: 16, paddingVertical: 22, alignItems: "center" },
   container: { width: "100%", maxWidth: 1160, gap: 17 },
