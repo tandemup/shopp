@@ -107,7 +107,7 @@ function SyncedLyricLine({ track, uri, time, compact = false }) {
   lines.forEach((line, i) => {
     if (line.time <= time + 0.08) index = i;
   });
-  const text = lines[index]?.text || lines[0]?.text;
+  const text = index >= 0 ? lines[index]?.text : null;
   if (!text) return null;
   return (
     <View style={styles.cardLyric}>
@@ -213,7 +213,7 @@ function QueueLyricsPreview({ track, uri, time }) {
   lines.forEach((line, i) => {
     if (line.time <= time + 0.08) activeIndex = i;
   });
-  const currentLine = activeIndex >= 0 ? lines[activeIndex] : lines[0];
+  const currentLine = activeIndex >= 0 ? lines[activeIndex] : null;
   // Sin líneas LRC válidas, la tarjeta mantiene su altura normal.
   if (!lines.length || !currentLine?.text?.trim()) return null;
 
@@ -222,6 +222,48 @@ function QueueLyricsPreview({ track, uri, time }) {
       <Text style={styles.queueLyricsCurrent} numberOfLines={1}>
         {currentLine?.text || ""}
       </Text>
+    </View>
+  );
+}
+
+// Panel de prueba: letra LRC completa bajo el vídeo, con línea activa resaltada.
+function LyricsBelowVideo({ track, uri, time }) {
+  const [lines, setLines] = useState([]);
+  const scrollRef = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    setLines([]);
+    (async () => {
+      try {
+        const local = await getLocalLyrics(track);
+        let content = local?.text;
+        if (content == null && uri) {
+          const response = await fetch(uri);
+          content = response.ok ? await response.text() : "";
+        }
+        if (!cancelled) setLines(parseLrc(content || ""));
+      } catch { if (!cancelled) setLines([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [track?.videoId, track?.playlistId, track?.url, track?.lyricsKey, track?.lyricsDisabled, uri]);
+  if (!lines.length) return null;
+  let activeIndex = -1;
+  lines.forEach((line, index) => {
+    if (line.time <= time + 0.08) activeIndex = index;
+  });
+  return (
+    <View style={styles.testLyricsBelowVideo}>
+      <Text style={styles.testLyricsCaption}>LETRA SINCRONIZADA · PRUEBA</Text>
+      <ScrollView ref={scrollRef} style={styles.testLyricsScroller} nestedScrollEnabled>
+        {lines.map((line, index) => (
+          <Text key={`${line.time}-${index}`} style={[
+            styles.testLyricsLine,
+            index === activeIndex && styles.testLyricsLineActive,
+          ]}>
+            {line.text}
+          </Text>
+        ))}
+      </ScrollView>
     </View>
   );
 }
@@ -398,8 +440,8 @@ export default function PlaybackProvider({ children }) {
           index: 0,
           isTutorial,
           sourceKey,
-          resumeTime: remembered?.time || 0,
-          resumePlaylistIndex: remembered?.playlistIndex || 0,
+          resumeTime: 0,
+          resumePlaylistIndex: 0,
           autoPlay: false,
         });
       }
@@ -448,8 +490,8 @@ export default function PlaybackProvider({ children }) {
     installSession({
       ...session,
       index,
-      resumeTime: remembered?.time || 0,
-      resumePlaylistIndex: remembered?.playlistIndex || 0,
+      resumeTime: 0,
+      resumePlaylistIndex: 0,
       autoPlay: true,
     });
   };
@@ -640,9 +682,8 @@ export default function PlaybackProvider({ children }) {
     ? {
         ref: player,
         track,
-        initialTime: status.time || session.resumeTime || 0,
-        initialPlaylistIndex:
-          status.playlistIndex || session.resumePlaylistIndex || 0,
+        initialTime: session.resumeTime || 0,
+        initialPlaylistIndex: session.resumePlaylistIndex || 0,
         autoPlay: Boolean(session.autoPlay),
         initialVolume: volume,
         onStatus: (next) => {
@@ -915,6 +956,12 @@ export default function PlaybackProvider({ children }) {
                           {...playerSurfaceProps}
                         />
                       </View>
+                      <LyricsBelowVideo
+                        key={`lyrics-media:${session.requestId}`}
+                        track={track}
+                        uri={lyricsUri}
+                        time={status.time || 0}
+                      />
                     </View>
                   ) : null}
                   {!mediaLayout ? (
@@ -925,6 +972,12 @@ export default function PlaybackProvider({ children }) {
                           {...playerSurfaceProps}
                         />
                       </View>
+                      <LyricsBelowVideo
+                        key={`lyrics-mobile:${session.requestId}`}
+                        track={track}
+                        uri={lyricsUri}
+                        time={status.time || 0}
+                      />
                     </View>
                   ) : null}
                 <TrackPaneComponent
@@ -1075,10 +1128,12 @@ export default function PlaybackProvider({ children }) {
                             !wideTransport && styles.cardArtworkButtonMobile,
                           ]}
                         >
-                          {imageId ? (
+                          {(item.artworkUrl || imageId) ? (
                             <Image
                               source={{
-                                uri: `https://i.ytimg.com/vi/${imageId}/mqdefault.jpg`,
+                                uri: /^https:\/\/[^\s]+$/i.test(item.artworkUrl || "")
+                                  ? item.artworkUrl
+                                  : `https://i.ytimg.com/vi/${imageId}/mqdefault.jpg`,
                               }}
                               style={[
                                 styles.cardArtwork,
@@ -1728,6 +1783,22 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     overflow: "hidden",
   },
+  testLyricsBelowVideo: {
+    alignSelf: "stretch",
+    width: "100%",
+    maxHeight: 164,
+    minHeight: 0,
+    marginTop: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#35313c",
+    borderRadius: 8,
+    backgroundColor: "#161319",
+  },
+  testLyricsCaption: { color: "#aaa5ad", fontSize: 10, fontWeight: "700", marginBottom: 5 },
+  testLyricsScroller: { maxHeight: 132 },
+  testLyricsLine: { color: "#b5b0ba", fontSize: 13, lineHeight: 24, textAlign: "center" },
+  testLyricsLineActive: { color: "#facc15", fontWeight: "700" },
   desktopLyricsPanel: {
     flex: 1,
     width: "100%",

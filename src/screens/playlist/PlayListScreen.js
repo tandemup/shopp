@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   FlatList,
   Modal,
   Platform,
@@ -54,6 +55,7 @@ const initialTracks = () => {
     title: "",
     url: "",
     lyrics: null,
+    artworkUrl: "",
   };
   return [first];
 };
@@ -743,6 +745,7 @@ export default function PlayListScreen() {
           track.title ||
           `${isTutorialStyle ? "Vídeo" : "Elemento"} ${index + 1}`,
         lyricsFileName: track.lyricsFileName || null,
+        artworkUrl: track.artworkUrl || "",
         lyricsKey: track.lyricsKey || null,
         lyricsDisabled: track.lyricsDisabled === true,
         url:
@@ -1173,6 +1176,7 @@ export default function PlayListScreen() {
           kind: isNews ? "single" : track.kind === "album" ? "album" : "single",
           videoId: parsed.videoId || undefined,
           playlistId: parsed.playlistId || undefined,
+          ...(localMode && !isTutorialStyle ? { artworkUrl: String(track.artworkUrl || "").trim() } : {}),
           title:
             (isNews ? title.trim() : track.title.trim()) ||
             `${track.kind === "album" ? "Álbum" : "Single"} ${index + 1}`,
@@ -2353,6 +2357,32 @@ export default function PlayListScreen() {
                     }
                     style={styles.trackInput}
                   />
+                  {!isTutorialStyle && (
+                    <View style={{ marginTop: 8, marginBottom: 8 }}>
+                      <Text style={{ color: "#475569", fontSize: 12, marginBottom: 5 }}>
+                        Carátula de la canción (URL de imagen, opcional)
+                      </Text>
+                      <TextInput
+                        value={track.artworkUrl || ""}
+                        onChangeText={(value) => updateTrack(index, "artworkUrl", value)}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        placeholder="https://.../portada.jpg"
+                        style={styles.trackInput}
+                      />
+                      {Boolean(track.artworkUrl?.trim()) && (
+                        /^https:\/\/[^\s]+$/i.test(track.artworkUrl.trim()) ? (
+                          <Image source={{ uri: track.artworkUrl.trim() }}
+                            style={{ width: 72, height: 72, borderRadius: 6, marginTop: 6 }}
+                            resizeMode="cover" />
+                        ) : (
+                          <Text style={{ color: "#b91c1c", fontSize: 12 }}>
+                            Utiliza una URL HTTPS de imagen válida.
+                          </Text>
+                        )
+                      )}
+                    </View>
+                  )}
                   {Boolean(track.url.trim()) && (() => {
                     const parsed = parseYouTubeUrl(track.url.trim());
                     const message = !parsed.isValid
