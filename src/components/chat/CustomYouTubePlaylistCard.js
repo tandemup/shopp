@@ -53,10 +53,12 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
   return (
     <View style={[styles.card, isNews && styles.newsCard]}>
       <Pressable onPress={() => playback.open(playlist, { isTutorial })} style={[styles.summary, compactCard && styles.summaryPhone]}>
-        {activeTrack.videoId ? (
+        {(activeTrack.artworkUrl || activeTrack.videoId) ? (
           <Image
             source={{
-              uri: `https://i.ytimg.com/vi/${activeTrack.videoId}/mqdefault.jpg`,
+              uri: /^https:\/\/[^\s]+$/i.test(activeTrack.artworkUrl || "")
+                ? activeTrack.artworkUrl
+                : `https://i.ytimg.com/vi/${activeTrack.videoId}/mqdefault.jpg`,
             }}
             style={[styles.cover, compactCard && styles.coverPhone, compactCard && { width: coverWidth }]}
             resizeMode="contain"

@@ -1075,10 +1075,12 @@ export default function PlaybackProvider({ children }) {
                             !wideTransport && styles.cardArtworkButtonMobile,
                           ]}
                         >
-                          {imageId ? (
+                          {(item.artworkUrl || imageId) ? (
                             <Image
                               source={{
-                                uri: `https://i.ytimg.com/vi/${imageId}/mqdefault.jpg`,
+                                uri: /^https:\/\/[^\s]+$/i.test(item.artworkUrl || "")
+                                  ? item.artworkUrl
+                                  : `https://i.ytimg.com/vi/${imageId}/mqdefault.jpg`,
                               }}
                               style={[
                                 styles.cardArtwork,
