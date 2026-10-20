@@ -373,6 +373,7 @@ export default function PlaybackProvider({ children }) {
   // Tamaño del vídeo cuando usamos el layout de una sola columna.
   const [desktopVideoSize, setDesktopVideoSize] = useState("medium");
   const [repeat, setRepeat] = useState(false);
+  const [autoNext, setAutoNext] = useState(true);
   const [shuffle, setShuffle] = useState(false);
   const [volume, setVolume] = useState(100);
   const trackVolumes = useRef(new Map());
@@ -644,7 +645,7 @@ export default function PlaybackProvider({ children }) {
     if (repeat) {
       player.current?.seek(0);
       player.current?.play();
-    } else if (session.tracks.length > 1) {
+    } else if (autoNext && session.tracks.length > 1) {
       selectRelative(1);
     }
   }, [status.state]);
@@ -841,6 +842,30 @@ export default function PlaybackProvider({ children }) {
                     playing ? player.current?.pause() : player.current?.play()
                   }
                 />
+              ) : null}
+              {expanded && session.tracks.length > 1 ? (
+                <View style={[styles.headerPlaybackOptions, width < 600 && styles.headerPlaybackOptionsMobile]}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Repetir una canción"
+                    accessibilityState={{ selected: repeat }}
+                    onPress={() => setRepeat(value => !value)}
+                    style={[styles.headerPlaybackOption, width < 600 && styles.headerPlaybackOptionMobile, repeat && styles.headerPlaybackOptionActive]}
+                  >
+                    <Ionicons name="repeat" size={18} color={repeat ? "#f9a8d4" : "#d4d4d8"} />
+                    <Text style={[styles.headerPlaybackOptionText, repeat && styles.headerPlaybackOptionTextActive]}>1</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Pasar automáticamente a la siguiente canción"
+                    accessibilityState={{ selected: autoNext }}
+                    onPress={() => setAutoNext(value => !value)}
+                    style={[styles.headerPlaybackOption, width < 600 && styles.headerPlaybackOptionMobile, autoNext && styles.headerPlaybackOptionActive]}
+                  >
+                    <Ionicons name="play-skip-forward-outline" size={18} color={autoNext ? "#f9a8d4" : "#d4d4d8"} />
+                    {width >= 600 ? <Text style={[styles.headerPlaybackOptionText, autoNext && styles.headerPlaybackOptionTextActive]}>Next</Text> : null}
+                  </Pressable>
+                </View>
               ) : null}
               {showColumnSelector ? (
                 <View style={styles.desktopColumnSelector}>
@@ -1483,6 +1508,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#111113",
   },
   heading: { flex: 1, minWidth: 0, paddingLeft: 16 },
+  headerPlaybackOptions: { flexDirection: "row", alignItems: "center", gap: 5, marginRight: 8 },
+  headerPlaybackOption: { flexDirection: "row", alignItems: "center", justifyContent: "center", minHeight: 38, minWidth: 46, paddingHorizontal: 8, gap: 3, borderWidth: 1, borderRadius: 6, borderColor: "#3f3f46", backgroundColor: "#18181b" },
+  headerPlaybackOptionsMobile: { gap: 4, marginRight: 2 },
+  headerPlaybackOptionMobile: { minWidth: 44, minHeight: 44, paddingHorizontal: 5 },
+  headerPlaybackOptionActive: { borderColor: "#ec1970", backgroundColor: "#411629" },
+  headerPlaybackOptionText: { fontSize: 11, color: "#d4d4d8", fontWeight: "700" },
+  headerPlaybackOptionTextActive: { color: "#f9a8d4" },
+
   headerPlaylistTitle: {
     minHeight: 42,
     justifyContent: "center",
