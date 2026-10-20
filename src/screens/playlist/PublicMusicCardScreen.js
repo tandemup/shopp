@@ -444,7 +444,13 @@ export default function PublicMusicCardScreen() {
                           })}
                         </View>
                       ) : null}
-                      {activeLyric ? <Text style={styles.lyricLine} numberOfLines={2}>{activeLyric}</Text> : null}
+                      {activeLyric ? (
+                        <View style={styles.lyricStrip}>
+                          <Text style={styles.lyricLine} numberOfLines={2}>
+                            {activeLyric}
+                          </Text>
+                        </View>
+                      ) : null}
                       {lyricsStatus === "error" ? <Text style={styles.lyricsError}>No se pudieron cargar las letras. {lyricsDebug ? lyricsError : "Comprueba la publicación del LRC."}</Text> : null}
                       {lyricsDebug && <Text style={styles.lyricsDiagnostic}>
                         {`LRC: ${lyricsStatus} · ${lrcLines.length} líneas · tiempo: ${positionSeconds.toFixed(1)} s · reloj YouTube: ${youtubeClockReceived ? "OK" : "sin datos"} · URL: ${currentTrack?.lyricsUrl || "(sin lyricsUrl)"}`}
@@ -602,7 +608,25 @@ const styles = StyleSheet.create({
   appTimeBar: { backgroundColor: "#17171b" },
   timeText: { fontSize: 11, fontWeight: "600", color: "#64748b", fontVariant: ["tabular-nums"] },
   appTimeText: { color: "#a1a1aa" },
-  lyricLine: { paddingHorizontal: 12, paddingVertical: 7, textAlign: "center", fontSize: 14, fontStyle: "italic", color: "#eab308", backgroundColor: "#17171b" },
+  lyricStrip: {
+    backgroundColor: "#101014",
+    borderTopWidth: 1,
+    borderTopColor: "#26262b",
+    borderBottomWidth: 1,
+    borderBottomColor: "#26262b",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    justifyContent: "center",
+    alignItems: "center",
+    minHeight: 36,
+  },
+  lyricLine: {
+    textAlign: "center",
+    fontSize: 14,
+    fontStyle: "italic",
+    fontWeight: "600",
+    color: "#eab308",
+  },
   modeControlRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   playbackControls: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 0, paddingHorizontal: 0 },
   controlChip: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, minHeight: 34, paddingHorizontal: 10, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 9, backgroundColor: "#f8fafc" },
