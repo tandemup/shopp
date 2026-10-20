@@ -226,10 +226,9 @@ function QueueLyricsPreview({ track, uri, time }) {
   );
 }
 
-// Panel de prueba: letra LRC completa bajo el vídeo, con línea activa resaltada.
-function LyricsBelowVideo({ track, uri, time }) {
+// Una sola línea LRC, situada inmediatamente debajo de YouTube.
+function LyricsBelowVideo({ track, uri, time, containerStyle }) {
   const [lines, setLines] = useState([]);
-  const scrollRef = useRef(null);
   useEffect(() => {
     let cancelled = false;
     setLines([]);
@@ -242,28 +241,25 @@ function LyricsBelowVideo({ track, uri, time }) {
           content = response.ok ? await response.text() : "";
         }
         if (!cancelled) setLines(parseLrc(content || ""));
-      } catch { if (!cancelled) setLines([]); }
+      } catch {
+        if (!cancelled) setLines([]);
+      }
     })();
     return () => { cancelled = true; };
   }, [track?.videoId, track?.playlistId, track?.url, track?.lyricsKey, track?.lyricsDisabled, uri]);
-  if (!lines.length) return null;
-  let activeIndex = -1;
-  lines.forEach((line, index) => {
-    if (line.time <= time + 0.08) activeIndex = index;
-  });
+
+  // No anticipar la primera línea: antes de su marca no hay letra activa.
+  let currentLine = null;
+  for (const line of lines) {
+    if (line.time > time + 0.08) break;
+    currentLine = line;
+  }
+  if (!currentLine?.text?.trim()) return null;
   return (
-    <View style={styles.testLyricsBelowVideo}>
-      <Text style={styles.testLyricsCaption}>LETRA SINCRONIZADA · PRUEBA</Text>
-      <ScrollView ref={scrollRef} style={styles.testLyricsScroller} nestedScrollEnabled>
-        {lines.map((line, index) => (
-          <Text key={`${line.time}-${index}`} style={[
-            styles.testLyricsLine,
-            index === activeIndex && styles.testLyricsLineActive,
-          ]}>
-            {line.text}
-          </Text>
-        ))}
-      </ScrollView>
+    <View style={[styles.lyricStripBelowVideo, containerStyle]}>
+      <Text style={styles.lyricTextBelowVideo} numberOfLines={1} ellipsizeMode="tail">
+        {currentLine.text}
+      </Text>
     </View>
   );
 }
@@ -961,6 +957,10 @@ export default function PlaybackProvider({ children }) {
                         track={track}
                         uri={lyricsUri}
                         time={status.time || 0}
+                        containerStyle={[
+                          oneColumnLayout && { alignSelf: "center", width: oneColumnVideoWidth, maxWidth: oneColumnVideoWidth },
+                          ipadPortrait && { alignSelf: "center", width: ipadPortraitVideoWidth, maxWidth: ipadPortraitVideoWidth },
+                        ]}
                       />
                     </View>
                   ) : null}
@@ -1030,42 +1030,6 @@ export default function PlaybackProvider({ children }) {
                       }
                     : {})}
                 >
-                  {(oneColumnLayout || ipadPortrait) ? (
-                    <View style={styles.videoSizeSelectorRow}>
-                      <Text style={styles.videoSizeSelectorLabel}>TAMAÑO DEL VÍDEO</Text>
-                      <View style={styles.videoSizeSelector}>
-                        {[
-                          ["small", "Pequeño"],
-                          ["medium", "Mediano"],
-                          ["large", "Grande"],
-                        ].map(([value, label]) => {
-                          const active = desktopVideoSize === value;
-                          return (
-                            <Pressable
-                              key={value}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Tamaño de vídeo ${label}`}
-                              accessibilityState={{ selected: active }}
-                              onPress={() => setDesktopVideoSize(value)}
-                              style={[
-                                styles.videoSizeSelectorButton,
-                                active && styles.videoSizeSelectorButtonActive,
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.videoSizeSelectorText,
-                                  active && styles.videoSizeSelectorTextActive,
-                                ]}
-                              >
-                                {label}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </View>
-                  ) : null}
                   {status.error ? (
                     <View style={styles.message}>
                       <Text style={styles.error}>{status.error}</Text>
@@ -1183,16 +1147,6 @@ export default function PlaybackProvider({ children }) {
                               >
                                 {cardTitle}
                               </Text>
-                              <SyncedLyricLine
-                                track={item}
-                                uri={
-                                  active
-                                    ? lyricsUri
-                                    : item.lyricsUri || item.lyricsUrl
-                                }
-                                time={elapsed}
-                                compact={!wideTransport}
-                              />
                             </View>
                             <View
                               style={[
@@ -1476,13 +1430,6 @@ export default function PlaybackProvider({ children }) {
                                     : "Seleccionada"
                                   : kindLabel}
                               </Text>
-                              {active ? (
-                                <QueueLyricsPreview
-                                  track={item}
-                                  uri={active ? lyricsUri : item.lyricsUri || item.lyricsUrl}
-                                  time={active ? status.time || 0 : 0}
-                                />
-                              ) : null}
                             </View>
                             <Ionicons
                               name={active && playing ? "pause-circle" : "play-circle-outline"}
@@ -1783,22 +1730,25 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     overflow: "hidden",
   },
-  testLyricsBelowVideo: {
+  lyricStripBelowVideo: {
     alignSelf: "stretch",
     width: "100%",
-    maxHeight: 164,
-    minHeight: 0,
     marginTop: 8,
-    padding: 10,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    justifyContent: "center",
+    backgroundColor: "#17171b",
     borderWidth: 1,
-    borderColor: "#35313c",
-    borderRadius: 8,
-    backgroundColor: "#161319",
+    borderColor: "#29292d",
+    borderRadius: 5,
   },
-  testLyricsCaption: { color: "#aaa5ad", fontSize: 10, fontWeight: "700", marginBottom: 5 },
-  testLyricsScroller: { maxHeight: 132 },
-  testLyricsLine: { color: "#b5b0ba", fontSize: 13, lineHeight: 24, textAlign: "center" },
-  testLyricsLineActive: { color: "#facc15", fontWeight: "700" },
+  lyricTextBelowVideo: {
+    color: "#facc15",
+    fontSize: 14,
+    fontStyle: "italic",
+    textAlign: "center",
+  },
   desktopLyricsPanel: {
     flex: 1,
     width: "100%",
