@@ -41,14 +41,23 @@
       p {
         color: #475569;
       }
-      img {
-        display: block;
-        max-width: 260px;
+      .media {
         width: 80%;
-        aspect-ratio: 16/9;
-        object-fit: cover;
+        max-width: 260px;
+        aspect-ratio: 16 / 9;
         margin: 16px auto;
         border-radius: 10px;
+        overflow: hidden;
+        background: #0f172a;
+      }
+      .media img,
+      .media iframe {
+        display: block;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        border: 0;
+        object-fit: cover;
       }
       .play-actions {
         display: flex;
@@ -86,14 +95,6 @@
       .play-actions > #shopp {
         background: #2563eb;
       }
-      .player {
-        width: 100%;
-        aspect-ratio: 16/9;
-        border: 0;
-        border-radius: 12px;
-        margin-top: 14px;
-        background: #0f172a;
-      }
       .player-note {
         font-size: 13px;
       }
@@ -117,7 +118,17 @@
     <main>
       <h1>Shopp Music</h1>
       <p>Una canción para compartir contigo</p>
-      <img id="cover" alt="Portada del vídeo" hidden />
+      <div id="media" class="media" hidden>
+        <img id="cover" alt="Portada del vídeo" hidden />
+        <iframe
+          id="player"
+          hidden
+          title="Reproductor de YouTube"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          referrerpolicy="strict-origin-when-cross-origin"
+          allowfullscreen
+        ></iframe>
+      </div>
       <h2 id="title">Cargando…</h2>
       <p id="author"></p>
       <p id="detail"></p>
@@ -133,23 +144,6 @@
           Reproducir aquí
         </button>
       </div>
-      <iframe
-        id="player"
-        class="player"
-        hidden
-        title="Reproductor de YouTube"
-        allow="
-          accelerometer;
-          autoplay;
-          clipboard-write;
-          encrypted-media;
-          gyroscope;
-          picture-in-picture;
-          web-share;
-        "
-        referrerpolicy="strict-origin-when-cross-origin"
-        allowfullscreen
-      ></iframe>
       <p id="player-note" class="player-note" hidden>
         Si el vídeo no permite reproducción integrada, utiliza «Abrir en
         YouTube».
@@ -188,6 +182,7 @@
             ? "Escuchar primer tema en YouTube"
             : "Abrir en YouTube";
           $("youtube").hidden = false;
+          $("media").hidden = !v;
           if (v) {
             $("cover").src = `https://i.ytimg.com/vi/${v}/hqdefault.jpg`;
             $("cover").hidden = false;
@@ -196,14 +191,13 @@
             ? `https://www.youtube-nocookie.com/embed/${v}?playsinline=1&rel=0`
             : `https://www.youtube-nocookie.com/embed/videoseries?list=${list}&playsinline=1`;
           $("shopp").onclick = () => {
-            $("player").src = embed;
+            // Sustituir la carátula en su mismo contenedor, sin mover el diseño.
+            $("cover").hidden = true;
+            $("media").hidden = false;
             $("player").hidden = false;
+            $("player").src = embed;
             $("player-note").hidden = false;
             $("shopp").hidden = true;
-            $("player").scrollIntoView({
-              behavior: "smooth",
-              block: "nearest",
-            });
           };
           $("shopp").hidden = false;
         };
