@@ -444,13 +444,7 @@ export default function PublicMusicCardScreen() {
                           })}
                         </View>
                       ) : null}
-                      {activeLyric ? (
-                        <View style={styles.lyricStrip}>
-                          <Text style={styles.lyricLine} numberOfLines={2}>
-                            {activeLyric}
-                          </Text>
-                        </View>
-                      ) : null}
+                      {activeLyric ? <Text style={styles.lyricLine} numberOfLines={2}>{activeLyric}</Text> : null}
                       {lyricsStatus === "error" ? <Text style={styles.lyricsError}>No se pudieron cargar las letras. {lyricsDebug ? lyricsError : "Comprueba la publicación del LRC."}</Text> : null}
                       {lyricsDebug && <Text style={styles.lyricsDiagnostic}>
                         {`LRC: ${lyricsStatus} · ${lrcLines.length} líneas · tiempo: ${positionSeconds.toFixed(1)} s · reloj YouTube: ${youtubeClockReceived ? "OK" : "sin datos"} · URL: ${currentTrack?.lyricsUrl || "(sin lyricsUrl)"}`}
@@ -519,9 +513,9 @@ export default function PublicMusicCardScreen() {
 
               {showTracks && (appView || data.tracks.length > 1) ? (
                 <View style={[styles.playlistPanel, viewMode === "complete" && isWide && styles.playlistPanelWide, appView && styles.appPlaylistPanel, twoColumnApp && styles.appPlaylistWide, appView && !twoColumnApp && styles.appPlaylistCentered]}>
-                  <View style={styles.playlistHeader}>
+                  <View style={[styles.playlistHeader, width < 520 && styles.playlistHeaderMobile]}>
                     <Text style={[styles.playlistHeading, appView && styles.appText]}>Canciones</Text>
-                    <View style={styles.playlistHeaderActions}>
+                    <View style={[styles.playlistHeaderActions, width < 520 && styles.playlistHeaderActionsMobile]}>
                       {data.tracks.length > 1 && <View style={styles.playbackControls}>
                       <Pressable
                         onPress={() => setRepeatOne(value => !value)}
@@ -539,11 +533,12 @@ export default function PublicMusicCardScreen() {
                         accessibilityLabel="Reproducir siguiente automáticamente"
                         accessibilityHint="Activa o desactiva Auto next"
                         accessibilityState={{ selected: advanceAutomatically }}
-                        style={[styles.headerIconButton, appView && styles.headerIconButtonDark, advanceAutomatically && (appView ? styles.headerIconActiveDark : styles.headerIconActiveLight)]}>
+                        style={[styles.headerIconButton, styles.nextControlButton, appView && styles.headerIconButtonDark, advanceAutomatically && (appView ? styles.headerIconActiveDark : styles.headerIconActiveLight)]}>
                         <Ionicons name="play-skip-forward-outline" size={22} color={advanceAutomatically ? (appView ? "#f9a8d4" : "#1d4ed8") : (appView ? "#d4d4d8" : "#475569")} />
+                        <Text style={[styles.nextLabel, { color: advanceAutomatically ? (appView ? "#f9a8d4" : "#1d4ed8") : (appView ? "#d4d4d8" : "#475569") }]}>Next</Text>
                       </Pressable>
                     </View>}
-                      <Text style={[styles.playlistCount, appView && styles.appMuted]}>{data.tracks.length} vídeos</Text>
+                      <Text style={[styles.playlistCount, appView && styles.appMuted, width < 520 && styles.playlistCountMobile]}>{data.tracks.length} vídeos</Text>
                     </View>
                   </View>
                   {data.tracks.map((item, i) => (
@@ -608,25 +603,7 @@ const styles = StyleSheet.create({
   appTimeBar: { backgroundColor: "#17171b" },
   timeText: { fontSize: 11, fontWeight: "600", color: "#64748b", fontVariant: ["tabular-nums"] },
   appTimeText: { color: "#a1a1aa" },
-  lyricStrip: {
-    backgroundColor: "#101014",
-    borderTopWidth: 1,
-    borderTopColor: "#26262b",
-    borderBottomWidth: 1,
-    borderBottomColor: "#26262b",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    justifyContent: "center",
-    alignItems: "center",
-    minHeight: 36,
-  },
-  lyricLine: {
-    textAlign: "center",
-    fontSize: 14,
-    fontStyle: "italic",
-    fontWeight: "600",
-    color: "#eab308",
-  },
+  lyricLine: { paddingHorizontal: 12, paddingVertical: 7, textAlign: "center", fontSize: 14, fontStyle: "italic", color: "#eab308", backgroundColor: "#17171b" },
   modeControlRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   playbackControls: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 0, paddingHorizontal: 0 },
   controlChip: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, minHeight: 34, paddingHorizontal: 10, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 9, backgroundColor: "#f8fafc" },
@@ -719,11 +696,16 @@ const styles = StyleSheet.create({
   playlistPanel: { width: "100%", backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#e2e8f0", padding: 11, gap: 6 },
   playlistPanelWide: { width: 350, flexShrink: 0 },
   playlistHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, paddingVertical: 3, paddingHorizontal: 4 },
+  playlistHeaderMobile: { flexDirection: "column", alignItems: "stretch" },
+  playlistHeaderActionsMobile: { width: "100%", justifyContent: "space-between", flexWrap: "nowrap" },
+  playlistCountMobile: { fontSize: 11 },
   playlistHeaderActions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
   headerIconButton: { width: 44, height: 44, borderRadius: 10, borderWidth: 1, borderColor: "#cbd5e1", backgroundColor: "#f1f5f9", flexDirection: "row", justifyContent: "center", alignItems: "center" },
   headerIconButtonDark: { backgroundColor: "#24242b", borderColor: "#4b4b53" },
   headerIconActiveLight: { backgroundColor: "#dbeafe", borderColor: "#60a5fa" },
   headerIconActiveDark: { backgroundColor: "#422035", borderColor: "#e879ac" },
+  nextControlButton: { width: 78 },
+  nextLabel: { fontSize: 10, fontWeight: "700", marginLeft: 3 },
   repeatOneLabel: { fontSize: 11, fontWeight: "800", marginLeft: -2 },
   playlistHeading: { fontSize: 17, fontWeight: "800", color: "#0f172a" },
   playlistCount: { color: "#64748b", fontSize: 12 },
