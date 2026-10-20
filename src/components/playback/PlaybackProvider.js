@@ -1012,6 +1012,8 @@ export default function PlaybackProvider({ children }) {
                     !mediaLayout && styles.mobileTrackPane,
                     tablet && styles.tabletTrackPane,
                     tabletPortrait && styles.tabletTrackPanePortrait,
+                    // iPad en vertical: el listado coincide exactamente con el ancho del vídeo.
+                    ipadPortrait && { width: ipadPortraitVideoWidth, maxWidth: ipadPortraitVideoWidth, alignSelf: "center" },
                     tabletLandscape && styles.tabletTrackPaneLandscape,
                     tabletOneColumn && styles.tabletTrackPaneOneColumn,
                     tabletOneColumn && { width: oneColumnVideoWidth, maxWidth: oneColumnVideoWidth },
