@@ -116,7 +116,9 @@ export default forwardRef(function YouTubeSurface({
       if (exclusivePlayback.owns(id)) {
         granted = true;
         startPlayback();
-        emit({ state: 1 });
+        // Do not announce PLAYING until YouTube confirms it. Safari may
+        // refuse autoplay even after playVideo() has been requested.
+        emit();
         return;
       }
       try {
@@ -160,7 +162,8 @@ export default forwardRef(function YouTubeSurface({
         action += 1;
         loadingTrack = true;
         pendingAutoStart = autoPlayNext ? nextTrack : null;
-        player.mute();
+        // Preserve audible playback across a track change. Muting here and
+        // unmuting asynchronously after loadVideoById may be blocked on iOS.
         const start = Math.max(0, time || 0);
         if (nextTrack.kind === "album" && nextTrack.playlistId) {
           player.loadPlaylist({ list: nextTrack.playlistId, index: Math.max(0, playlistIndex || 0), startSeconds: start });
@@ -168,7 +171,7 @@ export default forwardRef(function YouTubeSurface({
           player.loadVideoById({ videoId: nextTrack.videoId, startSeconds: start });
         } else return;
         if (autoPlayNext) {
-          // Espera a que la API confirme que el vídeo cargado es el nuevo.
+          // Wait for confirmation of the newly loaded video.
           // En Safari, playVideo() llamado antes de esa confirmación se aplica
           // a la pista anterior y la nueva queda pausada al finalizar.
           tryPendingAutoStart();
@@ -223,18 +226,28 @@ export default forwardRef(function YouTubeSurface({
             } else if (data === 3 || data === 5) {
               tryPendingAutoStart();
             } else if (data === 2 && pendingAutoStart && hasLoadedPendingTrack()) {
-              // Pausa solicitada por la persona usuaria durante una carga.
-              pendingAutoStart = null;
-              loadingTrack = false;
+              // Safari can briefly report PAUSED while changing videos. Keep
+              // the next-track request alive and retry once it is cued.
+              tryPendingAutoStart();
             }
             // A paused iframe is muted before it can be started again using YouTube's controls.
             if (data === 1 && (!granted || !exclusivePlayback.owns(id))) {
               player.mute(); requestPlay();
             }
-            if (data === 2 || data === 0) { action += 1; granted = false; player.mute(); }
+            if ((data === 2 || data === 0) && !pendingAutoStart && !loadingTrack) {
+              // A normal user pause/end releases playback ownership. A PAUSED
+              // event in the middle of loading Next is only transitional.
+              action += 1;
+              granted = false;
+              if (data === 2) player.mute();
+            }
             emit();
           },
-          onAutoplayBlocked: () => emit({ state: 2, notice: "Pulsa reproducir para iniciar el vídeo." }),
+          onAutoplayBlocked: () => {
+            pendingAutoStart = null;
+            loadingTrack = false;
+            emit({ state: 2, notice: "Safari ha bloqueado la reproducción automática. Pulsa Play para continuar." });
+          },
           onError: ({ data }) => { if (!disposed) { suspend().catch(() => {}); emit({ error: youtubeError(data) }); } },
         },
       });

@@ -435,6 +435,40 @@ export default function PlaybackProvider({ children }) {
       trackKey(session.tracks[index]),
     );
     setVolume(trackVolumes.current.get(trackKey(session.tracks[index])) ?? 100);
+    const nextTrack = session.tracks[index];
+    // On the web keep the same YouTube iframe across tracks. Recreating it
+    // after ENDED loses Safari's playback permission and leaves Next paused.
+    // Native WebView retains the existing session/remount behaviour.
+    if (Platform.OS === "web" && player.current?.loadTrack) {
+      const nextSession = {
+        ...session,
+        index,
+        resumeTime: remembered?.time || 0,
+        resumePlaylistIndex: remembered?.playlistIndex || 0,
+        autoPlay: true,
+      };
+      sessionRef.current = nextSession;
+      const loadingStatus = {
+        ...statusRef.current,
+        state: 3,
+        time: remembered?.time || 0,
+        duration: remembered?.duration || 0,
+        videoId: nextTrack.videoId || "",
+        videoTitle: nextTrack.title || "",
+        error: null,
+        notice: null,
+      };
+      statusRef.current = loadingStatus;
+      setStatus(loadingStatus);
+      setSession(nextSession);
+      player.current.loadTrack(
+        nextTrack,
+        nextSession.resumeTime,
+        nextSession.resumePlaylistIndex,
+        true,
+      );
+      return;
+    }
     installSession({
       ...session,
       index,
