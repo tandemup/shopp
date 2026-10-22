@@ -789,7 +789,7 @@ export default function PrintMusicCardScreen() {
       setPublished(false);
       showNotice(
         "ZIP de publicación preparado",
-        `${result.filename}: JSON público y ${result.lyricsCount} letras LRC.\nExtrae music-cards/ en public/ del repositorio y despliega el proyecto completo en Netlify. Después comprueba la publicación.`,
+        `${result.filename}: JSON público y ${result.lyricsCount} letras LRC.${includePublicLyrics && !result.lyricsCount ? " No se encontraron letras LRC locales asociadas a estas canciones." : ""}\nExtrae music-cards/ en public/ del repositorio y despliega el proyecto completo en Netlify. Después comprueba la publicación.`,
         "success",
       );
     } catch (error) {

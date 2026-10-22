@@ -2,6 +2,7 @@
 // No external ZIP dependency; original IndexedDB/Convex data remains untouched.
 import { Platform } from "react-native";
 import * as Sharing from "expo-sharing";
+import { getLocalLyrics } from "@/src/storage/lyricsStorage";
 import { buildPublicManifest, publicIdForPlaylist, videoIdFromTrack, youtubePlaylistIdFromTrack } from "./musicCardLinks";
 
 function safeName(name) {
@@ -183,7 +184,26 @@ export function makePublicMusicCardZip(playlist, publicId, isClassical = false, 
 }
 
 export async function savePublicMusicCardZip(playlist, publicId, isClassical, includeLyrics) {
-  const { buffer, lyricsCount } = makePublicMusicCardZip(playlist, publicId, isClassical, includeLyrics);
+  // El reproductor almacena los LRC en IndexedDB / almacenamiento local.
+  // La playlist activa suele contener solo la referencia, no lyricsBackup.text.
+  // Recuperamos las letras ANTES de generar el ZIP, sin modificar la playlist original.
+  let source = playlist;
+  if (includeLyrics) {
+    const tracks = await Promise.all((playlist?.tracks || []).map(async (track) => {
+      if (track?.lyricsDisabled === true) return { ...track, lyricsBackup: undefined };
+      if (typeof track?.lyricsBackup?.text === "string" && track.lyricsBackup.text.trim()) return track;
+      const local = await getLocalLyrics(track);
+      if (typeof local?.text === "string" && local.text.trim()) {
+        return { ...track, lyricsBackup: { text: local.text, fileName: local.fileName || track.lyricsFileName || "lyrics.lrc" } };
+      }
+      if (track?.lyricsFileName || track?.lyricsStorageId || track?.lyricsSize) {
+        throw new Error(`No se encontró el LRC local de «${track.title || "canción"}». Abre la playlist en este dispositivo, recupera sus letras e inténtalo de nuevo.`);
+      }
+      return track;
+    }));
+    source = { ...playlist, tracks };
+  }
+  const { buffer, lyricsCount } = makePublicMusicCardZip(source, publicId, isClassical, includeLyrics);
   const name = `${publicId}-netlify.zip`;
   if (Platform.OS === "web") {
     const url = URL.createObjectURL(new Blob([buffer], { type: "application/zip" }));
