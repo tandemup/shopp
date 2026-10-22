@@ -2,6 +2,7 @@
 // No external ZIP dependency; original IndexedDB/Convex data remains untouched.
 import { Platform } from "react-native";
 import * as Sharing from "expo-sharing";
+import { getLocalLyrics } from "@/src/storage/lyricsStorage";
 import { buildPublicManifest, publicIdForPlaylist, videoIdFromTrack, youtubePlaylistIdFromTrack } from "./musicCardLinks";
 
 function safeName(name) {
@@ -28,7 +29,7 @@ function crc32(data) {
   for (const b of data) c = CRC_TABLE[(c ^ b) & 255] ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 }
-function makeZip(entries) {
+export function makeZip(entries) {
   const locals = [], centrals = [];
   let offset = 0;
   for (const [path, value] of entries) {
@@ -153,6 +154,68 @@ export async function savePlaylistArchive(backup, filename) {
       encoding: FileSystem.EncodingType.Base64,
     });
     if (!(await Sharing.isAvailableAsync())) throw new Error("No se puede compartir este ZIP en el dispositivo.");
+    await Sharing.shareAsync(uri, { mimeType: "application/zip", UTI: "public.zip-archive", dialogTitle: name });
+  }
+  return { filename: name, lyricsCount };
+}
+
+
+// Paquete público independiente de los respaldos privados: no incorpora
+// playlist.json, correos, IDs internos, ni LRC sin autorización explícita.
+export function makePublicMusicCardZip(playlist, publicId, isClassical = false, includeLyrics = false) {
+  const manifest = buildPublicManifest(playlist, publicId, isClassical);
+  const entries = [];
+  const tracks = (Array.isArray(playlist?.tracks) ? playlist.tracks : [])
+    .filter(t => videoIdFromTrack(t) || youtubePlaylistIdFromTrack(t)).slice(0, 100);
+  let lyricsCount = 0;
+  if (includeLyrics) {
+    tracks.forEach((track, index) => {
+      const lrc = track?.lyricsBackup?.text;
+      if (typeof lrc !== "string" || !lrc.trim()) return;
+      const file = `${String(index + 1).padStart(3, "0")}.lrc`;
+      manifest.tracks[index].lyricsUrl = `/music-cards/lyrics/${publicId}/${file}`;
+      entries.push([`music-cards/lyrics/${publicId}/${file}`, lrc]);
+      lyricsCount++;
+    });
+  }
+  entries.unshift([`music-cards/${publicId}.json`, JSON.stringify(manifest, null, 2)]);
+  entries.push(["INSTRUCCIONES_PUBLICACION.txt", `SHopp - publicación pública\n\nCopia la carpeta music-cards/ de este ZIP dentro de public/ del repositorio Shopp.\nPublica el proyecto completo en Netlify, sin reemplazar el sitio por este ZIP.\nComprueba la publicación desde Imprimir tarjeta antes de imprimir.\nLos archivos LRC se publican como texto accesible por URL; asegúrate de disponer de derechos.\n`]);
+  return { buffer: makeZip(entries), lyricsCount, manifest };
+}
+
+export async function savePublicMusicCardZip(playlist, publicId, isClassical, includeLyrics) {
+  // El reproductor almacena los LRC en IndexedDB / almacenamiento local.
+  // La playlist activa suele contener solo la referencia, no lyricsBackup.text.
+  // Recuperamos las letras ANTES de generar el ZIP, sin modificar la playlist original.
+  let source = playlist;
+  if (includeLyrics) {
+    const tracks = await Promise.all((playlist?.tracks || []).map(async (track) => {
+      if (track?.lyricsDisabled === true) return { ...track, lyricsBackup: undefined };
+      if (typeof track?.lyricsBackup?.text === "string" && track.lyricsBackup.text.trim()) return track;
+      const local = await getLocalLyrics(track);
+      if (typeof local?.text === "string" && local.text.trim()) {
+        return { ...track, lyricsBackup: { text: local.text, fileName: local.fileName || track.lyricsFileName || "lyrics.lrc" } };
+      }
+      if (track?.lyricsFileName || track?.lyricsStorageId || track?.lyricsSize) {
+        throw new Error(`No se encontró el LRC local de «${track.title || "canción"}». Abre la playlist en este dispositivo, recupera sus letras e inténtalo de nuevo.`);
+      }
+      return track;
+    }));
+    source = { ...playlist, tracks };
+  }
+  const { buffer, lyricsCount } = makePublicMusicCardZip(source, publicId, isClassical, includeLyrics);
+  const name = `${publicId}-netlify.zip`;
+  if (Platform.OS === "web") {
+    const url = URL.createObjectURL(new Blob([buffer], { type: "application/zip" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } else {
+    const FileSystem = await import("expo-file-system/legacy");
+    const uri = `${FileSystem.cacheDirectory}${name}`;
+    await FileSystem.writeAsStringAsync(uri, asBase64(buffer), { encoding: FileSystem.EncodingType.Base64 });
+    if (!(await Sharing.isAvailableAsync())) throw new Error("No se puede compartir el ZIP en este dispositivo.");
     await Sharing.shareAsync(uri, { mimeType: "application/zip", UTI: "public.zip-archive", dialogTitle: name });
   }
   return { filename: name, lyricsCount };

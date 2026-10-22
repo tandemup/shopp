@@ -28,6 +28,8 @@ import {
   youtubePlaylistIdFromTrack,
 } from "@/src/services/musicCardLinks";
 
+import { savePublicMusicCardZip } from "@/src/services/playlistArchiveZip";
+
 const DEFAULT_CONTACT_EMAIL = "info@ramshopp.com";
 const DEFAULT_LANDING_URL = "https://ramworks.netlify.app";
 
@@ -486,11 +488,12 @@ export default function PrintMusicCardScreen() {
   const playlist = route.params?.playlist || {};
   const isClassical = Boolean(route.params?.isClassical);
   const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
-  const [cardMode, setCardMode] = useState("songs"); // 10 canciones distintas por hoja
-  const [qrDestination, setQrDestination] = useState("youtube");
+  const [cardMode, setCardMode] = useState("playlist"); // QR directo al reproductor público
+  const [qrDestination, setQrDestination] = useState("shopp");
   const [publicBaseUrl, setPublicBaseUrl] = useState(initialLandingUrl);
   const [publicId] = useState(() => publicIdForPlaylist(playlist));
   const [published, setPublished] = useState(false);
+  const [includePublicLyrics, setIncludePublicLyrics] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
   const showNotice = (title, message, type = "info") =>
@@ -780,6 +783,20 @@ export default function PrintMusicCardScreen() {
     }
   };
 
+  const downloadPublicationZip = async () => {
+    try {
+      const result = await savePublicMusicCardZip(playlist, publicId, isClassical, includePublicLyrics);
+      setPublished(false);
+      showNotice(
+        "ZIP de publicación preparado",
+        `${result.filename}: JSON público y ${result.lyricsCount} letras LRC.${includePublicLyrics && !result.lyricsCount ? " No se encontraron letras LRC locales asociadas a estas canciones." : ""}\nExtrae music-cards/ en public/ del repositorio y despliega el proyecto completo en Netlify. Después comprueba la publicación.`,
+        "success",
+      );
+    } catch (error) {
+      showNotice("No se pudo exportar", error?.message || "Error al generar el ZIP público.", "error");
+    }
+  };
+
   const verifyPublicManifest = async () => {
     const url = getPublicManifestUrl(publicBaseUrl, publicId);
     if (!url) {
@@ -816,6 +833,19 @@ export default function PrintMusicCardScreen() {
         throw new Error(
           `${comparison.reason} Vuelve a exportar y desplegar la ficha.`,
         );
+      // Evitar tarjetas impresas cuando el manifiesto apunta a LRC inexistentes.
+      if (includePublicLyrics) {
+        const expectedLyrics = validTracks.slice(0, 100)
+          .filter(track => typeof track?.lyricsBackup?.text === "string" && track.lyricsBackup.text.trim()).length;
+        const urls = (data.tracks || []).map(track => track.lyricsUrl).filter(Boolean);
+        if (urls.length !== expectedLyrics) throw new Error("Las letras publicadas no coinciden con las seleccionadas para exportar.");
+        for (const path of urls) {
+          if (!/^\/music-cards\/lyrics\/shopp-[a-z0-9-]+\/\d{3}\.lrc$/.test(path)) throw new Error("URL LRC pública no válida.");
+          const lrc = await fetch(new URL(path, url).toString(), { cache: "no-store" });
+          if (!lrc.ok || (lrc.headers.get("content-type") || "").includes("text/html"))
+            throw new Error(`No se pudo verificar la letra pública: ${path}`);
+        }
+      }
       setPublished(true);
       showNotice(
         "Publicación verificada",
@@ -1242,12 +1272,25 @@ export default function PrintMusicCardScreen() {
                   Publicación de la playlist
                 </Text>
                 <Text style={styles.infoBoxText}>
-                  Descarga la ficha JSON, cópiala a public/music-cards/ y
-                  despliega Netlify. El JSON descargado no incluye LRC. Para
-                  publicar letras autorizadas usa la carpeta music-cards del ZIP
-                  Exportar JSON.
+                  Genera un ZIP público con el JSON y, opcionalmente, letras
+                  LRC autorizadas. Copia la carpeta music-cards/ a public/ y
+                  despliega Shopp en Netlify. El QR apunta al reproductor público,
+                  sin login ni instalación.
                 </Text>
+                <Pressable
+                  style={styles.secondaryButton}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: includePublicLyrics }}
+                  onPress={() => setIncludePublicLyrics(value => !value)}
+                >
+                  <Ionicons name={includePublicLyrics ? "checkbox-outline" : "square-outline"} color="#2563eb" size={20} />
+                  <Text style={styles.secondaryButtonText}>Incluir LRC autorizados (texto público)</Text>
+                </Pressable>
                 <View style={styles.actionRow}>
+                  <Pressable style={styles.secondaryButton} onPress={downloadPublicationZip}>
+                    <Ionicons name="archive-outline" color="#2563eb" size={17} />
+                    <Text style={styles.secondaryButtonText}>Exportar ZIP Netlify</Text>
+                  </Pressable>
                   <Pressable
                     style={styles.secondaryButton}
                     onPress={downloadPublicManifest}
