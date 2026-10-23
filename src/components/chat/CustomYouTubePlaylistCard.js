@@ -56,7 +56,7 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
         {(activeTrack.artworkUrl || activeTrack.videoId) ? (
           <Image
             source={{
-              uri: /^https:\/\/[^\s]+$/i.test(activeTrack.artworkUrl || "")
+              uri: /^(https:\/\/[^\s]+|data:image\/(?:jpeg|png|webp);base64,)/i.test(activeTrack.artworkUrl || "")
                 ? activeTrack.artworkUrl
                 : `https://i.ytimg.com/vi/${activeTrack.videoId}/mqdefault.jpg`,
             }}

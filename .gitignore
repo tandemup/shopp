@@ -3,7 +3,6 @@
 # dependencies
 node_modules/
 shopp-env-backup/
-shopp-env-backup2/
 secrets.txt
 old/
 secret.md
