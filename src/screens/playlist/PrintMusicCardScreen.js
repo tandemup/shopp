@@ -309,7 +309,6 @@ function buildPrintHtml({
   coverOverscan = DEFAULT_COVER_OVERSCAN,
 }) {
   const safeTitle = esc(title);
-  const safeSubtitle = esc(subtitle);
   const safeEmail = esc(contactEmail);
   const safeLanding = esc(landingUrl);
   const frontBg = esc(
@@ -404,13 +403,14 @@ function buildPrintHtml({
   const back = (entry) => {
     const q = esc(qrUrl(entry.url, 700));
     const cardTitle = esc(entry.title || title);
-    const cardAuthor = esc(entry.author || author);
+    const cardAuthor = esc(entry.author ?? author);
+    const cardSubtitle = esc(entry.subtitle ?? subtitle);
     const cardCover = esc(entry.cover || coverUri);
     return `<div class="card-wrap"><div class="card back" style="padding:${backInset}mm;background:${frameBg};">
     <div class="back-inner">
       <div class="cover-panel" style="width:${coverSizeMm}mm;flex:0 0 ${coverSizeMm}mm;background:${frameBg};">${cardCover ? `<img class="cover" src="${cardCover}" alt="Carátula" style="transform:scale(${safeCoverScale});"/>` : `<div class="cover placeholder">Shopp Music</div>`}</div>
       <div class="back-info${compactBack ? " compact" : ""}" style="background:${panelBg};">
-        <div class="music-meta">${cardAuthor ? `<span class="author" style="color:${panelAccentColor};">${cardAuthor}</span>` : ""}<strong style="color:${panelTitleColor};">${cardTitle}</strong>${safeSubtitle ? `<span class="subtitle" style="color:${panelMetaColor};">${safeSubtitle}</span>` : ""}</div>
+        <div class="music-meta">${cardAuthor ? `<span class="author" style="color:${panelAccentColor};">${cardAuthor}</span>` : ""}<strong style="color:${panelTitleColor};">${cardTitle}</strong>${cardSubtitle ? `<span class="subtitle" style="color:${panelMetaColor};">${cardSubtitle}</span>` : ""}</div>
         <div class="qr-panel"><img src="${q}" style="width:${qrSizeMm}mm;height:${qrSizeMm}mm;" alt="Código QR musical"/><span style="color:${panelAccentColor};">${printedQrAction}</span></div>
       </div>
     </div>
@@ -546,6 +546,15 @@ export default function PrintMusicCardScreen() {
       ? [playlist.composer, playlist.performer].filter(Boolean).join(" · ")
       : `${tracks.length} ${tracks.length === 1 ? "item" : "items"}`,
   );
+  // Los ajustes de cada tarjeta son temporales y no modifican la playlist original.
+  const [prepareCardsOpen, setPrepareCardsOpen] = useState(false);
+  const [selectedCardIndex, setSelectedCardIndex] = useState(0);
+  const [cardOverrides, setCardOverrides] = useState({});
+  const updateCardOverride = (index, changes) =>
+    setCardOverrides((previous) => ({
+      ...previous,
+      [index]: { ...(previous[index] || {}), ...changes },
+    }));
   const [printOpen, setPrintOpen] = useState(false);
   const [format, setFormat] = useState("a4");
   const [copies, setCopies] = useState(10);
@@ -684,7 +693,9 @@ export default function PrintMusicCardScreen() {
     const pool = cardMode === "single" ? validTracks.slice(0, 1) : validTracks;
     return pool
       .slice(0, 99)
-      .map((track) => {
+      .map((track, index) => {
+        const settings = cardOverrides[index] || {};
+        if (settings.enabled === false) return null;
         const parsed = splitAuthorAndSingle(track.title || "");
         const trackTitle =
           cardMode === "single"
@@ -693,14 +704,16 @@ export default function PrintMusicCardScreen() {
         const trackAuthor =
           track.author || track.artist || parsed.author || author;
         const videoId = videoIdFromTrack(track);
-        const trackCover =
-          track.artworkUrl ||
-          track.cover ||
-          track.coverUrl ||
-          track.thumbnail ||
-          (videoId
-            ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
-            : coverUri);
+        const personalCover = track.artworkUrl || track.cover || track.coverUrl || track.thumbnail;
+        const youtubeCover = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "";
+        const source = settings.image || "auto";
+        const trackCover = source === "youtube"
+          ? (youtubeCover || personalCover || coverUri)
+          : source === "general"
+            ? (coverUri || personalCover || youtubeCover)
+            : source === "artwork"
+              ? (personalCover || youtubeCover || coverUri)
+              : (personalCover || youtubeCover || coverUri);
         const url = buildSongCardUrl(
           origin,
           track,
@@ -709,13 +722,14 @@ export default function PrintMusicCardScreen() {
           qrDestination,
         );
         return {
-          title: trackTitle,
+          title: settings.title ?? trackTitle,
+          subtitle: settings.subtitle ?? subtitle,
           author: trackAuthor,
           cover: trackCover,
           url,
         };
       })
-      .filter((x) => x.url);
+      .filter((x) => x?.url);
   }, [
     validTracks,
     cardMode,
@@ -726,7 +740,20 @@ export default function PrintMusicCardScreen() {
     author,
     single,
     coverUri,
+    subtitle,
+    cardOverrides,
   ]);
+  const editableCards = useMemo(() => validTracks.slice(0, 99).map((track, index) => {
+    const parsed = splitAuthorAndSingle(track.title || "");
+    const settings = cardOverrides[index] || {};
+    return {
+      title: settings.title ?? (parsed.single || track.title || `Canción ${index + 1}`),
+      subtitle: settings.subtitle ?? subtitle,
+      image: settings.image || "auto",
+      enabled: settings.enabled !== false,
+    };
+  }), [validTracks, cardOverrides, subtitle]);
+  const selectedSettings = editableCards[selectedCardIndex] || null;
   // La vista previa representa la primera tarjeta que se imprimirá.
   // En modo "songs" cada entrada conserva su propia carátula.
   const previewEntry = cardEntries[0];
@@ -1887,7 +1914,12 @@ export default function PrintMusicCardScreen() {
               qrDestination !== "youtube" &&
               !published)
           }
-          onPress={() => setPrintOpen(true)}
+          onPress={() => {
+            if (cardMode === "songs") {
+              setSelectedCardIndex(0);
+              setPrepareCardsOpen(true);
+            } else setPrintOpen(true);
+          }}
           style={[
             styles.button,
             (!targetUrl ||
@@ -1910,6 +1942,95 @@ export default function PrintMusicCardScreen() {
         ) : null}
       </ScrollView>
 
+      {/* Paso previo: configurar el contenido de las tarjetas distintas. */}
+      <Modal
+        visible={prepareCardsOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPrepareCardsOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Preparar tarjetas</Text>
+                <Text style={styles.modalHeaderHelp}>
+                  {editableCards.filter((entry) => entry.enabled).length} de {editableCards.length} canciones incluidas · Contenido del reverso
+                </Text>
+              </View>
+              <Pressable onPress={() => setPrepareCardsOpen(false)} accessibilityLabel="Cerrar preparación" style={styles.modalClose}>
+                <Ionicons name="close" size={22} color="#475569" />
+              </Pressable>
+            </View>
+            <ScrollView contentContainerStyle={styles.modalScrollContent} keyboardShouldPersistTaps="handled">
+              <Text style={styles.modalSectionTitle}>Selecciona una canción</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {editableCards.map((entry, index) => (
+                  <Pressable
+                    key={index}
+                    onPress={() => setSelectedCardIndex(index)}
+                    accessibilityLabel={`Editar tarjeta ${index + 1}: ${entry.title}`}
+                    style={{ paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1.5, borderRadius: 9,
+                      borderColor: selectedCardIndex === index ? "#2563eb" : "#cbd5e1",
+                      backgroundColor: selectedCardIndex === index ? "#dbeafe" : "#fff" }}
+                  >
+                    <Text style={{ fontWeight: "700", color: entry.enabled ? "#0f172a" : "#94a3b8" }}>{index + 1}{entry.enabled ? "" : " ×"}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              {selectedSettings ? (
+                <View style={{ gap: 14, paddingTop: 8 }}>
+                  <Text style={styles.modalSectionTitle}>Tarjeta {selectedCardIndex + 1}</Text>
+                  <Pressable style={styles.modalToggleRow} onPress={() => updateCardOverride(selectedCardIndex, { enabled: !selectedSettings.enabled })}>
+                    <Ionicons name={selectedSettings.enabled ? "checkbox" : "square-outline"} size={23} color="#2563eb" />
+                    <Text style={styles.fieldLabel}>Incluir esta canción en la impresión</Text>
+                  </Pressable>
+                  <View>
+                    <Text style={styles.fieldLabel}>Título</Text>
+                    <TextInput style={styles.cardEditorInput} value={selectedSettings.title}
+                      onChangeText={(value) => updateCardOverride(selectedCardIndex, { title: value })} />
+                  </View>
+                  <View>
+                    <Text style={styles.fieldLabel}>Subtítulo</Text>
+                    <TextInput style={styles.cardEditorInput} value={selectedSettings.subtitle}
+                      placeholder="Artista, álbum o texto personalizado"
+                      onChangeText={(value) => updateCardOverride(selectedCardIndex, { subtitle: value })} />
+                  </View>
+                  <Text style={styles.fieldLabel}>Fuente de imagen</Text>
+                  {[
+                    ["auto", "Automática (carátula propia, luego YouTube)"],
+                    ["artwork", "Carátula de la canción"],
+                    ["youtube", "Miniatura de YouTube"],
+                    ["general", "Carátula general de la playlist"],
+                  ].map(([value, label]) => (
+                    <Pressable key={value} onPress={() => updateCardOverride(selectedCardIndex, { image: value })}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 6 }}>
+                      <Ionicons name={selectedSettings.image === value ? "radio-button-on" : "radio-button-off"} size={21} color="#2563eb" />
+                      <Text style={{ flex: 1, color: "#0f172a" }}>{label}</Text>
+                    </Pressable>
+                  ))}
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 6 }}>
+                    <Pressable disabled={selectedCardIndex === 0} onPress={() => setSelectedCardIndex((i) => i - 1)}>
+                      <Text style={{ color: selectedCardIndex === 0 ? "#94a3b8" : "#2563eb", fontWeight: "700" }}>‹ Anterior</Text>
+                    </Pressable>
+                    <Pressable disabled={selectedCardIndex >= editableCards.length - 1} onPress={() => setSelectedCardIndex((i) => i + 1)}>
+                      <Text style={{ color: selectedCardIndex >= editableCards.length - 1 ? "#94a3b8" : "#2563eb", fontWeight: "700" }}>Siguiente ›</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : <Text>No hay canciones con enlaces válidos para imprimir.</Text>}
+            </ScrollView>
+            <View style={styles.modalActions}>
+              <Pressable onPress={() => setPrepareCardsOpen(false)} style={styles.cancelButton}><Text style={styles.cancelText}>Cancelar</Text></Pressable>
+              <Pressable disabled={!cardEntries.length} onPress={() => { setPrepareCardsOpen(false); setPrintOpen(true); }}
+                style={[styles.previewButton, !cardEntries.length && styles.disabled]}>
+                <Ionicons name="arrow-forward" size={18} color="#fff" />
+                <Text style={styles.buttonText}>Preparar impresión</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <Modal
         visible={printOpen}
         transparent
@@ -2813,6 +2934,7 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 8,
   },
+  cardEditorInput: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: "#0f172a", backgroundColor: "#fff", marginTop: 6 },
   modalScrollContent: { padding: 20, gap: 12, paddingBottom: 22 },
   gridStylePanel: {
     padding: 12,
