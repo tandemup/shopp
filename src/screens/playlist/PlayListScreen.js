@@ -16,6 +16,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 
@@ -860,6 +861,35 @@ export default function PlayListScreen() {
     },
     [updateTrack],
   );
+
+  // La imagen es opcional. Guardamos un data URI para que permanezca con
+  // la pista en IndexedDB y en los respaldos JSON, también sin conexión.
+  const pickTrackCover = useCallback(async (index) => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 0.72,
+        base64: true,
+        exif: false,
+      });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset) return;
+      const mime = asset.mimeType || "image/jpeg";
+      if (!/^image\/(jpeg|png|webp)$/.test(mime)) {
+        safeAlert("Formato no válido", "Selecciona una imagen JPG, PNG o WebP.");
+        return;
+      }
+      if (!asset.base64) throw new Error("No se pudo leer la imagen seleccionada.");
+      if (asset.base64.length > 2_800_000) {
+        safeAlert("Imagen demasiado grande", "Selecciona una imagen inferior a 2 MB.");
+        return;
+      }
+      updateTrack(index, "artworkUrl", `data:${mime};base64,${asset.base64}`);
+    } catch (error) {
+      safeAlert("No se pudo añadir la carátula", error?.message || "Inténtalo de nuevo.");
+    }
+  }, [updateTrack]);
 
   const openLocalLyricsEditor = useCallback(
     async (index) => {
@@ -2360,24 +2390,36 @@ export default function PlayListScreen() {
                   {!isTutorialStyle && (
                     <View style={{ marginTop: 8, marginBottom: 8 }}>
                       <Text style={{ color: "#475569", fontSize: 12, marginBottom: 5 }}>
-                        Carátula de la canción (URL de imagen, opcional)
+                        Carátula de la canción (opcional)
                       </Text>
-                      <TextInput
+                      <Pressable
+                        onPress={() => pickTrackCover(index)}
+                        accessibilityRole="button"
+                        style={{ alignSelf: "flex-start", paddingVertical: 9, paddingHorizontal: 14, borderRadius: 8, backgroundColor: "#e2e8f0", marginBottom: 8 }}>
+                        <Text style={{ color: "#0f172a", fontWeight: "600" }}>Añadir carátula desde el dispositivo</Text>
+                      </Pressable>
+                      {Boolean(track.artworkUrl) && (
+                        <Pressable onPress={() => updateTrack(index, "artworkUrl", "")}
+                          accessibilityRole="button" style={{ marginBottom: 7 }}>
+                          <Text style={{ color: "#b91c1c" }}>Quitar carátula</Text>
+                        </Pressable>
+                      )}
+                      {!track.artworkUrl?.startsWith("data:image/") && <TextInput
                         value={track.artworkUrl || ""}
                         onChangeText={(value) => updateTrack(index, "artworkUrl", value)}
                         autoCapitalize="none"
                         autoCorrect={false}
                         placeholder="https://.../portada.jpg"
                         style={styles.trackInput}
-                      />
+                      />}
                       {Boolean(track.artworkUrl?.trim()) && (
-                        /^https:\/\/[^\s]+$/i.test(track.artworkUrl.trim()) ? (
+                        (/^(https:\/\/[^\s]+|data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+)$/i.test(track.artworkUrl.trim())) ? (
                           <Image source={{ uri: track.artworkUrl.trim() }}
                             style={{ width: 72, height: 72, borderRadius: 6, marginTop: 6 }}
                             resizeMode="cover" />
                         ) : (
                           <Text style={{ color: "#b91c1c", fontSize: 12 }}>
-                            Utiliza una URL HTTPS de imagen válida.
+                            Utiliza una URL HTTPS o selecciona una imagen.
                           </Text>
                         )
                       )}

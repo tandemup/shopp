@@ -1122,7 +1122,7 @@ export default function PlaybackProvider({ children }) {
                           {(item.artworkUrl || imageId) ? (
                             <Image
                               source={{
-                                uri: /^https:\/\/[^\s]+$/i.test(item.artworkUrl || "")
+                                uri: /^(https:\/\/[^\s]+|data:image\/(?:jpeg|png|webp);base64,)/i.test(item.artworkUrl || "")
                                   ? item.artworkUrl
                                   : `https://i.ytimg.com/vi/${imageId}/mqdefault.jpg`,
                               }}
