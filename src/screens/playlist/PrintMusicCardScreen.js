@@ -694,7 +694,7 @@ export default function PrintMusicCardScreen() {
           track.author || track.artist || parsed.author || author;
         const videoId = videoIdFromTrack(track);
         const trackCover =
-          (cardMode === "single" && coverUri) ||
+          track.artworkUrl ||
           track.cover ||
           track.coverUrl ||
           track.thumbnail ||
@@ -727,7 +727,11 @@ export default function PrintMusicCardScreen() {
     single,
     coverUri,
   ]);
-  const targetUrl = cardEntries[0]?.url || "";
+  // La vista previa representa la primera tarjeta que se imprimirá.
+  // En modo "songs" cada entrada conserva su propia carátula.
+  const previewEntry = cardEntries[0];
+  const previewCoverUri = previewEntry?.cover || coverUri;
+  const targetUrl = previewEntry?.url || "";
   // En iOS Chrome reconoce googlechromes://; Safari utiliza el enlace HTTPS normal.
   const openQrBrowser = async (browser) => {
     if (!/^https:\/\//i.test(targetUrl)) return;
@@ -1726,9 +1730,9 @@ export default function PrintMusicCardScreen() {
                       },
                     ]}
                   >
-                    {coverUri ? (
+                    {previewCoverUri ? (
                       <Image
-                        source={{ uri: coverUri }}
+                        source={{ uri: previewCoverUri }}
                         resizeMode="cover"
                         style={[
                           styles.coverPreview,
@@ -1756,7 +1760,7 @@ export default function PrintMusicCardScreen() {
                     ]}
                   >
                     <View style={styles.musicMetaPreview}>
-                      {author ? (
+                      {previewEntry?.author ? (
                         <Text
                           style={[
                             styles.musicAuthor,
@@ -1765,7 +1769,7 @@ export default function PrintMusicCardScreen() {
                           ]}
                           numberOfLines={1}
                         >
-                          {author}
+                          {previewEntry.author}
                         </Text>
                       ) : null}
                       <Text
@@ -1776,7 +1780,7 @@ export default function PrintMusicCardScreen() {
                         ]}
                         numberOfLines={2}
                       >
-                        {single || title}
+                        {previewEntry?.title || single || title}
                       </Text>
                       {subtitle ? (
                         <Text
