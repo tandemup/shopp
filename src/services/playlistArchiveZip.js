@@ -220,3 +220,44 @@ export async function savePublicMusicCardZip(playlist, publicId, isClassical, in
   }
   return { filename: name, lyricsCount };
 }
+
+
+// Exporta varias obras en un único ZIP para public/music-cards/.
+// Cada obra conserva su manifiesto, carátulas y URL pública independientes.
+export function makePublicWorksArchive(works) {
+  if (!Array.isArray(works) || !works.length) throw new Error("No hay obras válidas para exportar.");
+  const entries = [];
+  const ids = new Set();
+  for (const { playlist, publicId, isClassical = true } of works) {
+    if (!publicId || ids.has(publicId)) throw new Error("Identificador público duplicado o vacío.");
+    ids.add(publicId);
+    const tracks = (Array.isArray(playlist?.tracks) ? playlist.tracks : [])
+      .filter(t => videoIdFromTrack(t) || youtubePlaylistIdFromTrack(t)).slice(0, 100);
+    if (!tracks.length) throw new Error(`La obra «${playlist?.title || publicId}» no contiene pistas reproducibles.`);
+    const manifest = buildPublicManifest({ ...playlist, tracks }, publicId, isClassical);
+    addPublicCovers(entries, manifest, tracks, publicId);
+    entries.push([`music-cards/${publicId}.json`, JSON.stringify(manifest, null, 2)]);
+  }
+  entries.push(["INSTRUCCIONES_PUBLICACION.txt", "Shopp - obras de Música Clásica\n\nCopia la carpeta music-cards/ de este ZIP dentro de public/ del repositorio.\nPublica Shopp en Netlify y verifica cada QR desde el catálogo antes de imprimir.\nNo se incluyen letras LRC. La publicación no es automática.\n"]);
+  return { buffer: makeZip(entries), worksCount: works.length };
+}
+
+export async function savePublicWorksArchive(works, filename = "shopp-obras-clasicas-netlify.zip") {
+  const { buffer, worksCount } = makePublicWorksArchive(works);
+  const name = String(filename || "shopp-obras-clasicas-netlify.zip").replace(/[^a-zA-Z0-9._-]/g, "_");
+  if (Platform.OS === "web") {
+    const blob = new Blob([buffer], { type: "application/zip" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } else {
+    const FileSystem = await import("expo-file-system/legacy");
+    const uri = `${FileSystem.cacheDirectory}${name}`;
+    await FileSystem.writeAsStringAsync(uri, asBase64(buffer), { encoding: FileSystem.EncodingType.Base64 });
+    if (!(await Sharing.isAvailableAsync())) throw new Error("No se puede compartir el ZIP en este dispositivo.");
+    await Sharing.shareAsync(uri, { mimeType: "application/zip", UTI: "public.zip-archive", dialogTitle: name });
+  }
+  return { filename: name, worksCount };
+}
