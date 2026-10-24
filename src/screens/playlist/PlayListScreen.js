@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   ScrollView,
   Share,
+  Linking,
   StyleSheet,
   useWindowDimensions,
   View,
@@ -27,11 +28,12 @@ import { safeAlert, safeConfirm } from "@/src/components/ui/alert/safeAlert";
 import { parseYouTubeUrl } from "@/src/services/urlSafety";
 import { ROUTES } from "@/src/navigation/ROUTES";
 import { makePlaylistBackupV2 } from "@/src/services/playlistBackupV2";
-import { savePlaylistArchive } from "@/src/services/playlistArchiveZip";
+import { savePlaylistArchive, savePublicMusicCardZip, savePublicWorksArchive } from "@/src/services/playlistArchiveZip";
 import { readPlaylistImportAsset } from "@/src/services/playlistArchiveImport";
 import { validatePlaylistBackupV2, importPlaylistBackupV2 } from "@/src/services/playlistImportV2";
 import * as localRepo from "@/src/storage/playlists/playlistRepository";
 import { importPlaylistsLocally } from "@/src/services/playlistLocalImport";
+import { videoIdFromTrack, youtubePlaylistIdFromTrack, publicIdForPlaylist, buildPlaylistCardUrl, buildPublicManifest, comparePublicPlaylist, getPublicManifestUrl } from "@/src/services/musicCardLinks";
 
 import TutorialTransferScreen from "./TutorialTransferScreen";
 import EditorVideoPreview from "./EditorVideoPreview";
@@ -576,6 +578,143 @@ export default function PlayListScreen() {
   const refreshNewsDatesInFlight = useRef(false);
   const [newsDatesRefreshCycle, setNewsDatesRefreshCycle] = useState(0);
   const generateUploadUrl = useMutation(contentApi.generateUploadUrl);
+  // Catálogo de obras clásicas, compartido con impresión mediante playlist.works.
+  const [worksPlaylist, setWorksPlaylist] = useState(null);
+  const [worksDraft, setWorksDraft] = useState(null);
+  const [worksBusy, setWorksBusy] = useState(false);
+  const [workPublishBusy, setWorkPublishBusy] = useState(false);
+  const PUBLIC_MUSIC_ORIGIN = "https://ramworks.netlify.app";
+  // Seleccionar ocurrencias, no solo IDs: una playlist puede repetir un mismo vídeo.
+  const resolveWorkTracks = (playlist, work) => {
+    const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
+    const used = new Set();
+    return (work.trackKeys || []).map(key => {
+      const index = tracks.findIndex((track, i) => !used.has(i) &&
+        String(videoIdFromTrack(track) || youtubePlaylistIdFromTrack(track) || "") === key);
+      if (index < 0) throw new Error(`Falta un movimiento de la obra «${work.title}». Revísala antes de publicar.`);
+      used.add(index);
+      return tracks[index];
+    });
+  };
+  const publicWorkId = (playlist, work) => {
+    const value = `${publicIdForPlaylist(playlist)}:${work.id}`;
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i++) hash = Math.imul(hash ^ value.charCodeAt(i), 16777619) >>> 0;
+    return `shopp-work-${hash.toString(16).padStart(8, "0")}`;
+  };
+  const publicWorkSource = (playlist, work) => ({
+    title: work.title,
+    author: work.composer || playlist.composer || "",
+    composer: work.composer || playlist.composer || "",
+    tracks: resolveWorkTracks(playlist, work),
+  });
+  const publishCatalogWork = async (work) => {
+    if (workPublishBusy || !worksPlaylist) return;
+    setWorkPublishBusy(true);
+    try {
+      const latest = await localRepo.get(worksPlaylist._id);
+      if (!latest) throw new Error("No se encuentra la colección local.");
+      const current = (latest.works || []).find(item => item.id === work.id);
+      if (!current) throw new Error("La obra se ha eliminado. Vuelve a abrir el catálogo.");
+      const source = publicWorkSource(latest, current);
+      if (!source.tracks.length) throw new Error("La obra debe contener al menos un movimiento.");
+      const id = publicWorkId(latest, current);
+      await savePublicMusicCardZip(source, id, true, false);
+      safeAlert("ZIP preparado", `Copia music-cards/ del ZIP a public/music-cards/ y publica Netlify. Después verifica el QR desde el catálogo. ID: ${id}`);
+    } catch (error) { safeAlert("No se pudo exportar la obra", String(error?.message || error)); }
+    finally { setWorkPublishBusy(false); }
+  };
+  const publishAllCatalogWorks = async () => {
+    if (workPublishBusy || !worksPlaylist) return;
+    setWorkPublishBusy(true);
+    try {
+      const latest = await localRepo.get(worksPlaylist._id);
+      if (!latest) throw new Error("No se encuentra la colección local.");
+      const catalog = Array.isArray(latest.works) ? latest.works : [];
+      if (!catalog.length) throw new Error("Todavía no hay obras guardadas.");
+      // Rechazar el lote si alguna obra está incompleta, evitando publicar un catálogo parcial.
+      const sources = catalog.map(work => {
+        const playlist = publicWorkSource(latest, work);
+        if (!playlist.tracks.length) throw new Error(`La obra «${work.title}» no tiene movimientos.`);
+        return { playlist, publicId: publicWorkId(latest, work), isClassical: true };
+      });
+      const result = await savePublicWorksArchive(sources);
+      safeAlert("ZIP conjunto preparado", `${result.worksCount} obras exportadas. Copia music-cards/ dentro de public/ y despliega Netlify. Comprueba los QR desde el catálogo antes de imprimir.`);
+    } catch (error) { safeAlert("No se pudieron exportar las obras", String(error?.message || error)); }
+    finally { setWorkPublishBusy(false); }
+  };
+  const openPublishedCatalogWork = async (work) => {
+    if (workPublishBusy || !worksPlaylist) return;
+    setWorkPublishBusy(true);
+    try {
+      const latest = await localRepo.get(worksPlaylist._id);
+      if (!latest) throw new Error("No se encuentra la colección local.");
+      const current = (latest.works || []).find(item => item.id === work.id);
+      if (!current) throw new Error("La obra ya no existe.");
+      const id = publicWorkId(latest, current);
+      const expected = buildPublicManifest(publicWorkSource(latest, current), id, true);
+      const manifestUrl = getPublicManifestUrl(PUBLIC_MUSIC_ORIGIN, id);
+      const response = await fetch(`${manifestUrl}?check=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`No está publicada en Netlify (HTTP ${response.status}). Exporta el ZIP y despliega la carpeta music-cards/.`);
+      const published = await response.json();
+      const comparison = comparePublicPlaylist(expected, published);
+      if (comparison !== true && !comparison?.ok) {
+        throw new Error(comparison?.reason || "El manifiesto publicado no coincide con los movimientos actuales. Exporta y publica de nuevo.");
+      }
+      const url = buildPlaylistCardUrl(PUBLIC_MUSIC_ORIGIN, id, "landing");
+      await Linking.openURL(url);
+    } catch (error) { safeAlert("No se pudo abrir el QR", String(error?.message || error)); }
+    finally { setWorkPublishBusy(false); }
+  };
+
+  const trackKey = (track) => String(videoIdFromTrack(track) || youtubePlaylistIdFromTrack(track) || "").trim();
+  const newWorkDraft = () => ({ id: "", title: "", subtitle: "", composer: "", conductor: "", orchestra: "", soloist: "", image: "auto", trackKeys: [] });
+  const openWorksCatalog = async (item) => {
+    if (!localMode) { safeAlert("Catálogo de obras", "Disponible para playlists guardadas localmente."); return; }
+    try {
+      const latest = await localRepo.get(item._id);
+      setWorksPlaylist(latest || item);
+      setWorksDraft(null);
+    } catch (error) { safeAlert("Catálogo de obras", String(error?.message || error)); }
+  };
+  const saveCatalogWork = async () => {
+    if (!worksPlaylist || !worksDraft || worksBusy) return;
+    if (!worksDraft.title.trim() || !worksDraft.trackKeys.length) {
+      safeAlert("Obra incompleta", "Introduce un título y selecciona al menos un movimiento."); return;
+    }
+    const keys = worksDraft.trackKeys;
+    if (keys.some(key => !key)) { safeAlert("Obra incompleta", "Todos los movimientos deben tener un identificador YouTube."); return; }
+    setWorksBusy(true);
+    try {
+      const latest = await localRepo.get(worksPlaylist._id);
+      if (!latest) throw new Error("No se encuentra la colección local.");
+      const catalog = Array.isArray(latest.works) ? latest.works : [];
+      const id = worksDraft.id || `work-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const saved = { ...worksDraft, id, title: worksDraft.title.trim(), trackKeys: [...keys] };
+      const next = [...catalog.filter(work => work.id !== id), saved];
+      await localRepo.update(latest._id, { works: next });
+      setWorksPlaylist({ ...latest, works: next });
+      setWorksDraft(null);
+      await refreshLocalPlaylists();
+    } catch (error) { safeAlert("No se pudo guardar la obra", String(error?.message || error)); }
+    finally { setWorksBusy(false); }
+  };
+  const deleteCatalogWork = async (work) => {
+    if (!worksPlaylist || worksBusy) return;
+    safeConfirm("Eliminar obra", `¿Eliminar «${work.title}» del catálogo? No se borrarán sus pistas.`, async () => {
+      setWorksBusy(true);
+      try {
+        const latest = await localRepo.get(worksPlaylist._id);
+        if (!latest) throw new Error("No se encuentra la colección local.");
+        const next = (latest.works || []).filter(item => item.id !== work.id);
+        await localRepo.update(latest._id, { works: next });
+        setWorksPlaylist({ ...latest, works: next });
+        setWorksDraft(null);
+        await refreshLocalPlaylists();
+      } catch (error) { safeAlert("No se pudo eliminar", String(error?.message || error)); }
+      finally { setWorksBusy(false); }
+    });
+  };
   const [editorVisible, setEditorVisible] = useState(false);
   const canEditLyricsLocally = Platform.OS === "web" && !isTutorialStyle;
   const [lyricsEditorIndex, setLyricsEditorIndex] = useState(null);
@@ -1234,6 +1373,7 @@ export default function PlayListScreen() {
           tracks: normalizedTracks,
           collectionType: collection,
           ...(isClassical ? classicalDetails : {}),
+          ...(isClassical && editingId ? { works: (await localRepo.get(editingId))?.works || [] } : {}),
         };
         await localRepo.saveWithLyrics(editingId, localItem, pendingLyrics);
         await refreshLocalPlaylists();
@@ -1817,6 +1957,12 @@ export default function PlayListScreen() {
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
           renderItem={({ item }) => (
             <View style={styles.playerCard}>
+              {isClassical && localMode ? (
+                <Pressable onPress={() => openWorksCatalog(item)} style={{ padding: 11, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#e0e7ff", borderRadius: 9, marginBottom: 9 }}>
+                  <Ionicons name="library-outline" size={19} color="#3730a3" />
+                  <Text style={{ color: "#312e81", fontWeight: "700" }}>Obras musicales · {(item.works || []).length} · Gestionar catálogo</Text>
+                </Pressable>
+              ) : null}
               <CustomYouTubePlaylistPlayer
                 playlist={item}
                 userName={
@@ -2020,6 +2166,79 @@ export default function PlayListScreen() {
                 <Text style={styles.newButtonText}>Exportar</Text>
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={Boolean(worksPlaylist)} transparent animationType="fade" onRequestClose={() => { setWorksPlaylist(null); setWorksDraft(null); }}>
+        <View style={styles.backdrop}>
+          <View style={[styles.editorCard, { maxHeight: "92%", maxWidth: 750, width: "96%" }]}>
+            <View style={styles.editorHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.editorTitle}>Catálogo de obras</Text>
+                <Text style={styles.editorSubtitle}>{worksPlaylist?.title || "Música clásica"}</Text>
+              </View>
+              <Pressable onPress={() => { setWorksPlaylist(null); setWorksDraft(null); }} style={{ padding: 8 }} accessibilityLabel="Cerrar catálogo"><Ionicons name="close" size={23} color="#475569" /></Pressable>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 24, gap: 12 }}>
+              {!worksDraft ? <>
+                <Pressable style={styles.newButton} onPress={() => setWorksDraft(newWorkDraft())}>
+                  <Ionicons name="add-circle-outline" size={18} color="#fff"/><Text style={styles.newButtonText}>Nueva obra</Text>
+                </Pressable>
+                <Pressable disabled={workPublishBusy || !(worksPlaylist?.works || []).length} onPress={publishAllCatalogWorks}
+                  style={[styles.newButton, { backgroundColor: "#047857", opacity: workPublishBusy ? 0.55 : 1 }]}>
+                  <Ionicons name="archive-outline" size={18} color="#fff"/>
+                  <Text style={styles.newButtonText}>{workPublishBusy ? "Preparando…" : `Exportar todas las obras (${(worksPlaylist?.works || []).length})`}</Text>
+                </Pressable>
+                {(worksPlaylist?.works || []).map(work => {
+                  const allKeys = (worksPlaylist?.tracks || []).map(trackKey);
+                  const remaining = [...allKeys];
+                  const complete = (work.trackKeys || []).every(key => { const ix = remaining.indexOf(key); if (ix < 0) return false; remaining.splice(ix, 1); return true; });
+                  return <View key={work.id} style={{ padding: 12, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, gap: 6 }}>
+                    <Text style={{ fontWeight: "700" }}>{work.title}</Text>
+                    <Text style={{ color: "#64748b" }}>{[work.composer, work.conductor, work.orchestra].filter(Boolean).join(" · ")} · {(work.trackKeys || []).length} movimientos{complete ? "" : " · Faltan pistas"}</Text>
+                    <View style={{ flexDirection: "row", gap: 15 }}>
+                      <Pressable disabled={!complete || workPublishBusy} onPress={() => publishCatalogWork(work)}><Text style={{ color: complete ? "#047857" : "#94a3b8", fontWeight: "700" }}>Exportar QR</Text></Pressable>
+                      <Pressable disabled={!complete || workPublishBusy} onPress={() => openPublishedCatalogWork(work)}><Text style={{ color: complete ? "#2563eb" : "#94a3b8", fontWeight: "700" }}>Verificar y reproducir</Text></Pressable>
+                      <Pressable onPress={() => setWorksDraft({ ...newWorkDraft(), ...work })}><Text style={{ color: "#2563eb", fontWeight: "700" }}>Editar</Text></Pressable>
+                      <Pressable onPress={() => deleteCatalogWork(work)}><Text style={{ color: "#b91c1c", fontWeight: "700" }}>Eliminar</Text></Pressable>
+                    </View>
+                  </View>;
+                })}
+                {!worksPlaylist?.works?.length ? <Text style={{ color: "#64748b" }}>Aún no hay obras. Añade una y selecciona sus movimientos.</Text> : null}
+              </> : <>
+                {[["title", "Título de la obra"], ["subtitle", "Subtítulo"], ["composer", "Compositor"], ["conductor", "Director"], ["orchestra", "Orquesta"], ["soloist", "Solistas"]].map(([key, label]) => (
+                  <View key={key} style={{ gap: 3 }}>
+                    <Text style={{ fontWeight: "600" }}>{label}</Text>
+                    <TextInput value={worksDraft[key] || ""} onChangeText={value => setWorksDraft(draft => ({ ...draft, [key]: value }))} style={styles.titleInput} placeholder={label}/>
+                  </View>
+                ))}
+                <Text style={{ fontWeight: "700" }}>Movimientos (en orden de la playlist)</Text>
+                {(worksPlaylist?.tracks || []).map((track, index) => {
+                  const key = trackKey(track);
+                  const selected = (worksDraft.trackKeys || []).filter(k => k === key).length;
+                  const available = (worksPlaylist.tracks || []).slice(0, index + 1).filter(t => trackKey(t) === key).length;
+                  const checked = Boolean(key) && selected >= available;
+                  return <Pressable key={index} disabled={!key} onPress={() => setWorksDraft(draft => {
+                    const next = [...draft.trackKeys];
+                    if (checked) { const pos = next.lastIndexOf(key); if (pos >= 0) next.splice(pos, 1); }
+                    else next.push(key);
+                    // Almacenar en orden original para la reproducción continua.
+                    const ordered = [];
+                    const counts = new Map(); next.forEach(k => counts.set(k, (counts.get(k) || 0) + 1));
+                    (worksPlaylist?.tracks || []).forEach(t => { const k = trackKey(t); if ((counts.get(k) || 0) > 0) { ordered.push(k); counts.set(k, counts.get(k) - 1); } });
+                    return { ...draft, trackKeys: ordered };
+                  })} style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 8, opacity: key ? 1 : 0.5 }}>
+                    <Ionicons name={checked ? "checkbox" : "square-outline"} size={21} color="#2563eb" />
+                    <Text style={{ flex: 1 }}>{index + 1}. {track.title || "Movimiento"}{key ? "" : " · Sin vídeo"}</Text>
+                  </Pressable>;
+                })}
+                <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                  <Pressable style={styles.secondaryButton} onPress={() => setWorksDraft(null)}><Text style={styles.secondaryButtonText}>Cancelar</Text></Pressable>
+                  <Pressable style={styles.newButton} disabled={worksBusy} onPress={saveCatalogWork}><Text style={styles.newButtonText}>{worksBusy ? "Guardando…" : "Guardar obra"}</Text></Pressable>
+                </View>
+              </>}
+              <Text style={{ color: "#64748b", fontSize: 12 }}>Las obras se guardan en esta playlist y se incluyen en sus copias JSON v2. Exportar QR genera un ZIP individual y Exportar todas las obras genera uno conjunto. Después de publicarlo en Netlify, Verificar y reproducir comprueba los movimientos antes de abrir el reproductor. No se publica automáticamente.</Text>
+            </ScrollView>
           </View>
         </View>
       </Modal>

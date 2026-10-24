@@ -36,7 +36,27 @@ export function validatePlaylistBackupV2(payload, expectedType, { minimumTracks 
         lyricsDisabled: !backup && track.lyricsDisabled === true,
       };
     });
+    // Aceptar respaldos anteriores sin obras; rechazar catálogos malformados.
+    const works = playlist.works == null ? [] : playlist.works;
+    if (!Array.isArray(works) || works.length > 100 || works.some(work =>
+      !work || typeof work.id !== "string" || work.id.length > 100 ||
+      typeof work.title !== "string" || work.title.length > 300 ||
+      !Array.isArray(work.trackKeys) || work.trackKeys.length < 2 ||
+      work.trackKeys.length > 100 || work.trackKeys.some(key =>
+        typeof key !== "string" || key.length > 160))) {
+      throw new Error(`Catálogo de obras inválido en «${playlist.title}».`);
+    }
     return {
+      ...(expectedType.includes('classical') ? { works: works.map(work => ({
+        id: work.id, title: work.title,
+        subtitle: String(work.subtitle || "").slice(0, 300),
+        image: ["auto", "artwork", "youtube", "general"].includes(work.image) ? work.image : "auto",
+        composer: String(work.composer || "").slice(0, 300),
+        conductor: String(work.conductor || "").slice(0, 300),
+        orchestra: String(work.orchestra || "").slice(0, 300),
+        soloist: String(work.soloist || "").slice(0, 300),
+        trackKeys: [...work.trackKeys],
+      })) } : {}),
       title: playlist.title.trim(), tracks, shareable: playlist.shareable === true,
       collectionType: expectedType.includes('classical') ? 'classical' : 'playlist',
       ...Object.fromEntries(['composer','performer','conductor','orchestra','period','year'].map(k => [k, String(playlist[k] || '')])),
