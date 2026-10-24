@@ -940,13 +940,13 @@ export default function PrintMusicCardScreen() {
         const personal = track?.artworkUrl || track?.cover || track?.coverUrl || track?.thumbnail || "";
         const youtubeImage = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "";
         const imageMode = overrides.image || "auto";
-        const image = imageMode === "general" ? (coverUri || personal || youtubeImage)
+        const image = typeof overrides.customCover === "string" ? overrides.customCover : imageMode === "general" ? (coverUri || personal || youtubeImage)
           : imageMode === "youtube" ? (youtubeImage || personal || coverUri)
           : (personal || youtubeImage || coverUri);
         return {
           title: overrides.title ?? (parsed.single || track?.title || title || `Tarjeta ${index + 1}`),
           subtitle: overrides.subtitle ?? (track?.author || track?.artist || subtitle),
-          author: track?.author || track?.artist || author,
+          author: overrides.author ?? (track?.author || track?.artist || author),
           cover: image, url,
           sourceIndex: index,
           printOrder: Number.isInteger(overrides.printOrder) ? overrides.printOrder : index,
@@ -970,7 +970,7 @@ export default function PrintMusicCardScreen() {
         const personalCover = track.artworkUrl || track.cover || track.coverUrl || track.thumbnail;
         const youtubeCover = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "";
         const source = settings.image || "auto";
-        const trackCover = source === "youtube"
+        const trackCover = typeof settings.customCover === "string" ? settings.customCover : source === "youtube"
           ? (youtubeCover || personalCover || coverUri)
           : source === "general"
             ? (coverUri || personalCover || youtubeCover)
@@ -988,7 +988,7 @@ export default function PrintMusicCardScreen() {
         return {
           title: settings.title ?? trackTitle,
           subtitle: settings.subtitle ?? subtitle,
-          author: trackAuthor,
+          author: settings.author ?? trackAuthor,
           cover: trackCover,
           url,
           trackIndices: selectedIndices,
@@ -1041,13 +1041,14 @@ export default function PrintMusicCardScreen() {
     const settings = cardOverrides[index] || {};
     return {
       title: settings.title ?? (parsed.single || track.title || `Canción ${index + 1}`),
+      author: settings.author ?? (track.author || track.artist || parsed.author || author),
       subtitle: settings.subtitle ?? subtitle,
       image: settings.image || "auto",
       enabled: settings.enabled !== false,
       workPublicId: settings.workPublicId || null,
       trackIndices: Array.isArray(settings.trackIndices) && settings.trackIndices.length ? settings.trackIndices : [index],
     };
-  }), [validTracks, cardOverrides, subtitle]);
+  }), [validTracks, cardOverrides, subtitle, author]);
   // Evita imprimir tarjetas adicionales para los movimientos que ya
   // pertenecen a la obra seleccionada. No se modifica la playlist original.
   const groupAsOneCard = () => {
@@ -1351,7 +1352,7 @@ export default function PrintMusicCardScreen() {
   const changeCopies = (delta) =>
     setCopies((value) => Math.max(1, Math.min(99, value + delta)));
 
-  const pickCover = async () => {
+  const pickCover = async (cardIndex = null) => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: false,
@@ -1369,7 +1370,8 @@ export default function PrintMusicCardScreen() {
     } else {
       setCoverDimensions(null);
     }
-    setCoverUri(uri);
+    if (cardIndex !== null) updateCardOverride(cardIndex, { customCover: uri });
+    else setCoverUri(uri);
   };
 
   // Fase 4J: validación integral, sin alterar HTML de impresión ni calibraciones.
@@ -1941,84 +1943,82 @@ export default function PrintMusicCardScreen() {
                 </Text>
               </View>
             </View>
-            <Text style={styles.subsectionTitle}>Reverso · Música</Text>
-            <View style={styles.inputGrid}>
-              <View style={styles.inputField}>
-                <Text style={styles.fieldLabel}>Autor</Text>
-                <TextInput
-                  value={author}
-                  onChangeText={setAuthor}
-                  style={styles.input}
-                  placeholder="Alan Parsons Project"
-                  placeholderTextColor="#94a3b8"
-                />
-              </View>
-              <View style={styles.inputField}>
-                <Text style={styles.fieldLabel}>Single</Text>
-                <TextInput
-                  value={single}
-                  onChangeText={setSingle}
-                  style={styles.input}
-                  placeholder="Eye in the Sky"
-                  placeholderTextColor="#94a3b8"
-                />
-              </View>
-              <View style={styles.inputField}>
-                <Text style={styles.fieldLabel}>Subtítulo</Text>
-                <TextInput
-                  value={subtitle}
-                  onChangeText={setSubtitle}
-                  style={styles.input}
-                  placeholder="1 item"
-                  placeholderTextColor="#94a3b8"
-                />
-              </View>
-            </View>
-            <View style={styles.imagePickerRow}>
-              <View style={styles.coverThumbnailBox}>
-                {coverUri ? (
-                  <Image
-                    source={{ uri: coverUri }}
-                    style={[
-                      styles.coverThumbnail,
-                      { transform: [{ scale: coverRenderScale }] },
-                    ]}
-                    resizeMode="contain"
-                    accessibilityLabel="Miniatura de la carátula seleccionada"
-                  />
-                ) : (
-                  <Ionicons name="image-outline" size={28} color="#94a3b8" />
-                )}
-              </View>
-              <View style={styles.coverDetails}>
-                <Text style={styles.fieldLabel}>Carátula del single</Text>
-                <Text style={styles.coverDimensions}>{coverSizeLabel}</Text>
-                <Text style={styles.fieldHelp}>
-                  Vista cuadrada con recorte centrado, sin deformar la imagen.
-                </Text>
-              </View>
-              <View style={styles.actionRow}>
-                <Pressable onPress={pickCover} style={styles.secondaryButton}>
-                  <Ionicons name="image-outline" size={17} color="#2563eb" />
-                  <Text style={styles.secondaryButtonText}>
-                    {coverUri ? "Cambiar carátula" : "Elegir carátula"}
-                  </Text>
-                </Pressable>
-                {coverUri ? (
-                  <Pressable
-                    onPress={() => {
-                      setCoverDimensions(null);
-                      setCoverUri("");
-                    }}
-                    style={styles.removeCover}
-                  >
-                    <Text style={styles.removeCoverText}>Quitar</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            </View>
+            {(() => {
+              const individual = cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses);
+              const count = cardMode === "playlist" ? 10 : cardMode === "single" ? 1 : Math.min(99, validTracks.length);
+              const track = validTracks[selectedCardIndex];
+              const parsed = splitAuthorAndSingle(track?.title || "");
+              const override = cardOverrides[selectedCardIndex] || {};
+              const current = cardEntries.find(entry => entry.sourceIndex === selectedCardIndex);
+              const currentAuthor = individual ? (override.author ?? (track?.author || track?.artist || parsed.author || author)) : author;
+              const currentTitle = individual ? (override.title ?? (parsed.single || track?.title || title || `Tarjeta ${selectedCardIndex + 1}`)) : single;
+              const currentSubtitle = individual ? (override.subtitle ?? (cardMode === "playlist" ? (track?.author || track?.artist || subtitle) : subtitle)) : subtitle;
+              const personal = track?.artworkUrl || track?.cover || track?.coverUrl || track?.thumbnail || "";
+              const videoId = track ? videoIdFromTrack(track) : "";
+              const youtubeImage = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "";
+              const currentCover = individual ? (typeof override.customCover === "string" ? override.customCover : (current?.cover || personal || youtubeImage || coverUri)) : coverUri;
+              const update = (field, value, globalSetter) => individual ? updateCardOverride(selectedCardIndex, { [field]: value }) : globalSetter(value);
+              return <>
+                {individual ? <View style={{ marginBottom: 14, gap: 8 }}>
+                  <Text style={styles.fieldLabel}>Tarjeta seleccionada: {selectedCardIndex + 1} de {count}</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexDirection: "row", gap: 8, paddingVertical: 3 }}>
+                    {Array.from({ length: count }, (_, index) => (
+                      <Pressable key={`text-card-${index}`} onPress={() => setSelectedCardIndex(index)}
+                        accessibilityLabel={`Editar textos e imagen de tarjeta ${index + 1}`}
+                        style={{ minWidth: 42, paddingHorizontal: 10, paddingVertical: 9, borderRadius: 9, borderWidth: 1.5,
+                          borderColor: selectedCardIndex === index ? "#2563eb" : "#cbd5e1",
+                          backgroundColor: selectedCardIndex === index ? "#dbeafe" : "#fff", alignItems: "center" }}>
+                        <Text style={{ fontWeight: "700", color: "#0f172a" }}>{index + 1}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                  <Text style={styles.fieldHelp}>Los cambios del reverso se aplican solo a la tarjeta seleccionada.</Text>
+                </View> : null}
+                <Text style={styles.subsectionTitle}>{individual ? `Reverso · Tarjeta ${selectedCardIndex + 1}` : "Reverso · Música"}</Text>
+                <View style={styles.inputGrid}>
+                  <View style={styles.inputField}>
+                    <Text style={styles.fieldLabel}>Autor</Text>
+                    <TextInput value={currentAuthor} onChangeText={v => update("author", v, setAuthor)} style={styles.input}
+                      placeholder="Alan Parsons Project" placeholderTextColor="#94a3b8" />
+                  </View>
+                  <View style={styles.inputField}>
+                    <Text style={styles.fieldLabel}>Single</Text>
+                    <TextInput value={currentTitle} onChangeText={v => update("title", v, setSingle)} style={styles.input}
+                      placeholder="Eye in the Sky" placeholderTextColor="#94a3b8" />
+                  </View>
+                  <View style={styles.inputField}>
+                    <Text style={styles.fieldLabel}>Subtítulo</Text>
+                    <TextInput value={currentSubtitle} onChangeText={v => update("subtitle", v, setSubtitle)} style={styles.input}
+                      placeholder="10 items" placeholderTextColor="#94a3b8" />
+                  </View>
+                </View>
+                <View style={styles.imagePickerRow}>
+                  <View style={styles.coverThumbnailBox}>
+                    {currentCover ? <Image source={{ uri: currentCover }} resizeMode="contain"
+                      style={styles.coverThumbnail} accessibilityLabel="Carátula de la tarjeta seleccionada" />
+                      : <Ionicons name="image-outline" size={28} color="#94a3b8" />}
+                  </View>
+                  <View style={styles.coverDetails}>
+                    <Text style={styles.fieldLabel}>{individual ? `Carátula de tarjeta ${selectedCardIndex + 1}` : "Carátula del single"}</Text>
+                    <Text style={styles.coverDimensions}>{individual ? (currentCover ? "Imagen seleccionada" : "Sin imagen") : coverSizeLabel}</Text>
+                    <Text style={styles.fieldHelp}>Imagen completa sin ampliar ni recortar sus textos.</Text>
+                  </View>
+                  <View style={styles.actionRow}>
+                    <Pressable onPress={() => pickCover(individual ? selectedCardIndex : null)} style={styles.secondaryButton}>
+                      <Ionicons name="image-outline" size={17} color="#2563eb" />
+                      <Text style={styles.secondaryButtonText}>{currentCover ? "Cambiar carátula" : "Elegir carátula"}</Text>
+                    </Pressable>
+                    {currentCover ? <Pressable onPress={() => individual
+                      ? updateCardOverride(selectedCardIndex, { customCover: "" })
+                      : (setCoverDimensions(null), setCoverUri(""))} style={styles.removeCover}>
+                      <Text style={styles.removeCoverText}>Quitar</Text>
+                    </Pressable> : null}
+                  </View>
+                </View>
+              </>;
+            })()}
             <View style={styles.sectionDivider} />
-            <Text style={styles.subsectionTitle}>Anverso · Contacto</Text>
+            <Text style={styles.subsectionTitle}>Anverso · Contacto (común en todas las tarjetas)</Text>
             <View style={styles.inputGrid}>
               <View style={styles.inputField}>
                 <Text style={styles.fieldLabel}>Correo electrónico</Text>
