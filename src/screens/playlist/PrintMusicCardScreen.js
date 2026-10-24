@@ -1858,62 +1858,59 @@ export default function PrintMusicCardScreen() {
             </View>
             {cardMode === "playlist" && qrDestination !== "youtube" ? (
               <View style={styles.infoBox}>
-                <Text style={styles.infoBoxTitle}>
-                  Publicación de la playlist
-                </Text>
+                <Text style={styles.infoBoxTitle}>Publicar playlist antes de imprimir</Text>
                 <Text style={styles.infoBoxText}>
-                  Genera un ZIP público con el JSON y, opcionalmente, letras
-                  LRC autorizadas. Copia la carpeta music-cards/ a public/ y
-                  despliega Shopp en Netlify. El QR apunta al reproductor público,
-                  sin login ni instalación.
+                  El QR abrirá la playlist completa en Shopp, sin iniciar sesión.
+                  Descargar archivos NO los publica automáticamente en Netlify.
                 </Text>
-                <Pressable
-                  style={styles.secondaryButton}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: includePublicLyrics }}
-                  onPress={() => setIncludePublicLyrics(value => !value)}
-                >
-                  <Ionicons name={includePublicLyrics ? "checkbox-outline" : "square-outline"} color="#2563eb" size={20} />
-                  <Text style={styles.secondaryButtonText}>Incluir LRC autorizados (texto público)</Text>
-                </Pressable>
-                <View style={styles.actionRow}>
-                  <Pressable style={styles.secondaryButton} onPress={downloadPublicationZip}>
-                    <Ionicons name="archive-outline" color="#2563eb" size={17} />
-                    <Text style={styles.secondaryButtonText}>Exportar ZIP Netlify</Text>
-                  </Pressable>
+                <View style={{ gap: 8, marginTop: 12 }}>
+                  <Text style={{ color: "#334155", fontWeight: "700" }}>1 · Preparar archivos</Text>
+                  <Text style={styles.infoBoxText}>
+                    Genera un ZIP con music-cards/ y la ficha JSON. Las letras LRC son opcionales y solo deben difundirse con autorización.
+                  </Text>
                   <Pressable
                     style={styles.secondaryButton}
-                    onPress={downloadPublicManifest}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: includePublicLyrics }}
+                    onPress={() => { setIncludePublicLyrics(value => !value); setPublished(false); }}
                   >
-                    <Ionicons
-                      name="download-outline"
-                      color="#2563eb"
-                      size={17}
-                    />
-                    <Text style={styles.secondaryButtonText}>
-                      Descargar ficha JSON
-                    </Text>
+                    <Ionicons name={includePublicLyrics ? "checkbox-outline" : "square-outline"} color="#2563eb" size={20} />
+                    <Text style={styles.secondaryButtonText}>Incluir LRC autorizados</Text>
                   </Pressable>
+                  <Pressable style={styles.secondaryButton} onPress={downloadPublicationZip}>
+                    <Ionicons name="archive-outline" color="#2563eb" size={17} />
+                    <Text style={styles.secondaryButtonText}>1. Descargar ZIP para Netlify</Text>
+                  </Pressable>
+                  <Text style={{ color: "#334155", fontWeight: "700", marginTop: 5 }}>2 · Publicar en Netlify</Text>
+                  <Text style={styles.infoBoxText}>
+                    Descomprime el ZIP y copia su carpeta music-cards/ dentro de public/ del proyecto, sin borrar otras playlists. Haz commit, push a develop y, si Netlify despliega main, fusiona la PR a main. Espera al despliegue completado.
+                  </Text>
+                  <Text style={styles.fieldHelp}>Archivo esperado: public/music-cards/{publicId}.json</Text>
+                  <Text style={{ color: "#334155", fontWeight: "700", marginTop: 5 }}>3 · Comprobar antes de imprimir</Text>
+                  <Text style={styles.infoBoxText}>
+                    Compara el JSON publicado con la playlist actual. Esta comprobación no sube ningún archivo.
+                  </Text>
                   <Pressable
                     style={[styles.secondaryButton, busy && styles.disabled]}
                     onPress={verifyPublicManifest}
                     disabled={busy}
                   >
-                    <Ionicons
-                      name="checkmark-circle-outline"
-                      color="#2563eb"
-                      size={17}
-                    />
+                    <Ionicons name="checkmark-circle-outline" color="#2563eb" size={17} />
                     <Text style={styles.secondaryButtonText}>
-                      {busy ? "Comprobando..." : "Comprobar publicación"}
+                      {busy ? "Comprobando..." : "3. Comprobar publicación"}
                     </Text>
                   </Pressable>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                    <Ionicons name={published ? "checkmark-circle" : "alert-circle-outline"} size={19} color={published ? "#15803d" : "#9a6700"} />
+                    <Text style={{ color: published ? "#15803d" : "#854d0e", fontWeight: "700", flex: 1 }}>
+                      {published ? "Publicación verificada: puedes imprimir" : "Pendiente de verificar: impresión bloqueada"}
+                    </Text>
+                  </View>
+                  <Pressable style={styles.secondaryButton} onPress={downloadPublicManifest}>
+                    <Ionicons name="document-text-outline" color="#2563eb" size={17} />
+                    <Text style={styles.secondaryButtonText}>Avanzado: descargar solo JSON</Text>
+                  </Pressable>
                 </View>
-                <Text style={styles.fieldHelp}>
-                  {published
-                    ? "✓ Ficha publicada y comprobada"
-                    : `Ruta: public/music-cards/${publicId}.json`}
-                </Text>
               </View>
             ) : null}
           </View>
