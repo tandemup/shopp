@@ -175,21 +175,12 @@ function makeCutGridSvg(style) {
   ].join(" ");
   return `<svg class="grid-vector" xmlns="http://www.w3.org/2000/svg" width="180mm" height="280mm" viewBox="0 0 180 280" aria-hidden="true"><path d="${gridPath}" fill="none" stroke="${style.color}" stroke-width="${style.width}"${dash}/></svg>`;
 }
-const DEFAULT_COVER_OVERSCAN = 1.08; // Recorte adicional suave para ocultar halos blancos del original
+// Respetar el contenido completo de las carátulas, incluidos textos cerca del borde.
+// La versión anterior aplicaba un zoom de 1.12 a imágenes cuadradas.
+const DEFAULT_COVER_OVERSCAN = 1;
 
-function getCoverOverscan(width, height) {
-  if (
-    !Number.isFinite(width) ||
-    !Number.isFinite(height) ||
-    width <= 0 ||
-    height <= 0
-  ) {
-    return DEFAULT_COVER_OVERSCAN;
-  }
-  const aspect = width / height;
-  if (aspect >= 0.95 && aspect <= 1.05) return 1.12;
-  if (aspect >= 0.8 && aspect <= 1.25) return 1.1;
-  return 1.06;
+function getCoverOverscan(_width, _height) {
+  return 1;
 }
 
 const BACK_PANEL_TONES = [
@@ -508,7 +499,7 @@ function buildPrintHtml({
     .contact{display:flex;align-items:baseline;gap:2mm;margin-top:1.2mm;min-width:0}.contact span{font-size:6.5pt;text-transform:uppercase;color:#64748b;font-weight:700;min-width:9mm}.contact strong{font-size:7.5pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     /* Cuadrado físico con recorte centrado: misma geometría en pantalla e impresión.
        Los originales cuadrados conservan toda la imagen. No se fuerza la proporción. */
-    .back{display:block;background:${frameBg}}.back-inner{width:100%;height:100%;display:flex;overflow:hidden}.cover-panel{min-width:0;height:100%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:${frameBg}}.cover{width:100%;height:100%;display:block;object-fit:cover;object-position:center}.placeholder{display:flex;align-items:center;justify-content:center;background:#e2e8f0;color:#64748b;font-size:13pt;font-weight:700;text-align:center}.back-info{flex:1;min-width:0;height:100%;padding:1.5mm;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:.4mm;overflow:hidden}
+    .back{display:block;background:${frameBg}}.back-inner{width:100%;height:100%;display:flex;overflow:hidden}.cover-panel{min-width:0;height:100%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;overflow:hidden;background:${frameBg}}.cover{width:100%;height:100%;display:block;object-fit:contain;object-position:center}.placeholder{display:flex;align-items:center;justify-content:center;background:#e2e8f0;color:#64748b;font-size:13pt;font-weight:700;text-align:center}.back-info{flex:1;min-width:0;height:100%;padding:1.5mm;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:.4mm;overflow:hidden}
     .music-meta{width:100%;min-height:0;flex:1 1 auto;display:flex;flex-direction:column;gap:.45mm;text-align:center;min-width:0;overflow:hidden}.music-meta strong{font-size:9pt;line-height:1.15;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.music-meta span{font-size:6.5pt;line-height:1.15;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.music-meta .author{font-size:7pt;font-weight:700}.music-meta .subtitle{font-size:6pt}
     /* Con un marco ancho reducimos solo la tipografía musical y el QR, manteniendo
        visibles el QR completo y sus dos líneas inferiores. */
@@ -530,6 +521,7 @@ export default function PrintMusicCardScreen() {
   const isClassical = Boolean(route.params?.isClassical);
   const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
   const [cardMode, setCardMode] = useState("playlist"); // QR directo al reproductor público
+  const [customPlaylistReverses, setCustomPlaylistReverses] = useState(false);
   const [qrDestination, setQrDestination] = useState("shopp");
   const [publicBaseUrl, setPublicBaseUrl] = useState(initialLandingUrl);
   const [publicId] = useState(() => publicIdForPlaylist(playlist));
@@ -935,9 +927,31 @@ export default function PrintMusicCardScreen() {
         qrDestination === "youtube"
           ? buildSongCardUrl(origin, first, title, author, "youtube")
           : buildPlaylistCardUrl(origin, publicId, qrDestination);
-      return url
-        ? [{ title: title || "Playlist Shopp", author, cover: coverUri, url }]
-        : [];
+      if (!url) return [];
+      if (!customPlaylistReverses) return [{ title: title || "Playlist Shopp", author, cover: coverUri, url }];
+      // Diez reversos distintos con un único QR a la playlist completa.
+      // Los cambios afectan solo a la impresión, nunca al manifiesto público.
+      return Array.from({ length: 10 }, (_, index) => {
+        const track = validTracks[index];
+        const overrides = cardOverrides[index] || {};
+        if (overrides.enabled === false) return null;
+        const parsed = splitAuthorAndSingle(track?.title || "");
+        const videoId = track ? videoIdFromTrack(track) : "";
+        const personal = track?.artworkUrl || track?.cover || track?.coverUrl || track?.thumbnail || "";
+        const youtubeImage = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "";
+        const imageMode = overrides.image || "auto";
+        const image = imageMode === "general" ? (coverUri || personal || youtubeImage)
+          : imageMode === "youtube" ? (youtubeImage || personal || coverUri)
+          : (personal || youtubeImage || coverUri);
+        return {
+          title: overrides.title ?? (parsed.single || track?.title || title || `Tarjeta ${index + 1}`),
+          subtitle: overrides.subtitle ?? (track?.author || track?.artist || subtitle),
+          author: track?.author || track?.artist || author,
+          cover: image, url,
+          sourceIndex: index,
+          printOrder: Number.isInteger(overrides.printOrder) ? overrides.printOrder : index,
+        };
+      }).filter(Boolean).sort((a, b) => a.printOrder - b.printOrder);
     }
     const pool = cardMode === "single" ? validTracks.slice(0, 1) : validTracks;
     return pool
@@ -998,6 +1012,7 @@ export default function PrintMusicCardScreen() {
     coverUri,
     subtitle,
     cardOverrides,
+    customPlaylistReverses,
   ]);
   // Reordena exclusivamente las tarjetas activas, sin modificar las pistas ni sus QR.
   const movePrintedCard = (position, direction) => {
@@ -1189,9 +1204,10 @@ export default function PrintMusicCardScreen() {
       showNotice("Error al exportar", String(error?.message || error), "warning");
     } finally { setExportingSelection(false); }
   };
-  // La vista previa representa la primera tarjeta que se imprimirá.
-  // En modo "songs" cada entrada conserva su propia carátula.
-  const previewEntry = cardEntries[0];
+  // La vista previa sigue la tarjeta seleccionada en el editor.
+  const previewEntry = (cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses))
+    ? (cardEntries.find(entry => entry.sourceIndex === selectedCardIndex) || cardEntries[0])
+    : cardEntries[0];
   const previewCoverUri = previewEntry?.cover || coverUri;
   const targetUrl = previewEntry?.url || "";
   // En iOS Chrome reconoce googlechromes://; Safari utiliza el enlace HTTPS normal.
@@ -1497,7 +1513,7 @@ export default function PrintMusicCardScreen() {
       single,
       subtitle,
       cards: cardEntries,
-      distinctCards: cardMode === "songs",
+      distinctCards: cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses),
       format,
       copies,
       frontCropMarks,
@@ -1967,7 +1983,7 @@ export default function PrintMusicCardScreen() {
                       styles.coverThumbnail,
                       { transform: [{ scale: coverRenderScale }] },
                     ]}
-                    resizeMode="cover"
+                    resizeMode="contain"
                     accessibilityLabel="Miniatura de la carátula seleccionada"
                   />
                 ) : (
@@ -2221,15 +2237,73 @@ export default function PrintMusicCardScreen() {
           </View>
         </View>
 
+        {cardMode === "playlist" ? (
+          <View style={[styles.previewSection, { marginBottom: 14, gap: 12 }]}>
+            <View style={styles.sectionHeading}>
+              <Ionicons name="albums-outline" size={21} color="#2563eb" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle}>Reversos de las 10 tarjetas</Text>
+                <Text style={styles.sectionSubtitle}>Mismo QR de la playlist completa; títulos e imágenes individuales.</Text>
+              </View>
+            </View>
+            <Pressable style={styles.modalToggleRow} onPress={() => { setCustomPlaylistReverses(value => !value); setSelectedCardIndex(0); }}>
+              <Ionicons name={customPlaylistReverses ? "checkbox" : "square-outline"} size={23} color="#2563eb" />
+              <Text style={[styles.fieldLabel, { flex: 1 }]}>Personalizar los 10 reversos</Text>
+            </Pressable>
+            {customPlaylistReverses ? (
+              <View style={{ gap: 12 }}>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  {Array.from({ length: 10 }, (_, index) => {
+                    const active = cardOverrides[index]?.enabled !== false;
+                    return (
+                      <Pressable key={`playlist-reverse-${index}`} onPress={() => setSelectedCardIndex(index)}
+                        accessibilityLabel={`Seleccionar reverso ${index + 1}`}
+                        style={{ paddingVertical: 9, paddingHorizontal: 12, borderRadius: 8, borderWidth: 2,
+                          borderColor: index === selectedCardIndex ? "#2563eb" : "#cbd5e1",
+                          backgroundColor: index === selectedCardIndex ? "#dbeafe" : "#fff" }}>
+                        <Text style={{ fontWeight: "700", color: active ? "#0f172a" : "#94a3b8" }}>{index + 1}{active ? "" : " ×"}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Text style={styles.fieldLabel}>Tarjeta {selectedCardIndex + 1} de 10</Text>
+                <Pressable style={styles.modalToggleRow} onPress={() => updateCardOverride(selectedCardIndex, { enabled: cardOverrides[selectedCardIndex]?.enabled === false })}>
+                  <Ionicons name={cardOverrides[selectedCardIndex]?.enabled === false ? "square-outline" : "checkbox"} size={22} color="#2563eb" />
+                  <Text style={styles.fieldLabel}>Incluir esta tarjeta</Text>
+                </Pressable>
+                <View>
+                  <Text style={styles.fieldLabel}>Título del reverso</Text>
+                  <TextInput style={styles.cardEditorInput}
+                    value={cardOverrides[selectedCardIndex]?.title ?? (splitAuthorAndSingle(validTracks[selectedCardIndex]?.title || "").single || validTracks[selectedCardIndex]?.title || title || "")}
+                    onChangeText={value => updateCardOverride(selectedCardIndex, { title: value })} />
+                </View>
+                <View>
+                  <Text style={styles.fieldLabel}>Subtítulo del reverso</Text>
+                  <TextInput style={styles.cardEditorInput}
+                    value={cardOverrides[selectedCardIndex]?.subtitle ?? (validTracks[selectedCardIndex]?.author || validTracks[selectedCardIndex]?.artist || subtitle || "")}
+                    onChangeText={value => updateCardOverride(selectedCardIndex, { subtitle: value })} />
+                </View>
+                <Text style={styles.fieldLabel}>Fuente de la carátula</Text>
+                {[["auto", "Automática"], ["artwork", "Carátula de la canción"], ["youtube", "Miniatura de YouTube"], ["general", "Carátula de la playlist"]].map(([value, label]) => (
+                  <Pressable key={value} style={styles.modalToggleRow} onPress={() => updateCardOverride(selectedCardIndex, { image: value })}>
+                    <Ionicons name={(cardOverrides[selectedCardIndex]?.image || "auto") === value ? "radio-button-on" : "radio-button-off"} size={20} color="#2563eb" />
+                    <Text style={{ color: "#0f172a" }}>{label}</Text>
+                  </Pressable>
+                ))}
+                <Text style={styles.note}>Las 10 tarjetas utilizan el mismo enlace QR. Para apuntar a canciones u obras diferentes, selecciona «Canciones distintas».</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
         <View style={styles.previewSection}>
           <View style={styles.sectionHeading}>
             <Ionicons name="eye-outline" size={21} color="#2563eb" />
             <View style={{ flex: 1 }}>
               <Text style={styles.sectionTitle}>
-                Vista previa de la tarjeta
+                Vista previa de las tarjetas
               </Text>
               <Text style={styles.sectionSubtitle}>
-                Así se verán las dos caras con los colores elegidos.
+                {customPlaylistReverses && cardMode === "playlist" ? `Anverso común y galería horizontal de reversos.` : "Así se verán las dos caras con los colores elegidos."}
               </Text>
             </View>
           </View>
@@ -2285,8 +2359,31 @@ export default function PrintMusicCardScreen() {
                 </View>
               </View>
             </View>
-            <View>
-              <Text style={styles.sideLabel}>REVERSO</Text>
+          </View>
+          <View style={{ marginTop: 16 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 }}>
+              <Text style={styles.sideLabel}>REVERSOS · DESLIZA HORIZONTALMENTE</Text>
+              <Text style={{ color: "#64748b", fontSize: 12 }}>{cardEntries.length} tarjeta(s)</Text>
+            </View>
+            <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator
+              contentContainerStyle={{ gap: 14, paddingVertical: 8, paddingHorizontal: 2 }}
+              accessibilityLabel="Galería horizontal de reversos de tarjetas">
+              {cardEntries.map((entry, galleryIndex) => (
+                <Pressable key={`reverse-preview-${entry.sourceIndex ?? galleryIndex}`}
+                  onPress={() => {
+                    if (Number.isInteger(entry.sourceIndex)) setSelectedCardIndex(entry.sourceIndex);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Seleccionar reverso ${galleryIndex + 1}: ${entry.title || "Tarjeta"}`}
+                  style={{ width: previewCardWidth, gap: 5 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: "#475569" }}>
+                      TARJETA {galleryIndex + 1}{cardEntries.length > 1 ? ` / ${cardEntries.length}` : ""}
+                    </Text>
+                    {entry.sourceIndex === selectedCardIndex && cardEntries.length > 1 ? (
+                      <Ionicons name="checkmark-circle" size={18} color="#2563eb" />
+                    ) : null}
+                  </View>
               <View
                 style={[
                   styles.card,
@@ -2313,10 +2410,10 @@ export default function PrintMusicCardScreen() {
                       },
                     ]}
                   >
-                    {previewCoverUri ? (
+                    {(entry.cover || coverUri) ? (
                       <Image
-                        source={{ uri: previewCoverUri }}
-                        resizeMode="cover"
+                        source={{ uri: (entry.cover || coverUri) }}
+                        resizeMode="contain"
                         style={[
                           styles.coverPreview,
                           { transform: [{ scale: coverRenderScale }] },
@@ -2343,7 +2440,7 @@ export default function PrintMusicCardScreen() {
                     ]}
                   >
                     <View style={styles.musicMetaPreview}>
-                      {previewEntry?.author ? (
+                      {entry?.author ? (
                         <Text
                           style={[
                             styles.musicAuthor,
@@ -2352,7 +2449,7 @@ export default function PrintMusicCardScreen() {
                           ]}
                           numberOfLines={1}
                         >
-                          {previewEntry.author}
+                          {entry.author}
                         </Text>
                       ) : null}
                       <Text
@@ -2363,9 +2460,9 @@ export default function PrintMusicCardScreen() {
                         ]}
                         numberOfLines={2}
                       >
-                        {previewEntry?.title || single || title}
+                        {entry?.title || single || title}
                       </Text>
-                      {subtitle ? (
+                      {(entry?.subtitle ?? subtitle) ? (
                         <Text
                           style={[
                             styles.musicSubtitle,
@@ -2374,14 +2471,24 @@ export default function PrintMusicCardScreen() {
                           ]}
                           numberOfLines={1}
                         >
-                          {subtitle}
+                          {entry?.subtitle ?? subtitle}
                         </Text>
                       ) : null}
                     </View>
-                    {targetUrl ? (
-                      <View style={styles.qrPanelPreview}>
+                    {entry.url ? (
+                      <Pressable
+                        onPress={(event) => {
+                          // Evita que el clic sobre el QR seleccione también el reverso.
+                          event?.stopPropagation?.();
+                          openCardQrDestination(entry.url);
+                        }}
+                        accessibilityRole="link"
+                        accessibilityLabel={`Abrir enlace del QR de la tarjeta ${galleryIndex + 1}: ${entry.title || "Tarjeta"}`}
+                        accessibilityHint="Abre el destino público de este código QR en el navegador"
+                        style={styles.qrPanelPreview}
+                      >
                         <Image
-                          source={{ uri: qrUrl(targetUrl) }}
+                          source={{ uri: qrUrl(entry.url) }}
                           style={[
                             styles.qrBack,
                             { width: previewQrSizePx, height: previewQrSizePx },
@@ -2397,7 +2504,7 @@ export default function PrintMusicCardScreen() {
                         >
                           {qrActionLabel}
                         </Text>
-                      </View>
+                      </Pressable>
                     ) : (
                       <View style={[styles.qrPanelPreview, styles.qrEmpty]}>
                         <Text>Sin enlace</Text>
@@ -2406,7 +2513,12 @@ export default function PrintMusicCardScreen() {
                   </View>
                 </View>
               </View>
-            </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <Text style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>
+              Desliza para revisar cada reverso. Pulsa su QR para abrir y verificar el enlace; pulsa el resto de la tarjeta para editarla.
+            </Text>
           </View>
         </View>
         {targetUrl ? (
@@ -2589,7 +2701,7 @@ export default function PrintMusicCardScreen() {
                     <View key={`sheet-preview-${entry.sourceIndex}`} style={{ width: "48%", borderColor: "#cbd5e1", borderWidth: 1, borderRadius: 9, padding: 7, gap: 5, backgroundColor: "#fff" }}>
                       <Text style={{ fontSize: 11, fontWeight: "700", color: "#64748b" }}>Posición {position + 1}</Text>
                       {entry.cover ? (
-                        <Image source={{ uri: entry.cover }} resizeMode="cover" style={{ width: 74, height: 74, borderRadius: 5, alignSelf: "center", backgroundColor: "#e2e8f0" }} />
+                        <Image source={{ uri: entry.cover }} resizeMode="contain" style={{ width: 74, height: 74, borderRadius: 5, alignSelf: "center", backgroundColor: "#e2e8f0" }} />
                       ) : <View style={{ width: 74, height: 74, backgroundColor: "#e2e8f0", alignSelf: "center", alignItems: "center", justifyContent: "center" }}><Ionicons name="image-outline" size={24} color="#64748b" /></View>}
                       <Text style={{ fontWeight: "700", fontSize: 12, color: "#0f172a" }} numberOfLines={2}>{entry.title}</Text>
                       <Text style={{ fontSize: 11, color: "#475569" }} numberOfLines={2}>{entry.subtitle || entry.author || "Sin subtítulo"}</Text>
@@ -2824,38 +2936,38 @@ export default function PrintMusicCardScreen() {
                 <View style={styles.modalFieldRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.fieldLabel}>
-                      {cardMode === "songs"
+                      {(cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses))
                         ? "Tarjetas diferentes"
                         : "Número de copias"}
                     </Text>
                     <Text style={styles.fieldHelp}>
-                      {cardMode === "songs"
-                        ? "Una por canción válida"
+                      {(cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses))
+                        ? "Una por reverso activo"
                         : "Distribuidas en hojas de 10"}
                     </Text>
                   </View>
                   <View style={styles.counter}>
                     <Pressable
-                      disabled={cardMode === "songs"}
+                      disabled={cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses)}
                       onPress={() => changeCopies(-1)}
                       style={[
                         styles.counterButton,
-                        cardMode === "songs" && styles.disabled,
+                        (cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses)) && styles.disabled,
                       ]}
                     >
                       <Ionicons name="remove" size={18} color="#0f172a" />
                     </Pressable>
                     <Text style={styles.counterValue}>
-                      {cardMode === "songs"
+                      {(cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses))
                         ? Math.min(cardEntries.length, 99)
                         : copies}
                     </Text>
                     <Pressable
-                      disabled={cardMode === "songs"}
+                      disabled={cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses)}
                       onPress={() => changeCopies(1)}
                       style={[
                         styles.counterButton,
-                        cardMode === "songs" && styles.disabled,
+                        (cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses)) && styles.disabled,
                       ]}
                     >
                       <Ionicons name="add" size={18} color="#0f172a" />
@@ -3501,7 +3613,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
-  coverPreview: { width: "100%", height: "100%", resizeMode: "cover" },
+  coverPreview: { width: "100%", height: "100%", resizeMode: "contain" },
   coverEmpty: {
     backgroundColor: "#e2e8f0",
     alignItems: "center",
