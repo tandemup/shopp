@@ -176,6 +176,12 @@ export default function PublicMusicCardScreen() {
           const tracks = manifest.tracks.slice(0, 100).map(normalizeTrack).filter(Boolean);
           if (!tracks.length) throw new Error("La playlist no contiene vídeos de YouTube válidos.");
           if (active) {
+            // QR individuales: abrir directamente la pista deseada sin perder
+            // lyricsUrl, que viene del JSON público y no de la URL del vídeo.
+            const requestedSong = query.get("song");
+            const parsedSong = requestedSong !== null && /^\d{1,3}$/.test(requestedSong)
+              ? Number(requestedSong) : 0;
+            setIndex(parsedSong >= 0 && parsedSong < tracks.length ? parsedSong : 0);
             setData({
               title: clean(manifest.title || "Playlist Shopp"),
               author: clean(manifest.author, 100),

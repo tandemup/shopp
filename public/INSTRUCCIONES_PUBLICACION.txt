@@ -1,6 +1,0 @@
-SHopp - publicación pública
-
-Copia la carpeta music-cards/ de este ZIP dentro de public/ del repositorio Shopp.
-Publica el proyecto completo en Netlify, sin reemplazar el sitio por este ZIP.
-Comprueba la publicación desde Imprimir tarjeta antes de imprimir.
-Los archivos LRC se publican como texto accesible por URL; asegúrate de disponer de derechos.
