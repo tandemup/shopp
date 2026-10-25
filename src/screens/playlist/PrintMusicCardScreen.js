@@ -185,6 +185,15 @@ function getCoverOverscan(_width, _height) {
 
 const BACK_PANEL_TONES = [
   {
+    id: "original",
+    label: "Original (degradado)",
+    bg: "#f8fafc",
+    printBackground: "linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%)",
+    title: "#1f2937",
+    meta: "#64748b",
+    accent: "#475569",
+  },
+  {
     id: "sand",
     label: "Arena",
     bg: "#f6f0dd",
@@ -233,11 +242,33 @@ const BACK_PANEL_TONES = [
     accent: "#475569",
   },
 ];
-const DEFAULT_BACK_PANEL_TONE = BACK_PANEL_TONES[0].id;
+const DEFAULT_BACK_PANEL_TONE = "sand";
+
+// Fondo independiente del bloque QR. El propio código conserva su blanco para garantizar contraste.
+const QR_BACKGROUND_TONES = [
+  { id: "original", label: "Original (degradado)", bg: "#f8fafc" },
+  { id: "transparent", label: "Transparente", bg: "transparent" },
+  { id: "white", label: "Blanco", bg: "#ffffff" },
+  { id: "sand", label: "Arena", bg: "#f6f0dd" },
+  { id: "ice", label: "Azul hielo", bg: "#edf5ff" },
+  { id: "sage", label: "Verde salvia", bg: "#eef5ee" },
+  { id: "pearl", label: "Perla", bg: "#f7f2f5" },
+  { id: "mist", label: "Gris niebla", bg: "#f3f4f6" },
+];
+
+// El anverso y el marco del reverso pueden usar el degradado original.
+const ORIGINAL_FRONT_BACKGROUND =
+  "linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%)";
 
 // Color independiente del marco del reverso. La carátula se recorta a un
 // cuadrado centrado; nunca se estira ni deja bandas laterales.
 const BACK_FRAME_TONES = [
+  {
+    id: "original",
+    label: "Original (degradado)",
+    bg: "#f8fafc",
+    printBackground: ORIGINAL_FRONT_BACKGROUND,
+  },
   { id: "yellow", label: "Amarillo pálido", bg: "#fff2bd" },
   { id: "white", label: "Blanco", bg: "#ffffff" },
   ...BACK_PANEL_TONES,
@@ -246,8 +277,6 @@ const DEFAULT_BACK_FRAME_TONE = "yellow";
 
 // El anverso y el panel derecho del reverso tienen colores independientes.
 // La opción Original conserva el degradado utilizado hasta ahora al imprimir.
-const ORIGINAL_FRONT_BACKGROUND =
-  "linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%)";
 const FRONT_TONES = [
   {
     id: "original",
@@ -294,7 +323,7 @@ function nextBackInset(value, delta) {
 function getBackPanelTone(toneId) {
   return (
     BACK_PANEL_TONES.find((option) => option.id === toneId) ||
-    BACK_PANEL_TONES[0]
+    BACK_PANEL_TONES.find((option) => option.id === DEFAULT_BACK_PANEL_TONE)
   );
 }
 
@@ -332,6 +361,7 @@ function buildPrintHtml({
   frontBackground,
   backPanelBg,
   backFrameBg,
+  qrBackground,
   backPanelTitleColor,
   backPanelMetaColor,
   backPanelAccentColor,
@@ -348,6 +378,7 @@ function buildPrintHtml({
   );
   const panelBg = esc(backPanelBg ?? "#f6f0dd");
   const frameBg = esc(backFrameBg ?? "#fff2bd");
+  const qrBg = esc(qrBackground || "#ffffff");
   const panelTitleColor = esc(backPanelTitleColor || "#1f2937");
   const panelMetaColor = esc(backPanelMetaColor || "#64748b");
   const panelAccentColor = esc(backPanelAccentColor || "#475569");
@@ -443,7 +474,7 @@ function buildPrintHtml({
       <div class="cover-panel" style="width:${coverSizeMm}mm;flex:0 0 ${coverSizeMm}mm;background:${frameBg};">${cardCover ? `<img class="cover" src="${cardCover}" alt="Carátula" style="transform:scale(${safeCoverScale});"/>` : `<div class="cover placeholder">Shopp Music</div>`}</div>
       <div class="back-info${compactBack ? " compact" : ""}" style="background:${panelBg};">
         <div class="music-meta">${cardAuthor ? `<span class="author" style="color:${panelAccentColor};">${cardAuthor}</span>` : ""}<strong style="color:${panelTitleColor};">${cardTitle}</strong>${cardSubtitle ? `<span class="subtitle" style="color:${panelMetaColor};">${cardSubtitle}</span>` : ""}</div>
-        <div class="qr-panel"><img src="${q}" style="width:${qrSizeMm}mm;height:${qrSizeMm}mm;" alt="Código QR musical"/><span style="color:${panelAccentColor};">${printedQrAction}</span></div>
+        <div class="qr-panel" style="background:${qrBg};"><img src="${q}" style="width:${qrSizeMm}mm;height:${qrSizeMm}mm;" alt="Código QR musical"/><span style="color:${panelAccentColor};">${printedQrAction}</span></div>
       </div>
     </div>
   </div></div>`;
@@ -521,7 +552,6 @@ export default function PrintMusicCardScreen() {
   const isClassical = Boolean(route.params?.isClassical);
   const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
   const [cardMode, setCardMode] = useState("playlist"); // QR directo al reproductor público
-  const [selectedSongIndex, setSelectedSongIndex] = useState(0); // Pista elegida para copias idénticas
   const customPlaylistReverses = false; // Un único reverso: sin personalización de diez tarjetas.
   const [qrDestination, setQrDestination] = useState("shopp");
   const [publicBaseUrl, setPublicBaseUrl] = useState(initialLandingUrl);
@@ -697,6 +727,7 @@ export default function PrintMusicCardScreen() {
     DEFAULT_BACK_FRAME_TONE,
   );
   const [frontToneId, setFrontToneId] = useState(DEFAULT_FRONT_TONE);
+  const [qrBackgroundId, setQrBackgroundId] = useState("white");
   const templateTrackSignature = () => validTracks.slice(0, 99)
     .map(t => videoIdFromTrack(t) || youtubePlaylistIdFromTrack(t) || "");
   const saveSheetTemplate = async () => {
@@ -708,10 +739,10 @@ export default function PrintMusicCardScreen() {
       trackSignature: templateTrackSignature(),
       cards: JSON.parse(JSON.stringify(cardOverrides)),
       selectedWorkIds: [...sheetWorkIds],
-      settings: { cardMode, selectedSongIndex, qrDestination, publicBaseUrl, title, author, single, subtitle,
+      settings: { cardMode, qrDestination, publicBaseUrl, title, author, single, subtitle,
         coverUri, format, copies, frontCropMarks, backCropMarks, showBackGridOnFront,
         gridStyles, doubleSided, duplexFlip, backOffsetX, backOffsetY,
-        backInsetEnabled, backInsetMm, backPanelToneId, backFrameToneId, frontToneId,
+        backInsetEnabled, backInsetMm, backPanelToneId, backFrameToneId, frontToneId, qrBackgroundId,
         contactEmail, landingUrl },
     };
     const next = [data, ...sheetTemplates.filter(t => t.name !== name)].slice(0, 20);
@@ -807,7 +838,6 @@ export default function PrintMusicCardScreen() {
     setCardOverrides(c);
     setSheetWorkIds(Array.isArray(template.selectedWorkIds) ? template.selectedWorkIds : []);
     if (["playlist", "single", "songs"].includes(o.cardMode)) setCardMode(o.cardMode);
-    if (Number.isInteger(o.selectedSongIndex) && o.selectedSongIndex >= 0 && o.selectedSongIndex < validTracks.length) setSelectedSongIndex(o.selectedSongIndex);
     if (typeof o.qrDestination === "string") setQrDestination(o.qrDestination);
     if (typeof o.publicBaseUrl === "string") setPublicBaseUrl(o.publicBaseUrl);
     if (typeof o.title === "string") setTitle(o.title);
@@ -829,7 +859,7 @@ export default function PrintMusicCardScreen() {
     if (Number.isFinite(o.backInsetMm)) setBackInsetMm(o.backInsetMm);
     for (const [key, setter] of [
       ["backPanelToneId", setBackPanelToneId], ["backFrameToneId", setBackFrameToneId],
-      ["frontToneId", setFrontToneId], ["contactEmail", setContactEmail],
+      ["frontToneId", setFrontToneId], ["qrBackgroundId", setQrBackgroundId], ["contactEmail", setContactEmail],
       ["landingUrl", setLandingUrl],
     ]) if (typeof o[key] === "string") setter(o[key]);
     setTemplateName(template.name);
@@ -909,25 +939,6 @@ export default function PrintMusicCardScreen() {
   );
   const [contactEmail, setContactEmail] = useState(DEFAULT_CONTACT_EMAIL);
   const [landingUrl, setLandingUrl] = useState(initialLandingUrl);
-  // Al elegir un tema, actualizar los datos básicos de la tarjeta sin alterar la playlist.
-  // La carátula editable puede sustituirse después en «Textos e imágenes».
-  const chooseSongForPrinting = (index) => {
-    if (!Number.isInteger(index) || index < 0 || index >= validTracks.length) return;
-    const track = validTracks[index];
-    const parsed = splitAuthorAndSingle(track.title || "");
-    const nextAuthor = String(track.author || track.artist || parsed.author || playlist.author || playlist.artist || "");
-    const nextSingle = String(track.single || parsed.single || track.title || "");
-    const videoId = videoIdFromTrack(track);
-    const nextCover = String(track.artworkUrl || track.cover || track.coverUrl || track.thumbnail ||
-      (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "") || "");
-    setSelectedSongIndex(index);
-    setAuthor(nextAuthor);
-    setSingle(nextSingle);
-    setSubtitle("1 item");
-    setCoverUri(nextCover);
-    setCoverDimensions(null);
-  };
-
   const backPanelTone = useMemo(
     () => getBackPanelTone(backPanelToneId),
     [backPanelToneId],
@@ -974,29 +985,24 @@ export default function PrintMusicCardScreen() {
         };
       }).filter(Boolean).sort((a, b) => a.printOrder - b.printOrder);
     }
-    // En modo «Elegir canción» solo se imprime la pista seleccionada,
-    // manteniendo su índice real para el QR aunque no sea la primera.
-    const pool = cardMode === "single"
-      ? (validTracks[selectedSongIndex] ? [[validTracks[selectedSongIndex], selectedSongIndex]] : [])
-      : validTracks.map((track, index) => [track, index]);
+    const pool = cardMode === "single" ? validTracks.slice(0, 1) : validTracks;
     return pool
       .slice(0, 99)
-      .map(([track, index]) => {
-        const settings = cardMode === "single" ? {} : (cardOverrides[index] || {});
+      .map((track, index) => {
+        const settings = cardOverrides[index] || {};
         if (settings.enabled === false) return null;
         const parsed = splitAuthorAndSingle(track.title || "");
         const trackTitle =
           cardMode === "single"
             ? single || parsed.single
             : parsed.single || track.title;
-        const trackAuthor = cardMode === "single"
-          ? author
-          : (track.author || track.artist || parsed.author || author);
+        const trackAuthor =
+          track.author || track.artist || parsed.author || author;
         const videoId = videoIdFromTrack(track);
         const personalCover = track.artworkUrl || track.cover || track.coverUrl || track.thumbnail;
         const youtubeCover = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "";
         const source = settings.image || "auto";
-        const trackCover = cardMode === "single" ? coverUri : source === "youtube"
+        const trackCover = source === "youtube"
           ? (youtubeCover || personalCover || coverUri)
           : source === "general"
             ? (coverUri || personalCover || youtubeCover)
@@ -1008,23 +1014,12 @@ export default function PrintMusicCardScreen() {
           : [index];
         const multi = selectedIndices.length > 1;
         const groupId = settings.workPublicId || selectionCardId(publicId, selectedIndices);
-        // El QR individual de Shopp utiliza el manifiesto público para conservar
-        // lyricsUrl, carátulas y el resto de la playlist. La posición se indica
-        // mediante "song" (índice 0-based en validTracks).
         const url = multi
           ? buildPlaylistCardUrl(origin, groupId, qrDestination === "youtube" ? "landing" : qrDestination)
-          : qrDestination !== "youtube"
-            ? (() => {
-                const playlistUrl = buildPlaylistCardUrl(origin, publicId, qrDestination);
-                if (!playlistUrl) return "";
-                const result = new URL(playlistUrl);
-                result.searchParams.set("song", String(index));
-                return result.toString();
-              })()
-            : buildSongCardUrl(origin, track, trackTitle, trackAuthor, qrDestination);
+          : buildSongCardUrl(origin, track, trackTitle, trackAuthor, qrDestination);
         return {
-          title: cardMode === "single" ? (single || trackTitle) : (settings.title ?? trackTitle),
-          subtitle: cardMode === "single" ? subtitle : (settings.subtitle ?? subtitle),
+          title: settings.title ?? trackTitle,
+          subtitle: settings.subtitle ?? subtitle,
           author: trackAuthor,
           cover: trackCover,
           url,
@@ -1050,7 +1045,6 @@ export default function PrintMusicCardScreen() {
     subtitle,
     cardOverrides,
     customPlaylistReverses,
-    selectedSongIndex,
   ]);
   // Reordena exclusivamente las tarjetas activas, sin modificar las pistas ni sus QR.
   const movePrintedCard = (position, direction) => {
@@ -1596,8 +1590,9 @@ export default function PrintMusicCardScreen() {
       backInsetEnabled,
       backInsetMm,
       frontBackground: frontTone.printBackground || frontTone.bg,
-      backPanelBg: backPanelTone.bg,
-      backFrameBg: backFrameTone.bg,
+      backPanelBg: backPanelTone.printBackground || backPanelTone.bg,
+      backFrameBg: backFrameTone.printBackground || backFrameTone.bg,
+      qrBackground: qrBackgroundId === "original" ? ORIGINAL_FRONT_BACKGROUND : (QR_BACKGROUND_TONES.find(t => t.id === qrBackgroundId)?.bg || "#ffffff"),
       backPanelTitleColor: backPanelTone.title,
       backPanelMetaColor: backPanelTone.meta,
       backPanelAccentColor: backPanelTone.accent,
@@ -1795,8 +1790,8 @@ export default function PrintMusicCardScreen() {
                 ],
                 [
                   "single",
-                  "Elegir canción",
-                  "Varias copias del tema elegido",
+                  "Primera canción",
+                  "Varias copias de un tema",
                   "disc-outline",
                 ],
                 [
@@ -1812,7 +1807,6 @@ export default function PrintMusicCardScreen() {
                   accessibilityState={{ selected: cardMode === value }}
                   onPress={() => {
                     setCardMode(value);
-                    if (value === "single") chooseSongForPrinting(selectedSongIndex);
                     setPublished(false);
                   }}
                   style={[
@@ -1841,31 +1835,6 @@ export default function PrintMusicCardScreen() {
                 </Pressable>
               ))}
             </View>
-            {cardMode === "single" ? (
-              <View style={{ marginTop: 12, gap: 8 }}>
-                <Text style={styles.fieldLabel}>Selecciona una canción de la playlist</Text>
-                <View style={{ borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, backgroundColor: "#fff", overflow: "hidden" }}>
-                  {validTracks.map((track, index) => (
-                    <Pressable
-                      key={`choose-song-${index}`}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected: index === selectedSongIndex }}
-                      onPress={() => chooseSongForPrinting(index)}
-                      style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 11,
-                        borderBottomWidth: index < validTracks.length - 1 ? 1 : 0, borderBottomColor: "#e2e8f0",
-                        backgroundColor: index === selectedSongIndex ? "#eff6ff" : "#fff" }}
-                    >
-                      <Ionicons name={index === selectedSongIndex ? "radio-button-on" : "radio-button-off"}
-                        size={20} color={index === selectedSongIndex ? "#2563eb" : "#94a3b8"} />
-                      <Text style={{ flex: 1, color: "#0f172a", fontWeight: index === selectedSongIndex ? "700" : "400" }}>
-                        {index + 1}. {track.title || track.single || `Canción ${index + 1}`}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <Text style={styles.fieldHelp}>Los campos del reverso se rellenan con la canción elegida y siguen siendo editables. El número de copias se configura al imprimir.</Text>
-              </View>
-            ) : null}
             <View style={styles.inlineHint}>
               <Ionicons
                 name="information-circle-outline"
@@ -2218,7 +2187,13 @@ export default function PrintMusicCardScreen() {
                       { backgroundColor: tone.bg, overflow: "hidden" },
                     ]}
                   >
-                    {tone.id === "transparent" ? (
+                    {tone.id === "original" && Platform.OS === "web" ? (
+                      <Image
+                        source={{ uri: FRONT_GRADIENT_PREVIEW_URI }}
+                        style={styles.frontToneGradientSwatch}
+                        resizeMode="stretch"
+                      />
+                    ) : tone.id === "transparent" ? (
                       <Image
                         source={{ uri: TRANSPARENT_SWATCH_URI }}
                         style={styles.frontToneGradientSwatch}
@@ -2252,12 +2227,43 @@ export default function PrintMusicCardScreen() {
                       { backgroundColor: tone.bg, overflow: "hidden" },
                     ]}
                   >
-                    {tone.id === "transparent" ? (
+                    {tone.id === "original" && Platform.OS === "web" ? (
+                      <Image
+                        source={{ uri: FRONT_GRADIENT_PREVIEW_URI }}
+                        style={styles.frontToneGradientSwatch}
+                        resizeMode="stretch"
+                      />
+                    ) : tone.id === "transparent" ? (
                       <Image
                         source={{ uri: TRANSPARENT_SWATCH_URI }}
                         style={styles.frontToneGradientSwatch}
                         resizeMode="stretch"
                       />
+                    ) : null}
+                  </View>
+                  <Text style={styles.toneLabel}>{tone.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.sectionDivider} />
+            <Text style={styles.subsectionTitle}>Fondo del bloque QR</Text>
+            <Text style={styles.fieldHelp}>
+              Cambia el fondo alrededor del QR y su leyenda. El cuadrado del código permanece blanco para facilitar la lectura.
+            </Text>
+            <View style={styles.toneGrid}>
+              {QR_BACKGROUND_TONES.map((tone) => (
+                <Pressable
+                  key={tone.id}
+                  onPress={() => setQrBackgroundId(tone.id)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: qrBackgroundId === tone.id }}
+                  style={[styles.toneChip, qrBackgroundId === tone.id && styles.toneChipActive]}
+                >
+                  <View style={[styles.toneSwatch, { backgroundColor: tone.bg, overflow: "hidden" }]}>
+                    {tone.id === "original" && Platform.OS === "web" ? (
+                      <Image source={{ uri: FRONT_GRADIENT_PREVIEW_URI }} style={styles.frontToneGradientSwatch} resizeMode="stretch" />
+                    ) : tone.id === "transparent" ? (
+                      <Image source={{ uri: TRANSPARENT_SWATCH_URI }} style={styles.frontToneGradientSwatch} resizeMode="stretch" />
                     ) : null}
                   </View>
                   <Text style={styles.toneLabel}>{tone.label}</Text>
@@ -2421,6 +2427,14 @@ export default function PrintMusicCardScreen() {
                   },
                 ]}
               >
+                {backFrameTone.id === "original" && Platform.OS === "web" ? (
+                  <Image
+                    source={{ uri: FRONT_GRADIENT_PREVIEW_URI }}
+                    style={styles.frontGradientPreview}
+                    resizeMode="stretch"
+                    pointerEvents="none"
+                  />
+                ) : null}
                 <View style={styles.backInnerPreview}>
                   <View
                     style={[
@@ -2431,7 +2445,10 @@ export default function PrintMusicCardScreen() {
                         flexBasis: previewCoverSizePx,
                         flexGrow: 0,
                         flexShrink: 0,
-                        backgroundColor: backFrameTone.bg,
+                        backgroundColor:
+                          backFrameTone.id === "original"
+                            ? "transparent"
+                            : backFrameTone.bg,
                       },
                     ]}
                   >
@@ -2464,6 +2481,14 @@ export default function PrintMusicCardScreen() {
                       previewCompactBack && styles.backInfoCompactPreview,
                     ]}
                   >
+                    {backPanelTone.id === "original" && Platform.OS === "web" ? (
+                      <Image
+                        source={{ uri: FRONT_GRADIENT_PREVIEW_URI }}
+                        style={styles.frontGradientPreview}
+                        resizeMode="stretch"
+                        pointerEvents="none"
+                      />
+                    ) : null}
                     <View style={styles.musicMetaPreview}>
                       {author ? (
                         <Text
@@ -2506,8 +2531,14 @@ export default function PrintMusicCardScreen() {
                         accessibilityRole="link"
                         accessibilityLabel={`Abrir enlace del QR: ${single || title || "Tarjeta"}`}
                         accessibilityHint="Abre el destino público de este código QR en el navegador"
-                        style={styles.qrPanelPreview}
+                        style={[styles.qrPanelPreview, {
+                          backgroundColor: QR_BACKGROUND_TONES.find(t => t.id === qrBackgroundId)?.bg || "#ffffff",
+                          overflow: "hidden",
+                        }]}
                       >
+                        {qrBackgroundId === "original" && Platform.OS === "web" ? (
+                          <Image source={{ uri: FRONT_GRADIENT_PREVIEW_URI }} style={styles.frontGradientPreview} resizeMode="stretch" pointerEvents="none" />
+                        ) : null}
                         <Image
                           source={{ uri: qrUrl(targetUrl) }}
                           style={[
