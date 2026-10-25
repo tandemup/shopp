@@ -521,6 +521,7 @@ export default function PrintMusicCardScreen() {
   const isClassical = Boolean(route.params?.isClassical);
   const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
   const [cardMode, setCardMode] = useState("playlist"); // QR directo al reproductor público
+  const [selectedSongIndex, setSelectedSongIndex] = useState(0); // Pista elegida para copias idénticas
   const customPlaylistReverses = false; // Un único reverso: sin personalización de diez tarjetas.
   const [qrDestination, setQrDestination] = useState("shopp");
   const [publicBaseUrl, setPublicBaseUrl] = useState(initialLandingUrl);
@@ -707,7 +708,7 @@ export default function PrintMusicCardScreen() {
       trackSignature: templateTrackSignature(),
       cards: JSON.parse(JSON.stringify(cardOverrides)),
       selectedWorkIds: [...sheetWorkIds],
-      settings: { cardMode, qrDestination, publicBaseUrl, title, author, single, subtitle,
+      settings: { cardMode, selectedSongIndex, qrDestination, publicBaseUrl, title, author, single, subtitle,
         coverUri, format, copies, frontCropMarks, backCropMarks, showBackGridOnFront,
         gridStyles, doubleSided, duplexFlip, backOffsetX, backOffsetY,
         backInsetEnabled, backInsetMm, backPanelToneId, backFrameToneId, frontToneId,
@@ -806,6 +807,7 @@ export default function PrintMusicCardScreen() {
     setCardOverrides(c);
     setSheetWorkIds(Array.isArray(template.selectedWorkIds) ? template.selectedWorkIds : []);
     if (["playlist", "single", "songs"].includes(o.cardMode)) setCardMode(o.cardMode);
+    if (Number.isInteger(o.selectedSongIndex) && o.selectedSongIndex >= 0 && o.selectedSongIndex < validTracks.length) setSelectedSongIndex(o.selectedSongIndex);
     if (typeof o.qrDestination === "string") setQrDestination(o.qrDestination);
     if (typeof o.publicBaseUrl === "string") setPublicBaseUrl(o.publicBaseUrl);
     if (typeof o.title === "string") setTitle(o.title);
@@ -907,6 +909,25 @@ export default function PrintMusicCardScreen() {
   );
   const [contactEmail, setContactEmail] = useState(DEFAULT_CONTACT_EMAIL);
   const [landingUrl, setLandingUrl] = useState(initialLandingUrl);
+  // Al elegir un tema, actualizar los datos básicos de la tarjeta sin alterar la playlist.
+  // La carátula editable puede sustituirse después en «Textos e imágenes».
+  const chooseSongForPrinting = (index) => {
+    if (!Number.isInteger(index) || index < 0 || index >= validTracks.length) return;
+    const track = validTracks[index];
+    const parsed = splitAuthorAndSingle(track.title || "");
+    const nextAuthor = String(track.author || track.artist || parsed.author || playlist.author || playlist.artist || "");
+    const nextSingle = String(track.single || parsed.single || track.title || "");
+    const videoId = videoIdFromTrack(track);
+    const nextCover = String(track.artworkUrl || track.cover || track.coverUrl || track.thumbnail ||
+      (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "") || "");
+    setSelectedSongIndex(index);
+    setAuthor(nextAuthor);
+    setSingle(nextSingle);
+    setSubtitle("1 item");
+    setCoverUri(nextCover);
+    setCoverDimensions(null);
+  };
+
   const backPanelTone = useMemo(
     () => getBackPanelTone(backPanelToneId),
     [backPanelToneId],
@@ -953,24 +974,29 @@ export default function PrintMusicCardScreen() {
         };
       }).filter(Boolean).sort((a, b) => a.printOrder - b.printOrder);
     }
-    const pool = cardMode === "single" ? validTracks.slice(0, 1) : validTracks;
+    // En modo «Elegir canción» solo se imprime la pista seleccionada,
+    // manteniendo su índice real para el QR aunque no sea la primera.
+    const pool = cardMode === "single"
+      ? (validTracks[selectedSongIndex] ? [[validTracks[selectedSongIndex], selectedSongIndex]] : [])
+      : validTracks.map((track, index) => [track, index]);
     return pool
       .slice(0, 99)
-      .map((track, index) => {
-        const settings = cardOverrides[index] || {};
+      .map(([track, index]) => {
+        const settings = cardMode === "single" ? {} : (cardOverrides[index] || {});
         if (settings.enabled === false) return null;
         const parsed = splitAuthorAndSingle(track.title || "");
         const trackTitle =
           cardMode === "single"
             ? single || parsed.single
             : parsed.single || track.title;
-        const trackAuthor =
-          track.author || track.artist || parsed.author || author;
+        const trackAuthor = cardMode === "single"
+          ? author
+          : (track.author || track.artist || parsed.author || author);
         const videoId = videoIdFromTrack(track);
         const personalCover = track.artworkUrl || track.cover || track.coverUrl || track.thumbnail;
         const youtubeCover = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "";
         const source = settings.image || "auto";
-        const trackCover = source === "youtube"
+        const trackCover = cardMode === "single" ? coverUri : source === "youtube"
           ? (youtubeCover || personalCover || coverUri)
           : source === "general"
             ? (coverUri || personalCover || youtubeCover)
@@ -982,12 +1008,23 @@ export default function PrintMusicCardScreen() {
           : [index];
         const multi = selectedIndices.length > 1;
         const groupId = settings.workPublicId || selectionCardId(publicId, selectedIndices);
+        // El QR individual de Shopp utiliza el manifiesto público para conservar
+        // lyricsUrl, carátulas y el resto de la playlist. La posición se indica
+        // mediante "song" (índice 0-based en validTracks).
         const url = multi
           ? buildPlaylistCardUrl(origin, groupId, qrDestination === "youtube" ? "landing" : qrDestination)
-          : buildSongCardUrl(origin, track, trackTitle, trackAuthor, qrDestination);
+          : qrDestination !== "youtube"
+            ? (() => {
+                const playlistUrl = buildPlaylistCardUrl(origin, publicId, qrDestination);
+                if (!playlistUrl) return "";
+                const result = new URL(playlistUrl);
+                result.searchParams.set("song", String(index));
+                return result.toString();
+              })()
+            : buildSongCardUrl(origin, track, trackTitle, trackAuthor, qrDestination);
         return {
-          title: settings.title ?? trackTitle,
-          subtitle: settings.subtitle ?? subtitle,
+          title: cardMode === "single" ? (single || trackTitle) : (settings.title ?? trackTitle),
+          subtitle: cardMode === "single" ? subtitle : (settings.subtitle ?? subtitle),
           author: trackAuthor,
           cover: trackCover,
           url,
@@ -1013,6 +1050,7 @@ export default function PrintMusicCardScreen() {
     subtitle,
     cardOverrides,
     customPlaylistReverses,
+    selectedSongIndex,
   ]);
   // Reordena exclusivamente las tarjetas activas, sin modificar las pistas ni sus QR.
   const movePrintedCard = (position, direction) => {
@@ -1757,8 +1795,8 @@ export default function PrintMusicCardScreen() {
                 ],
                 [
                   "single",
-                  "Primera canción",
-                  "Varias copias de un tema",
+                  "Elegir canción",
+                  "Varias copias del tema elegido",
                   "disc-outline",
                 ],
                 [
@@ -1774,6 +1812,7 @@ export default function PrintMusicCardScreen() {
                   accessibilityState={{ selected: cardMode === value }}
                   onPress={() => {
                     setCardMode(value);
+                    if (value === "single") chooseSongForPrinting(selectedSongIndex);
                     setPublished(false);
                   }}
                   style={[
@@ -1802,6 +1841,31 @@ export default function PrintMusicCardScreen() {
                 </Pressable>
               ))}
             </View>
+            {cardMode === "single" ? (
+              <View style={{ marginTop: 12, gap: 8 }}>
+                <Text style={styles.fieldLabel}>Selecciona una canción de la playlist</Text>
+                <View style={{ borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, backgroundColor: "#fff", overflow: "hidden" }}>
+                  {validTracks.map((track, index) => (
+                    <Pressable
+                      key={`choose-song-${index}`}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: index === selectedSongIndex }}
+                      onPress={() => chooseSongForPrinting(index)}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 11,
+                        borderBottomWidth: index < validTracks.length - 1 ? 1 : 0, borderBottomColor: "#e2e8f0",
+                        backgroundColor: index === selectedSongIndex ? "#eff6ff" : "#fff" }}
+                    >
+                      <Ionicons name={index === selectedSongIndex ? "radio-button-on" : "radio-button-off"}
+                        size={20} color={index === selectedSongIndex ? "#2563eb" : "#94a3b8"} />
+                      <Text style={{ flex: 1, color: "#0f172a", fontWeight: index === selectedSongIndex ? "700" : "400" }}>
+                        {index + 1}. {track.title || track.single || `Canción ${index + 1}`}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={styles.fieldHelp}>Los campos del reverso se rellenan con la canción elegida y siguen siendo editables. El número de copias se configura al imprimir.</Text>
+              </View>
+            ) : null}
             <View style={styles.inlineHint}>
               <Ionicons
                 name="information-circle-outline"
