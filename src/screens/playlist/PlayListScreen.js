@@ -412,7 +412,7 @@ function HeaderActionsScroller({ compact, scrollRef, children }) {
   );
 }
 
-export default function PlayListScreen() {
+export default function PlayListScreen({ guestMode = false }) {
   const { width: viewportWidth } = useWindowDimensions();
   // En teléfonos y tablets, el título y la botonera se apilan: los botones
   // permanecen en una única fila y se desplazan con el gesto horizontal.
@@ -481,7 +481,7 @@ export default function PlayListScreen() {
   const collection = isClassical ? "classical" : "playlist";
   // Music/Classical on the PWA always read IndexedDB; an empty collection is
   // valid. Other Shopp utilities and native builds keep their existing backend.
-  const localMode = !isTutorialStyle && Platform.OS === "web";
+  const localMode = !isTutorialStyle && (Platform.OS === "web" || guestMode);
   const convex = useConvex(); // Only used by the explicit, one-time migration action.
   const [localPlaylists, setLocalPlaylists] = useState(undefined);
   const [localError, setLocalError] = useState(null);
@@ -540,7 +540,7 @@ export default function PlayListScreen() {
     }
   }, [checkingLocal, collection, localMode]);
   const migrateFromConvex = useCallback(() => {
-    if (!localMode || !clientId || migratingConvex || localError) return;
+    if (guestMode || !localMode || !clientId || migratingConvex || localError) return;
     safeConfirm(
       "Migrar desde Convex",
       `Se consultarán una sola vez tus ${isClassical ? "colecciones clásicas" : "playlists"} de Convex y sus letras LRC para combinarlas con IndexedDB. No se borrarán ni modificarán los datos de Convex.`,
@@ -1850,7 +1850,7 @@ export default function PlayListScreen() {
               </Text>
             </Pressable>
           ) : null}
-          {localMode ? (
+          {localMode && !guestMode ? (
             <Pressable onPress={migrateFromConvex} disabled={migratingConvex || Boolean(localError)} style={styles.secondaryButton}>
               <Ionicons name="cloud-download-outline" size={21} color="#2563eb" />
               <Text style={styles.secondaryButtonText}>

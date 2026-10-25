@@ -57,11 +57,14 @@ function selectionCardId(publicId, indices) {
 function catalogWorkPublicId(playlist, work) {
   const value = `${publicIdForPlaylist(playlist)}:${work.id}`;
   let hash = 2166136261;
-  for (let i = 0; i < value.length; i++) hash = Math.imul(hash ^ value.charCodeAt(i), 16777619) >>> 0;
+  for (let i = 0; i < value.length; i++)
+    hash = Math.imul(hash ^ value.charCodeAt(i), 16777619) >>> 0;
   return `shopp-work-${hash.toString(16).padStart(8, "0")}`;
 }
 function workTrackKey(track) {
-  return String(videoIdFromTrack(track) || youtubePlaylistIdFromTrack(track) || "").trim();
+  return String(
+    videoIdFromTrack(track) || youtubePlaylistIdFromTrack(track) || "",
+  ).trim();
 }
 function workStorageKey(publicId) {
   return `shopp:print-works:v1:${publicId}`;
@@ -70,7 +73,9 @@ function matchWorkTrackIndices(keys, tracks) {
   const taken = new Set();
   const result = [];
   for (const key of keys || []) {
-    const index = tracks.findIndex((track, i) => !taken.has(i) && workTrackKey(track) === key);
+    const index = tracks.findIndex(
+      (track, i) => !taken.has(i) && workTrackKey(track) === key,
+    );
     if (index < 0) return null; // No reproducir una obra incompleta por error.
     taken.add(index);
     result.push(index);
@@ -185,6 +190,15 @@ function getCoverOverscan(_width, _height) {
 
 const BACK_PANEL_TONES = [
   {
+    id: "original",
+    label: "Original (degradado)",
+    bg: "#f8fafc",
+    printBackground: "linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%)",
+    title: "#1f2937",
+    meta: "#64748b",
+    accent: "#475569",
+  },
+  {
     id: "sand",
     label: "Arena",
     bg: "#f6f0dd",
@@ -233,21 +247,41 @@ const BACK_PANEL_TONES = [
     accent: "#475569",
   },
 ];
-const DEFAULT_BACK_PANEL_TONE = BACK_PANEL_TONES[0].id;
+const DEFAULT_BACK_PANEL_TONE = "sand";
+
+// Fondo independiente del bloque QR. El propio código conserva su blanco para garantizar contraste.
+const QR_BACKGROUND_TONES = [
+  { id: "original", label: "Original (degradado)", bg: "#f8fafc" },
+  { id: "transparent", label: "Transparente", bg: "transparent" },
+  { id: "white", label: "Blanco", bg: "#ffffff" },
+  { id: "sand", label: "Arena", bg: "#f6f0dd" },
+  { id: "ice", label: "Azul hielo", bg: "#edf5ff" },
+  { id: "sage", label: "Verde salvia", bg: "#eef5ee" },
+  { id: "pearl", label: "Perla", bg: "#f7f2f5" },
+  { id: "mist", label: "Gris niebla", bg: "#f3f4f6" },
+];
+
+// El anverso y el marco del reverso pueden usar el degradado original.
+const ORIGINAL_FRONT_BACKGROUND =
+  "linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%)";
 
 // Color independiente del marco del reverso. La carátula se recorta a un
 // cuadrado centrado; nunca se estira ni deja bandas laterales.
 const BACK_FRAME_TONES = [
+  {
+    id: "original",
+    label: "Original (degradado)",
+    bg: "#f8fafc",
+    printBackground: ORIGINAL_FRONT_BACKGROUND,
+  },
   { id: "yellow", label: "Amarillo pálido", bg: "#fff2bd" },
   { id: "white", label: "Blanco", bg: "#ffffff" },
-  ...BACK_PANEL_TONES,
+  ...BACK_PANEL_TONES.filter((tone) => tone.id !== "original"),
 ];
 const DEFAULT_BACK_FRAME_TONE = "yellow";
 
 // El anverso y el panel derecho del reverso tienen colores independientes.
 // La opción Original conserva el degradado utilizado hasta ahora al imprimir.
-const ORIGINAL_FRONT_BACKGROUND =
-  "linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%)";
 const FRONT_TONES = [
   {
     id: "original",
@@ -256,7 +290,9 @@ const FRONT_TONES = [
     printBackground: ORIGINAL_FRONT_BACKGROUND,
   },
   { id: "white", label: "Blanco", bg: "#ffffff" },
-  ...BACK_PANEL_TONES.map(({ id, label, bg }) => ({ id, label, bg })),
+  ...BACK_PANEL_TONES.filter((tone) => tone.id !== "original").map(
+    ({ id, label, bg }) => ({ id, label, bg }),
+  ),
 ];
 const DEFAULT_FRONT_TONE = "original";
 
@@ -294,7 +330,7 @@ function nextBackInset(value, delta) {
 function getBackPanelTone(toneId) {
   return (
     BACK_PANEL_TONES.find((option) => option.id === toneId) ||
-    BACK_PANEL_TONES[0]
+    BACK_PANEL_TONES.find((option) => option.id === DEFAULT_BACK_PANEL_TONE)
   );
 }
 
@@ -332,6 +368,7 @@ function buildPrintHtml({
   frontBackground,
   backPanelBg,
   backFrameBg,
+  qrBackground,
   backPanelTitleColor,
   backPanelMetaColor,
   backPanelAccentColor,
@@ -348,6 +385,7 @@ function buildPrintHtml({
   );
   const panelBg = esc(backPanelBg ?? "#f6f0dd");
   const frameBg = esc(backFrameBg ?? "#fff2bd");
+  const qrBg = esc(qrBackground || "#ffffff");
   const panelTitleColor = esc(backPanelTitleColor || "#1f2937");
   const panelMetaColor = esc(backPanelMetaColor || "#64748b");
   const panelAccentColor = esc(backPanelAccentColor || "#475569");
@@ -443,7 +481,7 @@ function buildPrintHtml({
       <div class="cover-panel" style="width:${coverSizeMm}mm;flex:0 0 ${coverSizeMm}mm;background:${frameBg};">${cardCover ? `<img class="cover" src="${cardCover}" alt="Carátula" style="transform:scale(${safeCoverScale});"/>` : `<div class="cover placeholder">Shopp Music</div>`}</div>
       <div class="back-info${compactBack ? " compact" : ""}" style="background:${panelBg};">
         <div class="music-meta">${cardAuthor ? `<span class="author" style="color:${panelAccentColor};">${cardAuthor}</span>` : ""}<strong style="color:${panelTitleColor};">${cardTitle}</strong>${cardSubtitle ? `<span class="subtitle" style="color:${panelMetaColor};">${cardSubtitle}</span>` : ""}</div>
-        <div class="qr-panel"><img src="${q}" style="width:${qrSizeMm}mm;height:${qrSizeMm}mm;" alt="Código QR musical"/><span style="color:${panelAccentColor};">${printedQrAction}</span></div>
+        <div class="qr-panel" style="background:${qrBg};"><img src="${q}" style="width:${qrSizeMm}mm;height:${qrSizeMm}mm;" alt="Código QR musical"/><span style="color:${panelAccentColor};">${printedQrAction}</span></div>
       </div>
     </div>
   </div></div>`;
@@ -521,7 +559,7 @@ export default function PrintMusicCardScreen() {
   const isClassical = Boolean(route.params?.isClassical);
   const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
   const [cardMode, setCardMode] = useState("playlist"); // QR directo al reproductor público
-  const [selectedSongIndex, setSelectedSongIndex] = useState(0); // Pista elegida para copias idénticas
+  const [selectedSongIndex, setSelectedSongIndex] = useState(0);
   const customPlaylistReverses = false; // Un único reverso: sin personalización de diez tarjetas.
   const [qrDestination, setQrDestination] = useState("shopp");
   const [publicBaseUrl, setPublicBaseUrl] = useState(initialLandingUrl);
@@ -589,7 +627,12 @@ export default function PrintMusicCardScreen() {
   const [verifiedSelections, setVerifiedSelections] = useState({});
   const [savedWorks, setSavedWorks] = useState([]);
   const [sheetWorkIds, setSheetWorkIds] = useState([]);
-  const [workMetadata, setWorkMetadata] = useState({ composer: "", conductor: "", orchestra: "", soloist: "" });
+  const [workMetadata, setWorkMetadata] = useState({
+    composer: "",
+    conductor: "",
+    orchestra: "",
+    soloist: "",
+  });
   const [worksLoaded, setWorksLoaded] = useState(false);
   // Catálogo de obras dentro del registro de la playlist clásica.
   // Las obras anteriores en AsyncStorage se migran sin borrar la copia heredada.
@@ -599,33 +642,65 @@ export default function PrintMusicCardScreen() {
     setWorksLoaded(false);
     setSavedWorks([]);
     (async () => {
-      const current = isClassical && playlistId ? await localRepo.get(playlistId) : null;
-      let catalog = Array.isArray(current?.works) ? current.works :
-        (Array.isArray(playlist.works) ? playlist.works : []);
+      const current =
+        isClassical && playlistId ? await localRepo.get(playlistId) : null;
+      let catalog = Array.isArray(current?.works)
+        ? current.works
+        : Array.isArray(playlist.works)
+          ? playlist.works
+          : [];
       const legacyRaw = await AsyncStorage.getItem(workStorageKey(publicId));
       const legacy = legacyRaw ? JSON.parse(legacyRaw) : [];
       if (!catalog.length && Array.isArray(legacy) && legacy.length) {
         catalog = legacy;
-        if (isClassical && current) await localRepo.update(playlistId, { works: catalog });
+        if (isClassical && current)
+          await localRepo.update(playlistId, { works: catalog });
       }
-      if (active) setSavedWorks(catalog.filter(item =>
-        item && typeof item.id === "string" && Array.isArray(item.trackKeys)
-      ).slice(0, 100));
-    })().catch(error => {
-      if (active) showNotice("Obras guardadas", `No se pudo leer el catálogo: ${error?.message || error}`, "warning");
-    }).finally(() => { if (active) setWorksLoaded(true); });
-    return () => { active = false; };
+      if (active)
+        setSavedWorks(
+          catalog
+            .filter(
+              (item) =>
+                item &&
+                typeof item.id === "string" &&
+                Array.isArray(item.trackKeys),
+            )
+            .slice(0, 100),
+        );
+    })()
+      .catch((error) => {
+        if (active)
+          showNotice(
+            "Obras guardadas",
+            `No se pudo leer el catálogo: ${error?.message || error}`,
+            "warning",
+          );
+      })
+      .finally(() => {
+        if (active) setWorksLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
   }, [publicId, playlistId, isClassical]);
   const persistWorks = async (next) => {
     try {
-      if (!isClassical || !playlistId) throw new Error("Se necesita una playlist clásica guardada.");
+      if (!isClassical || !playlistId)
+        throw new Error("Se necesita una playlist clásica guardada.");
       const record = await localRepo.get(playlistId);
-      if (!record) throw new Error("No se encontró la playlist local. Comprueba que está migrada a IndexedDB.");
+      if (!record)
+        throw new Error(
+          "No se encontró la playlist local. Comprueba que está migrada a IndexedDB.",
+        );
       await localRepo.update(playlistId, { works: next });
       setSavedWorks(next);
       return true;
     } catch (error) {
-      showNotice("Error al guardar", String(error?.message || error), "warning");
+      showNotice(
+        "Error al guardar",
+        String(error?.message || error),
+        "warning",
+      );
       return false;
     }
   };
@@ -644,13 +719,29 @@ export default function PrintMusicCardScreen() {
     let active = true;
     setTemplatesLoaded(false);
     AsyncStorage.getItem(templateStorageKey)
-      .then(raw => {
+      .then((raw) => {
         const value = raw ? JSON.parse(raw) : [];
-        if (active) setSheetTemplates(Array.isArray(value) ? value.filter(t => t?.version === 1).slice(0, 20) : []);
+        if (active)
+          setSheetTemplates(
+            Array.isArray(value)
+              ? value.filter((t) => t?.version === 1).slice(0, 20)
+              : [],
+          );
       })
-      .catch(error => { if (active) showNotice("Plantillas", `No se pudieron leer: ${error?.message || error}`, "warning"); })
-      .finally(() => { if (active) setTemplatesLoaded(true); });
-    return () => { active = false; };
+      .catch((error) => {
+        if (active)
+          showNotice(
+            "Plantillas",
+            `No se pudieron leer: ${error?.message || error}`,
+            "warning",
+          );
+      })
+      .finally(() => {
+        if (active) setTemplatesLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
   }, [templateStorageKey]);
   const [printOpen, setPrintOpen] = useState(false);
   const [format, setFormat] = useState("a4");
@@ -697,34 +788,91 @@ export default function PrintMusicCardScreen() {
     DEFAULT_BACK_FRAME_TONE,
   );
   const [frontToneId, setFrontToneId] = useState(DEFAULT_FRONT_TONE);
-  const templateTrackSignature = () => validTracks.slice(0, 99)
-    .map(t => videoIdFromTrack(t) || youtubePlaylistIdFromTrack(t) || "");
+  const [qrBackgroundId, setQrBackgroundId] = useState("white");
+  const templateTrackSignature = () =>
+    validTracks
+      .slice(0, 99)
+      .map((t) => videoIdFromTrack(t) || youtubePlaylistIdFromTrack(t) || "");
   const saveSheetTemplate = async () => {
     const name = templateName.trim();
-    if (!name) { showNotice("Nombre requerido", "Escribe un nombre para esta plantilla.", "warning"); return; }
-    if (!cardEntries.length) { showNotice("Hoja vacía", "Incluye alguna tarjeta antes de guardar.", "warning"); return; }
+    if (!name) {
+      showNotice(
+        "Nombre requerido",
+        "Escribe un nombre para esta plantilla.",
+        "warning",
+      );
+      return;
+    }
+    if (!cardEntries.length) {
+      showNotice(
+        "Hoja vacía",
+        "Incluye alguna tarjeta antes de guardar.",
+        "warning",
+      );
+      return;
+    }
     const data = {
-      version: 1, id: `${Date.now()}`, name, savedAt: new Date().toISOString(),
+      version: 1,
+      id: `${Date.now()}`,
+      name,
+      savedAt: new Date().toISOString(),
       trackSignature: templateTrackSignature(),
       cards: JSON.parse(JSON.stringify(cardOverrides)),
       selectedWorkIds: [...sheetWorkIds],
-      settings: { cardMode, selectedSongIndex, qrDestination, publicBaseUrl, title, author, single, subtitle,
-        coverUri, format, copies, frontCropMarks, backCropMarks, showBackGridOnFront,
-        gridStyles, doubleSided, duplexFlip, backOffsetX, backOffsetY,
-        backInsetEnabled, backInsetMm, backPanelToneId, backFrameToneId, frontToneId,
-        contactEmail, landingUrl },
+      settings: {
+        cardMode,
+        selectedSongIndex,
+        qrDestination,
+        publicBaseUrl,
+        title,
+        author,
+        single,
+        subtitle,
+        coverUri,
+        format,
+        copies,
+        frontCropMarks,
+        backCropMarks,
+        showBackGridOnFront,
+        gridStyles,
+        doubleSided,
+        duplexFlip,
+        backOffsetX,
+        backOffsetY,
+        backInsetEnabled,
+        backInsetMm,
+        backPanelToneId,
+        backFrameToneId,
+        frontToneId,
+        qrBackgroundId,
+        contactEmail,
+        landingUrl,
+      },
     };
-    const next = [data, ...sheetTemplates.filter(t => t.name !== name)].slice(0, 20);
+    const next = [data, ...sheetTemplates.filter((t) => t.name !== name)].slice(
+      0,
+      20,
+    );
     try {
       await AsyncStorage.setItem(templateStorageKey, JSON.stringify(next));
       setSheetTemplates(next);
-      showNotice("Plantilla guardada", `«${name}» se ha guardado en este dispositivo.`);
-    } catch (error) { showNotice("Error al guardar", String(error?.message || error), "warning"); }
+      showNotice(
+        "Plantilla guardada",
+        `«${name}» se ha guardado en este dispositivo.`,
+      );
+    } catch (error) {
+      showNotice(
+        "Error al guardar",
+        String(error?.message || error),
+        "warning",
+      );
+    }
   };
   // Intercambio portable. Nunca se importa código ni se cambian las pistas originales.
   const exportSheetTemplate = async (template) => {
     try {
-      if (!template || template.version !== 1) throw new Error("Plantilla no válida.");
+      if (!template || template.version !== 1)
+        throw new Error("Plantilla no válida.");
       const bundle = {
         schema: "shopp-music-card-sheet-template",
         version: 1,
@@ -733,81 +881,157 @@ export default function PrintMusicCardScreen() {
         template,
       };
       const json = JSON.stringify(bundle, null, 2);
-      const filename = `shopp-hoja-${String(template.name || "tarjetas").normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 50)}.json`;
+      const filename = `shopp-hoja-${String(template.name || "tarjetas")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9_-]+/g, "-")
+        .slice(0, 50)}.json`;
       if (Platform.OS === "web") {
-        const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+        const blob = new Blob([json], {
+          type: "application/json;charset=utf-8",
+        });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
-        link.href = url; link.download = filename;
-        document.body.appendChild(link); link.click(); link.remove();
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 30000);
       } else {
         const FileSystem = await import("expo-file-system/legacy");
         const uri = `${FileSystem.cacheDirectory}${filename}`;
-        await FileSystem.writeAsStringAsync(uri, json, { encoding: FileSystem.EncodingType.UTF8 });
-        if (!(await Sharing.isAvailableAsync())) throw new Error("Compartir archivos no está disponible.");
-        await Sharing.shareAsync(uri, { mimeType: "application/json", UTI: "public.json" });
+        await FileSystem.writeAsStringAsync(uri, json, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+        if (!(await Sharing.isAvailableAsync()))
+          throw new Error("Compartir archivos no está disponible.");
+        await Sharing.shareAsync(uri, {
+          mimeType: "application/json",
+          UTI: "public.json",
+        });
       }
     } catch (error) {
-      showNotice("No se pudo exportar", String(error?.message || error), "warning");
+      showNotice(
+        "No se pudo exportar",
+        String(error?.message || error),
+        "warning",
+      );
     }
   };
   const importSheetTemplate = async () => {
     try {
       if (!templatesLoaded) return;
-      const selection = await DocumentPicker.getDocumentAsync({ type: ["application/json", "text/plain", "*/*"], copyToCacheDirectory: true });
+      const selection = await DocumentPicker.getDocumentAsync({
+        type: ["application/json", "text/plain", "*/*"],
+        copyToCacheDirectory: true,
+      });
       if (selection.canceled || !selection.assets?.[0]) return;
       const file = selection.assets[0];
-      if (file.size > 5_000_000) throw new Error("El archivo supera el límite de 5 MB.");
+      if (file.size > 5_000_000)
+        throw new Error("El archivo supera el límite de 5 MB.");
       let json;
       if (Platform.OS === "web" && file.file) json = await file.file.text();
       else {
         const FileSystem = await import("expo-file-system/legacy");
-        json = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.UTF8 });
+        json = await FileSystem.readAsStringAsync(file.uri, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
       }
-      if (json.length > 5_000_000) throw new Error("El JSON es demasiado grande.");
+      if (json.length > 5_000_000)
+        throw new Error("El JSON es demasiado grande.");
       const bundle = JSON.parse(json);
-      if (bundle?.schema !== "shopp-music-card-sheet-template" || bundle?.version !== 1)
-        throw new Error("Formato de plantilla desconocido o versión no compatible.");
+      if (
+        bundle?.schema !== "shopp-music-card-sheet-template" ||
+        bundle?.version !== 1
+      )
+        throw new Error(
+          "Formato de plantilla desconocido o versión no compatible.",
+        );
       if (bundle.playlistPublicId !== publicId)
-        throw new Error("Esta plantilla pertenece a otra playlist. No se ha importado.");
+        throw new Error(
+          "Esta plantilla pertenece a otra playlist. No se ha importado.",
+        );
       const t = bundle.template;
-      if (!t || t.version !== 1 || typeof t.name !== "string" || !t.name.trim() || t.name.length > 120 ||
-          !t.cards || typeof t.cards !== "object" || Array.isArray(t.cards) ||
-          !t.settings || typeof t.settings !== "object" || Array.isArray(t.settings) ||
-          !Array.isArray(t.trackSignature) || !Array.isArray(t.selectedWorkIds))
+      if (
+        !t ||
+        t.version !== 1 ||
+        typeof t.name !== "string" ||
+        !t.name.trim() ||
+        t.name.length > 120 ||
+        !t.cards ||
+        typeof t.cards !== "object" ||
+        Array.isArray(t.cards) ||
+        !t.settings ||
+        typeof t.settings !== "object" ||
+        Array.isArray(t.settings) ||
+        !Array.isArray(t.trackSignature) ||
+        !Array.isArray(t.selectedWorkIds)
+      )
         throw new Error("Faltan datos obligatorios en la plantilla.");
-      if (JSON.stringify(t.trackSignature) !== JSON.stringify(templateTrackSignature()))
-        throw new Error("Las pistas de esta playlist no coinciden con las de la plantilla.");
-      const imported = { ...t, id: `${Date.now()}`, name: t.name.trim(), savedAt: new Date().toISOString() };
+      if (
+        JSON.stringify(t.trackSignature) !==
+        JSON.stringify(templateTrackSignature())
+      )
+        throw new Error(
+          "Las pistas de esta playlist no coinciden con las de la plantilla.",
+        );
+      const imported = {
+        ...t,
+        id: `${Date.now()}`,
+        name: t.name.trim(),
+        savedAt: new Date().toISOString(),
+      };
       // Nunca sobrescribir silenciosamente una plantilla existente.
-      const names = new Set(sheetTemplates.map(item => item.name));
-      let name = imported.name, counter = 2;
-      while (names.has(name)) name = `${imported.name} (importada ${counter++})`;
+      const names = new Set(sheetTemplates.map((item) => item.name));
+      let name = imported.name,
+        counter = 2;
+      while (names.has(name))
+        name = `${imported.name} (importada ${counter++})`;
       imported.name = name;
       const next = [imported, ...sheetTemplates].slice(0, 20);
       await AsyncStorage.setItem(templateStorageKey, JSON.stringify(next));
       setSheetTemplates(next);
       setTemplateName(name);
-      showNotice("Plantilla importada", `«${name}» guardada. Toca su nombre para recuperarla y verifica los QR antes de imprimir.`);
+      showNotice(
+        "Plantilla importada",
+        `«${name}» guardada. Toca su nombre para recuperarla y verifica los QR antes de imprimir.`,
+      );
     } catch (error) {
-      showNotice("Importación cancelada", String(error?.message || error), "warning");
+      showNotice(
+        "Importación cancelada",
+        String(error?.message || error),
+        "warning",
+      );
     }
   };
   const loadSheetTemplate = (template) => {
     const oldSignature = template.trackSignature || [];
-    if (JSON.stringify(oldSignature) !== JSON.stringify(templateTrackSignature())) {
-      showNotice("Playlist modificada", "Las pistas o su orden han cambiado. Para evitar QR equivocados, no se ha cargado la plantilla.", "warning");
+    if (
+      JSON.stringify(oldSignature) !== JSON.stringify(templateTrackSignature())
+    ) {
+      showNotice(
+        "Playlist modificada",
+        "Las pistas o su orden han cambiado. Para evitar QR equivocados, no se ha cargado la plantilla.",
+        "warning",
+      );
       return;
     }
     const c = template.cards;
     if (!c || typeof c !== "object" || Array.isArray(c)) return;
     const o = template.settings || {};
     setCardOverrides(c);
-    setSheetWorkIds(Array.isArray(template.selectedWorkIds) ? template.selectedWorkIds : []);
-    if (["playlist", "single", "songs"].includes(o.cardMode)) setCardMode(o.cardMode);
-    if (Number.isInteger(o.selectedSongIndex) && o.selectedSongIndex >= 0 && o.selectedSongIndex < validTracks.length) setSelectedSongIndex(o.selectedSongIndex);
+    setSheetWorkIds(
+      Array.isArray(template.selectedWorkIds) ? template.selectedWorkIds : [],
+    );
+    if (["playlist", "single", "songs"].includes(o.cardMode))
+      setCardMode(o.cardMode);
+    if (
+      Number.isInteger(o.selectedSongIndex) &&
+      o.selectedSongIndex >= 0 &&
+      o.selectedSongIndex < validTracks.length
+    )
+      setSelectedSongIndex(o.selectedSongIndex);
     if (typeof o.qrDestination === "string") setQrDestination(o.qrDestination);
     if (typeof o.publicBaseUrl === "string") setPublicBaseUrl(o.publicBaseUrl);
     if (typeof o.title === "string") setTitle(o.title);
@@ -818,30 +1042,47 @@ export default function PrintMusicCardScreen() {
     if (typeof o.format === "string") setFormat(o.format);
     if (Number.isInteger(o.copies)) setCopies(o.copies);
     for (const [key, setter] of [
-      ["frontCropMarks", setFrontCropMarks], ["backCropMarks", setBackCropMarks],
-      ["showBackGridOnFront", setShowBackGridOnFront], ["doubleSided", setDoubleSided],
+      ["frontCropMarks", setFrontCropMarks],
+      ["backCropMarks", setBackCropMarks],
+      ["showBackGridOnFront", setShowBackGridOnFront],
+      ["doubleSided", setDoubleSided],
       ["backInsetEnabled", setBackInsetEnabled],
-    ]) if (typeof o[key] === "boolean") setter(o[key]);
-    if (o.gridStyles && typeof o.gridStyles === "object") setGridStyles(o.gridStyles);
+    ])
+      if (typeof o[key] === "boolean") setter(o[key]);
+    if (o.gridStyles && typeof o.gridStyles === "object")
+      setGridStyles(o.gridStyles);
     if (["long", "short"].includes(o.duplexFlip)) setDuplexFlip(o.duplexFlip);
     if (Number.isFinite(o.backOffsetX)) setBackOffsetX(o.backOffsetX);
     if (Number.isFinite(o.backOffsetY)) setBackOffsetY(o.backOffsetY);
     if (Number.isFinite(o.backInsetMm)) setBackInsetMm(o.backInsetMm);
     for (const [key, setter] of [
-      ["backPanelToneId", setBackPanelToneId], ["backFrameToneId", setBackFrameToneId],
-      ["frontToneId", setFrontToneId], ["contactEmail", setContactEmail],
+      ["backPanelToneId", setBackPanelToneId],
+      ["backFrameToneId", setBackFrameToneId],
+      ["frontToneId", setFrontToneId],
+      ["qrBackgroundId", setQrBackgroundId],
+      ["contactEmail", setContactEmail],
       ["landingUrl", setLandingUrl],
-    ]) if (typeof o[key] === "string") setter(o[key]);
+    ])
+      if (typeof o[key] === "string") setter(o[key]);
     setTemplateName(template.name);
     setVerifiedSelections({});
-    showNotice("Plantilla recuperada", `«${template.name}» cargada. Comprueba los enlaces QR públicos antes de imprimir.`);
+    showNotice(
+      "Plantilla recuperada",
+      `«${template.name}» cargada. Comprueba los enlaces QR públicos antes de imprimir.`,
+    );
   };
   const deleteSheetTemplate = async (id) => {
-    const next = sheetTemplates.filter(t => t.id !== id);
+    const next = sheetTemplates.filter((t) => t.id !== id);
     try {
       await AsyncStorage.setItem(templateStorageKey, JSON.stringify(next));
       setSheetTemplates(next);
-    } catch (error) { showNotice("No se pudo eliminar", String(error?.message || error), "warning"); }
+    } catch (error) {
+      showNotice(
+        "No se pudo eliminar",
+        String(error?.message || error),
+        "warning",
+      );
+    }
   };
   const previewInsetPx = backInsetEnabled
     ? (backInsetMm * previewCardWidth) / 90
@@ -912,14 +1153,30 @@ export default function PrintMusicCardScreen() {
   // Al elegir un tema, actualizar los datos básicos de la tarjeta sin alterar la playlist.
   // La carátula editable puede sustituirse después en «Textos e imágenes».
   const chooseSongForPrinting = (index) => {
-    if (!Number.isInteger(index) || index < 0 || index >= validTracks.length) return;
+    if (!Number.isInteger(index) || index < 0 || index >= validTracks.length)
+      return;
     const track = validTracks[index];
     const parsed = splitAuthorAndSingle(track.title || "");
-    const nextAuthor = String(track.author || track.artist || parsed.author || playlist.author || playlist.artist || "");
-    const nextSingle = String(track.single || parsed.single || track.title || "");
+    const nextAuthor = String(
+      track.author ||
+        track.artist ||
+        parsed.author ||
+        playlist.author ||
+        playlist.artist ||
+        "",
+    );
+    const nextSingle = String(
+      track.single || parsed.single || track.title || "",
+    );
     const videoId = videoIdFromTrack(track);
-    const nextCover = String(track.artworkUrl || track.cover || track.coverUrl || track.thumbnail ||
-      (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "") || "");
+    const nextCover = String(
+      track.artworkUrl ||
+        track.cover ||
+        track.coverUrl ||
+        track.thumbnail ||
+        (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "") ||
+        "",
+    );
     setSelectedSongIndex(index);
     setAuthor(nextAuthor);
     setSingle(nextSingle);
@@ -949,7 +1206,10 @@ export default function PrintMusicCardScreen() {
           ? buildSongCardUrl(origin, first, title, author, "youtube")
           : buildPlaylistCardUrl(origin, publicId, qrDestination);
       if (!url) return [];
-      if (!customPlaylistReverses) return [{ title: title || "Playlist Shopp", author, cover: coverUri, url }];
+      if (!customPlaylistReverses)
+        return [
+          { title: title || "Playlist Shopp", author, cover: coverUri, url },
+        ];
       // Diez reversos distintos con un único QR a la playlist completa.
       // Los cambios afectan solo a la impresión, nunca al manifiesto público.
       return Array.from({ length: 10 }, (_, index) => {
@@ -958,85 +1218,133 @@ export default function PrintMusicCardScreen() {
         if (overrides.enabled === false) return null;
         const parsed = splitAuthorAndSingle(track?.title || "");
         const videoId = track ? videoIdFromTrack(track) : "";
-        const personal = track?.artworkUrl || track?.cover || track?.coverUrl || track?.thumbnail || "";
-        const youtubeImage = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "";
+        const personal =
+          track?.artworkUrl ||
+          track?.cover ||
+          track?.coverUrl ||
+          track?.thumbnail ||
+          "";
+        const youtubeImage = videoId
+          ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+          : "";
         const imageMode = overrides.image || "auto";
-        const image = imageMode === "general" ? (coverUri || personal || youtubeImage)
-          : imageMode === "youtube" ? (youtubeImage || personal || coverUri)
-          : (personal || youtubeImage || coverUri);
+        const image =
+          imageMode === "general"
+            ? coverUri || personal || youtubeImage
+            : imageMode === "youtube"
+              ? youtubeImage || personal || coverUri
+              : personal || youtubeImage || coverUri;
         return {
-          title: overrides.title ?? (parsed.single || track?.title || title || `Tarjeta ${index + 1}`),
-          subtitle: overrides.subtitle ?? (track?.author || track?.artist || subtitle),
+          title:
+            overrides.title ??
+            (parsed.single || track?.title || title || `Tarjeta ${index + 1}`),
+          subtitle:
+            overrides.subtitle ?? (track?.author || track?.artist || subtitle),
           author: track?.author || track?.artist || author,
-          cover: image, url,
+          cover: image,
+          url,
           sourceIndex: index,
-          printOrder: Number.isInteger(overrides.printOrder) ? overrides.printOrder : index,
+          printOrder: Number.isInteger(overrides.printOrder)
+            ? overrides.printOrder
+            : index,
         };
-      }).filter(Boolean).sort((a, b) => a.printOrder - b.printOrder);
+      })
+        .filter(Boolean)
+        .sort((a, b) => a.printOrder - b.printOrder);
     }
     // En modo «Elegir canción» solo se imprime la pista seleccionada,
     // manteniendo su índice real para el QR aunque no sea la primera.
-    const pool = cardMode === "single"
-      ? (validTracks[selectedSongIndex] ? [[validTracks[selectedSongIndex], selectedSongIndex]] : [])
-      : validTracks.map((track, index) => [track, index]);
-    return pool
-      .slice(0, 99)
-      .map(([track, index]) => {
-        const settings = cardMode === "single" ? {} : (cardOverrides[index] || {});
-        if (settings.enabled === false) return null;
-        const parsed = splitAuthorAndSingle(track.title || "");
-        const trackTitle =
-          cardMode === "single"
-            ? single || parsed.single
-            : parsed.single || track.title;
-        const trackAuthor = cardMode === "single"
-          ? author
-          : (track.author || track.artist || parsed.author || author);
-        const videoId = videoIdFromTrack(track);
-        const personalCover = track.artworkUrl || track.cover || track.coverUrl || track.thumbnail;
-        const youtubeCover = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "";
-        const source = settings.image || "auto";
-        const trackCover = cardMode === "single" ? coverUri : source === "youtube"
-          ? (youtubeCover || personalCover || coverUri)
-          : source === "general"
-            ? (coverUri || personalCover || youtubeCover)
-            : source === "artwork"
-              ? (personalCover || youtubeCover || coverUri)
-              : (personalCover || youtubeCover || coverUri);
-        const selectedIndices = Array.isArray(settings.trackIndices) && settings.trackIndices.length
-          ? [...new Set(settings.trackIndices)].filter(i => Number.isInteger(i) && i >= 0 && i < validTracks.length).sort((a, b) => a - b)
-          : [index];
-        const multi = selectedIndices.length > 1;
-        const groupId = settings.workPublicId || selectionCardId(publicId, selectedIndices);
-        // El QR individual de Shopp utiliza el manifiesto público para conservar
-        // lyricsUrl, carátulas y el resto de la playlist. La posición se indica
-        // mediante "song" (índice 0-based en validTracks).
-        const url = multi
-          ? buildPlaylistCardUrl(origin, groupId, qrDestination === "youtube" ? "landing" : qrDestination)
-          : qrDestination !== "youtube"
-            ? (() => {
-                const playlistUrl = buildPlaylistCardUrl(origin, publicId, qrDestination);
-                if (!playlistUrl) return "";
-                const result = new URL(playlistUrl);
-                result.searchParams.set("song", String(index));
-                return result.toString();
-              })()
-            : buildSongCardUrl(origin, track, trackTitle, trackAuthor, qrDestination);
-        return {
-          title: cardMode === "single" ? (single || trackTitle) : (settings.title ?? trackTitle),
-          subtitle: cardMode === "single" ? subtitle : (settings.subtitle ?? subtitle),
-          author: trackAuthor,
-          cover: trackCover,
-          url,
-          trackIndices: selectedIndices,
-          selectionPublicId: multi ? groupId : null,
-          printOrder: Number.isInteger(settings.printOrder) ? settings.printOrder : index,
-          sourceIndex: index,
-        };
-      })
-      // No ocultar tarjetas sin URL: la comprobación previa debe informar del error.
-      .filter(Boolean)
-      .sort((a, b) => a.printOrder - b.printOrder);
+    const pool =
+      cardMode === "single"
+        ? validTracks[selectedSongIndex]
+          ? [[validTracks[selectedSongIndex], selectedSongIndex]]
+          : []
+        : validTracks.map((track, index) => [track, index]);
+    return (
+      pool
+        .slice(0, 99)
+        .map(([track, index]) => {
+          const settings =
+            cardMode === "single" ? {} : cardOverrides[index] || {};
+          if (settings.enabled === false) return null;
+          const parsed = splitAuthorAndSingle(track.title || "");
+          const trackTitle =
+            cardMode === "single"
+              ? single || parsed.single
+              : parsed.single || track.title;
+          const trackAuthor =
+            cardMode === "single"
+              ? author
+              : track.author || track.artist || parsed.author || author;
+          const videoId = videoIdFromTrack(track);
+          const personalCover =
+            track.artworkUrl ||
+            track.cover ||
+            track.coverUrl ||
+            track.thumbnail;
+          const youtubeCover = videoId
+            ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+            : "";
+          const source = settings.image || "auto";
+          const trackCover =
+            cardMode === "single"
+              ? coverUri
+              : source === "youtube"
+                ? youtubeCover || personalCover || coverUri
+                : source === "general"
+                  ? coverUri || personalCover || youtubeCover
+                  : source === "artwork"
+                    ? personalCover || youtubeCover || coverUri
+                    : personalCover || youtubeCover || coverUri;
+          const selectedIndices =
+            Array.isArray(settings.trackIndices) && settings.trackIndices.length
+              ? [...new Set(settings.trackIndices)]
+                  .filter(
+                    (i) =>
+                      Number.isInteger(i) && i >= 0 && i < validTracks.length,
+                  )
+                  .sort((a, b) => a - b)
+              : [index];
+          const multi = selectedIndices.length > 1;
+          const groupId =
+            settings.workPublicId || selectionCardId(publicId, selectedIndices);
+          const url = multi
+            ? buildPlaylistCardUrl(
+                origin,
+                groupId,
+                qrDestination === "youtube" ? "landing" : qrDestination,
+              )
+            : buildSongCardUrl(
+                origin,
+                track,
+                trackTitle,
+                trackAuthor,
+                qrDestination,
+              );
+          return {
+            title:
+              cardMode === "single"
+                ? single || trackTitle
+                : (settings.title ?? trackTitle),
+            subtitle:
+              cardMode === "single"
+                ? subtitle
+                : (settings.subtitle ?? subtitle),
+            author: trackAuthor,
+            cover: trackCover,
+            url,
+            trackIndices: selectedIndices,
+            selectionPublicId: multi ? groupId : null,
+            printOrder: Number.isInteger(settings.printOrder)
+              ? settings.printOrder
+              : index,
+            sourceIndex: index,
+          };
+        })
+        // No ocultar tarjetas sin URL: la comprobación previa debe informar del error.
+        .filter(Boolean)
+        .sort((a, b) => a.printOrder - b.printOrder)
+    );
   }, [
     validTracks,
     cardMode,
@@ -1054,11 +1362,11 @@ export default function PrintMusicCardScreen() {
   ]);
   // Reordena exclusivamente las tarjetas activas, sin modificar las pistas ni sus QR.
   const movePrintedCard = (position, direction) => {
-    const ordered = cardEntries.map(item => item.sourceIndex);
+    const ordered = cardEntries.map((item) => item.sourceIndex);
     const target = position + direction;
     if (target < 0 || target >= ordered.length) return;
     [ordered[position], ordered[target]] = [ordered[target], ordered[position]];
-    setCardOverrides(previous => {
+    setCardOverrides((previous) => {
       const next = { ...previous };
       ordered.forEach((index, printOrder) => {
         next[index] = { ...(next[index] || {}), printOrder };
@@ -1068,24 +1376,44 @@ export default function PrintMusicCardScreen() {
   };
   const openCardQrDestination = async (url) => {
     if (!/^https:\/\/[^\s]+$/i.test(String(url || ""))) {
-      showNotice("QR inválido", "El destino de esta tarjeta no es una URL HTTPS válida.", "warning");
+      showNotice(
+        "QR inválido",
+        "El destino de esta tarjeta no es una URL HTTPS válida.",
+        "warning",
+      );
       return;
     }
-    try { await Linking.openURL(url); }
-    catch { showNotice("Enlace no disponible", "No se pudo abrir el destino del QR.", "warning"); }
+    try {
+      await Linking.openURL(url);
+    } catch {
+      showNotice(
+        "Enlace no disponible",
+        "No se pudo abrir el destino del QR.",
+        "warning",
+      );
+    }
   };
-  const editableCards = useMemo(() => validTracks.slice(0, 99).map((track, index) => {
-    const parsed = splitAuthorAndSingle(track.title || "");
-    const settings = cardOverrides[index] || {};
-    return {
-      title: settings.title ?? (parsed.single || track.title || `Canción ${index + 1}`),
-      subtitle: settings.subtitle ?? subtitle,
-      image: settings.image || "auto",
-      enabled: settings.enabled !== false,
-      workPublicId: settings.workPublicId || null,
-      trackIndices: Array.isArray(settings.trackIndices) && settings.trackIndices.length ? settings.trackIndices : [index],
-    };
-  }), [validTracks, cardOverrides, subtitle]);
+  const editableCards = useMemo(
+    () =>
+      validTracks.slice(0, 99).map((track, index) => {
+        const parsed = splitAuthorAndSingle(track.title || "");
+        const settings = cardOverrides[index] || {};
+        return {
+          title:
+            settings.title ??
+            (parsed.single || track.title || `Canción ${index + 1}`),
+          subtitle: settings.subtitle ?? subtitle,
+          image: settings.image || "auto",
+          enabled: settings.enabled !== false,
+          workPublicId: settings.workPublicId || null,
+          trackIndices:
+            Array.isArray(settings.trackIndices) && settings.trackIndices.length
+              ? settings.trackIndices
+              : [index],
+        };
+      }),
+    [validTracks, cardOverrides, subtitle],
+  );
   // Evita imprimir tarjetas adicionales para los movimientos que ya
   // pertenecen a la obra seleccionada. No se modifica la playlist original.
   const groupAsOneCard = () => {
@@ -1098,7 +1426,10 @@ export default function PrintMusicCardScreen() {
         if (index === selectedCardIndex) continue;
         next[index] = { ...(next[index] || {}), enabled: false };
       }
-      next[selectedCardIndex] = { ...(next[selectedCardIndex] || {}), enabled: true };
+      next[selectedCardIndex] = {
+        ...(next[selectedCardIndex] || {}),
+        enabled: true,
+      };
       return next;
     });
   };
@@ -1107,9 +1438,15 @@ export default function PrintMusicCardScreen() {
   const saveSelectedWork = async () => {
     const selected = editableCards[selectedCardIndex];
     if (!worksLoaded || !selected || selected.trackIndices.length < 2) return;
-    const trackKeys = selected.trackIndices.map(i => workTrackKey(validTracks[i]));
-    if (trackKeys.some(key => !key)) {
-      showNotice("Obra no guardada", "Hay pistas sin identificador de vídeo.", "warning");
+    const trackKeys = selected.trackIndices.map((i) =>
+      workTrackKey(validTracks[i]),
+    );
+    if (trackKeys.some((key) => !key)) {
+      showNotice(
+        "Obra no guardada",
+        "Hay pistas sin identificador de vídeo.",
+        "warning",
+      );
       return;
     }
     const id = selectionCardId(publicId, selected.trackIndices);
@@ -1124,37 +1461,66 @@ export default function PrintMusicCardScreen() {
       soloist: workMetadata.soloist.trim(),
       trackKeys,
     };
-    const next = [...savedWorks.filter(item => item.id !== id), work];
-    if (await persistWorks(next)) showNotice("Obra guardada", "Obra guardada en la playlist; estará incluida en los respaldos JSON v2.", "success");
+    const next = [...savedWorks.filter((item) => item.id !== id), work];
+    if (await persistWorks(next))
+      showNotice(
+        "Obra guardada",
+        "Obra guardada en la playlist; estará incluida en los respaldos JSON v2.",
+        "success",
+      );
   };
   const applySavedWork = (work) => {
     const indices = matchWorkTrackIndices(work.trackKeys, validTracks);
     if (!indices || indices.length < 2) {
-      showNotice("Obra no disponible", "No se encuentran todos sus movimientos en la playlist actual.", "warning");
+      showNotice(
+        "Obra no disponible",
+        "No se encuentran todos sus movimientos en la playlist actual.",
+        "warning",
+      );
       return;
     }
     const leader = indices[0];
     const groupedIndices = new Set(indices);
-    setCardOverrides(previous => {
+    setCardOverrides((previous) => {
       const next = { ...previous };
-      for (const i of groupedIndices) next[i] = { ...(next[i] || {}), enabled: i === leader };
+      for (const i of groupedIndices)
+        next[i] = { ...(next[i] || {}), enabled: i === leader };
       next[leader] = {
-        ...(next[leader] || {}), enabled: true, title: work.title,
-        subtitle: work.subtitle, image: work.image, trackIndices: indices,
+        ...(next[leader] || {}),
+        enabled: true,
+        title: work.title,
+        subtitle: work.subtitle,
+        image: work.image,
+        trackIndices: indices,
         workPublicId: catalogWorkPublicId(playlist, work),
       };
       return next;
     });
     setSelectedCardIndex(leader);
-    setWorkMetadata({ composer: work.composer || "", conductor: work.conductor || "", orchestra: work.orchestra || "", soloist: work.soloist || "" });
-    showNotice("Obra recuperada", "Se ha preparado una tarjeta para la obra. Revisa y publica su QR antes de imprimir.", "success");
+    setWorkMetadata({
+      composer: work.composer || "",
+      conductor: work.conductor || "",
+      orchestra: work.orchestra || "",
+      soloist: work.soloist || "",
+    });
+    showNotice(
+      "Obra recuperada",
+      "Se ha preparado una tarjeta para la obra. Revisa y publica su QR antes de imprimir.",
+      "success",
+    );
   };
   // Hoja de obras: cada elemento del catálogo ocupa UNA tarjeta, sin duplicar
   // los movimientos. Se respeta el orden elegido en la lista de selección.
   const prepareWorksSheet = () => {
-    const chosen = sheetWorkIds.map(id => savedWorks.find(work => work.id === id)).filter(Boolean);
+    const chosen = sheetWorkIds
+      .map((id) => savedWorks.find((work) => work.id === id))
+      .filter(Boolean);
     if (!chosen.length || chosen.length > 10) {
-      showNotice("Selección de obras", "Selecciona entre una y diez obras.", "warning");
+      showNotice(
+        "Selección de obras",
+        "Selecciona entre una y diez obras.",
+        "warning",
+      );
       return;
     }
     const used = new Set();
@@ -1162,18 +1528,30 @@ export default function PrintMusicCardScreen() {
     for (const [position, work] of chosen.entries()) {
       const indices = matchWorkTrackIndices(work.trackKeys, validTracks);
       if (!indices?.length) {
-        showNotice("Obra incompleta", `Faltan movimientos de «${work.title}».`, "warning");
+        showNotice(
+          "Obra incompleta",
+          `Faltan movimientos de «${work.title}».`,
+          "warning",
+        );
         return;
       }
-      if (indices.some(i => used.has(i))) {
-        showNotice("Movimientos duplicados", `«${work.title}» comparte pistas con otra obra seleccionada. Revisa el catálogo.`, "warning");
+      if (indices.some((i) => used.has(i))) {
+        showNotice(
+          "Movimientos duplicados",
+          `«${work.title}» comparte pistas con otra obra seleccionada. Revisa el catálogo.`,
+          "warning",
+        );
         return;
       }
-      indices.forEach(i => used.add(i));
+      indices.forEach((i) => used.add(i));
       const leader = indices[0];
       next[leader] = {
-        enabled: true, title: work.title, subtitle: work.subtitle || work.composer || "",
-        image: work.image || "auto", trackIndices: indices, printOrder: position,
+        enabled: true,
+        title: work.title,
+        subtitle: work.subtitle || work.composer || "",
+        image: work.image || "auto",
+        trackIndices: indices,
+        printOrder: position,
         workPublicId: catalogWorkPublicId(playlist, work),
       };
     }
@@ -1182,43 +1560,95 @@ export default function PrintMusicCardScreen() {
       if (!next[i]) next[i] = { enabled: false };
     }
     setCardOverrides(next);
-    setSelectedCardIndex(chosen.length ? matchWorkTrackIndices(chosen[0].trackKeys, validTracks)[0] : 0);
-    showNotice("Hoja preparada", `${chosen.length} obras, una tarjeta por obra. Comprueba y publica cada QR antes de imprimir.`, "success");
+    setSelectedCardIndex(
+      chosen.length
+        ? matchWorkTrackIndices(chosen[0].trackKeys, validTracks)[0]
+        : 0,
+    );
+    showNotice(
+      "Hoja preparada",
+      `${chosen.length} obras, una tarjeta por obra. Comprueba y publica cada QR antes de imprimir.`,
+      "success",
+    );
   };
   const toggleSheetWork = (id) => {
-    setSheetWorkIds(previous => previous.includes(id)
-      ? previous.filter(value => value !== id)
-      : previous.length < 10 ? [...previous, id] : previous);
+    setSheetWorkIds((previous) =>
+      previous.includes(id)
+        ? previous.filter((value) => value !== id)
+        : previous.length < 10
+          ? [...previous, id]
+          : previous,
+    );
   };
   const deleteSavedWork = async (id) => {
-    if (await persistWorks(savedWorks.filter(item => item.id !== id))) {
-      showNotice("Obra eliminada", "Se ha quitado de las obras guardadas; no se han borrado pistas.", "success");
+    if (await persistWorks(savedWorks.filter((item) => item.id !== id))) {
+      showNotice(
+        "Obra eliminada",
+        "Se ha quitado de las obras guardadas; no se han borrado pistas.",
+        "success",
+      );
     }
   };
   const checkCardSelection = async () => {
     const selected = editableCards[selectedCardIndex];
-    if (!selected || selected.trackIndices.length < 2 || checkingSelection) return;
-    const id = selected.workPublicId || selectionCardId(publicId, selected.trackIndices);
+    if (!selected || selected.trackIndices.length < 2 || checkingSelection)
+      return;
+    const id =
+      selected.workPublicId || selectionCardId(publicId, selected.trackIndices);
     const url = getPublicManifestUrl(publicBaseUrl, id);
     if (!url) {
-      showNotice("URL no válida", "Configura una URL pública HTTPS para Shopp.", "warning");
+      showNotice(
+        "URL no válida",
+        "Configura una URL pública HTTPS para Shopp.",
+        "warning",
+      );
       return;
     }
     setCheckingSelection(true);
     try {
-      const response = await fetch(`${url}${url.includes("?") ? "&" : "?"}check=${Date.now()}`, { cache: "no-store" });
+      const response = await fetch(
+        `${url}${url.includes("?") ? "&" : "?"}check=${Date.now()}`,
+        { cache: "no-store" },
+      );
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const manifest = await response.json();
-      const expected = selected.trackIndices.map(i => videoIdFromTrack(validTracks[i]) || youtubePlaylistIdFromTrack(validTracks[i])).filter(Boolean);
-      const actual = (manifest?.tracks || []).map(track => videoIdFromTrack(track) || youtubePlaylistIdFromTrack(track)).filter(Boolean);
-      if (manifest?.schema !== "shopp-public-music-card" || manifest?.version !== 1 || manifest?.id !== id || actual.length !== expected.length || actual.some((trackId, i) => trackId !== expected[i])) {
-        throw new Error("El JSON publicado no coincide con los movimientos seleccionados.");
+      const expected = selected.trackIndices
+        .map(
+          (i) =>
+            videoIdFromTrack(validTracks[i]) ||
+            youtubePlaylistIdFromTrack(validTracks[i]),
+        )
+        .filter(Boolean);
+      const actual = (manifest?.tracks || [])
+        .map(
+          (track) =>
+            videoIdFromTrack(track) || youtubePlaylistIdFromTrack(track),
+        )
+        .filter(Boolean);
+      if (
+        manifest?.schema !== "shopp-public-music-card" ||
+        manifest?.version !== 1 ||
+        manifest?.id !== id ||
+        actual.length !== expected.length ||
+        actual.some((trackId, i) => trackId !== expected[i])
+      ) {
+        throw new Error(
+          "El JSON publicado no coincide con los movimientos seleccionados.",
+        );
       }
-      setVerifiedSelections(previous => ({ ...previous, [id]: true }));
-      showNotice("Selección publicada", "El manifiesto público contiene los movimientos seleccionados, en el orden previsto.", "success");
+      setVerifiedSelections((previous) => ({ ...previous, [id]: true }));
+      showNotice(
+        "Selección publicada",
+        "El manifiesto público contiene los movimientos seleccionados, en el orden previsto.",
+        "success",
+      );
     } catch (error) {
-      setVerifiedSelections(previous => ({ ...previous, [id]: false }));
-      showNotice("Selección no verificada", `${error?.message || error}. Publica el ZIP en public/ y despliega Netlify antes de distribuir el QR.`, "warning");
+      setVerifiedSelections((previous) => ({ ...previous, [id]: false }));
+      showNotice(
+        "Selección no verificada",
+        `${error?.message || error}. Publica el ZIP en public/ y despliega Netlify antes de distribuir el QR.`,
+        "warning",
+      );
     } finally {
       setCheckingSelection(false);
     }
@@ -1226,26 +1656,53 @@ export default function PrintMusicCardScreen() {
   const selectedSettings = editableCards[selectedCardIndex] || null;
   const selectedTrackIndices = selectedSettings?.trackIndices || [];
   const exportCardSelection = async () => {
-    if (!selectedSettings || selectedTrackIndices.length < 2 || exportingSelection) return;
-    const groupId = selectedSettings.workPublicId || selectionCardId(publicId, selectedTrackIndices);
-    const grouped = selectedTrackIndices.map(i => validTracks[i]).filter(Boolean);
+    if (
+      !selectedSettings ||
+      selectedTrackIndices.length < 2 ||
+      exportingSelection
+    )
+      return;
+    const groupId =
+      selectedSettings.workPublicId ||
+      selectionCardId(publicId, selectedTrackIndices);
+    const grouped = selectedTrackIndices
+      .map((i) => validTracks[i])
+      .filter(Boolean);
     if (grouped.length < 2) return;
     setExportingSelection(true);
     try {
-      await savePublicMusicCardZip({
-        ...playlist, title: selectedSettings.title || title,
-        author: selectedSettings.subtitle || author,
-        tracks: grouped,
-      }, groupId, isClassical, false);
-      showNotice("Selección exportada", "Descomprime el ZIP en public/ y publica Netlify antes de imprimir o distribuir el QR.", "success");
+      await savePublicMusicCardZip(
+        {
+          ...playlist,
+          title: selectedSettings.title || title,
+          author: selectedSettings.subtitle || author,
+          tracks: grouped,
+        },
+        groupId,
+        isClassical,
+        false,
+      );
+      showNotice(
+        "Selección exportada",
+        "Descomprime el ZIP en public/ y publica Netlify antes de imprimir o distribuir el QR.",
+        "success",
+      );
     } catch (error) {
-      showNotice("Error al exportar", String(error?.message || error), "warning");
-    } finally { setExportingSelection(false); }
+      showNotice(
+        "Error al exportar",
+        String(error?.message || error),
+        "warning",
+      );
+    } finally {
+      setExportingSelection(false);
+    }
   };
   // La vista previa sigue la tarjeta seleccionada en el editor.
-  const previewEntry = (cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses))
-    ? (cardEntries.find(entry => entry.sourceIndex === selectedCardIndex) || cardEntries[0])
-    : cardEntries[0];
+  const previewEntry =
+    cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses)
+      ? cardEntries.find((entry) => entry.sourceIndex === selectedCardIndex) ||
+        cardEntries[0]
+      : cardEntries[0];
   const previewCoverUri = previewEntry?.cover || coverUri;
   const targetUrl = previewEntry?.url || "";
   // En iOS Chrome reconoce googlechromes://; Safari utiliza el enlace HTTPS normal.
@@ -1305,7 +1762,12 @@ export default function PrintMusicCardScreen() {
 
   const downloadPublicationZip = async () => {
     try {
-      const result = await savePublicMusicCardZip(playlist, publicId, isClassical, includePublicLyrics);
+      const result = await savePublicMusicCardZip(
+        playlist,
+        publicId,
+        isClassical,
+        includePublicLyrics,
+      );
       setPublished(false);
       showNotice(
         "ZIP de publicación preparado",
@@ -1313,7 +1775,11 @@ export default function PrintMusicCardScreen() {
         "success",
       );
     } catch (error) {
-      showNotice("No se pudo exportar", error?.message || "Error al generar el ZIP público.", "error");
+      showNotice(
+        "No se pudo exportar",
+        error?.message || "Error al generar el ZIP público.",
+        "error",
+      );
     }
   };
 
@@ -1355,14 +1821,32 @@ export default function PrintMusicCardScreen() {
         );
       // Evitar tarjetas impresas cuando el manifiesto apunta a LRC inexistentes.
       if (includePublicLyrics) {
-        const expectedLyrics = validTracks.slice(0, 100)
-          .filter(track => typeof track?.lyricsBackup?.text === "string" && track.lyricsBackup.text.trim()).length;
-        const urls = (data.tracks || []).map(track => track.lyricsUrl).filter(Boolean);
-        if (urls.length !== expectedLyrics) throw new Error("Las letras publicadas no coinciden con las seleccionadas para exportar.");
+        const expectedLyrics = validTracks
+          .slice(0, 100)
+          .filter(
+            (track) =>
+              typeof track?.lyricsBackup?.text === "string" &&
+              track.lyricsBackup.text.trim(),
+          ).length;
+        const urls = (data.tracks || [])
+          .map((track) => track.lyricsUrl)
+          .filter(Boolean);
+        if (urls.length !== expectedLyrics)
+          throw new Error(
+            "Las letras publicadas no coinciden con las seleccionadas para exportar.",
+          );
         for (const path of urls) {
-          if (!/^\/music-cards\/lyrics\/shopp-[a-z0-9-]+\/\d{3}\.lrc$/.test(path)) throw new Error("URL LRC pública no válida.");
-          const lrc = await fetch(new URL(path, url).toString(), { cache: "no-store" });
-          if (!lrc.ok || (lrc.headers.get("content-type") || "").includes("text/html"))
+          if (
+            !/^\/music-cards\/lyrics\/shopp-[a-z0-9-]+\/\d{3}\.lrc$/.test(path)
+          )
+            throw new Error("URL LRC pública no válida.");
+          const lrc = await fetch(new URL(path, url).toString(), {
+            cache: "no-store",
+          });
+          if (
+            !lrc.ok ||
+            (lrc.headers.get("content-type") || "").includes("text/html")
+          )
             throw new Error(`No se pudo verificar la letra pública: ${path}`);
         }
       }
@@ -1418,75 +1902,155 @@ export default function PrintMusicCardScreen() {
     const warnings = [];
     const active = cardEntries;
     const publicOrigin = normalizePublicBase(publicBaseUrl);
-    if (!publicOrigin || !/^https:\/\//i.test(publicOrigin)) errors.push("La dirección pública de Shopp debe ser HTTPS.");
+    if (!publicOrigin || !/^https:\/\//i.test(publicOrigin))
+      errors.push("La dirección pública de Shopp debe ser HTTPS.");
     if (!active.length) errors.push("No hay tarjetas válidas para imprimir.");
-    if (active.some(c => !String(c.title || "").trim())) warnings.push("Hay tarjetas sin título impreso.");
+    if (active.some((c) => !String(c.title || "").trim()))
+      warnings.push("Hay tarjetas sin título impreso.");
     if (format === "a4" && active.length > 10)
-      warnings.push(`Hay ${active.length} tarjetas: la salida ocupará varias hojas A4.`);
+      warnings.push(
+        `Hay ${active.length} tarjetas: la salida ocupará varias hojas A4.`,
+      );
     active.forEach((card, i) => {
       const n = i + 1;
-      if (!card.url || !/^https:\/\//i.test(card.url)) errors.push(`Tarjeta ${n}: el enlace QR no es HTTPS válido.`);
+      if (!card.url || !/^https:\/\//i.test(card.url))
+        errors.push(`Tarjeta ${n}: el enlace QR no es HTTPS válido.`);
       if (!card.cover) warnings.push(`Tarjeta ${n}: no tiene carátula.`);
       if (card.trackIndices?.length > 1) {
         const indices = card.trackIndices;
-        if (new Set(indices).size !== indices.length || indices.some(index => !validTracks[index])) errors.push(`Tarjeta ${n}: movimientos inexistentes o duplicados.`);
-        if (!card.selectionPublicId) errors.push(`Tarjeta ${n}: falta identificador público de la obra.`);
+        if (
+          new Set(indices).size !== indices.length ||
+          indices.some((index) => !validTracks[index])
+        )
+          errors.push(`Tarjeta ${n}: movimientos inexistentes o duplicados.`);
+        if (!card.selectionPublicId)
+          errors.push(`Tarjeta ${n}: falta identificador público de la obra.`);
       }
     });
     if (format === "a4" && cardMode === "songs" && active.length < 10)
-      warnings.push(`Quedarán ${10 - active.length} posiciones vacías en la hoja A4.`);
-    if (!doubleSided) warnings.push("La impresión a doble cara está desactivada.");
-    return { errors, warnings, count: active.length,
-      signature: JSON.stringify({ cards: active.map(c => [c.url, c.title, c.subtitle, c.cover, c.trackIndices, c.printOrder]),
-        format, cardMode, doubleSided, backOffsetX, backOffsetY, duplexFlip, copies, backCropMarks, frontCropMarks }),
+      warnings.push(
+        `Quedarán ${10 - active.length} posiciones vacías en la hoja A4.`,
+      );
+    if (!doubleSided)
+      warnings.push("La impresión a doble cara está desactivada.");
+    return {
+      errors,
+      warnings,
+      count: active.length,
+      signature: JSON.stringify({
+        cards: active.map((c) => [
+          c.url,
+          c.title,
+          c.subtitle,
+          c.cover,
+          c.trackIndices,
+          c.printOrder,
+        ]),
+        format,
+        cardMode,
+        doubleSided,
+        backOffsetX,
+        backOffsetY,
+        duplexFlip,
+        copies,
+        backCropMarks,
+        frontCropMarks,
+      }),
     };
-  }, [cardEntries, publicBaseUrl, validTracks, format, cardMode, doubleSided,
-    backOffsetX, backOffsetY, duplexFlip, copies, backCropMarks, frontCropMarks]);
+  }, [
+    cardEntries,
+    publicBaseUrl,
+    validTracks,
+    format,
+    cardMode,
+    doubleSided,
+    backOffsetX,
+    backOffsetY,
+    duplexFlip,
+    copies,
+    backCropMarks,
+    frontCropMarks,
+  ]);
 
   const verifyWholeSheet = async () => {
     if (checkingSheet) return;
     setCheckingSheet(true);
     const errors = [...sheetInspection.errors];
     const warnings = [...sheetInspection.warnings];
-    const groups = cardEntries.filter(c => c.selectionPublicId);
+    const groups = cardEntries.filter((c) => c.selectionPublicId);
     const checked = new Map();
     try {
       for (const card of groups) {
         const id = card.selectionPublicId;
         if (checked.has(id)) continue;
         const manifestUrl = getPublicManifestUrl(publicBaseUrl, id);
-        if (!manifestUrl) { errors.push(`${card.title}: URL de manifiesto inválida.`); continue; }
+        if (!manifestUrl) {
+          errors.push(`${card.title}: URL de manifiesto inválida.`);
+          continue;
+        }
         try {
-          const response = await fetch(`${manifestUrl}${manifestUrl.includes("?") ? "&" : "?"}check=${Date.now()}`, { cache: "no-store" });
+          const response = await fetch(
+            `${manifestUrl}${manifestUrl.includes("?") ? "&" : "?"}check=${Date.now()}`,
+            { cache: "no-store" },
+          );
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const manifest = await response.json();
-          const expected = card.trackIndices.map(index => workTrackKey(validTracks[index]));
-          const actual = (manifest?.tracks || []).map(track => workTrackKey(track));
-          if (manifest?.schema !== "shopp-public-music-card" || manifest?.version !== 1 || manifest?.id !== id ||
-              expected.length !== actual.length || expected.some((v, i) => v !== actual[i]))
-            throw new Error("el JSON no coincide con los movimientos en el orden previsto");
+          const expected = card.trackIndices.map((index) =>
+            workTrackKey(validTracks[index]),
+          );
+          const actual = (manifest?.tracks || []).map((track) =>
+            workTrackKey(track),
+          );
+          if (
+            manifest?.schema !== "shopp-public-music-card" ||
+            manifest?.version !== 1 ||
+            manifest?.id !== id ||
+            expected.length !== actual.length ||
+            expected.some((v, i) => v !== actual[i])
+          )
+            throw new Error(
+              "el JSON no coincide con los movimientos en el orden previsto",
+            );
           checked.set(id, true);
         } catch (error) {
-          errors.push(`${card.title}: manifiesto no verificado (${error?.message || error}).`);
+          errors.push(
+            `${card.title}: manifiesto no verificado (${error?.message || error}).`,
+          );
           checked.set(id, false);
         }
       }
       if (cardMode === "playlist" && qrDestination !== "youtube" && !published)
-        errors.push("La playlist completa aún no está marcada como publicada y verificada.");
-      const report = { errors, warnings, verified: checked.size, signature: sheetInspection.signature };
+        errors.push(
+          "La playlist completa aún no está marcada como publicada y verificada.",
+        );
+      const report = {
+        errors,
+        warnings,
+        verified: checked.size,
+        signature: sheetInspection.signature,
+      };
       setSheetCheck(report);
-      showNotice(errors.length ? "Impresión bloqueada" : "Comprobación completada",
-        errors.length ? `${errors.length} problema(s) que debes corregir antes de imprimir.` :
-        `Sin errores bloqueantes. ${checked.size} manifiesto(s) de obra verificado(s), ${warnings.length} aviso(s).`,
-        errors.length ? "warning" : "success");
-    } finally { setCheckingSheet(false); }
+      showNotice(
+        errors.length ? "Impresión bloqueada" : "Comprobación completada",
+        errors.length
+          ? `${errors.length} problema(s) que debes corregir antes de imprimir.`
+          : `Sin errores bloqueantes. ${checked.size} manifiesto(s) de obra verificado(s), ${warnings.length} aviso(s).`,
+        errors.length ? "warning" : "success",
+      );
+    } finally {
+      setCheckingSheet(false);
+    }
   };
 
   // Fase 4K: registro portable para contrastar los QR impresos con los destinos digitales.
   // No incorpora datos privados de usuario ni letras; solo contenido visible en las tarjetas.
   const downloadSheetAudit = () => {
     if (Platform.OS !== "web" || typeof document === "undefined") {
-      showNotice("Solo web", "Exporta el informe desde Shopp Web en tu Mac.", "warning");
+      showNotice(
+        "Solo web",
+        "Exporta el informe desde Shopp Web en tu Mac.",
+        "warning",
+      );
       return;
     }
     const report = {
@@ -1496,15 +2060,34 @@ export default function PrintMusicCardScreen() {
       playlistTitle: title,
       format,
       cardMode,
-      calibration: { backOffsetXmm: backOffsetX, backOffsetYmm: backOffsetY,
-        doubleSided, duplexFlip, frontCropMarks, backCropMarks, showBackGridOnFront },
-      inspection: { errors: sheetInspection.errors, warnings: sheetInspection.warnings,
-        verified: sheetCheck?.signature === sheetInspection.signature && !sheetCheck.errors.length,
-        verifiedPublicManifestCount: sheetCheck?.signature === sheetInspection.signature ? sheetCheck.verified : 0 },
+      calibration: {
+        backOffsetXmm: backOffsetX,
+        backOffsetYmm: backOffsetY,
+        doubleSided,
+        duplexFlip,
+        frontCropMarks,
+        backCropMarks,
+        showBackGridOnFront,
+      },
+      inspection: {
+        errors: sheetInspection.errors,
+        warnings: sheetInspection.warnings,
+        verified:
+          sheetCheck?.signature === sheetInspection.signature &&
+          !sheetCheck.errors.length,
+        verifiedPublicManifestCount:
+          sheetCheck?.signature === sheetInspection.signature
+            ? sheetCheck.verified
+            : 0,
+      },
       cards: cardEntries.map((card, index) => ({
-        position: index + 1, title: card.title, subtitle: card.subtitle || "",
-        trackIndices: card.trackIndices, selectionPublicId: card.selectionPublicId,
-        qrUrl: card.url || "", imageUrl: /^https:\/\//i.test(card.cover || "") ? card.cover : null,
+        position: index + 1,
+        title: card.title,
+        subtitle: card.subtitle || "",
+        trackIndices: card.trackIndices,
+        selectionPublicId: card.selectionPublicId,
+        qrUrl: card.url || "",
+        imageUrl: /^https:\/\//i.test(card.cover || "") ? card.cover : null,
         embeddedImage: /^data:image\//i.test(card.cover || ""),
       })),
       manualChecks: [
@@ -1514,7 +2097,9 @@ export default function PrintMusicCardScreen() {
         "Imprimir una hoja de prueba y verificar la coincidencia anverso/reverso tras recortar.",
       ],
     };
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(report, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -1537,12 +2122,16 @@ export default function PrintMusicCardScreen() {
       return;
     }
     if (sheetInspection.errors.length) {
-      showNotice("Impresión bloqueada", sheetInspection.errors.join("\n"), "warning");
+      showNotice(
+        "Impresión bloqueada",
+        sheetInspection.errors.join("\n"),
+        "warning",
+      );
       return;
     }
     // Sin panel ni botón adicional: verificar automáticamente las obras antes de imprimir.
     if (checkingSheet) return;
-    const groupedCards = cardEntries.filter(card => card.selectionPublicId);
+    const groupedCards = cardEntries.filter((card) => card.selectionPublicId);
     if (groupedCards.length) {
       setCheckingSheet(true);
       try {
@@ -1552,24 +2141,41 @@ export default function PrintMusicCardScreen() {
           if (checkedIds.has(id)) continue;
           checkedIds.add(id);
           const manifestUrl = getPublicManifestUrl(publicBaseUrl, id);
-          if (!manifestUrl) throw new Error(`${card.title}: URL pública no válida.`);
+          if (!manifestUrl)
+            throw new Error(`${card.title}: URL pública no válida.`);
           const response = await fetch(
             `${manifestUrl}${manifestUrl.includes("?") ? "&" : "?"}check=${Date.now()}`,
             { cache: "no-store" },
           );
-          if (!response.ok) throw new Error(`${card.title}: manifiesto HTTP ${response.status}.`);
+          if (!response.ok)
+            throw new Error(
+              `${card.title}: manifiesto HTTP ${response.status}.`,
+            );
           const manifest = await response.json();
-          const expected = card.trackIndices.map(index => workTrackKey(validTracks[index]));
-          const actual = (manifest?.tracks || []).map(track => workTrackKey(track));
-          if (manifest?.schema !== "shopp-public-music-card" ||
-              manifest?.version !== 1 || manifest?.id !== id ||
-              expected.length !== actual.length ||
-              expected.some((key, i) => key !== actual[i])) {
-            throw new Error(`${card.title}: el manifiesto público no coincide con los movimientos.`);
+          const expected = card.trackIndices.map((index) =>
+            workTrackKey(validTracks[index]),
+          );
+          const actual = (manifest?.tracks || []).map((track) =>
+            workTrackKey(track),
+          );
+          if (
+            manifest?.schema !== "shopp-public-music-card" ||
+            manifest?.version !== 1 ||
+            manifest?.id !== id ||
+            expected.length !== actual.length ||
+            expected.some((key, i) => key !== actual[i])
+          ) {
+            throw new Error(
+              `${card.title}: el manifiesto público no coincide con los movimientos.`,
+            );
           }
         }
       } catch (error) {
-        showNotice("Impresión bloqueada", String(error?.message || error), "warning");
+        showNotice(
+          "Impresión bloqueada",
+          String(error?.message || error),
+          "warning",
+        );
         return;
       } finally {
         setCheckingSheet(false);
@@ -1581,7 +2187,9 @@ export default function PrintMusicCardScreen() {
       single,
       subtitle,
       cards: cardEntries,
-      distinctCards: cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses),
+      distinctCards:
+        cardMode === "songs" ||
+        (cardMode === "playlist" && customPlaylistReverses),
       format,
       copies,
       frontCropMarks,
@@ -1596,8 +2204,13 @@ export default function PrintMusicCardScreen() {
       backInsetEnabled,
       backInsetMm,
       frontBackground: frontTone.printBackground || frontTone.bg,
-      backPanelBg: backPanelTone.bg,
-      backFrameBg: backFrameTone.bg,
+      backPanelBg: backPanelTone.printBackground || backPanelTone.bg,
+      backFrameBg: backFrameTone.printBackground || backFrameTone.bg,
+      qrBackground:
+        qrBackgroundId === "original"
+          ? ORIGINAL_FRONT_BACKGROUND
+          : QR_BACKGROUND_TONES.find((t) => t.id === qrBackgroundId)?.bg ||
+            "#ffffff",
       backPanelTitleColor: backPanelTone.title,
       backPanelMetaColor: backPanelTone.meta,
       backPanelAccentColor: backPanelTone.accent,
@@ -1812,7 +2425,8 @@ export default function PrintMusicCardScreen() {
                   accessibilityState={{ selected: cardMode === value }}
                   onPress={() => {
                     setCardMode(value);
-                    if (value === "single") chooseSongForPrinting(selectedSongIndex);
+                    if (value === "single")
+                      chooseSongForPrinting(selectedSongIndex);
                     setPublished(false);
                   }}
                   style={[
@@ -1843,27 +2457,69 @@ export default function PrintMusicCardScreen() {
             </View>
             {cardMode === "single" ? (
               <View style={{ marginTop: 12, gap: 8 }}>
-                <Text style={styles.fieldLabel}>Selecciona una canción de la playlist</Text>
-                <View style={{ borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, backgroundColor: "#fff", overflow: "hidden" }}>
+                <Text style={styles.fieldLabel}>
+                  Selecciona una canción de la playlist
+                </Text>
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: "#cbd5e1",
+                    borderRadius: 10,
+                    backgroundColor: "#fff",
+                    overflow: "hidden",
+                  }}
+                >
                   {validTracks.map((track, index) => (
                     <Pressable
                       key={`choose-song-${index}`}
                       accessibilityRole="radio"
-                      accessibilityState={{ selected: index === selectedSongIndex }}
+                      accessibilityState={{
+                        selected: index === selectedSongIndex,
+                      }}
                       onPress={() => chooseSongForPrinting(index)}
-                      style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 11,
-                        borderBottomWidth: index < validTracks.length - 1 ? 1 : 0, borderBottomColor: "#e2e8f0",
-                        backgroundColor: index === selectedSongIndex ? "#eff6ff" : "#fff" }}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 10,
+                        paddingHorizontal: 12,
+                        paddingVertical: 11,
+                        borderBottomWidth:
+                          index < validTracks.length - 1 ? 1 : 0,
+                        borderBottomColor: "#e2e8f0",
+                        backgroundColor:
+                          index === selectedSongIndex ? "#eff6ff" : "#fff",
+                      }}
                     >
-                      <Ionicons name={index === selectedSongIndex ? "radio-button-on" : "radio-button-off"}
-                        size={20} color={index === selectedSongIndex ? "#2563eb" : "#94a3b8"} />
-                      <Text style={{ flex: 1, color: "#0f172a", fontWeight: index === selectedSongIndex ? "700" : "400" }}>
-                        {index + 1}. {track.title || track.single || `Canción ${index + 1}`}
+                      <Ionicons
+                        name={
+                          index === selectedSongIndex
+                            ? "radio-button-on"
+                            : "radio-button-off"
+                        }
+                        size={20}
+                        color={
+                          index === selectedSongIndex ? "#2563eb" : "#94a3b8"
+                        }
+                      />
+                      <Text
+                        style={{
+                          flex: 1,
+                          color: "#0f172a",
+                          fontWeight:
+                            index === selectedSongIndex ? "700" : "400",
+                        }}
+                      >
+                        {index + 1}.{" "}
+                        {track.title || track.single || `Canción ${index + 1}`}
                       </Text>
                     </Pressable>
                   ))}
                 </View>
-                <Text style={styles.fieldHelp}>Los campos del reverso se rellenan con la canción elegida y siguen siendo editables. El número de copias se configura al imprimir.</Text>
+                <Text style={styles.fieldHelp}>
+                  Los campos del reverso se rellenan con la canción elegida y
+                  siguen siendo editables. El número de copias se configura al
+                  imprimir.
+                </Text>
               </View>
             ) : null}
             <View style={styles.inlineHint}>
@@ -1968,57 +2624,140 @@ export default function PrintMusicCardScreen() {
             </View>
             {cardMode === "playlist" && qrDestination !== "youtube" ? (
               <View style={styles.infoBox}>
-                <Text style={styles.infoBoxTitle}>Publicar playlist antes de imprimir</Text>
+                <Text style={styles.infoBoxTitle}>
+                  Publicar playlist antes de imprimir
+                </Text>
                 <Text style={styles.infoBoxText}>
-                  El QR abrirá la playlist completa en Shopp, sin iniciar sesión.
-                  Descargar archivos NO los publica automáticamente en Netlify.
+                  El QR abrirá la playlist completa en Shopp, sin iniciar
+                  sesión. Descargar archivos NO los publica automáticamente en
+                  Netlify.
                 </Text>
                 <View style={{ gap: 8, marginTop: 12 }}>
-                  <Text style={{ color: "#334155", fontWeight: "700" }}>1 · Preparar archivos</Text>
+                  <Text style={{ color: "#334155", fontWeight: "700" }}>
+                    1 · Preparar archivos
+                  </Text>
                   <Text style={styles.infoBoxText}>
-                    Genera un ZIP con music-cards/ y la ficha JSON. Las letras LRC son opcionales y solo deben difundirse con autorización.
+                    Genera un ZIP con music-cards/ y la ficha JSON. Las letras
+                    LRC son opcionales y solo deben difundirse con autorización.
                   </Text>
                   <Pressable
                     style={styles.secondaryButton}
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: includePublicLyrics }}
-                    onPress={() => { setIncludePublicLyrics(value => !value); setPublished(false); }}
+                    onPress={() => {
+                      setIncludePublicLyrics((value) => !value);
+                      setPublished(false);
+                    }}
                   >
-                    <Ionicons name={includePublicLyrics ? "checkbox-outline" : "square-outline"} color="#2563eb" size={20} />
-                    <Text style={styles.secondaryButtonText}>Incluir LRC autorizados</Text>
+                    <Ionicons
+                      name={
+                        includePublicLyrics
+                          ? "checkbox-outline"
+                          : "square-outline"
+                      }
+                      color="#2563eb"
+                      size={20}
+                    />
+                    <Text style={styles.secondaryButtonText}>
+                      Incluir LRC autorizados
+                    </Text>
                   </Pressable>
-                  <Pressable style={styles.secondaryButton} onPress={downloadPublicationZip}>
-                    <Ionicons name="archive-outline" color="#2563eb" size={17} />
-                    <Text style={styles.secondaryButtonText}>1. Descargar ZIP para Netlify</Text>
+                  <Pressable
+                    style={styles.secondaryButton}
+                    onPress={downloadPublicationZip}
+                  >
+                    <Ionicons
+                      name="archive-outline"
+                      color="#2563eb"
+                      size={17}
+                    />
+                    <Text style={styles.secondaryButtonText}>
+                      1. Descargar ZIP para Netlify
+                    </Text>
                   </Pressable>
-                  <Text style={{ color: "#334155", fontWeight: "700", marginTop: 5 }}>2 · Publicar en Netlify</Text>
-                  <Text style={styles.infoBoxText}>
-                    Descomprime el ZIP y copia su carpeta music-cards/ dentro de public/ del proyecto, sin borrar otras playlists. Haz commit, push a develop y, si Netlify despliega main, fusiona la PR a main. Espera al despliegue completado.
+                  <Text
+                    style={{
+                      color: "#334155",
+                      fontWeight: "700",
+                      marginTop: 5,
+                    }}
+                  >
+                    2 · Publicar en Netlify
                   </Text>
-                  <Text style={styles.fieldHelp}>Archivo esperado: public/music-cards/{publicId}.json</Text>
-                  <Text style={{ color: "#334155", fontWeight: "700", marginTop: 5 }}>3 · Comprobar antes de imprimir</Text>
                   <Text style={styles.infoBoxText}>
-                    Compara el JSON publicado con la playlist actual. Esta comprobación no sube ningún archivo.
+                    Descomprime el ZIP y copia su carpeta music-cards/ dentro de
+                    public/ del proyecto, sin borrar otras playlists. Haz
+                    commit, push a develop y, si Netlify despliega main, fusiona
+                    la PR a main. Espera al despliegue completado.
+                  </Text>
+                  <Text style={styles.fieldHelp}>
+                    Archivo esperado: public/music-cards/{publicId}.json
+                  </Text>
+                  <Text
+                    style={{
+                      color: "#334155",
+                      fontWeight: "700",
+                      marginTop: 5,
+                    }}
+                  >
+                    3 · Comprobar antes de imprimir
+                  </Text>
+                  <Text style={styles.infoBoxText}>
+                    Compara el JSON publicado con la playlist actual. Esta
+                    comprobación no sube ningún archivo.
                   </Text>
                   <Pressable
                     style={[styles.secondaryButton, busy && styles.disabled]}
                     onPress={verifyPublicManifest}
                     disabled={busy}
                   >
-                    <Ionicons name="checkmark-circle-outline" color="#2563eb" size={17} />
+                    <Ionicons
+                      name="checkmark-circle-outline"
+                      color="#2563eb"
+                      size={17}
+                    />
                     <Text style={styles.secondaryButtonText}>
                       {busy ? "Comprobando..." : "3. Comprobar publicación"}
                     </Text>
                   </Pressable>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-                    <Ionicons name={published ? "checkmark-circle" : "alert-circle-outline"} size={19} color={published ? "#15803d" : "#9a6700"} />
-                    <Text style={{ color: published ? "#15803d" : "#854d0e", fontWeight: "700", flex: 1 }}>
-                      {published ? "Publicación verificada: puedes imprimir" : "Pendiente de verificar: impresión bloqueada"}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 7,
+                    }}
+                  >
+                    <Ionicons
+                      name={
+                        published ? "checkmark-circle" : "alert-circle-outline"
+                      }
+                      size={19}
+                      color={published ? "#15803d" : "#9a6700"}
+                    />
+                    <Text
+                      style={{
+                        color: published ? "#15803d" : "#854d0e",
+                        fontWeight: "700",
+                        flex: 1,
+                      }}
+                    >
+                      {published
+                        ? "Publicación verificada: puedes imprimir"
+                        : "Pendiente de verificar: impresión bloqueada"}
                     </Text>
                   </View>
-                  <Pressable style={styles.secondaryButton} onPress={downloadPublicManifest}>
-                    <Ionicons name="document-text-outline" color="#2563eb" size={17} />
-                    <Text style={styles.secondaryButtonText}>Avanzado: descargar solo JSON</Text>
+                  <Pressable
+                    style={styles.secondaryButton}
+                    onPress={downloadPublicManifest}
+                  >
+                    <Ionicons
+                      name="document-text-outline"
+                      color="#2563eb"
+                      size={17}
+                    />
+                    <Text style={styles.secondaryButtonText}>
+                      Avanzado: descargar solo JSON
+                    </Text>
                   </Pressable>
                 </View>
               </View>
@@ -2218,7 +2957,13 @@ export default function PrintMusicCardScreen() {
                       { backgroundColor: tone.bg, overflow: "hidden" },
                     ]}
                   >
-                    {tone.id === "transparent" ? (
+                    {tone.id === "original" && Platform.OS === "web" ? (
+                      <Image
+                        source={{ uri: FRONT_GRADIENT_PREVIEW_URI }}
+                        style={styles.frontToneGradientSwatch}
+                        resizeMode="stretch"
+                      />
+                    ) : tone.id === "transparent" ? (
                       <Image
                         source={{ uri: TRANSPARENT_SWATCH_URI }}
                         style={styles.frontToneGradientSwatch}
@@ -2252,7 +2997,55 @@ export default function PrintMusicCardScreen() {
                       { backgroundColor: tone.bg, overflow: "hidden" },
                     ]}
                   >
-                    {tone.id === "transparent" ? (
+                    {tone.id === "original" && Platform.OS === "web" ? (
+                      <Image
+                        source={{ uri: FRONT_GRADIENT_PREVIEW_URI }}
+                        style={styles.frontToneGradientSwatch}
+                        resizeMode="stretch"
+                      />
+                    ) : tone.id === "transparent" ? (
+                      <Image
+                        source={{ uri: TRANSPARENT_SWATCH_URI }}
+                        style={styles.frontToneGradientSwatch}
+                        resizeMode="stretch"
+                      />
+                    ) : null}
+                  </View>
+                  <Text style={styles.toneLabel}>{tone.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.sectionDivider} />
+            <Text style={styles.subsectionTitle}>Fondo del bloque QR</Text>
+            <Text style={styles.fieldHelp}>
+              Cambia el fondo alrededor del QR y su leyenda. El cuadrado del
+              código permanece blanco para facilitar la lectura.
+            </Text>
+            <View style={styles.toneGrid}>
+              {QR_BACKGROUND_TONES.map((tone) => (
+                <Pressable
+                  key={tone.id}
+                  onPress={() => setQrBackgroundId(tone.id)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: qrBackgroundId === tone.id }}
+                  style={[
+                    styles.toneChip,
+                    qrBackgroundId === tone.id && styles.toneChipActive,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.toneSwatch,
+                      { backgroundColor: tone.bg, overflow: "hidden" },
+                    ]}
+                  >
+                    {tone.id === "original" && Platform.OS === "web" ? (
+                      <Image
+                        source={{ uri: FRONT_GRADIENT_PREVIEW_URI }}
+                        style={styles.frontToneGradientSwatch}
+                        resizeMode="stretch"
+                      />
+                    ) : tone.id === "transparent" ? (
                       <Image
                         source={{ uri: TRANSPARENT_SWATCH_URI }}
                         style={styles.frontToneGradientSwatch}
@@ -2407,7 +3200,9 @@ export default function PrintMusicCardScreen() {
                 }}
               >
                 <Text style={styles.sideLabel}>REVERSO ÚNICO</Text>
-                <Text style={{ color: "#64748b", fontSize: 12 }}>1 diseño de tarjeta</Text>
+                <Text style={{ color: "#64748b", fontSize: 12 }}>
+                  1 diseño de tarjeta
+                </Text>
               </View>
               <View
                 style={[
@@ -2421,6 +3216,14 @@ export default function PrintMusicCardScreen() {
                   },
                 ]}
               >
+                {backFrameTone.id === "original" && Platform.OS === "web" ? (
+                  <Image
+                    source={{ uri: FRONT_GRADIENT_PREVIEW_URI }}
+                    style={styles.frontGradientPreview}
+                    resizeMode="stretch"
+                    pointerEvents="none"
+                  />
+                ) : null}
                 <View style={styles.backInnerPreview}>
                   <View
                     style={[
@@ -2431,7 +3234,10 @@ export default function PrintMusicCardScreen() {
                         flexBasis: previewCoverSizePx,
                         flexGrow: 0,
                         flexShrink: 0,
-                        backgroundColor: backFrameTone.bg,
+                        backgroundColor:
+                          backFrameTone.id === "original"
+                            ? "transparent"
+                            : backFrameTone.bg,
                       },
                     ]}
                   >
@@ -2464,6 +3270,15 @@ export default function PrintMusicCardScreen() {
                       previewCompactBack && styles.backInfoCompactPreview,
                     ]}
                   >
+                    {backPanelTone.id === "original" &&
+                    Platform.OS === "web" ? (
+                      <Image
+                        source={{ uri: FRONT_GRADIENT_PREVIEW_URI }}
+                        style={styles.frontGradientPreview}
+                        resizeMode="stretch"
+                        pointerEvents="none"
+                      />
+                    ) : null}
                     <View style={styles.musicMetaPreview}>
                       {author ? (
                         <Text
@@ -2506,8 +3321,26 @@ export default function PrintMusicCardScreen() {
                         accessibilityRole="link"
                         accessibilityLabel={`Abrir enlace del QR: ${single || title || "Tarjeta"}`}
                         accessibilityHint="Abre el destino público de este código QR en el navegador"
-                        style={styles.qrPanelPreview}
+                        style={[
+                          styles.qrPanelPreview,
+                          {
+                            backgroundColor:
+                              QR_BACKGROUND_TONES.find(
+                                (t) => t.id === qrBackgroundId,
+                              )?.bg || "#ffffff",
+                            overflow: "hidden",
+                          },
+                        ]}
                       >
+                        {qrBackgroundId === "original" &&
+                        Platform.OS === "web" ? (
+                          <Image
+                            source={{ uri: FRONT_GRADIENT_PREVIEW_URI }}
+                            style={styles.frontGradientPreview}
+                            resizeMode="stretch"
+                            pointerEvents="none"
+                          />
+                        ) : null}
                         <Image
                           source={{ uri: qrUrl(targetUrl) }}
                           style={[
@@ -2535,7 +3368,8 @@ export default function PrintMusicCardScreen() {
                 </View>
               </View>
               <Text style={{ color: "#64748b", fontSize: 12, marginTop: 8 }}>
-                Pulsa el QR para abrir y verificar su enlace. Los textos y la carátula se editan arriba.
+                Pulsa el QR para abrir y verificar su enlace. Los textos y la
+                carátula se editan arriba.
               </Text>
             </View>
           </View>
@@ -2595,160 +3429,523 @@ export default function PrintMusicCardScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalTitle}>Preparar tarjetas</Text>
                 <Text style={styles.modalHeaderHelp}>
-                  {editableCards.filter((entry) => entry.enabled).length} tarjetas incluidas de {editableCards.length} posibles · Contenido del reverso
+                  {editableCards.filter((entry) => entry.enabled).length}{" "}
+                  tarjetas incluidas de {editableCards.length} posibles ·
+                  Contenido del reverso
                 </Text>
               </View>
-              <Pressable onPress={() => setPrepareCardsOpen(false)} accessibilityLabel="Cerrar preparación" style={styles.modalClose}>
+              <Pressable
+                onPress={() => setPrepareCardsOpen(false)}
+                accessibilityLabel="Cerrar preparación"
+                style={styles.modalClose}
+              >
                 <Ionicons name="close" size={22} color="#475569" />
               </Pressable>
             </View>
-            <ScrollView contentContainerStyle={styles.modalScrollContent} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              contentContainerStyle={styles.modalScrollContent}
+              keyboardShouldPersistTaps="handled"
+            >
               {isClassical && savedWorks.length > 0 ? (
                 <View style={{ gap: 8, marginBottom: 16 }}>
-                  <Text style={styles.modalSectionTitle}>Hoja A4 de obras completas</Text>
-                  <Text style={styles.note}>Selecciona hasta diez obras en el orden deseado. Cada obra tendrá una tarjeta y un QR con sus movimientos. No se imprimirán tarjetas adicionales por movimiento.</Text>
-                  {savedWorks.map(work => {
-                    const indices = matchWorkTrackIndices(work.trackKeys, validTracks);
+                  <Text style={styles.modalSectionTitle}>
+                    Hoja A4 de obras completas
+                  </Text>
+                  <Text style={styles.note}>
+                    Selecciona hasta diez obras en el orden deseado. Cada obra
+                    tendrá una tarjeta y un QR con sus movimientos. No se
+                    imprimirán tarjetas adicionales por movimiento.
+                  </Text>
+                  {savedWorks.map((work) => {
+                    const indices = matchWorkTrackIndices(
+                      work.trackKeys,
+                      validTracks,
+                    );
                     const checked = sheetWorkIds.includes(work.id);
                     return (
-                      <Pressable key={`sheet-${work.id}`} disabled={!indices?.length}
-                        onPress={() => toggleSheetWork(work.id)} style={styles.modalToggleRow}>
-                        <Ionicons name={checked ? "checkbox" : "square-outline"} size={22}
-                          color={indices?.length ? "#2563eb" : "#94a3b8"} />
-                        <Text style={{ flex: 1, color: indices?.length ? "#0f172a" : "#94a3b8" }}>
-                          {checked ? `${sheetWorkIds.indexOf(work.id) + 1}. ` : ""}{work.title} · {work.trackKeys.length} movimientos{indices?.length ? "" : " (incompleta)"}
+                      <Pressable
+                        key={`sheet-${work.id}`}
+                        disabled={!indices?.length}
+                        onPress={() => toggleSheetWork(work.id)}
+                        style={styles.modalToggleRow}
+                      >
+                        <Ionicons
+                          name={checked ? "checkbox" : "square-outline"}
+                          size={22}
+                          color={indices?.length ? "#2563eb" : "#94a3b8"}
+                        />
+                        <Text
+                          style={{
+                            flex: 1,
+                            color: indices?.length ? "#0f172a" : "#94a3b8",
+                          }}
+                        >
+                          {checked
+                            ? `${sheetWorkIds.indexOf(work.id) + 1}. `
+                            : ""}
+                          {work.title} · {work.trackKeys.length} movimientos
+                          {indices?.length ? "" : " (incompleta)"}
                         </Text>
                       </Pressable>
                     );
                   })}
-                  <Pressable disabled={!sheetWorkIds.length} onPress={prepareWorksSheet}
-                    style={[styles.previewButton, !sheetWorkIds.length && styles.disabled]}>
+                  <Pressable
+                    disabled={!sheetWorkIds.length}
+                    onPress={prepareWorksSheet}
+                    style={[
+                      styles.previewButton,
+                      !sheetWorkIds.length && styles.disabled,
+                    ]}
+                  >
                     <Ionicons name="albums-outline" size={18} color="#fff" />
-                    <Text style={styles.buttonText}>Preparar hoja con {sheetWorkIds.length} obras</Text>
+                    <Text style={styles.buttonText}>
+                      Preparar hoja con {sheetWorkIds.length} obras
+                    </Text>
                   </Pressable>
-                  <Text style={styles.note}>Antes de imprimir obras de varios movimientos, exporta y publica los manifiestos JSON, y verifica sus enlaces QR.</Text>
+                  <Text style={styles.note}>
+                    Antes de imprimir obras de varios movimientos, exporta y
+                    publica los manifiestos JSON, y verifica sus enlaces QR.
+                  </Text>
                 </View>
               ) : null}
               <View style={{ gap: 8, marginBottom: 18 }}>
-                <Text style={styles.modalSectionTitle}>Plantillas de hojas A4</Text>
-                <Text style={styles.note}>Guarda las tarjetas, su orden, imagen y destino QR, además de los ajustes dúplex, guías y calibración. Solo en este dispositivo; no modifica las obras.</Text>
-                <TextInput value={templateName} onChangeText={setTemplateName}
+                <Text style={styles.modalSectionTitle}>
+                  Plantillas de hojas A4
+                </Text>
+                <Text style={styles.note}>
+                  Guarda las tarjetas, su orden, imagen y destino QR, además de
+                  los ajustes dúplex, guías y calibración. Solo en este
+                  dispositivo; no modifica las obras.
+                </Text>
+                <TextInput
+                  value={templateName}
+                  onChangeText={setTemplateName}
                   placeholder="Nombre de plantilla (p. ej. Beethoven - 10 obras)"
                   placeholderTextColor="#64748b"
-                  style={styles.modalInput} accessibilityLabel="Nombre de plantilla" />
-                <Pressable disabled={!templatesLoaded || !cardEntries.length} onPress={saveSheetTemplate}
-                  style={[styles.previewButton, (!templatesLoaded || !cardEntries.length) && styles.disabled]}>
+                  style={styles.modalInput}
+                  accessibilityLabel="Nombre de plantilla"
+                />
+                <Pressable
+                  disabled={!templatesLoaded || !cardEntries.length}
+                  onPress={saveSheetTemplate}
+                  style={[
+                    styles.previewButton,
+                    (!templatesLoaded || !cardEntries.length) &&
+                      styles.disabled,
+                  ]}
+                >
                   <Ionicons name="save-outline" size={18} color="#fff" />
-                  <Text style={styles.buttonText}>Guardar plantilla de hoja</Text>
+                  <Text style={styles.buttonText}>
+                    Guardar plantilla de hoja
+                  </Text>
                 </Pressable>
-                <Pressable disabled={!templatesLoaded} onPress={importSheetTemplate}
-                  style={[styles.previewButton, !templatesLoaded && styles.disabled]}>
+                <Pressable
+                  disabled={!templatesLoaded}
+                  onPress={importSheetTemplate}
+                  style={[
+                    styles.previewButton,
+                    !templatesLoaded && styles.disabled,
+                  ]}
+                >
                   <Ionicons name="download-outline" size={18} color="#fff" />
                   <Text style={styles.buttonText}>Importar plantilla JSON</Text>
                 </Pressable>
-                {!templatesLoaded ? <Text style={styles.note}>Cargando plantillas…</Text> :
-                  sheetTemplates.length ? sheetTemplates.map(template => (
-                    <View key={template.id} style={[styles.modalToggleRow, { gap: 8 }]}>
-                      <Pressable onPress={() => loadSheetTemplate(template)} style={{ flex: 1 }}>
-                        <Text style={{ color: "#0f172a", fontWeight: "700" }}>{template.name}</Text>
-                        <Text style={styles.note}>{template.savedAt?.slice(0, 10) || ""} · Tocar para recuperar</Text>
+                {!templatesLoaded ? (
+                  <Text style={styles.note}>Cargando plantillas…</Text>
+                ) : sheetTemplates.length ? (
+                  sheetTemplates.map((template) => (
+                    <View
+                      key={template.id}
+                      style={[styles.modalToggleRow, { gap: 8 }]}
+                    >
+                      <Pressable
+                        onPress={() => loadSheetTemplate(template)}
+                        style={{ flex: 1 }}
+                      >
+                        <Text style={{ color: "#0f172a", fontWeight: "700" }}>
+                          {template.name}
+                        </Text>
+                        <Text style={styles.note}>
+                          {template.savedAt?.slice(0, 10) || ""} · Tocar para
+                          recuperar
+                        </Text>
                       </Pressable>
-                      <Pressable onPress={() => exportSheetTemplate(template)}
-                        accessibilityLabel={`Exportar plantilla ${template.name} a JSON`} style={{ padding: 6 }}>
-                        <Ionicons name="share-outline" size={20} color="#2563eb" />
+                      <Pressable
+                        onPress={() => exportSheetTemplate(template)}
+                        accessibilityLabel={`Exportar plantilla ${template.name} a JSON`}
+                        style={{ padding: 6 }}
+                      >
+                        <Ionicons
+                          name="share-outline"
+                          size={20}
+                          color="#2563eb"
+                        />
                       </Pressable>
-                      <Pressable onPress={() => deleteSheetTemplate(template.id)}
-                        accessibilityLabel={`Eliminar plantilla ${template.name}`} style={{ padding: 6 }}>
-                        <Ionicons name="trash-outline" size={20} color="#b91c1c" />
+                      <Pressable
+                        onPress={() => deleteSheetTemplate(template.id)}
+                        accessibilityLabel={`Eliminar plantilla ${template.name}`}
+                        style={{ padding: 6 }}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={20}
+                          color="#b91c1c"
+                        />
                       </Pressable>
                     </View>
-                  )) : <Text style={styles.note}>Todavía no hay plantillas guardadas.</Text>}
+                  ))
+                ) : (
+                  <Text style={styles.note}>
+                    Todavía no hay plantillas guardadas.
+                  </Text>
+                )}
               </View>
               <View style={{ gap: 9, marginBottom: 18 }}>
-                <Text style={styles.modalSectionTitle}>Vista previa de la hoja · 2 × 5</Text>
-                <Text style={styles.note}>Primeras 10 tarjetas, en orden de impresión. Usa las flechas para cambiar su posición; el QR permanece asociado a su obra o canción. Toca «Abrir QR» para comprobar el destino.</Text>
-                {cardEntries.length === 0 ? <Text style={styles.note}>Selecciona al menos una tarjeta.</Text> : null}
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                <Text style={styles.modalSectionTitle}>
+                  Vista previa de la hoja · 2 × 5
+                </Text>
+                <Text style={styles.note}>
+                  Primeras 10 tarjetas, en orden de impresión. Usa las flechas
+                  para cambiar su posición; el QR permanece asociado a su obra o
+                  canción. Toca «Abrir QR» para comprobar el destino.
+                </Text>
+                {cardEntries.length === 0 ? (
+                  <Text style={styles.note}>
+                    Selecciona al menos una tarjeta.
+                  </Text>
+                ) : null}
+                <View
+                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
+                >
                   {cardEntries.slice(0, 10).map((entry, position) => (
-                    <View key={`sheet-preview-${entry.sourceIndex}`} style={{ width: "48%", borderColor: "#cbd5e1", borderWidth: 1, borderRadius: 9, padding: 7, gap: 5, backgroundColor: "#fff" }}>
-                      <Text style={{ fontSize: 11, fontWeight: "700", color: "#64748b" }}>Posición {position + 1}</Text>
+                    <View
+                      key={`sheet-preview-${entry.sourceIndex}`}
+                      style={{
+                        width: "48%",
+                        borderColor: "#cbd5e1",
+                        borderWidth: 1,
+                        borderRadius: 9,
+                        padding: 7,
+                        gap: 5,
+                        backgroundColor: "#fff",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: "700",
+                          color: "#64748b",
+                        }}
+                      >
+                        Posición {position + 1}
+                      </Text>
                       {entry.cover ? (
-                        <Image source={{ uri: entry.cover }} resizeMode="contain" style={{ width: 74, height: 74, borderRadius: 5, alignSelf: "center", backgroundColor: "#e2e8f0" }} />
-                      ) : <View style={{ width: 74, height: 74, backgroundColor: "#e2e8f0", alignSelf: "center", alignItems: "center", justifyContent: "center" }}><Ionicons name="image-outline" size={24} color="#64748b" /></View>}
-                      <Text style={{ fontWeight: "700", fontSize: 12, color: "#0f172a" }} numberOfLines={2}>{entry.title}</Text>
-                      <Text style={{ fontSize: 11, color: "#475569" }} numberOfLines={2}>{entry.subtitle || entry.author || "Sin subtítulo"}</Text>
-                      <Text style={{ fontSize: 10, color: "#64748b" }}>{entry.trackIndices?.length > 1 ? `${entry.trackIndices.length} movimientos · QR de obra` : "1 pista · QR individual"}</Text>
-                      <Pressable accessibilityLabel={`Abrir QR de ${entry.title}`} onPress={() => openCardQrDestination(entry.url)} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                        <Ionicons name="qr-code-outline" size={16} color="#2563eb" />
-                        <Text style={{ color: "#2563eb", fontSize: 11, fontWeight: "700" }}>Abrir QR</Text>
+                        <Image
+                          source={{ uri: entry.cover }}
+                          resizeMode="contain"
+                          style={{
+                            width: 74,
+                            height: 74,
+                            borderRadius: 5,
+                            alignSelf: "center",
+                            backgroundColor: "#e2e8f0",
+                          }}
+                        />
+                      ) : (
+                        <View
+                          style={{
+                            width: 74,
+                            height: 74,
+                            backgroundColor: "#e2e8f0",
+                            alignSelf: "center",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Ionicons
+                            name="image-outline"
+                            size={24}
+                            color="#64748b"
+                          />
+                        </View>
+                      )}
+                      <Text
+                        style={{
+                          fontWeight: "700",
+                          fontSize: 12,
+                          color: "#0f172a",
+                        }}
+                        numberOfLines={2}
+                      >
+                        {entry.title}
+                      </Text>
+                      <Text
+                        style={{ fontSize: 11, color: "#475569" }}
+                        numberOfLines={2}
+                      >
+                        {entry.subtitle || entry.author || "Sin subtítulo"}
+                      </Text>
+                      <Text style={{ fontSize: 10, color: "#64748b" }}>
+                        {entry.trackIndices?.length > 1
+                          ? `${entry.trackIndices.length} movimientos · QR de obra`
+                          : "1 pista · QR individual"}
+                      </Text>
+                      <Pressable
+                        accessibilityLabel={`Abrir QR de ${entry.title}`}
+                        onPress={() => openCardQrDestination(entry.url)}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        <Ionicons
+                          name="qr-code-outline"
+                          size={16}
+                          color="#2563eb"
+                        />
+                        <Text
+                          style={{
+                            color: "#2563eb",
+                            fontSize: 11,
+                            fontWeight: "700",
+                          }}
+                        >
+                          Abrir QR
+                        </Text>
                       </Pressable>
-                      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                        <Pressable accessibilityLabel={`Mover ${entry.title} hacia arriba`} disabled={position === 0} onPress={() => movePrintedCard(position, -1)} style={{ padding: 5 }}><Ionicons name="arrow-back" size={20} color={position === 0 ? "#94a3b8" : "#2563eb"} /></Pressable>
-                        <Pressable accessibilityLabel={`Editar ${entry.title}`} onPress={() => setSelectedCardIndex(entry.sourceIndex)} style={{ padding: 5 }}><Ionicons name="create-outline" size={20} color="#2563eb" /></Pressable>
-                        <Pressable accessibilityLabel={`Mover ${entry.title} hacia abajo`} disabled={position === Math.min(cardEntries.length, 10) - 1} onPress={() => movePrintedCard(position, 1)} style={{ padding: 5 }}><Ionicons name="arrow-forward" size={20} color={position === Math.min(cardEntries.length, 10) - 1 ? "#94a3b8" : "#2563eb"} /></Pressable>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <Pressable
+                          accessibilityLabel={`Mover ${entry.title} hacia arriba`}
+                          disabled={position === 0}
+                          onPress={() => movePrintedCard(position, -1)}
+                          style={{ padding: 5 }}
+                        >
+                          <Ionicons
+                            name="arrow-back"
+                            size={20}
+                            color={position === 0 ? "#94a3b8" : "#2563eb"}
+                          />
+                        </Pressable>
+                        <Pressable
+                          accessibilityLabel={`Editar ${entry.title}`}
+                          onPress={() =>
+                            setSelectedCardIndex(entry.sourceIndex)
+                          }
+                          style={{ padding: 5 }}
+                        >
+                          <Ionicons
+                            name="create-outline"
+                            size={20}
+                            color="#2563eb"
+                          />
+                        </Pressable>
+                        <Pressable
+                          accessibilityLabel={`Mover ${entry.title} hacia abajo`}
+                          disabled={
+                            position === Math.min(cardEntries.length, 10) - 1
+                          }
+                          onPress={() => movePrintedCard(position, 1)}
+                          style={{ padding: 5 }}
+                        >
+                          <Ionicons
+                            name="arrow-forward"
+                            size={20}
+                            color={
+                              position === Math.min(cardEntries.length, 10) - 1
+                                ? "#94a3b8"
+                                : "#2563eb"
+                            }
+                          />
+                        </Pressable>
                       </View>
                     </View>
                   ))}
                 </View>
-                {cardEntries.length > 10 ? <Text style={styles.note}>Hay {cardEntries.length - 10} tarjetas adicionales en las siguientes hojas A4.</Text> : null}
-                {cardEntries.some(entry => entry.trackIndices?.length > 1) ? <Text style={styles.note}>Importante: abrir un QR de obra no garantiza que esté publicado. Exporta y verifica su manifiesto antes de repartir las tarjetas.</Text> : null}
+                {cardEntries.length > 10 ? (
+                  <Text style={styles.note}>
+                    Hay {cardEntries.length - 10} tarjetas adicionales en las
+                    siguientes hojas A4.
+                  </Text>
+                ) : null}
+                {cardEntries.some((entry) => entry.trackIndices?.length > 1) ? (
+                  <Text style={styles.note}>
+                    Importante: abrir un QR de obra no garantiza que esté
+                    publicado. Exporta y verifica su manifiesto antes de
+                    repartir las tarjetas.
+                  </Text>
+                ) : null}
               </View>
-              <Text style={styles.modalSectionTitle}>Obras del catálogo de la playlist</Text>
-              <Text style={styles.note}>Guarda una selección de varios movimientos y recupérala en futuras impresiones. Se guardan dentro de la playlist clásica local y se incluyen en el respaldo JSON v2. No se modifican las pistas.</Text>
-              {!worksLoaded ? <Text style={styles.note}>Cargando obras…</Text> : savedWorks.length ? savedWorks.map(work => {
-                const available = Boolean(matchWorkTrackIndices(work.trackKeys, validTracks));
-                return <View key={work.id} style={[styles.modalToggleRow, { gap: 8 }]}>
-                  <Pressable disabled={!available} onPress={() => applySavedWork(work)} style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: "700", color: available ? "#0f172a" : "#94a3b8" }}>{work.title}</Text>
-                    <Text style={styles.note}>{[work.subtitle, work.composer, work.conductor, work.orchestra, work.soloist].filter(Boolean).join(" · ") || "Sin metadatos"} · {work.trackKeys.length} pistas{available ? "" : " · Faltan movimientos"}</Text>
-                  </Pressable>
-                  <Pressable onPress={() => deleteSavedWork(work.id)} accessibilityLabel={`Eliminar obra ${work.title}`} style={{ padding: 6 }}>
-                    <Ionicons name="trash-outline" size={20} color="#b91c1c" />
-                  </Pressable>
-                </View>;
-              }) : <Text style={styles.note}>Todavía no hay obras guardadas para esta playlist.</Text>}
-              <Text style={styles.modalSectionTitle}>Selecciona una canción u obra</Text>
+              <Text style={styles.modalSectionTitle}>
+                Obras del catálogo de la playlist
+              </Text>
+              <Text style={styles.note}>
+                Guarda una selección de varios movimientos y recupérala en
+                futuras impresiones. Se guardan dentro de la playlist clásica
+                local y se incluyen en el respaldo JSON v2. No se modifican las
+                pistas.
+              </Text>
+              {!worksLoaded ? (
+                <Text style={styles.note}>Cargando obras…</Text>
+              ) : savedWorks.length ? (
+                savedWorks.map((work) => {
+                  const available = Boolean(
+                    matchWorkTrackIndices(work.trackKeys, validTracks),
+                  );
+                  return (
+                    <View
+                      key={work.id}
+                      style={[styles.modalToggleRow, { gap: 8 }]}
+                    >
+                      <Pressable
+                        disabled={!available}
+                        onPress={() => applySavedWork(work)}
+                        style={{ flex: 1 }}
+                      >
+                        <Text
+                          style={{
+                            fontWeight: "700",
+                            color: available ? "#0f172a" : "#94a3b8",
+                          }}
+                        >
+                          {work.title}
+                        </Text>
+                        <Text style={styles.note}>
+                          {[
+                            work.subtitle,
+                            work.composer,
+                            work.conductor,
+                            work.orchestra,
+                            work.soloist,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || "Sin metadatos"}{" "}
+                          · {work.trackKeys.length} pistas
+                          {available ? "" : " · Faltan movimientos"}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => deleteSavedWork(work.id)}
+                        accessibilityLabel={`Eliminar obra ${work.title}`}
+                        style={{ padding: 6 }}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={20}
+                          color="#b91c1c"
+                        />
+                      </Pressable>
+                    </View>
+                  );
+                })
+              ) : (
+                <Text style={styles.note}>
+                  Todavía no hay obras guardadas para esta playlist.
+                </Text>
+              )}
+              <Text style={styles.modalSectionTitle}>
+                Selecciona una canción u obra
+              </Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {editableCards.map((entry, index) => (
                   <Pressable
                     key={index}
                     onPress={() => setSelectedCardIndex(index)}
                     accessibilityLabel={`Editar tarjeta ${index + 1}: ${entry.title}`}
-                    style={{ paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1.5, borderRadius: 9,
-                      borderColor: selectedCardIndex === index ? "#2563eb" : "#cbd5e1",
-                      backgroundColor: selectedCardIndex === index ? "#dbeafe" : "#fff" }}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 9,
+                      borderWidth: 1.5,
+                      borderRadius: 9,
+                      borderColor:
+                        selectedCardIndex === index ? "#2563eb" : "#cbd5e1",
+                      backgroundColor:
+                        selectedCardIndex === index ? "#dbeafe" : "#fff",
+                    }}
                   >
-                    <Text style={{ fontWeight: "700", color: entry.enabled ? "#0f172a" : "#94a3b8" }}>{index + 1}{entry.enabled ? "" : " ×"}</Text>
+                    <Text
+                      style={{
+                        fontWeight: "700",
+                        color: entry.enabled ? "#0f172a" : "#94a3b8",
+                      }}
+                    >
+                      {index + 1}
+                      {entry.enabled ? "" : " ×"}
+                    </Text>
                   </Pressable>
                 ))}
               </View>
               {selectedSettings ? (
                 <View style={{ gap: 14, paddingTop: 8 }}>
-                  <Text style={styles.modalSectionTitle}>Tarjeta {selectedCardIndex + 1}</Text>
-                  <Pressable style={styles.modalToggleRow} onPress={() => updateCardOverride(selectedCardIndex, { enabled: !selectedSettings.enabled })}>
-                    <Ionicons name={selectedSettings.enabled ? "checkbox" : "square-outline"} size={23} color="#2563eb" />
-                    <Text style={styles.fieldLabel}>Incluir esta canción en la impresión</Text>
+                  <Text style={styles.modalSectionTitle}>
+                    Tarjeta {selectedCardIndex + 1}
+                  </Text>
+                  <Pressable
+                    style={styles.modalToggleRow}
+                    onPress={() =>
+                      updateCardOverride(selectedCardIndex, {
+                        enabled: !selectedSettings.enabled,
+                      })
+                    }
+                  >
+                    <Ionicons
+                      name={
+                        selectedSettings.enabled ? "checkbox" : "square-outline"
+                      }
+                      size={23}
+                      color="#2563eb"
+                    />
+                    <Text style={styles.fieldLabel}>
+                      Incluir esta canción en la impresión
+                    </Text>
                   </Pressable>
                   <View>
                     <Text style={styles.fieldLabel}>Título</Text>
-                    <TextInput style={styles.cardEditorInput} value={selectedSettings.title}
-                      onChangeText={(value) => updateCardOverride(selectedCardIndex, { title: value })} />
+                    <TextInput
+                      style={styles.cardEditorInput}
+                      value={selectedSettings.title}
+                      onChangeText={(value) =>
+                        updateCardOverride(selectedCardIndex, { title: value })
+                      }
+                    />
                   </View>
                   <View>
                     <Text style={styles.fieldLabel}>Subtítulo</Text>
-                    <TextInput style={styles.cardEditorInput} value={selectedSettings.subtitle}
+                    <TextInput
+                      style={styles.cardEditorInput}
+                      value={selectedSettings.subtitle}
                       placeholder="Artista, álbum o texto personalizado"
-                      onChangeText={(value) => updateCardOverride(selectedCardIndex, { subtitle: value })} />
+                      onChangeText={(value) =>
+                        updateCardOverride(selectedCardIndex, {
+                          subtitle: value,
+                        })
+                      }
+                    />
                   </View>
                   {selectedTrackIndices.length > 1 ? (
                     <View style={{ gap: 9 }}>
-                      <Text style={styles.modalSectionTitle}>Ficha de la obra (opcional)</Text>
-                      <Text style={styles.note}>Estos datos se guardan con la obra en este dispositivo. No modifican las canciones ni la disposición de impresión.</Text>
+                      <Text style={styles.modalSectionTitle}>
+                        Ficha de la obra (opcional)
+                      </Text>
+                      <Text style={styles.note}>
+                        Estos datos se guardan con la obra en este dispositivo.
+                        No modifican las canciones ni la disposición de
+                        impresión.
+                      </Text>
                       {[
                         ["composer", "Compositor", "Ludwig van Beethoven"],
                         ["conductor", "Director", "Nombre del director"],
                         ["orchestra", "Orquesta", "Nombre de la orquesta"],
-                        ["soloist", "Solistas / intérpretes", "Nombre de los solistas"],
+                        [
+                          "soloist",
+                          "Solistas / intérpretes",
+                          "Nombre de los solistas",
+                        ],
                       ].map(([field, label, placeholder]) => (
                         <View key={field}>
                           <Text style={styles.fieldLabel}>{label}</Text>
@@ -2756,53 +3953,135 @@ export default function PrintMusicCardScreen() {
                             style={styles.cardEditorInput}
                             value={workMetadata[field]}
                             placeholder={placeholder}
-                            onChangeText={(value) => setWorkMetadata(previous => ({ ...previous, [field]: value }))}
+                            onChangeText={(value) =>
+                              setWorkMetadata((previous) => ({
+                                ...previous,
+                                [field]: value,
+                              }))
+                            }
                           />
                         </View>
                       ))}
                     </View>
                   ) : null}
-                  <Text style={styles.fieldLabel}>Pistas que reproducirá el QR ({selectedTrackIndices.length})</Text>
-                  <Text style={styles.note}>Una pista: enlace original. Varias pistas: manifiesto público de la selección, que debes exportar y publicar.</Text>
+                  <Text style={styles.fieldLabel}>
+                    Pistas que reproducirá el QR ({selectedTrackIndices.length})
+                  </Text>
+                  <Text style={styles.note}>
+                    Una pista: enlace original. Varias pistas: manifiesto
+                    público de la selección, que debes exportar y publicar.
+                  </Text>
                   {validTracks.map((track, trackIndex) => {
                     const included = selectedTrackIndices.includes(trackIndex);
                     return (
-                      <Pressable key={`movement-${trackIndex}`} style={styles.modalToggleRow}
+                      <Pressable
+                        key={`movement-${trackIndex}`}
+                        style={styles.modalToggleRow}
                         onPress={() => {
-                          const next = included ? selectedTrackIndices.filter(i => i !== trackIndex) : [...selectedTrackIndices, trackIndex].sort((a,b)=>a-b);
-                          if (next.length) updateCardOverride(selectedCardIndex, {trackIndices: next});
-                        }}>
-                        <Ionicons name={included ? "checkbox" : "square-outline"} size={21} color="#2563eb" />
-                        <Text style={{ flex: 1, color: "#0f172a" }}>{trackIndex + 1}. {track.title || `Pista ${trackIndex+1}`}</Text>
+                          const next = included
+                            ? selectedTrackIndices.filter(
+                                (i) => i !== trackIndex,
+                              )
+                            : [...selectedTrackIndices, trackIndex].sort(
+                                (a, b) => a - b,
+                              );
+                          if (next.length)
+                            updateCardOverride(selectedCardIndex, {
+                              trackIndices: next,
+                            });
+                        }}
+                      >
+                        <Ionicons
+                          name={included ? "checkbox" : "square-outline"}
+                          size={21}
+                          color="#2563eb"
+                        />
+                        <Text style={{ flex: 1, color: "#0f172a" }}>
+                          {trackIndex + 1}.{" "}
+                          {track.title || `Pista ${trackIndex + 1}`}
+                        </Text>
                       </Pressable>
                     );
                   })}
                   {selectedTrackIndices.length > 1 ? (
-                    <Pressable onPress={groupAsOneCard} style={styles.modalToggleRow}>
-                      <Ionicons name="albums-outline" size={21} color="#2563eb" />
-                      <Text style={{ flex: 1, color: "#0f172a", fontWeight: "700" }}>Una sola tarjeta para esta obra (excluir tarjetas de los otros movimientos)</Text>
+                    <Pressable
+                      onPress={groupAsOneCard}
+                      style={styles.modalToggleRow}
+                    >
+                      <Ionicons
+                        name="albums-outline"
+                        size={21}
+                        color="#2563eb"
+                      />
+                      <Text
+                        style={{ flex: 1, color: "#0f172a", fontWeight: "700" }}
+                      >
+                        Una sola tarjeta para esta obra (excluir tarjetas de los
+                        otros movimientos)
+                      </Text>
                     </Pressable>
                   ) : null}
                   {selectedTrackIndices.length > 1 ? (
-                    <Pressable onPress={saveSelectedWork} disabled={!worksLoaded} style={styles.modalToggleRow}>
+                    <Pressable
+                      onPress={saveSelectedWork}
+                      disabled={!worksLoaded}
+                      style={styles.modalToggleRow}
+                    >
                       <Ionicons name="save-outline" size={21} color="#2563eb" />
-                      <Text style={{ flex: 1, color: "#0f172a", fontWeight: "700" }}>Guardar obra para futuras impresiones</Text>
+                      <Text
+                        style={{ flex: 1, color: "#0f172a", fontWeight: "700" }}
+                      >
+                        Guardar obra para futuras impresiones
+                      </Text>
                     </Pressable>
                   ) : null}
                   {selectedTrackIndices.length > 1 ? (
-                    <Pressable onPress={exportCardSelection} disabled={exportingSelection} style={styles.previewButton}>
-                      <Ionicons name="download-outline" size={18} color="#fff" />
-                      <Text style={styles.buttonText}>{exportingSelection ? "Exportando…" : "Exportar QR y selección para Netlify"}</Text>
+                    <Pressable
+                      onPress={exportCardSelection}
+                      disabled={exportingSelection}
+                      style={styles.previewButton}
+                    >
+                      <Ionicons
+                        name="download-outline"
+                        size={18}
+                        color="#fff"
+                      />
+                      <Text style={styles.buttonText}>
+                        {exportingSelection
+                          ? "Exportando…"
+                          : "Exportar QR y selección para Netlify"}
+                      </Text>
                     </Pressable>
                   ) : null}
                   {selectedTrackIndices.length > 1 ? (
                     <View style={{ gap: 7 }}>
-                      <Pressable onPress={checkCardSelection} disabled={checkingSelection} style={styles.modalToggleRow}>
-                        <Ionicons name="cloud-done-outline" size={21} color="#2563eb" />
-                        <Text style={{ flex: 1, color: "#0f172a", fontWeight: "700" }}>{checkingSelection ? "Comprobando Netlify…" : "Verificar QR publicado"}</Text>
+                      <Pressable
+                        onPress={checkCardSelection}
+                        disabled={checkingSelection}
+                        style={styles.modalToggleRow}
+                      >
+                        <Ionicons
+                          name="cloud-done-outline"
+                          size={21}
+                          color="#2563eb"
+                        />
+                        <Text
+                          style={{
+                            flex: 1,
+                            color: "#0f172a",
+                            fontWeight: "700",
+                          }}
+                        >
+                          {checkingSelection
+                            ? "Comprobando Netlify…"
+                            : "Verificar QR publicado"}
+                        </Text>
                       </Pressable>
                       <Text style={styles.note}>
-                        {verifiedSelections[selectedSettings.workPublicId || selectionCardId(publicId, selectedTrackIndices)]
+                        {verifiedSelections[
+                          selectedSettings.workPublicId ||
+                            selectionCardId(publicId, selectedTrackIndices)
+                        ]
                           ? "✓ Selección pública comprobada. Si editas los movimientos, vuelve a exportar y verificar."
                           : "Pendiente de verificar. Antes de distribuir la tarjeta, exporta, publica y verifica el JSON de esta obra."}
                       </Text>
@@ -2815,27 +4094,91 @@ export default function PrintMusicCardScreen() {
                     ["youtube", "Miniatura de YouTube"],
                     ["general", "Carátula general de la playlist"],
                   ].map(([value, label]) => (
-                    <Pressable key={value} onPress={() => updateCardOverride(selectedCardIndex, { image: value })}
-                      style={{ flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 6 }}>
-                      <Ionicons name={selectedSettings.image === value ? "radio-button-on" : "radio-button-off"} size={21} color="#2563eb" />
+                    <Pressable
+                      key={value}
+                      onPress={() =>
+                        updateCardOverride(selectedCardIndex, { image: value })
+                      }
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 9,
+                        paddingVertical: 6,
+                      }}
+                    >
+                      <Ionicons
+                        name={
+                          selectedSettings.image === value
+                            ? "radio-button-on"
+                            : "radio-button-off"
+                        }
+                        size={21}
+                        color="#2563eb"
+                      />
                       <Text style={{ flex: 1, color: "#0f172a" }}>{label}</Text>
                     </Pressable>
                   ))}
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 6 }}>
-                    <Pressable disabled={selectedCardIndex === 0} onPress={() => setSelectedCardIndex((i) => i - 1)}>
-                      <Text style={{ color: selectedCardIndex === 0 ? "#94a3b8" : "#2563eb", fontWeight: "700" }}>‹ Anterior</Text>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      marginTop: 6,
+                    }}
+                  >
+                    <Pressable
+                      disabled={selectedCardIndex === 0}
+                      onPress={() => setSelectedCardIndex((i) => i - 1)}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            selectedCardIndex === 0 ? "#94a3b8" : "#2563eb",
+                          fontWeight: "700",
+                        }}
+                      >
+                        ‹ Anterior
+                      </Text>
                     </Pressable>
-                    <Pressable disabled={selectedCardIndex >= editableCards.length - 1} onPress={() => setSelectedCardIndex((i) => i + 1)}>
-                      <Text style={{ color: selectedCardIndex >= editableCards.length - 1 ? "#94a3b8" : "#2563eb", fontWeight: "700" }}>Siguiente ›</Text>
+                    <Pressable
+                      disabled={selectedCardIndex >= editableCards.length - 1}
+                      onPress={() => setSelectedCardIndex((i) => i + 1)}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            selectedCardIndex >= editableCards.length - 1
+                              ? "#94a3b8"
+                              : "#2563eb",
+                          fontWeight: "700",
+                        }}
+                      >
+                        Siguiente ›
+                      </Text>
                     </Pressable>
                   </View>
                 </View>
-              ) : <Text>No hay canciones con enlaces válidos para imprimir.</Text>}
+              ) : (
+                <Text>No hay canciones con enlaces válidos para imprimir.</Text>
+              )}
             </ScrollView>
             <View style={styles.modalActions}>
-              <Pressable onPress={() => setPrepareCardsOpen(false)} style={styles.cancelButton}><Text style={styles.cancelText}>Cancelar</Text></Pressable>
-              <Pressable disabled={!cardEntries.length} onPress={() => { setPrepareCardsOpen(false); setPrintOpen(true); }}
-                style={[styles.previewButton, !cardEntries.length && styles.disabled]}>
+              <Pressable
+                onPress={() => setPrepareCardsOpen(false)}
+                style={styles.cancelButton}
+              >
+                <Text style={styles.cancelText}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                disabled={!cardEntries.length}
+                onPress={() => {
+                  setPrepareCardsOpen(false);
+                  setPrintOpen(true);
+                }}
+                style={[
+                  styles.previewButton,
+                  !cardEntries.length && styles.disabled,
+                ]}
+              >
                 <Ionicons name="arrow-forward" size={18} color="#fff" />
                 <Text style={styles.buttonText}>Preparar impresión</Text>
               </Pressable>
@@ -2908,38 +4251,53 @@ export default function PrintMusicCardScreen() {
                 <View style={styles.modalFieldRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.fieldLabel}>
-                      {(cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses))
+                      {cardMode === "songs" ||
+                      (cardMode === "playlist" && customPlaylistReverses)
                         ? "Tarjetas diferentes"
                         : "Número de copias"}
                     </Text>
                     <Text style={styles.fieldHelp}>
-                      {(cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses))
+                      {cardMode === "songs" ||
+                      (cardMode === "playlist" && customPlaylistReverses)
                         ? "Una por reverso activo"
                         : "Distribuidas en hojas de 10"}
                     </Text>
                   </View>
                   <View style={styles.counter}>
                     <Pressable
-                      disabled={cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses)}
+                      disabled={
+                        cardMode === "songs" ||
+                        (cardMode === "playlist" && customPlaylistReverses)
+                      }
                       onPress={() => changeCopies(-1)}
                       style={[
                         styles.counterButton,
-                        (cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses)) && styles.disabled,
+                        (cardMode === "songs" ||
+                          (cardMode === "playlist" &&
+                            customPlaylistReverses)) &&
+                          styles.disabled,
                       ]}
                     >
                       <Ionicons name="remove" size={18} color="#0f172a" />
                     </Pressable>
                     <Text style={styles.counterValue}>
-                      {(cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses))
+                      {cardMode === "songs" ||
+                      (cardMode === "playlist" && customPlaylistReverses)
                         ? Math.min(cardEntries.length, 99)
                         : copies}
                     </Text>
                     <Pressable
-                      disabled={cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses)}
+                      disabled={
+                        cardMode === "songs" ||
+                        (cardMode === "playlist" && customPlaylistReverses)
+                      }
                       onPress={() => changeCopies(1)}
                       style={[
                         styles.counterButton,
-                        (cardMode === "songs" || (cardMode === "playlist" && customPlaylistReverses)) && styles.disabled,
+                        (cardMode === "songs" ||
+                          (cardMode === "playlist" &&
+                            customPlaylistReverses)) &&
+                          styles.disabled,
                       ]}
                     >
                       <Ionicons name="add" size={18} color="#0f172a" />
@@ -3188,9 +4546,15 @@ export default function PrintMusicCardScreen() {
               >
                 <Text style={styles.cancelText}>Cancelar</Text>
               </Pressable>
-              <Pressable onPress={print} disabled={checkingSheet} style={[styles.previewButton, checkingSheet && styles.disabled]}>
+              <Pressable
+                onPress={print}
+                disabled={checkingSheet}
+                style={[styles.previewButton, checkingSheet && styles.disabled]}
+              >
                 <Ionicons name="print-outline" size={18} color="#fff" />
-                <Text style={styles.buttonText}>{checkingSheet ? "Verificando…" : "Vista previa / Imprimir"}</Text>
+                <Text style={styles.buttonText}>
+                  {checkingSheet ? "Verificando…" : "Vista previa / Imprimir"}
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -3746,7 +5110,16 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 8,
   },
-  cardEditorInput: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: "#0f172a", backgroundColor: "#fff", marginTop: 6 },
+  cardEditorInput: {
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: "#0f172a",
+    backgroundColor: "#fff",
+    marginTop: 6,
+  },
   modalScrollContent: { padding: 20, gap: 12, paddingBottom: 22 },
   gridStylePanel: {
     padding: 12,
@@ -3955,7 +5328,14 @@ const styles = StyleSheet.create({
     borderColor: "#cbd5e1",
   },
   cancelText: { fontWeight: "600", color: "#334155" },
-  modalInput: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, padding: 10, color: "#0f172a", backgroundColor: "#fff" },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 8,
+    padding: 10,
+    color: "#0f172a",
+    backgroundColor: "#fff",
+  },
   previewButton: {
     flexDirection: "row",
     alignItems: "center",
