@@ -5,6 +5,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import GuestFeaturesScreen from "@/src/screens/guest/GuestFeaturesScreen";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import PlayListScreen from "@/src/screens/playlist/PlayListScreen";
+import PrintMusicCardScreen from "@/src/screens/playlist/PrintMusicCardScreen";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 
@@ -22,6 +25,19 @@ import { I18nText as Text } from "@/src/i18n";
 import { APP_FEATURES, hasFeatureAccess } from "@/src/utils/featureAccess";
 
 const Tab = createBottomTabNavigator();
+const GuestMusicStack = createNativeStackNavigator();
+
+function GuestMusicTab() {
+  return (
+    <GuestMusicStack.Navigator>
+      <GuestMusicStack.Screen name={ROUTES.PLAY_LIST} options={{ title: "Music Playlist" }}>
+        {() => <PlayListScreen guestMode />}
+      </GuestMusicStack.Screen>
+      <GuestMusicStack.Screen name={ROUTES.PRINT_MUSIC_CARD} component={PrintMusicCardScreen} options={{ title: "Imprimir tarjeta" }} />
+    </GuestMusicStack.Navigator>
+  );
+}
+
 
 function GuestShoppingTab() {
   return (
@@ -67,7 +83,7 @@ function GuestAccessScreen({ onExitGuest }) {
 
 export default function MainTabs({ guestMode = false, onExitGuest }) {
   useI18n();
-  const [guestFeatures, setGuestFeatures] = useState({ compras: true, alimentos: true });
+  const [guestFeatures, setGuestFeatures] = useState({ compras: true, alimentos: true, musica: true });
   const [guestFeaturesReady, setGuestFeaturesReady] = useState(false);
   useEffect(() => {
     if (!guestMode) return;
@@ -76,7 +92,7 @@ export default function MainTabs({ guestMode = false, onExitGuest }) {
       .then(raw => {
         if (live && raw) {
           const data = JSON.parse(raw);
-          setGuestFeatures({ compras: data.compras !== false, alimentos: data.alimentos !== false });
+          setGuestFeatures({ compras: data.compras !== false, alimentos: data.alimentos !== false, musica: data.musica !== false });
         }
       })
       .catch(() => {})
@@ -136,6 +152,10 @@ export default function MainTabs({ guestMode = false, onExitGuest }) {
         }}>
           {() => <RecipesScreen guestMode />}
         </Tab.Screen>}
+        {guestFeatures.musica && <Tab.Screen name="GuestMusic" component={GuestMusicTab} options={{
+          title: "Música",
+          tabBarIcon: ({ color, size }) => <Ionicons name="musical-notes-outline" color={color} size={Math.min(size, 28)} />,
+        }} />}
         <Tab.Screen name="GuestFeatures" options={{
           title: "Mis funciones",
           tabBarIcon: ({ color, size }) => <Ionicons name="options-outline" color={color} size={Math.min(size, 28)} />,

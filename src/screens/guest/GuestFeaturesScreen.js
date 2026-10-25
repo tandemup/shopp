@@ -7,7 +7,7 @@ const ITEMS = [
   { id: "alimentos", label: "Alimentos / Recetas", detail: "Recetas saludables", icon: "restaurant-outline", available: true },
   { id: "biblioteca", label: "Biblioteca de enlaces", detail: "Pendiente de adaptación al acceso invitado", icon: "library-outline", available: false },
   { id: "ingles", label: "Tutor de Inglés", detail: "Pendiente de adaptación al acceso invitado", icon: "school-outline", available: false },
-  { id: "musica", label: "Music Play", detail: "Pendiente de adaptación al acceso invitado", icon: "musical-notes-outline", available: false },
+  { id: "musica", label: "Music Playlist", detail: "Playlists y letras guardadas en este dispositivo", icon: "musical-notes-outline", available: true },
 ];
 
 export default function GuestFeaturesScreen({ value, onChange }) {
@@ -36,7 +36,7 @@ export default function GuestFeaturesScreen({ value, onChange }) {
           {item.available ? <Ionicons name={value[item.id] ? "checkbox" : "square-outline"} size={27} color="#2563eb" /> : <Text style={styles.soon}>Próximamente</Text>}
         </Pressable>
       ))}
-      <Text style={styles.note}>Tus preferencias se guardan en este dispositivo. Esta versión solo habilita Compras y Recetas para invitados.</Text>
+      <Text style={styles.note}>Tus preferencias se guardan en este dispositivo. Compras, Recetas y Music Playlist disponibles sin iniciar sesión.</Text>
     </ScrollView>
   );
 }
