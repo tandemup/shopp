@@ -1,0 +1,25 @@
+{
+  "schema": "shopp-public-music-card",
+  "version": 1,
+  "id": "shopp-2f52a299e6040c25",
+  "collectionType": "classical",
+  "title": "Mozart Piano Concerto Num 4 - Daniel Barenboim",
+  "author": "Mozart",
+  "tracks": [
+    {
+      "title": "I. Allegro",
+      "author": "Mozart",
+      "videoId": "-3DzMjKsjP0"
+    },
+    {
+      "title": "II. Andante",
+      "author": "Mozart",
+      "videoId": "JLhf5O2tEiA"
+    },
+    {
+      "title": "III. Molto allegro",
+      "author": "Mozart",
+      "videoId": "5hrT6oUhOjc"
+    }
+  ]
+}

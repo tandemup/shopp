@@ -112,10 +112,15 @@ function isValidPublicManifest(manifest, publicId) {
 export default function PublicMusicCardScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 900;
+  const isMobile = width < 620;
   const [status, setStatus] = useState("loading");
   const [data, setData] = useState(null);
   const [index, setIndex] = useState(0);
-  const [player, setPlayer] = useState(null); // null: elegir; 'shopp': iframe de YouTube
+  // En móviles, mostrar directamente el vídeo de YouTube (sin autoplay forzado).
+  // El botón oficial de Play queda disponible y Safari/iOS no bloquea la página.
+  const [player, setPlayer] = useState(() =>
+    Platform.OS === "web" && width < 620 ? "shopp" : null
+  );
   const [error, setError] = useState("");
   const frameRef = useRef(null);
   const trackIndexRef = useRef(0);
@@ -125,6 +130,8 @@ export default function PublicMusicCardScreen() {
   const advanceRef = useRef(true);
   const repeatRef = useRef(false);
   const endedHandledRef = useRef(false);
+  // La navegación automática debe enviar playVideo cuando el nuevo iframe esté preparado.
+  const pendingAutoPlayRef = useRef(false);
   const [requestAutoPlay, setRequestAutoPlay] = useState(false);
   const [playbackState, setPlaybackState] = useState("unstarted"); // YouTube: playing, paused, buffering, ended
   const [positionSeconds, setPositionSeconds] = useState(0);
@@ -267,6 +274,7 @@ export default function PublicMusicCardScreen() {
       catch { return; }
       if (message?.event === "onReady") {
         send("addEventListener", ["onStateChange"]);
+        if (pendingAutoPlayRef.current) send("playVideo");
       }
       if (message?.event === "infoDelivery") {
         if (Number.isFinite(message.info?.currentTime)) {
@@ -282,6 +290,10 @@ export default function PublicMusicCardScreen() {
         if (state !== 0) endedHandledRef.current = false;
         const labels = { [-1]: "unstarted", [0]: "ended", [1]: "playing", [2]: "paused", [3]: "buffering", [5]: "cued" };
         if (labels[state]) setPlaybackState(labels[state]);
+        // Algunos iframes notifican CUED después de onReady. Reintentar solo
+        // mientras existe una petición expresa de reproducción continua.
+        if (state === 5 && pendingAutoPlayRef.current) send("playVideo");
+        if (state === 1) pendingAutoPlayRef.current = false;
       }
       if (state === 0 && !endedHandledRef.current) {
         endedHandledRef.current = true;
@@ -290,6 +302,7 @@ export default function PublicMusicCardScreen() {
           send("seekTo", [0, true]);
           send("playVideo");
         } else if (advanceRef.current && tracksRef.current.length > trackIndexRef.current + 1) {
+          pendingAutoPlayRef.current = true;
           setRequestAutoPlay(true);
           setIndex(trackIndexRef.current + 1);
         }
@@ -336,6 +349,7 @@ export default function PublicMusicCardScreen() {
       return;
     }
     setPlaybackState("unstarted");
+    pendingAutoPlayRef.current = true;
     // Tras seleccionar una pista diferente, cargarla e intentar reproducirla.
     // El navegador puede bloquear autoplay; quedará disponible el Play oficial.
     setRequestAutoPlay(true);
@@ -348,9 +362,9 @@ export default function PublicMusicCardScreen() {
   }
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.body}>
-      <View style={styles.container}>
-        <View style={styles.topBar}>
+    <ScrollView style={styles.page} contentContainerStyle={[styles.body, isMobile && styles.bodyMobile]}>
+      <View style={[styles.container, isMobile && styles.containerMobile]}>
+        <View style={[styles.topBar, isMobile && styles.topBarMobile]}>
           <View style={styles.brandRow}>
             <View style={styles.brandIcon}><Text style={styles.brandIconText}>S</Text></View>
             <View style={styles.brandTitles}>
@@ -377,14 +391,14 @@ export default function PublicMusicCardScreen() {
           </View>
         ) : (
           <>
-            <View style={styles.header}>
+            <View style={[styles.header, isMobile && styles.headerMobile]}>
               <Text style={styles.eyebrow}>{data.tracks.length > 1 ? "PLAYLIST COMPARTIDA" : "VÍDEO COMPARTIDO"}</Text>
               <Text style={styles.title}>{data.title}</Text>
               {data.author ? <Text style={styles.author}>{data.author}</Text> : null}
               <Text style={styles.trackCount}>{data.tracks.length} {data.tracks.length === 1 ? "vídeo" : "vídeos"}</Text>
             </View>
 
-            <View style={styles.modeSelector}>
+            <View style={[styles.modeSelector, isMobile && styles.modeSelectorMobile]}>
               <Text style={styles.modeTitle}>Vista del reproductor público</Text>
               <View style={styles.modeControlRow}>
               <View style={styles.modeButtons}>
@@ -417,28 +431,38 @@ export default function PublicMusicCardScreen() {
               (isWide && viewMode === "complete" || twoColumnApp) && styles.mainAreaWide,
               appView && styles.appArea,
               appView && !twoColumnApp && styles.appAreaStacked,
+              isMobile && styles.mainAreaMobile,
             ]}>
-              <View style={[styles.playerArea, appView && styles.appPlayerArea, appView && !twoColumnApp && styles.appPlayerCentered]}>
+              <View style={[styles.playerArea, appView && styles.appPlayerArea, appView && !twoColumnApp && styles.appPlayerCentered, isMobile && styles.playerAreaMobile]}>
                 <View style={[styles.playerCard, appView && styles.appPlayerCard]}>
                   {player === "shopp" && embedSrc ? (
                     <>
                       {Platform.OS === "web" ? (
-                        <View style={styles.videoFrame}>
+                        <View style={[styles.videoFrame, isMobile && styles.videoFrameMobile]}>
                           {React.createElement("iframe", {
                             key: embedSrc,
                             src: embedSrc,
                             ref: node => {
                               frameRef.current = node;
-                              if (node) node.onload = () => node.contentWindow?.postMessage(
-                                JSON.stringify({ event: "listening", id: "shopp-public" }),
-                                "https://www.youtube-nocookie.com");
+                              if (node) node.onload = () => {
+                                node.contentWindow?.postMessage(
+                                  JSON.stringify({ event: "listening", id: "shopp-public" }),
+                                  "https://www.youtube-nocookie.com"
+                                );
+                                // El listener se registra de nuevo por cada vídeo.
+                                // El evento onReady puede llegar antes que el siguiente sondeo.
+                                node.contentWindow?.postMessage(
+                                  JSON.stringify({ event: "command", func: "addEventListener", args: ["onStateChange"] }),
+                                  "https://www.youtube-nocookie.com"
+                                );
+                              };
                             },
                             title: `YouTube: ${currentTrack?.title || data.title}`,
                             allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
                             allowFullScreen: true,
                             referrerPolicy: "strict-origin-when-cross-origin",
                             style: {
-                              width: "100%", height: "100%", border: 0,
+                              position: "absolute", inset: 0, width: "100%", height: "100%", border: 0,
                               display: "block", backgroundColor: "#0f172a",
                             },
                           })}
@@ -663,7 +687,15 @@ const styles = StyleSheet.create({
   mainAreaWide: { flexDirection: "row", alignItems: "flex-start" },
   playerArea: { minWidth: 0, flexGrow: 1, flexShrink: 1, gap: 8 },
   playerCard: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 14, overflow: "hidden" },
-  videoFrame: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#0f172a" },
+  videoFrame: { position: "relative", width: "100%", aspectRatio: 16 / 9, backgroundColor: "#0f172a", overflow: "hidden" },
+  videoFrameMobile: { alignSelf: "stretch", minWidth: 0 },
+  bodyMobile: { paddingHorizontal: 8, paddingVertical: 10 },
+  containerMobile: { gap: 10, minWidth: 0 },
+  topBarMobile: { flexWrap: "wrap" },
+  headerMobile: { paddingVertical: 2 },
+  modeSelectorMobile: { marginBottom: 2, padding: 7 },
+  mainAreaMobile: { width: "100%", minWidth: 0 },
+  playerAreaMobile: { width: "100%", minWidth: 0, flexBasis: "auto" },
   playerToolbar: { paddingVertical: 7, paddingHorizontal: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 },
   playerActions: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
   nowPlaying: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1, minWidth: 100 },
