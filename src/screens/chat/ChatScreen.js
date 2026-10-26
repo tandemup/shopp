@@ -28,7 +28,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as DocumentPicker from "expo-document-picker";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery, useConvex } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 import YouTubePlaylistPlayer from "@/src/components/chat/YouTubePlaylistPlayer";
@@ -36,6 +36,10 @@ import CustomYouTubePlaylistPlayer from "@/src/components/chat/CustomYouTubePlay
 import WebPreviewCard from "@/src/components/chat/WebPreviewCard";
 import { extractUrlsFromText, parseYouTubeUrl } from "@/src/services/urlSafety";
 import { libraryJsonApi } from "@/src/services/libraryJsonApi";
+import * as playlistRepo from "@/src/storage/playlists/playlistRepository";
+import { makePlaylistBackupV2 } from "@/src/services/playlistBackupV2";
+import { validatePlaylistBackupV2 } from "@/src/services/playlistImportV2";
+import { importPlaylistsLocally } from "@/src/services/playlistLocalImport";
 
 const ROOMS = [
   { id: "compras", label: "Compras", icon: "cart-outline" },
@@ -239,6 +243,7 @@ function Message({
   onEditAlbum,
   onEditCustomPlaylist,
   onImagePress,
+  onImportSharedPlaylist,
   deleting,
 }) {
   const mine = item.isOwnMessage === true;
@@ -350,6 +355,15 @@ function Message({
           >
             {content.text}
           </Text>
+        ) : null}
+        {item.sharedPlaylist ? (
+          <View style={{padding: 10, borderWidth: 1, borderColor: "#93c5fd", borderRadius: 8, marginTop: 7}}>
+            <Text style={{fontWeight: "700"}}>{item.sharedPlaylist.title}</Text>
+            <Text>{item.sharedPlaylist.collectionType === "classical" ? "Música clásica" : "Música"} · {item.sharedPlaylist.trackCount} pistas</Text>
+            <Pressable accessibilityRole="button" onPress={() => onImportSharedPlaylist?.(item)} style={{padding: 10, backgroundColor: "#dbeafe", marginTop: 6, borderRadius: 6}}>
+              <Text style={{color: "#1d4ed8", fontWeight: "700"}}>Importar a IndexedDB</Text>
+            </Pressable>
+          </View>
         ) : null}
         {webPreviewUrl ? <WebPreviewCard url={webPreviewUrl} compact /> : null}
         {customPlaylist ? (
@@ -657,6 +671,47 @@ export default function ChatScreen() {
   const listRef = useRef(null);
   const refreshedNewsDatesRef = useRef(false);
   const { language } = useI18n();
+  const convexClient = useConvex();
+  const shareLocalPlaylist = useMutation(api.chat.shareLocalPlaylist);
+  const [sharePickerOpen, setSharePickerOpen] = useState(false);
+  const [localShareChoices, setLocalShareChoices] = useState([]);
+  const [shareBusy, setShareBusy] = useState(false);
+  const openSharePicker = useCallback(async () => {
+    try {
+      const [music, classical] = await Promise.all([playlistRepo.list("playlist"), playlistRepo.list("classical")]);
+      setLocalShareChoices([...music, ...classical]);
+      setSharePickerOpen(true);
+    } catch (e) { safeAlert("No se pudieron leer las playlists", e.message); }
+  }, []);
+  const publishPlaylist = useCallback(async (playlist) => {
+    if (shareBusy) return;
+    setShareBusy(true);
+    try {
+      const backup = await makePlaylistBackupV2([playlist], playlist.collectionType === "classical" ? "shopp-youtube-classical-playlists" : "shopp-youtube-playlists");
+      const clean = validatePlaylistBackupV2(backup, backup.type, {maximumTracks:150})[0];
+      // Los datos se validan de nuevo en el servidor; aquí conservamos el respaldo portable con LRC.
+      await shareLocalPlaylist({title: clean.title, collectionType: clean.collectionType, username: alias,
+        payload: JSON.stringify(backup.playlists[0])});
+      setSharePickerOpen(false);
+      safeAlert("Compartida", "Playlist publicada en #musica durante 24 horas.");
+    } catch (e) { safeAlert("No se pudo compartir", e.message); }
+    finally { setShareBusy(false); }
+  }, [alias, shareBusy, shareLocalPlaylist]);
+  const importSharedPlaylist = useCallback((message) => {
+    safeAlert("Importar playlist", `¿Importar «${message.sharedPlaylist?.title}» en este dispositivo?`, [
+      {text:"Cancelar",style:"cancel"},
+      {text:"Importar",onPress: async () => {
+        try {
+          const shared = await convexClient.query(api.chat.getSharedPlaylist,{messageId:message._id});
+          const playlist = JSON.parse(shared.payload);
+          const type = shared.collectionType === "classical" ? "shopp-youtube-classical-playlists" : "shopp-youtube-playlists";
+          const validated = validatePlaylistBackupV2({app:"Shopp",version:2,type,backupStatus:"complete",playlists:[playlist],lyricsEntries:playlist.tracks.filter(t=>t.lyricsBackup).length},type,{maximumTracks:150});
+          const result = await importPlaylistsLocally({playlists:validated,collection:shared.collectionType});
+          safeAlert("Importación finalizada", `${result.added || 0} añadida(s), ${result.skipped || 0} duplicada(s).`);
+        } catch(e) {safeAlert("No se pudo importar",e.message);}
+      }}
+    ]);
+  },[convexClient]);
   const [room, setRoom] = useState("compras");
   const [chatClientId] = useState(getOrCreateChatClientId);
   const [alias, setAlias] = useState(createDefaultAlias);
@@ -1494,6 +1549,23 @@ export default function ChatScreen() {
           </ScrollView>
         </View>
 
+        {room === "musica" ? (
+          <View style={{padding: 8}}>
+            <Pressable onPress={openSharePicker} accessibilityRole="button" style={{padding: 11, backgroundColor: "#dbeafe", alignSelf: "flex-start", borderRadius: 7}}>
+              <Text style={{color: "#1d4ed8",fontWeight:"700"}}>Compartir playlist local</Text>
+            </Pressable>
+            {sharePickerOpen ? (
+              <View style={{backgroundColor:"#fff",padding:10,maxHeight:240}}>
+                <Pressable onPress={()=>setSharePickerOpen(false)}><Text>Cancelar selección</Text></Pressable>
+                <ScrollView>{localShareChoices.map(p=>(
+                  <Pressable key={String(p.id || p._id)} disabled={shareBusy} onPress={()=>publishPlaylist(p)} style={{padding:10,borderBottomWidth:1,borderBottomColor:"#e2e8f0"}}>
+                    <Text>{p.title} · {(p.tracks||[]).length} pistas · {p.collectionType === "classical" ? "Clásica":"Música"}</Text>
+                  </Pressable>
+                ))}</ScrollView>
+              </View>
+            ):null}
+          </View>
+        ):null}
         {room === "youtube" ? (
           <View style={styles.youtubeToolsBar}>
             <Pressable
@@ -1593,6 +1665,7 @@ export default function ChatScreen() {
                   onEditAlbum={openAlbumEditor}
                   onEditCustomPlaylist={openCustomPlaylistEditor}
                   onImagePress={setExpandedImageUri}
+                  onImportSharedPlaylist={importSharedPlaylist}
                   deleting={deletingMessageId === item._id}
                 />
               )

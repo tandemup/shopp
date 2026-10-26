@@ -427,6 +427,16 @@ export default defineSchema({
     .index("by_userId_createdAt", ["userId", "createdAt"])
     .index("by_expiresAt", ["expiresAt"]),
 
+  chatPlaylistShares: defineTable({
+    messageId: v.id("chatMessages"),
+    senderId: v.id("users"),
+    collectionType: v.union(v.literal("playlist"), v.literal("classical")),
+    title: v.string(),
+    trackCount: v.float64(),
+    payload: v.string(),
+    expiresAt: v.float64(),
+  }).index("by_message", ["messageId"]).index("by_sender", ["senderId"]),
+
   computerLinkFolders: defineTable({
     name: v.string(),
     parentFolderId: v.optional(v.id("computerLinkFolders")),
