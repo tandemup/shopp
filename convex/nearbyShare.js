@@ -35,12 +35,19 @@ async function deleteExpired(ctx) {
   for (const pairing of pairings) await ctx.db.delete(pairing._id);
 }
 
-async function getPairingForDevice(ctx, pairingId, userId, deviceId) {
+async function getPairingForDevice(ctx, pairingId, userId, deviceId, options = {}) {
   const pairing = await ctx.db.get(pairingId);
-  if (!pairing || pairing.expiresAt <= Date.now()) throw new Error("La invitación ha caducado.");
+  if (!pairing) {
+    if (options.allowMissing) return null;
+    throw new Error("La invitación ha caducado.");
+  }
+  // Comprobar siempre la autorización antes de permitir operaciones sobre invitaciones caducadas.
   const isInitiator = pairing.initiatorId === userId && pairing.initiatorDeviceId === deviceId;
   const isRecipient = pairing.recipientId === userId && pairing.recipientDeviceId === deviceId;
   if (!isInitiator && !isRecipient) throw new Error("No puedes usar esta invitación desde este dispositivo.");
+  if (!options.allowExpired && pairing.expiresAt <= Date.now()) {
+    throw new Error("La invitación ha caducado.");
+  }
   return pairing;
 }
 
@@ -192,7 +199,8 @@ export const listSignals = query({
   handler: async (ctx, args) => {
     const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
     const deviceId = cleanDeviceId(args.deviceId);
-    await getPairingForDevice(ctx, args.pairingId, user._id, deviceId);
+    const pairing = await getPairingForDevice(ctx, args.pairingId, user._id, deviceId, { allowExpired: true, allowMissing: true });
+    if (!pairing || pairing.expiresAt <= Date.now()) return [];
     const signals = await ctx.db.query("nearbyShareSignals").withIndex("by_pairing_createdAt", (q) => q.eq("pairingId", args.pairingId)).collect();
     return signals.filter((signal) => signal.senderDeviceId !== deviceId);
   },
@@ -203,7 +211,8 @@ export const closePairing = mutation({
   handler: async (ctx, args) => {
     const user = await requireFeature(ctx, P2P_PLAYLIST_EXCHANGE);
     const deviceId = cleanDeviceId(args.deviceId);
-    const pairing = await getPairingForDevice(ctx, args.pairingId, user._id, deviceId);
+    const pairing = await getPairingForDevice(ctx, args.pairingId, user._id, deviceId, { allowExpired: true, allowMissing: true });
+    if (!pairing) return; // El cierre repetido no debe fallar.
     const signals = await ctx.db.query("nearbyShareSignals").withIndex("by_pairing_createdAt", (q) => q.eq("pairingId", pairing._id)).collect();
     for (const signal of signals) await ctx.db.delete(signal._id);
     await ctx.db.delete(pairing._id);
