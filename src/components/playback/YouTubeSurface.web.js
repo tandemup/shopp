@@ -139,12 +139,24 @@ export default forwardRef(function YouTubeSurface({
     };
     const tryPendingAutoStart = (attempt = 0) => {
       if (disposed || !pendingAutoStart || !ready) return;
+      // PLAYING might still describe the PREVIOUS video. Never clear the
+      // pending transition until YouTube confirms the requested identity.
+      if (!hasLoadedPendingTrack()) {
+        if (attempt < 3) {
+          const retryTimer = setTimeout(() => {
+            retryTimers.delete(retryTimer);
+            tryPendingAutoStart(attempt + 1);
+          }, [260, 700, 1400][attempt]);
+          retryTimers.add(retryTimer);
+        }
+        return;
+      }
       if (player.getPlayerState?.() === 1) {
         pendingAutoStart = null;
         loadingTrack = false;
         return;
       }
-      if (hasLoadedPendingTrack()) requestPlay();
+      requestPlay();
       if (pendingAutoStart && attempt < 3) {
         const retryTimer = setTimeout(() => {
           retryTimers.delete(retryTimer);
@@ -221,8 +233,12 @@ export default forwardRef(function YouTubeSurface({
               return;
             }
             if (data === 1) {
-              pendingAutoStart = null;
-              loadingTrack = false;
+              if (!pendingAutoStart || hasLoadedPendingTrack()) {
+                pendingAutoStart = null;
+                loadingTrack = false;
+              } else {
+                tryPendingAutoStart();
+              }
             } else if (data === 3 || data === 5) {
               tryPendingAutoStart();
             } else if (data === 2 && pendingAutoStart && hasLoadedPendingTrack()) {

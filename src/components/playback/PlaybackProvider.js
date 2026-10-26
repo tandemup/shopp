@@ -484,6 +484,23 @@ export default function PlaybackProvider({ children }) {
       trackKey(session.tracks[index]),
     );
     setVolume(trackVolumes.current.get(trackKey(session.tracks[index])) ?? 100);
+    // En web conservar la misma instancia YouTube: desmontarla al finalizar
+    // una canción pierde la autorización de reproducción de Safari/iOS.
+    if (Platform.OS === "web" && player.current?.loadTrack) {
+      const nextTrack = session.tracks[index];
+      const updated = { ...session, index, resumeTime: 0, resumePlaylistIndex: 0, autoPlay: true };
+      sessionRef.current = updated;
+      const loading = {
+        ...statusRef.current, state: 3, time: 0, duration: 0,
+        videoId: nextTrack.videoId || "", videoTitle: nextTrack.title || "",
+        error: null, notice: null,
+      };
+      statusRef.current = loading;
+      setStatus(loading);
+      setSession(updated);
+      player.current.loadTrack(nextTrack, 0, 0, true);
+      return;
+    }
     installSession({
       ...session,
       index,
@@ -805,14 +822,14 @@ export default function PlaybackProvider({ children }) {
                   ],
             ]}
           >
-            <View style={styles.header}>
+            <View style={[styles.header, expanded && width < 740 && styles.headerCompact]}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={tr(
                   expanded ? "Minimizar reproductor" : "Ampliar reproductor",
                 )}
                 onPress={() => setExpanded((value) => !value)}
-                style={styles.heading}
+                style={[styles.heading, expanded && width < 740 && styles.headingCompact]}
               >
                 {expanded && desktop ? (
                   <View style={styles.headerPlaylistTitle}>
@@ -824,7 +841,7 @@ export default function PlaybackProvider({ children }) {
                     </Text>
                   </View>
                 ) : (
-                  <Text numberOfLines={1} style={styles.title}>
+                  <Text numberOfLines={expanded && width < 740 ? 2 : 1} style={styles.title}>
                     {expanded ? session.title : currentTitle || session.title}
                   </Text>
                 )}
@@ -1555,6 +1572,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#111113",
   },
   heading: { flex: 1, minWidth: 0, paddingLeft: 16 },
+  headerCompact: { flexWrap: "wrap", paddingTop: 6, paddingBottom: 5, rowGap: 4 },
+  headingCompact: { flexBasis: "100%", flexGrow: 0, minHeight: 30, paddingRight: 16, justifyContent: "center" },
   headerPlaybackOptions: { flexDirection: "row", alignItems: "center", gap: 5, marginRight: 8 },
   headerPlaybackOption: { flexDirection: "row", alignItems: "center", justifyContent: "center", minHeight: 38, minWidth: 46, paddingHorizontal: 8, gap: 3, borderWidth: 1, borderRadius: 6, borderColor: "#3f3f46", backgroundColor: "#18181b" },
   headerPlaybackOptionsMobile: { gap: 4, marginRight: 2 },
