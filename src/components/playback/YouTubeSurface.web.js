@@ -137,32 +137,41 @@ export default forwardRef(function YouTubeSurface({
       }
       return player.getVideoData?.()?.video_id === pendingAutoStart.videoId;
     };
-    const tryPendingAutoStart = (attempt = 0) => {
+    // Comprueba pronto el nuevo ID sin iniciar el video anterior por error.
+    // Solo se mantiene un temporizador pendiente, para que los eventos de
+    // buffering/cued no acumulen esperas y solicitudes de Play duplicadas.
+    let nextCheckTimer = null;
+    let pendingStartSince = 0;
+    let lastPlayAttemptAt = 0;
+    const clearNextCheck = () => {
+      if (nextCheckTimer !== null) {
+        clearTimeout(nextCheckTimer);
+        nextCheckTimer = null;
+      }
+    };
+    const tryPendingAutoStart = () => {
       if (disposed || !pendingAutoStart || !ready) return;
-      // PLAYING might still describe the PREVIOUS video. Never clear the
-      // pending transition until YouTube confirms the requested identity.
-      if (!hasLoadedPendingTrack()) {
-        if (attempt < 3) {
-          const retryTimer = setTimeout(() => {
-            retryTimers.delete(retryTimer);
-            tryPendingAutoStart(attempt + 1);
-          }, [260, 700, 1400][attempt]);
-          retryTimers.add(retryTimer);
+      clearNextCheck();
+      if (hasLoadedPendingTrack()) {
+        if (player.getPlayerState?.() === 1) {
+          pendingAutoStart = null;
+          loadingTrack = false;
+          return;
         }
-        return;
+        const now = Date.now();
+        if (now - lastPlayAttemptAt >= 450) {
+          lastPlayAttemptAt = now;
+          requestPlay();
+        }
       }
-      if (player.getPlayerState?.() === 1) {
-        pendingAutoStart = null;
-        loadingTrack = false;
-        return;
-      }
-      requestPlay();
-      if (pendingAutoStart && attempt < 3) {
-        const retryTimer = setTimeout(() => {
-          retryTimers.delete(retryTimer);
-          tryPendingAutoStart(attempt + 1);
-        }, [260, 700, 1400][attempt]);
-        retryTimers.add(retryTimer);
+      // Los primeros segundos se comprueban cada 120 ms. Una vez transcurridos
+      // 6 s, se deja de reintentar para evitar una espera indefinida y posibles
+      // arranques inesperados mucho después de cambiar de canción.
+      if (pendingAutoStart && Date.now() - pendingStartSince < 6000) {
+        nextCheckTimer = setTimeout(() => {
+          nextCheckTimer = null;
+          tryPendingAutoStart();
+        }, 120);
       }
     };
     commands.current = {
@@ -174,6 +183,9 @@ export default forwardRef(function YouTubeSurface({
         action += 1;
         loadingTrack = true;
         pendingAutoStart = autoPlayNext ? nextTrack : null;
+        pendingStartSince = Date.now();
+        lastPlayAttemptAt = 0;
+        clearNextCheck();
         // Preserve audible playback across a track change. Muting here and
         // unmuting asynchronously after loadVideoById may be blocked on iOS.
         const start = Math.max(0, time || 0);
@@ -282,6 +294,7 @@ export default forwardRef(function YouTubeSurface({
       try { player?.destroy(); } catch {}
       retryTimers.forEach((retryTimer) => clearTimeout(retryTimer));
       retryTimers.clear();
+      clearNextCheck();
       container.replaceChildren();
     };
   // PlaybackProvider loads the next song through loadTrack on this iframe.
