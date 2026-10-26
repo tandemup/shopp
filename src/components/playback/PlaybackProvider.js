@@ -1414,7 +1414,7 @@ export default function PlaybackProvider({ children }) {
                         return (
                           <View
                             key={`${trackKey(item)}:${index}`}
-                            style={styles.queueEntry}
+                            style={[styles.queueEntry, active && styles.queueEntryActive]}
                           >
                           <Pressable
                             accessibilityRole="button"
@@ -1425,7 +1425,7 @@ export default function PlaybackProvider({ children }) {
                             )}
                             accessibilityState={{ selected: active }}
                             onPress={() => select(index)}
-                            style={[styles.queueRow, active && styles.queueRowActive]}
+                            style={[styles.queueRow, active && styles.queueRowActive, active && styles.queueRowIntegrated]}
                           >
                             <View
                               style={[
@@ -1464,6 +1464,51 @@ export default function PlaybackProvider({ children }) {
                               color={active ? "#ec1970" : "#9ca3af"}
                             />
                           </Pressable>
+                          {active ? (
+                            <View style={styles.queueTransport}>
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel="Retroceder 10 segundos"
+                                disabled={!status.ready}
+                                onPress={() => player.current?.seek(
+                                  Math.max(0, (status.time || 0) - 10)
+                                )}
+                                style={styles.queueSeekButton}
+                              >
+                                <Ionicons name="play-back" size={18} color={status.ready ? "#f9a8d4" : "#71717a"} />
+                                <Text style={styles.queueSeekLabel}>10 s</Text>
+                              </Pressable>
+                              <View style={styles.queueProgressArea}>
+                                <Slider
+                                  style={styles.queueProgressSlider}
+                                  minimumValue={0}
+                                  maximumValue={Math.max(status.duration || 0, 1)}
+                                  value={Math.max(0, Math.min(status.time || 0, Math.max(status.duration || 0, 1)))}
+                                  disabled={!status.ready || !status.duration}
+                                  onSlidingComplete={(value) => player.current?.seek(value)}
+                                  minimumTrackTintColor="#ec1970"
+                                  maximumTrackTintColor="#52525b"
+                                  thumbTintColor="#ec1970"
+                                />
+                                <View style={styles.queueTimeRow}>
+                                  <Text style={styles.queueTimeText}>{formatTime(status.time || 0)}</Text>
+                                  <Text style={styles.queueTimeText}>{status.duration ? formatTime(status.duration) : "—:—"}</Text>
+                                </View>
+                              </View>
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel="Avanzar 10 segundos"
+                                disabled={!status.ready}
+                                onPress={() => player.current?.seek(
+                                  Math.min(status.duration || Number.MAX_SAFE_INTEGER, (status.time || 0) + 10)
+                                )}
+                                style={styles.queueSeekButton}
+                              >
+                                <Ionicons name="play-forward" size={18} color={status.ready ? "#f9a8d4" : "#71717a"} />
+                                <Text style={styles.queueSeekLabel}>10 s</Text>
+                              </Pressable>
+                            </View>
+                          ) : null}
                           </View>
                         );
                       })}
@@ -2030,6 +2075,31 @@ const styles = StyleSheet.create({
   },
   queueRows: { gap: 6 },
   queueEntry: { width: "100%" },
+  queueEntryActive: {
+    borderWidth: 1,
+    borderColor: "#ec1970",
+    backgroundColor: "#24131d",
+  },
+  queueRowIntegrated: { borderWidth: 0 },
+  queueTransport: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingBottom: 7,
+    paddingTop: 1,
+  },
+  queueSeekButton: {
+    width: 43,
+    minHeight: 36,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  queueSeekLabel: { fontSize: 9, color: "#f9a8d4", fontVariant: ["tabular-nums"] },
+  queueProgressArea: { flex: 1, minWidth: 0 },
+  queueProgressSlider: { width: "100%", height: 25 },
+  queueTimeRow: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 3 },
+  queueTimeText: { color: "#a1a1aa", fontSize: 10, fontVariant: ["tabular-nums"] },
   queueRow: {
     minHeight: 64,
     width: "100%",
