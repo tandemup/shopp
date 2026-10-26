@@ -475,15 +475,27 @@ export default function PlaybackProvider({ children }) {
   const track = session?.tracks[session.index];
   const lyricsUri = track?.lyricsUri || track?.lyricsUrl;
   const select = (index) => {
+    if (!session || index < 0 || index >= session.tracks.length) return;
     if (index === session.index) {
       playing ? player.current?.pause() : player.current?.play();
       return;
     }
     rememberCurrentPlayback();
-    const remembered = rememberedPlayback.current.get(
-      trackKey(session.tracks[index]),
-    );
     setVolume(trackVolumes.current.get(trackKey(session.tracks[index])) ?? 100);
+    // Mantener el iframe en web es fundamental para la continuidad en iOS:
+    // recrearlo pierde la autorización de reproducción iniciada por el usuario.
+    const nextTrack = session.tracks[index];
+    if (Platform.OS === "web" && statusRef.current.ready &&
+        track?.kind !== "album" && nextTrack.kind !== "album" &&
+        typeof player.current?.loadTrack === "function") {
+      const nextSession = { ...session, index, resumeTime: 0, autoPlay: true };
+      sessionRef.current = nextSession;
+      statusRef.current = { ...EMPTY_STATUS, ready: true, state: 3 };
+      setStatus(statusRef.current);
+      setSession(nextSession);
+      player.current.loadTrack(nextTrack, 0, 0, true);
+      return;
+    }
     installSession({
       ...session,
       index,
@@ -805,14 +817,14 @@ export default function PlaybackProvider({ children }) {
                   ],
             ]}
           >
-            <View style={styles.header}>
+            <View style={[styles.header, expanded && width < 600 && styles.headerMobileWrap]}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={tr(
                   expanded ? "Minimizar reproductor" : "Ampliar reproductor",
                 )}
                 onPress={() => setExpanded((value) => !value)}
-                style={styles.heading}
+                style={[styles.heading, expanded && width < 600 && styles.headingMobile]}
               >
                 {expanded && desktop ? (
                   <View style={styles.headerPlaylistTitle}>
@@ -824,7 +836,7 @@ export default function PlaybackProvider({ children }) {
                     </Text>
                   </View>
                 ) : (
-                  <Text numberOfLines={1} style={styles.title}>
+                  <Text numberOfLines={expanded && width < 600 ? 2 : 1} style={styles.title}>
                     {expanded ? session.title : currentTitle || session.title}
                   </Text>
                 )}
@@ -1464,6 +1476,23 @@ export default function PlaybackProvider({ children }) {
                               color={active ? "#ec1970" : "#9ca3af"}
                             />
                           </Pressable>
+                          {active && (
+                            <View style={styles.queueProgressArea}>
+                              <Text style={styles.queueProgressTime}>{formatTime(status.time || 0)}</Text>
+                              <Slider
+                                style={styles.queueProgressSlider}
+                                minimumValue={0}
+                                maximumValue={Math.max(status.duration || 0, 1)}
+                                value={Math.min(Math.max(status.time || 0, 0), Math.max(status.duration || 0, 1))}
+                                disabled={!status.ready || !status.duration}
+                                onSlidingComplete={value => player.current?.seek(value)}
+                                minimumTrackTintColor="#ec1970"
+                                maximumTrackTintColor="#49434b"
+                                thumbTintColor="#ec1970"
+                              />
+                              <Text style={styles.queueProgressTime}>{status.duration ? formatTime(status.duration) : "—:—"}</Text>
+                            </View>
+                          )}
                           </View>
                         );
                       })}
@@ -1510,9 +1539,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#111113",
   },
   heading: { flex: 1, minWidth: 0, paddingLeft: 16 },
+  headerMobileWrap: { flexWrap: "wrap", paddingVertical: 5 },
+  headingMobile: { flexBasis: "100%", paddingRight: 16, paddingVertical: 5 },
   headerPlaybackOptions: { flexDirection: "row", alignItems: "center", gap: 5, marginRight: 8 },
   headerPlaybackOption: { flexDirection: "row", alignItems: "center", justifyContent: "center", minHeight: 38, minWidth: 46, paddingHorizontal: 8, gap: 3, borderWidth: 1, borderRadius: 6, borderColor: "#3f3f46", backgroundColor: "#18181b" },
-  headerPlaybackOptionsMobile: { gap: 4, marginRight: 2 },
+  headerPlaybackOptionsMobile: { gap: 4, marginRight: 2, marginLeft: 12 },
   headerPlaybackOptionMobile: { minWidth: 44, minHeight: 44, paddingHorizontal: 5 },
   headerPlaybackOptionActive: { borderColor: "#ec1970", backgroundColor: "#411629" },
   headerPlaybackOptionText: { fontSize: 11, color: "#d4d4d8", fontWeight: "700" },
@@ -2080,6 +2111,9 @@ const styles = StyleSheet.create({
     color: "#9ca3af",
     fontVariant: ["tabular-nums"],
   },
+  queueProgressArea: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingBottom: 8, gap: 7 },
+  queueProgressSlider: { flex: 1, height: 24 },
+  queueProgressTime: { color: "#a1a1aa", fontSize: 11, fontVariant: ["tabular-nums"], minWidth: 34, textAlign: "center" },
   queueRowText: { flex: 1, minWidth: 0 },
   // La marca LRC comparte fila con el título; evita aumentar la tarjeta.
   queueRowTitleLine: {
