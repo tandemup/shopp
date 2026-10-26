@@ -33,6 +33,10 @@ import {
 } from "@/src/services/musicCardLinks";
 
 import { savePublicMusicCardZip } from "@/src/services/playlistArchiveZip";
+import {
+  resolveCardCover,
+  getCollectionCover,
+} from "@/src/services/cardCoverResolver";
 
 const DEFAULT_CONTACT_EMAIL = "info@ramshopp.com";
 const DEFAULT_LANDING_URL = "https://ramworks.netlify.app";
@@ -1102,13 +1106,7 @@ export default function PrintMusicCardScreen() {
     90;
   const previewCompactBack = backInsetEnabled && backInsetMm >= 7;
   const [coverUri, setCoverUri] = useState(
-    String(
-      playlist.cover ||
-        playlist.coverUrl ||
-        playlist.image ||
-        playlist.thumbnail ||
-        "",
-    ),
+    String(getCollectionCover(playlist)),
   );
   // Dimensiones reales (px) del archivo seleccionado; independientes de su
   // presentación cuadrada en la tarjeta impresa.
@@ -1228,12 +1226,12 @@ export default function PrintMusicCardScreen() {
           ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
           : "";
         const imageMode = overrides.image || "auto";
-        const image =
-          imageMode === "general"
-            ? coverUri || personal || youtubeImage
-            : imageMode === "youtube"
-              ? youtubeImage || personal || coverUri
-              : personal || youtubeImage || coverUri;
+        const image = resolveCardCover({
+          mode: imageMode,
+          trackCover: personal,
+          collectionCover: coverUri,
+          youtubeCover: youtubeImage,
+        });
         return {
           title:
             overrides.title ??
@@ -1289,13 +1287,12 @@ export default function PrintMusicCardScreen() {
           const trackCover =
             cardMode === "single"
               ? coverUri
-              : source === "youtube"
-                ? youtubeCover || personalCover || coverUri
-                : source === "general"
-                  ? coverUri || personalCover || youtubeCover
-                  : source === "artwork"
-                    ? personalCover || youtubeCover || coverUri
-                    : personalCover || youtubeCover || coverUri;
+              : resolveCardCover({
+                  mode: source,
+                  trackCover: personalCover,
+                  collectionCover: coverUri,
+                  youtubeCover,
+                });
           const selectedIndices =
             Array.isArray(settings.trackIndices) && settings.trackIndices.length
               ? [...new Set(settings.trackIndices)]
@@ -2824,7 +2821,9 @@ export default function PrintMusicCardScreen() {
                 )}
               </View>
               <View style={styles.coverDetails}>
-                <Text style={styles.fieldLabel}>Carátula del single</Text>
+                <Text style={styles.fieldLabel}>
+                  Carátula de la colección / impresión
+                </Text>
                 <Text style={styles.coverDimensions}>{coverSizeLabel}</Text>
                 <Text style={styles.fieldHelp}>
                   Vista cuadrada con recorte centrado, sin deformar la imagen.

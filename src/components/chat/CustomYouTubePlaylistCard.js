@@ -19,7 +19,7 @@ function splitAuthorAndSingle(value) {
     : { author: "", single: text };
 }
 
-export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, onCreateCard, shareable = false, onToggleShareable, isTutorial = false, isNews = false }) {
+export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, onCreateCard, shareable = false, onToggleShareable, isTutorial = false, isNews = false, isClassical = false, onOpenCatalog, worksCount = 0 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { width: viewportWidth } = useWindowDimensions();
   const compactCard = viewportWidth < 520;
@@ -49,29 +49,43 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
       playlist?.title ||
       "",
   );
+  const composer = String(playlist?.composer || "").trim();
+  const performer = [playlist?.performer, playlist?.conductor, playlist?.orchestra]
+    .map((value) => String(value || "").trim()).filter(Boolean)
+    .filter((value, index, values) => values.indexOf(value) === index).join(" · ");
+  const rawClassicalTitle = String(playlist?.title || "").trim();
+  const composerNames = [composer, composer.split(/\s+/).filter(Boolean).slice(-1)[0]].filter(Boolean);
+  const titlePrefix = composerNames.find((name) =>
+    rawClassicalTitle.toLocaleLowerCase().startsWith(`${name.toLocaleLowerCase()} —`) ||
+    rawClassicalTitle.toLocaleLowerCase().startsWith(`${name.toLocaleLowerCase()} -`) ||
+    rawClassicalTitle.toLocaleLowerCase().startsWith(`${name.toLocaleLowerCase()} –`));
+  const classicalTitle = titlePrefix
+    ? rawClassicalTitle.slice(titlePrefix.length).replace(/^\s*[-–—:]\s*/, "").trim()
+    : rawClassicalTitle;
+  const coverUri = playlist?.artworkUrl || playlist?.coverImage || playlist?.imageUrl || activeTrack?.artworkUrl || (activeTrack?.videoId ? `https://i.ytimg.com/vi/${activeTrack.videoId}/mqdefault.jpg` : "");
   if (!activeTrack) return null;
   return (
-    <View style={[styles.card, isNews && styles.newsCard]}>
-      <Pressable onPress={() => playback.open(playlist, { isTutorial })} style={[styles.summary, compactCard && styles.summaryPhone]}>
-        {(activeTrack.artworkUrl || activeTrack.videoId) ? (
+    <View style={[styles.card, isNews && styles.newsCard, isClassical && styles.classicalCard]}>
+      <Pressable onPress={() => playback.open(playlist, { isTutorial })} style={[styles.summary, compactCard && styles.summaryPhone, isClassical && styles.classicalSummary]}>
+        {(isClassical ? coverUri : (activeTrack.artworkUrl || activeTrack.videoId)) ? (
           <Image
             source={{
-              uri: /^(https:\/\/[^\s]+|data:image\/(?:jpeg|png|webp);base64,)/i.test(activeTrack.artworkUrl || "")
-                ? activeTrack.artworkUrl
+              uri: /^(https:\/\/[^\s]+|data:image\/(?:jpeg|png|webp);base64,)/i.test(isClassical ? coverUri : (activeTrack.artworkUrl || ""))
+                ? (isClassical ? coverUri : activeTrack.artworkUrl)
                 : `https://i.ytimg.com/vi/${activeTrack.videoId}/mqdefault.jpg`,
             }}
-            style={[styles.cover, compactCard && styles.coverPhone, compactCard && { width: coverWidth }]}
+            style={[styles.cover, compactCard && styles.coverPhone, compactCard && { width: coverWidth }, isClassical && styles.classicalCover]}
             resizeMode="contain"
           />
         ) : (
-          <View style={[styles.coverFallback, compactCard && styles.coverPhone, compactCard && { width: coverWidth }]}>
+          <View style={[styles.coverFallback, compactCard && styles.coverPhone, compactCard && { width: coverWidth }, isClassical && styles.classicalCover]}>
             <Ionicons name="albums" size={36} color="#fff" />
           </View>
         )}
-        <View style={[styles.summaryText, compactCard && styles.summaryTextPhone]}>
+        <View style={[styles.summaryText, compactCard && styles.summaryTextPhone, isClassical && styles.classicalText]}>
           <View style={styles.metaRow}>
             <Text style={styles.user} numberOfLines={1} ellipsizeMode="tail">
-              {displayName}
+              {isClassical ? (composer || "Compositor no especificado") : displayName}
             </Text>
             {(canEdit || canDelete || onExport || onCreateCard) ? (
               <Pressable
@@ -87,17 +101,20 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
               </Pressable>
             ) : null}
           </View>
-          {author ? (
-            <Text style={styles.author} numberOfLines={1} ellipsizeMode="tail">
-              {author}
-            </Text>
-          ) : null}
-          <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
-            {single}
-          </Text>
+          {isClassical ? (
+            <>
+              <Text style={styles.classicalWork} numberOfLines={2} ellipsizeMode="tail">{classicalTitle}</Text>
+              <Text style={styles.classicalPerformer} numberOfLines={2} ellipsizeMode="tail">{performer || "Intérprete no especificado"}</Text>
+            </>
+          ) : (
+            <>
+              {author ? <Text style={styles.author} numberOfLines={1} ellipsizeMode="tail">{author}</Text> : null}
+              <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">{single}</Text>
+            </>
+          )}
           {onToggleShareable ? (
             <View style={styles.shareRow}>
-              <Text style={styles.itemCount}>{tracks.length} {tracks.length === 1 ? "item" : "items"}</Text>
+              <Text style={styles.itemCount}>{tracks.length} {isClassical ? (tracks.length === 1 ? "movimiento" : "movimientos") : (tracks.length === 1 ? "item" : "items")}</Text>
               <Pressable
                 accessibilityRole="checkbox"
                 accessibilityLabel={`Compartir ${displayName}`}
@@ -129,6 +146,12 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
               <Text style={styles.menuText}>
                 {isNews ? "Editar" : isTutorial ? "Editar tutorial" : "Editar lista"}
               </Text>
+            </Pressable>
+          ) : null}
+          {isClassical && onOpenCatalog ? (
+            <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setMenuOpen(false); onOpenCatalog(); }}>
+              <Ionicons name="library-outline" size={18} color="#334155" />
+              <Text style={styles.menuText}>Gestionar catálogo ({worksCount})</Text>
             </Pressable>
           ) : null}
           {onExport ? (
@@ -164,6 +187,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   newsCard: { width: CARD_WIDTH },
+  classicalCard: { width: 560 },
+  classicalSummary: { height: 128, overflow: "hidden" },
+  classicalCover: { height: 128, width: 150 },
+  classicalText: { height: 128, paddingVertical: 6, justifyContent: "flex-start" },
+  classicalWork: { fontSize: 14, lineHeight: 19, fontWeight: "700", color: "#2563eb", flexShrink: 1 },
+  classicalPerformer: { fontSize: 12, lineHeight: 17, fontWeight: "600", color: "#334155", flexShrink: 1 },
   summaryPhone: { height: 100 },
   coverPhone: { height: 100 },
   summaryTextPhone: { height: 100, paddingHorizontal: 8, paddingVertical: 3 },

@@ -1797,6 +1797,9 @@ export default function PlayListScreen({ guestMode = false }) {
             ? "Busca por el título descriptivo."
             : "Busca en el título de la lista y de sus elementos."}
       </Text>
+      {isClassical && localMode ? (
+        <Text style={[styles.searchHint, { marginTop: 9 }]}>Catálogo de obras: gestiona cada colección desde su menú ⋮.</Text>
+      ) : null}
       {playlists !== undefined ? (
         <Text style={styles.searchCount} accessibilityLiveRegion="polite">
           {searchTerms.length
@@ -1957,14 +1960,11 @@ export default function PlayListScreen({ guestMode = false }) {
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
           renderItem={({ item }) => (
             <View style={styles.playerCard}>
-              {isClassical && localMode ? (
-                <Pressable onPress={() => openWorksCatalog(item)} style={{ padding: 11, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#e0e7ff", borderRadius: 9, marginBottom: 9 }}>
-                  <Ionicons name="library-outline" size={19} color="#3730a3" />
-                  <Text style={{ color: "#312e81", fontWeight: "700" }}>Obras musicales · {(item.works || []).length} · Gestionar catálogo</Text>
-                </Pressable>
-              ) : null}
               <CustomYouTubePlaylistPlayer
                 playlist={item}
+                isClassical={isClassical}
+                onOpenCatalog={isClassical && localMode ? () => openWorksCatalog(item) : undefined}
+                worksCount={(item.works || []).length}
                 userName={
                   isNews
                     ? "Mis noticias"
