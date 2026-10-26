@@ -234,13 +234,18 @@ export default forwardRef(function YouTubeSurface({
             if (data === 1 && (!granted || !exclusivePlayback.owns(id))) {
               player.mute(); requestPlay();
             }
-            if ((data === 2 || data === 0) && !pendingAutoStart && !loadingTrack) {
-              // A normal user pause/end releases playback ownership. A PAUSED
-              // event in the middle of loading Next is only transitional.
+            if (data === 2 && !pendingAutoStart && !loadingTrack) {
+              // A genuine pause releases playback ownership. An ENDED event
+              // must NOT do so: PlaybackProvider advances the queue directly
+              // from this event and needs the existing audible playback grant.
               action += 1;
               granted = false;
-              if (data === 2) player.mute();
+              player.mute();
             }
+            // Do not mute, revoke the playback grant, or make an asynchronous
+            // exclusivePlayback.claim() on ENDED. Doing so between two tracks
+            // causes the next YouTube video to load but remain paused,
+            // especially in Safari/iOS where autoplay needs user activation.
             emit();
           },
           onAutoplayBlocked: () => {

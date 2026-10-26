@@ -178,6 +178,12 @@ export const listMessages = query({
     return await Promise.all(
       visibleMessages.map(async (message) => {
         const decorated = await withImageUrls(ctx, message);
+        if (room === "musica") {
+          const share = await ctx.db.query("chatPlaylistShares").withIndex("by_message",q=>q.eq("messageId", message._id)).first();
+          if (share && share.expiresAt > now) decorated.sharedPlaylist = {
+            title: share.title, collectionType: share.collectionType, trackCount: share.trackCount,
+          };
+        }
         const own = isOwnedBy(message, viewer.ownerId);
         const deletedByUser = message.status === "hidden";
         return {
@@ -249,6 +255,9 @@ export const sendMessage = mutation({
       throw new Error("No se pudo identificar este dispositivo.");
 
     const now = Date.now();
+    const previous = await ctx.db.query("chatPlaylistShares").withIndex("by_sender",q=>q.eq("senderId",userId)).take(30);
+    if (previous.filter(s => s.expiresAt > now).length >= 5)
+      throw new Error("Máximo cinco playlists compartidas activas. Espera a que caduquen.");
     const messageId = await ctx.db.insert("chatMessages", {
       userId: viewer.ownerId,
       room,
@@ -379,6 +388,9 @@ export const createCustomYouTubePlaylist = mutation({
       };
     });
     const now = Date.now();
+    const previous = await ctx.db.query("chatPlaylistShares").withIndex("by_sender",q=>q.eq("senderId",userId)).take(30);
+    if (previous.filter(s => s.expiresAt > now).length >= 5)
+      throw new Error("Máximo cinco playlists compartidas activas. Espera a que caduquen.");
     const messageId = await ctx.db.insert("chatMessages", {
       userId: viewer.ownerId,
       room: "youtube",
@@ -793,5 +805,59 @@ export const deleteExpiredMessages = internalMutation({
       await ctx.db.delete(message._id);
     }
     return { ok: true, deleted: expired.length };
+  },
+});
+
+// Adjuntos temporales: solo usuarios autenticados; no exponer el JSON en listMessages.
+const MAX_SHARED_PLAYLIST_BYTES = 180 * 1024;
+export const shareLocalPlaylist = mutation({
+  args: { title: v.string(), username: v.string(), collectionType: v.union(v.literal("playlist"),v.literal("classical")), payload: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Inicia sesión para compartir playlists.");
+    const user = await ctx.db.get(userId);
+    if (!user || user.status === "blocked") throw new Error("Cuenta no autorizada.");
+    if (new TextEncoder().encode(args.payload).length > MAX_SHARED_PLAYLIST_BYTES)
+      throw new Error("Playlist demasiado grande para compartir por chat (180 KB). Exporta un ZIP.");
+    let item;
+    try { item = JSON.parse(args.payload); } catch { throw new Error("JSON inválido."); }
+    if (!item || item.collectionType !== args.collectionType || !Array.isArray(item.tracks) ||
+        item.tracks.length < 1 || item.tracks.length > 150 ||
+        String(item.title || "").trim() !== args.title.trim() || args.title.length > 140 ||
+        item.tracks.some(t => !t || typeof t.title !== "string" || t.title.length > 200 ||
+          !/^https:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)[A-Za-z0-9_-]{11}/.test(String(t.url || "")) ||
+          (t.lyricsBackup && (typeof t.lyricsBackup.text !== "string" ||
+            new TextEncoder().encode(t.lyricsBackup.text).length > 512 * 1024))))
+      throw new Error("Playlist no válida o con contenido fuera de los límites.");
+    const now = Date.now();
+    const previous = await ctx.db.query("chatPlaylistShares").withIndex("by_sender",q=>q.eq("senderId",userId)).take(30);
+    if (previous.filter(s => s.expiresAt > now).length >= 5)
+      throw new Error("Máximo cinco playlists compartidas activas. Espera a que caduquen.");
+    const messageId = await ctx.db.insert("chatMessages", {
+      userId: String(userId), room: "musica", username: cleanUsername(args.username),
+      text: `Playlist compartida: ${args.title.trim().slice(0, 140)}`,
+      createdAt: now, expiresAt: now + MESSAGE_TTL_MS,
+      status: "visible", messageStatus: "clean",
+    });
+    await ctx.db.insert("chatPlaylistShares", { messageId, senderId: userId,
+      collectionType: args.collectionType, title: args.title.trim(),
+      trackCount: item.tracks.length, payload: args.payload, expiresAt: now + MESSAGE_TTL_MS });
+    return messageId;
+  },
+});
+
+export const getSharedPlaylist = query({
+  args: { messageId: v.id("chatMessages") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Inicia sesión para importar playlists.");
+    const user = await ctx.db.get(userId);
+    if (!user || user.status === "blocked") throw new Error("Cuenta no autorizada.");
+    const message = await ctx.db.get(args.messageId);
+    if (!message || message.room !== "musica" || message.status !== "visible" ||
+        (message.expiresAt && message.expiresAt <= Date.now())) throw new Error("Adjunto no disponible.");
+    const share = await ctx.db.query("chatPlaylistShares").withIndex("by_message",q=>q.eq("messageId",args.messageId)).first();
+    if (!share || share.expiresAt <= Date.now()) throw new Error("Adjunto caducado.");
+    return { payload: share.payload, collectionType: share.collectionType };
   },
 });
