@@ -33,7 +33,10 @@ import {
 } from "@/src/services/musicCardLinks";
 
 import { savePublicMusicCardZip } from "@/src/services/playlistArchiveZip";
-import { resolveCardCover, getCollectionCover } from "@/src/services/cardCoverResolver";
+import {
+  resolveCardCover,
+  getCollectionCover,
+} from "@/src/services/cardCoverResolver";
 
 const DEFAULT_CONTACT_EMAIL = "info@ramshopp.com";
 const DEFAULT_LANDING_URL = "https://ramworks.netlify.app";
@@ -1103,9 +1106,7 @@ export default function PrintMusicCardScreen() {
     90;
   const previewCompactBack = backInsetEnabled && backInsetMm >= 7;
   const [coverUri, setCoverUri] = useState(
-    String(
-      getCollectionCover(playlist),
-    ),
+    String(getCollectionCover(playlist)),
   );
   // Dimensiones reales (px) del archivo seleccionado; independientes de su
   // presentación cuadrada en la tarjeta impresa.
@@ -1283,14 +1284,15 @@ export default function PrintMusicCardScreen() {
             ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
             : "";
           const source = settings.image || "auto";
-          const trackCover = cardMode === "single"
-            ? coverUri
-            : resolveCardCover({
-                mode: source,
-                trackCover: personalCover,
-                collectionCover: coverUri,
-                youtubeCover,
-              });
+          const trackCover =
+            cardMode === "single"
+              ? coverUri
+              : resolveCardCover({
+                  mode: source,
+                  trackCover: personalCover,
+                  collectionCover: coverUri,
+                  youtubeCover,
+                });
           const selectedIndices =
             Array.isArray(settings.trackIndices) && settings.trackIndices.length
               ? [...new Set(settings.trackIndices)]
@@ -2819,7 +2821,9 @@ export default function PrintMusicCardScreen() {
                 )}
               </View>
               <View style={styles.coverDetails}>
-                <Text style={styles.fieldLabel}>Carátula de la colección / impresión</Text>
+                <Text style={styles.fieldLabel}>
+                  Carátula de la colección / impresión
+                </Text>
                 <Text style={styles.coverDimensions}>{coverSizeLabel}</Text>
                 <Text style={styles.fieldHelp}>
                   Vista cuadrada con recorte centrado, sin deformar la imagen.
