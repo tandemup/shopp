@@ -18,7 +18,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
-import { useAction, useConvex, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 
 import { api } from "@/convex/_generated/api";
@@ -482,10 +482,8 @@ export default function PlayListScreen({ guestMode = false }) {
   // Music/Classical on the PWA always read IndexedDB; an empty collection is
   // valid. Other Shopp utilities and native builds keep their existing backend.
   const localMode = !isTutorialStyle && (Platform.OS === "web" || guestMode);
-  const convex = useConvex(); // Only used by the explicit, one-time migration action.
   const [localPlaylists, setLocalPlaylists] = useState(undefined);
   const [localError, setLocalError] = useState(null);
-  const [migratingConvex, setMigratingConvex] = useState(false);
   const refreshLocalPlaylists = useCallback(async () => {
     const items = await localRepo.list(collection);
     setLocalError(null);
@@ -520,53 +518,6 @@ export default function PlayListScreen({ guestMode = false }) {
       : "skip",
   );
   const playlists = localMode ? localPlaylists : remotePlaylists;
-  const [checkingLocal, setCheckingLocal] = useState(false);
-  const checkLocalIntegrity = useCallback(async () => {
-    if (!localMode || checkingLocal) return;
-    setCheckingLocal(true);
-    try {
-      const state = await localRepo.auditLocalPlaylists(collection);
-      const samples = state.missing.map(item => `\n• ${item.playlist}, pista ${item.track}`).join("");
-      safeAlert("Integridad IndexedDB",
-        `${state.playlists} colecciones · ${state.tracks} pistas.\n` +
-        `LRC referenciadas: ${state.lyricsReferenced}; encontradas: ${state.lyricsFound}; faltantes: ${state.lyricsMissing}.\n` +
-        `Claves LRC individuales sin referencia (ambas colecciones): ${state.orphanedScopedKeys}.` +
-        (state.lyricsMissing ? `\nRevisa las pistas afectadas:${samples}` : "\nNo se detectaron LRC declaradas que falten.") +
-        "\nComprobación local y de solo lectura; no mide el tráfico de otras utilidades hacia Convex.");
-    } catch (error) {
-      safeAlert("No se pudo verificar IndexedDB", error?.message || "Error al leer la base local.");
-    } finally {
-      setCheckingLocal(false);
-    }
-  }, [checkingLocal, collection, localMode]);
-  const migrateFromConvex = useCallback(() => {
-    if (guestMode || !localMode || !clientId || migratingConvex || localError) return;
-    safeConfirm(
-      "Migrar desde Convex",
-      `Se consultarán una sola vez tus ${isClassical ? "colecciones clásicas" : "playlists"} de Convex y sus letras LRC para combinarlas con IndexedDB. No se borrarán ni modificarán los datos de Convex.`,
-      async () => {
-        setMigratingConvex(true);
-        try {
-          // A deliberate one-shot read, NOT a reactive subscription.
-          const remote = await convex.query(api.playlists.listMine, { clientId, collectionType: collection });
-          if (!remote?.length) {
-            safeAlert("Migración", "No hay colecciones de este tipo en Convex.");
-            return;
-          }
-          const backup = await makePlaylistBackupV2(remote, exportType, { allowRemoteLyrics: true });
-          const normalized = validatePlaylistBackupV2(backup, exportType, { minimumTracks, maximumTracks });
-          const result = await importPlaylistsLocally({ playlists: normalized, collection });
-          await refreshLocalPlaylists();
-          safeAlert("Migración terminada", `${result.added} playlists añadidas, ${result.skipped} duplicados omitidos y ${result.lyricsRestored} letras LRC copiadas. Convex no se modificó.`);
-        } catch (error) {
-          safeAlert("Migración cancelada", error?.message || "No se pudo migrar. Los datos de Convex se conservan.");
-        } finally {
-          setMigratingConvex(false);
-        }
-      },
-      { confirmText: "Migrar", destructive: false },
-    );
-  }, [clientId, collection, convex, exportType, isClassical, localError, localMode, maximumTracks, migratingConvex, minimumTracks, refreshLocalPlaylists]);
   const createPlaylist = useMutation(contentApi.create);
   const setPlaylistShareable = useMutation(api.playlists.setShareable);
   const replacePlaylists = useMutation(contentApi.replaceMine);
@@ -1845,22 +1796,6 @@ export default function PlayListScreen({ guestMode = false }) {
               </Text>
             </Pressable>
           ) : null}
-          {localMode ? (
-            <Pressable onPress={checkLocalIntegrity} disabled={checkingLocal} style={styles.secondaryButton}>
-              <Ionicons name="shield-checkmark-outline" size={21} color="#2563eb" />
-              <Text style={styles.secondaryButtonText}>
-                {checkingLocal ? "Verificando…" : "Verificar datos"}
-              </Text>
-            </Pressable>
-          ) : null}
-          {localMode && !guestMode ? (
-            <Pressable onPress={migrateFromConvex} disabled={migratingConvex || Boolean(localError)} style={styles.secondaryButton}>
-              <Ionicons name="cloud-download-outline" size={21} color="#2563eb" />
-              <Text style={styles.secondaryButtonText}>
-                {migratingConvex ? "Migrando…" : "Migrar desde Convex"}
-              </Text>
-            </Pressable>
-          ) : null}
           <Pressable
             onPress={importJson}
             disabled={importing}
@@ -1922,7 +1857,7 @@ export default function PlayListScreen({ guestMode = false }) {
             <Text style={styles.localModeNoticeText}>
               {narrowMobile && !localNoticeExpanded
                 ? "Datos guardados en este navegador (IndexedDB). Exporta copias ZIP."
-                : "IndexedDB: playlists y LRC locales de este navegador. Convex solo se consulta si pulsas «Migrar desde Convex»; P2P utiliza Convex únicamente para señalización. Exporta ZIP periódicamente."}
+                : "IndexedDB: playlists y LRC locales de este navegador. El intercambio P2P utiliza Convex para coordinar las conexiones. Exporta ZIP periódicamente."}
             </Text>
           </View>
           {narrowMobile ? (
