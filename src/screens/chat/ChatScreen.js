@@ -676,6 +676,7 @@ export default function ChatScreen() {
   const [sharePickerOpen, setSharePickerOpen] = useState(false);
   const [localShareChoices, setLocalShareChoices] = useState([]);
   const [shareBusy, setShareBusy] = useState(false);
+  const [alias, setAlias] = useState(createDefaultAlias);
   const openSharePicker = useCallback(async () => {
     try {
       const [music, classical] = await Promise.all([playlistRepo.list("playlist"), playlistRepo.list("classical")]);
@@ -714,7 +715,6 @@ export default function ChatScreen() {
   },[convexClient]);
   const [room, setRoom] = useState("compras");
   const [chatClientId] = useState(getOrCreateChatClientId);
-  const [alias, setAlias] = useState(createDefaultAlias);
   const [input, setInput] = useState("");
   const [selectedImages, setSelectedImages] = useState([]);
   const [sending, setSending] = useState(false);
