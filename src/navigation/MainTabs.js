@@ -3,7 +3,6 @@ import { tr, useI18n } from "@/src/i18n";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import PlayListScreen from "@/src/screens/playlist/PlayListScreen";
 import PrintMusicCardScreen from "@/src/screens/playlist/PrintMusicCardScreen";
@@ -82,22 +81,8 @@ function GuestAccessScreen({ onExitGuest }) {
 
 export default function MainTabs({ guestMode = false, onExitGuest }) {
   useI18n();
-  const [guestFeatures, setGuestFeatures] = useState({ compras: true, alimentos: true, musica: true });
-  const [guestFeaturesReady, setGuestFeaturesReady] = useState(false);
-  useEffect(() => {
-    if (!guestMode) return;
-    let live = true;
-    AsyncStorage.getItem("@shopp:guest:features:v1")
-      .then(raw => {
-        if (live && raw) {
-          const data = JSON.parse(raw);
-          setGuestFeatures({ compras: data.compras !== false, alimentos: data.alimentos !== false, musica: data.musica !== false });
-        }
-      })
-      .catch(() => {})
-      .finally(() => { if (live) setGuestFeaturesReady(true); });
-    return () => { live = false; };
-  }, [guestMode]);
+  // Configuración única de Invitado, compartida entre todos los dispositivos.
+  const guestFeatures = useQuery(api.guestSettings.get, {});
   const currentUser = useQuery(api.users.current, guestMode ? "skip" : {});
   const canUseStores = hasFeatureAccess(currentUser, APP_FEATURES.STORES);
   const canUseScanner = hasFeatureAccess(currentUser, APP_FEATURES.SCANNER);
@@ -113,7 +98,7 @@ export default function MainTabs({ guestMode = false, onExitGuest }) {
     Platform.OS === "web" ? WEB_SAFE_BOTTOM : bottomPadding;
 
   if (guestMode) {
-    if (!guestFeaturesReady) return null;
+    if (guestFeatures === undefined) return null;
     return (
       <Tab.Navigator
         screenOptions={{

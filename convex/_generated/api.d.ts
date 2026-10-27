@@ -19,6 +19,7 @@ import type * as englishTutor from "../englishTutor.js";
 import type * as factory from "../factory.js";
 import type * as files from "../files.js";
 import type * as fireAlarm from "../fireAlarm.js";
+import type * as guestSettings from "../guestSettings.js";
 import type * as http from "../http.js";
 import type * as items from "../items.js";
 import type * as lib_auth from "../lib/auth.js";
@@ -64,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   factory: typeof factory;
   files: typeof files;
   fireAlarm: typeof fireAlarm;
+  guestSettings: typeof guestSettings;
   http: typeof http;
   items: typeof items;
   "lib/auth": typeof lib_auth;
