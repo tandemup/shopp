@@ -4,7 +4,6 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import GuestFeaturesScreen from "@/src/screens/guest/GuestFeaturesScreen";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import PlayListScreen from "@/src/screens/playlist/PlayListScreen";
 import PrintMusicCardScreen from "@/src/screens/playlist/PrintMusicCardScreen";
@@ -99,11 +98,6 @@ export default function MainTabs({ guestMode = false, onExitGuest }) {
       .finally(() => { if (live) setGuestFeaturesReady(true); });
     return () => { live = false; };
   }, [guestMode]);
-  const updateGuestFeatures = async (next) => {
-    setGuestFeatures(next);
-    try { await AsyncStorage.setItem("@shopp:guest:features:v1", JSON.stringify(next)); }
-    catch (error) { console.warn("No se pudo guardar la selección de invitado", error); }
-  };
   const currentUser = useQuery(api.users.current, guestMode ? "skip" : {});
   const canUseStores = hasFeatureAccess(currentUser, APP_FEATURES.STORES);
   const canUseScanner = hasFeatureAccess(currentUser, APP_FEATURES.SCANNER);
@@ -156,12 +150,6 @@ export default function MainTabs({ guestMode = false, onExitGuest }) {
           title: "Música",
           tabBarIcon: ({ color, size }) => <Ionicons name="musical-notes-outline" color={color} size={Math.min(size, 28)} />,
         }} />}
-        <Tab.Screen name="GuestFeatures" options={{
-          title: "Mis funciones",
-          tabBarIcon: ({ color, size }) => <Ionicons name="options-outline" color={color} size={Math.min(size, 28)} />,
-        }}>
-          {() => <GuestFeaturesScreen value={guestFeatures} onChange={updateGuestFeatures} />}
-        </Tab.Screen>
         <Tab.Screen name="GuestAccess" options={{
           title: "Acceso",
           tabBarIcon: ({ color, size }) => (

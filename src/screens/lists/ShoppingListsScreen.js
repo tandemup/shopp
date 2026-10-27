@@ -458,62 +458,71 @@ function QuickActions({
 function ListCard({ item, onOpen, onOpenMenu }) {
   const currency = item.currency ?? DEFAULT_CURRENCY;
   const itemCount = item.items?.length || 0;
+  // Measure the card itself (not the device): also works in split-screen on iPad.
+  const [cardWidth, setCardWidth] = useState(0);
+  const compact = cardWidth > 0 && cardWidth < 440;
+
+  const metadata = (
+    <View style={[styles.listMetadata, compact && styles.listMetadataCompact]}>
+      <View style={styles.productCount}>
+        <Ionicons name="cube-outline" size={14} color={COLORS.textMuted} />
+        <Text style={styles.productCountText}>
+          {itemCount} {itemCount === 1 ? "producto" : "productos"}
+        </Text>
+      </View>
+      <DatePill
+        date={item.createdAt}
+        fallback="Sin fecha"
+        icon="calendar-outline"
+      />
+    </View>
+  );
 
   return (
     <Pressable
       onPress={() => onOpen(item.id)}
+      onLayout={(event) => {
+        const nextWidth = Math.round(event.nativeEvent.layout.width);
+        setCardWidth((current) => current === nextWidth ? current : nextWidth);
+      }}
       style={({ pressed }) => [
         styles.listCard,
+        compact && styles.listCardCompact,
         pressed && styles.listCardPressed,
       ]}
     >
-      <View style={styles.listCardIcon}>
-        <Ionicons name="basket-outline" size={23} color={COLORS.primary} />
-      </View>
+      <View style={styles.listCardTopRow}>
+        <View style={[styles.listCardIcon, compact && styles.listCardIconCompact]}>
+          <Ionicons name="basket-outline" size={23} color={COLORS.primary} />
+        </View>
 
-      <View style={styles.listCardContent}>
-        <View style={styles.listNameRow}>
-          <Text style={styles.listName} numberOfLines={1}>
+        <View style={styles.listCardContent}>
+          <Text style={styles.listName} numberOfLines={compact ? 2 : 1}>
             {item.name || "Lista sin nombre"}
           </Text>
-
-          <CurrencyBadge currency={currency} size="sm" />
+          {!compact && metadata}
         </View>
 
-        <View style={styles.listMetadata}>
-          <View style={styles.productCount}>
-            <Ionicons name="cube-outline" size={14} color={COLORS.textMuted} />
-
-            <Text style={styles.productCountText}>
-              {itemCount} {itemCount === 1 ? "producto" : "productos"}
-            </Text>
-          </View>
-
-          <DatePill
-            date={item.createdAt}
-            fallback="Sin fecha"
-            icon="calendar-outline"
-          />
+        <View style={styles.listCardActions}>
+          <CurrencyBadge currency={currency} size="sm" />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Opciones de la lista"
+            hitSlop={8}
+            onPress={(event) => {
+              event.stopPropagation?.();
+              onOpenMenu(item);
+            }}
+            style={({ pressed }) => [
+              styles.menuButton,
+              pressed && styles.menuButtonPressed,
+            ]}
+          >
+            <Ionicons name="ellipsis-horizontal" size={21} color={COLORS.textMuted} />
+          </Pressable>
         </View>
       </View>
-
-      <Pressable
-        hitSlop={10}
-        onPress={(event) => {
-          event.stopPropagation?.();
-          onOpenMenu(item);
-        }}
-        style={({ pressed }) => [
-          styles.menuButton,
-          pressed && styles.menuButtonPressed,
-        ]}
-      >
-        <Ionicons
-          name="ellipsis-horizontal"
-          size={21}
-          color={COLORS.textMuted}
-        />
-      </Pressable>
+      {compact && metadata}
     </Pressable>
   );
 }
@@ -1286,21 +1295,26 @@ const styles = StyleSheet.create({
     minHeight: 92,
     marginBottom: 10,
     padding: 13,
-    flexDirection: "row",
-    alignItems: "center",
     backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 18,
   },
 
+  listCardCompact: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+
+  listCardTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+  },
+
   listCardPressed: {
     backgroundColor: COLORS.surfaceMuted,
-    transform: [
-      {
-        scale: 0.993,
-      },
-    ],
+    transform: [{ scale: 0.993 }],
   },
 
   listCardIcon: {
@@ -1311,6 +1325,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: COLORS.primarySoft,
     borderRadius: 15,
+    flexShrink: 0,
+  },
+
+  listCardIconCompact: {
+    width: 44,
+    height: 44,
+    marginRight: 10,
   },
 
   listCardContent: {
@@ -1318,18 +1339,20 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 
-  listNameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-
   listName: {
-    flex: 1,
     minWidth: 0,
     color: COLORS.text,
     fontSize: 16,
     fontWeight: "800",
+    flexShrink: 1,
+  },
+
+  listCardActions: {
+    marginLeft: 8,
+    alignItems: "flex-end",
+    justifyContent: "center",
+    flexShrink: 0,
+    gap: 4,
   },
 
   listMetadata: {
@@ -1340,9 +1363,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 
+  listMetadataCompact: {
+    marginTop: 10,
+    paddingLeft: 0,
+  },
+
   productCount: {
     flexDirection: "row",
     alignItems: "center",
+    flexShrink: 0,
   },
 
   productCountText: {
@@ -1354,8 +1383,7 @@ const styles = StyleSheet.create({
 
   menuButton: {
     width: 38,
-    height: 38,
-    marginLeft: 7,
+    height: 32,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 12,

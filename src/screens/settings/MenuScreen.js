@@ -1078,6 +1078,10 @@ export default function MenuScreen({ navigation }) {
     navigation.navigate(ROUTES.PROFILE);
   };
 
+  const goToAdminGuestFeatures = () => {
+    navigation.navigate(ROUTES.ADMIN_GUEST_FEATURES);
+  };
+
   const goToAdminUsers = () => {
     navigation.navigate(ROUTES.ADMIN_USERS);
   };
@@ -1671,6 +1675,14 @@ export default function MenuScreen({ navigation }) {
                   subtitle="Asignar roles, bloquear cuentas y conceder utilidades"
                   badge="ADMIN"
                   onPress={goToAdminUsers}
+                />
+
+                <SettingsCard
+                  icon="options-outline"
+                  title="Funcionalidades del invitado"
+                  subtitle="Elegir las herramientas visibles sin iniciar sesión en este dispositivo"
+                  badge="ADMIN"
+                  onPress={goToAdminGuestFeatures}
                 />
 
                 <SettingsCard
