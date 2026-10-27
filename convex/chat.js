@@ -255,9 +255,6 @@ export const sendMessage = mutation({
       throw new Error("No se pudo identificar este dispositivo.");
 
     const now = Date.now();
-    const previous = await ctx.db.query("chatPlaylistShares").withIndex("by_sender",q=>q.eq("senderId",userId)).take(30);
-    if (previous.filter(s => s.expiresAt > now).length >= 5)
-      throw new Error("Máximo cinco playlists compartidas activas. Espera a que caduquen.");
     const messageId = await ctx.db.insert("chatMessages", {
       userId: viewer.ownerId,
       room,
@@ -388,9 +385,6 @@ export const createCustomYouTubePlaylist = mutation({
       };
     });
     const now = Date.now();
-    const previous = await ctx.db.query("chatPlaylistShares").withIndex("by_sender",q=>q.eq("senderId",userId)).take(30);
-    if (previous.filter(s => s.expiresAt > now).length >= 5)
-      throw new Error("Máximo cinco playlists compartidas activas. Espera a que caduquen.");
     const messageId = await ctx.db.insert("chatMessages", {
       userId: viewer.ownerId,
       room: "youtube",
