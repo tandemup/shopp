@@ -9,6 +9,7 @@ import React, {
 import {
   FlatList,
   Image,
+  Linking,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -49,6 +50,9 @@ const ROOMS = [
 const MAX_MESSAGE_LENGTH = 280;
 const MAX_YOUTUBE_MESSAGE_LENGTH = 2048;
 const MAX_IMAGES = 8;
+const MAX_FILES = 4;
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const FILE_TYPES = { zip: "application/zip", json: "application/json" };
 const CHAT_IMAGE_MAX_DIMENSION = 2560;
 const CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const CHAT_CLIENT_ID_KEY = "shopp-chat-client-id";
@@ -257,6 +261,7 @@ function Message({
       ? item.images.map((image) => image?.uri).filter(Boolean)
       : [],
   };
+  const attachedFiles = Array.isArray(item.files) ? item.files : [];
   const youtubeMedia = useMemo(() => {
     const youtubeUrl = extractUrlsFromText(content.text).find(
       (url) => parseYouTubeUrl(url).isValid,
@@ -344,6 +349,27 @@ function Message({
                   style={styles.messageImageFill}
                   resizeMode="cover"
                 />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        {attachedFiles.length > 0 ? (
+          <View style={{ gap: 7, marginTop: 8 }}>
+            {attachedFiles.map((file, index) => (
+              <Pressable
+                key={`${item._id}-file-${index}`}
+                onPress={() => file.uri && Linking.openURL(file.uri).catch(() => safeAlert("Archivo", "No se pudo abrir el archivo."))}
+                disabled={!file.uri}
+                accessibilityRole="link"
+                accessibilityLabel={`${language === "en" ? "Download" : "Descargar"} ${file.name}`}
+                style={{ flexDirection: "row", gap: 10, alignItems: "center", padding: 12, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", borderRadius: 12 }}
+              >
+                <Ionicons name="document-attach-outline" size={23} color="#2563eb" />
+                <View style={{ flex: 1 }}>
+                  <Text numberOfLines={2} style={{ fontWeight: "700", color: "#1e40af" }}>{file.name}</Text>
+                  <Text style={{ color: "#64748b", fontSize: 12 }}>{(file.size / 1048576).toFixed(2)} MB · {language === "en" ? "Open / download" : "Abrir / descargar"}</Text>
+                </View>
+                <Ionicons name="download-outline" size={21} color="#2563eb" />
               </Pressable>
             ))}
           </View>
@@ -719,6 +745,7 @@ export default function ChatScreen() {
   const [chatClientId] = useState(getOrCreateChatClientId);
   const [input, setInput] = useState("");
   const [selectedImages, setSelectedImages] = useState([]);
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [sending, setSending] = useState(false);
   const [deletingMessageId, setDeletingMessageId] = useState(null);
   const [expandedImageUri, setExpandedImageUri] = useState(null);
@@ -838,7 +865,7 @@ export default function ChatScreen() {
   const messageLengthLimit =
     room === "youtube" ? MAX_YOUTUBE_MESSAGE_LENGTH : MAX_MESSAGE_LENGTH;
   const canSend =
-    Boolean(cleanInput || selectedImages.length) &&
+    Boolean(cleanInput || selectedImages.length || selectedFiles.length) &&
     cleanInput.length <= messageLengthLimit &&
     !sending;
   const playlistCanSave =
@@ -911,6 +938,31 @@ export default function ChatScreen() {
       safeAlert("Imágenes", error?.message || "No se pudieron preparar las imágenes.");
     }
   }, []);
+
+  const handlePickFiles = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/zip", "application/x-zip-compressed", "application/json", "text/json", "application/octet-stream", "*/*"],
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const prepared = [];
+      for (const asset of result.assets) {
+        const name = String(asset.name || "").split(/[\\/]/).pop();
+        const ext = name?.split(".").pop()?.toLowerCase();
+        if (!FILE_TYPES[ext]) throw new Error("Solo se permiten archivos ZIP y JSON.");
+        if (!asset.uri) throw new Error("No se pudo leer el archivo seleccionado.");
+        const size = asset.size ?? (await (await fetch(asset.uri)).blob()).size;
+        if (!size || size > MAX_FILE_BYTES) throw new Error(`El archivo ${name} supera el límite de 10 MB o está vacío.`);
+        prepared.push({ uri: asset.uri, name: name.slice(0, 160), mimeType: FILE_TYPES[ext], size });
+      }
+      if (selectedFiles.length + prepared.length > MAX_FILES) throw new Error("Máximo 4 archivos por mensaje.");
+      setSelectedFiles((current) => [...current, ...prepared].slice(0, MAX_FILES));
+    } catch (error) {
+      safeAlert("Adjuntos", error?.message || "No se pudo seleccionar el archivo.");
+    }
+  }, [selectedFiles.length]);
 
   const handleRemoveImage = useCallback((indexToRemove) => {
     setSelectedImages((current) =>
@@ -1208,6 +1260,21 @@ export default function ChatScreen() {
         });
       }
 
+      const uploadedFiles = [];
+      for (const file of selectedFiles) {
+        const blob = await (await fetch(file.uri)).blob();
+        if (!blob.size || blob.size > MAX_FILE_BYTES) throw new Error(`Archivo no válido: ${file.name}`);
+        const uploadUrl = await generateImageUploadUrl();
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": file.mimeType },
+          body: blob,
+        });
+        if (!response.ok) throw new Error(`Error subiendo ${file.name} (${response.status}).`);
+        const { storageId } = await response.json();
+        uploadedFiles.push({ storageId, name: file.name, mimeType: file.mimeType, size: blob.size });
+      }
+
       await sendMessage({
         room,
         username: cleanAlias,
@@ -1215,10 +1282,12 @@ export default function ChatScreen() {
         clientId: chatClientId,
         keepIndefinitely: true,
         images: uploadedImages.length ? uploadedImages : undefined,
+        files: uploadedFiles.length ? uploadedFiles : undefined,
       });
 
       setInput("");
       setSelectedImages([]);
+      setSelectedFiles([]);
 
       if (typeof requestAnimationFrame === "function") {
         requestAnimationFrame(() =>
@@ -1744,39 +1813,86 @@ export default function ChatScreen() {
           </View>
         ) : null}
 
+        {selectedFiles.length > 0 ? (
+          <View style={{ paddingHorizontal: 14, paddingVertical: 8, gap: 6 }}>
+            {selectedFiles.map((file, index) => (
+              <View key={`${file.name}-${index}`} style={{ flexDirection: "row", alignItems: "center", gap: 9, padding: 8, borderRadius: 9, backgroundColor: "#eff6ff" }}>
+                <Ionicons name="document-outline" size={19} color="#2563eb" />
+                <Text numberOfLines={1} style={{ flex: 1, color: "#1e40af" }}>{file.name}</Text>
+                <Pressable onPress={() => setSelectedFiles((current) => current.filter((_, i) => i !== index))} accessibilityLabel="Quitar archivo">
+                  <Ionicons name="close-circle" size={22} color="#64748b" />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
         <View style={styles.composer}>
           <Pressable
             onPress={handlePickImages}
             disabled={sending || selectedImages.length >= MAX_IMAGES}
-            style={styles.imageButton}
-            accessibilityLabel="Añadir imágenes"
+            style={({ pressed }) => [
+              styles.imageButton,
+              (sending || selectedImages.length >= MAX_IMAGES) && styles.attachmentDisabled,
+              pressed && styles.attachmentPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Seleccionar imágenes"
           >
-            <Ionicons name="image-outline" size={23} color="#2563eb" />
+            <Ionicons name="images-outline" size={25} color="#2563eb" />
           </Pressable>
-          <TextInput
-            value={input}
-            onChangeText={(value) =>
-              setInput(value.slice(0, messageLengthLimit))
-            }
-            placeholder={
-              room === "youtube"
-                ? "Pega un vídeo o playlist de YouTube…"
-                : "Escribe un mensaje…"
-            }
-            style={styles.messageInput}
-            multiline
-            maxLength={messageLengthLimit}
-          />
+
+          <View style={styles.composerInputShell}>
+            <TextInput
+              value={input}
+              onChangeText={(value) =>
+                setInput(value.slice(0, messageLengthLimit))
+              }
+              placeholder={
+                room === "youtube"
+                  ? "Pega un vídeo o playlist de YouTube…"
+                  : "Escribe un mensaje…"
+              }
+              placeholderTextColor="#94a3b8"
+              style={styles.messageInput}
+              multiline
+              maxLength={messageLengthLimit}
+              accessibilityLabel="Texto del mensaje"
+            />
+            <View style={styles.composerTools}>
+              <Pressable
+                onPress={() => setInput((current) => (current + " 😊").slice(0, messageLengthLimit))}
+                disabled={sending || input.length >= messageLengthLimit - 2}
+                style={styles.composerToolButton}
+                accessibilityRole="button"
+                accessibilityLabel="Insertar emoticono"
+              >
+                <Ionicons name="happy-outline" size={22} color="#64748b" />
+              </Pressable>
+              <View style={styles.composerToolDivider} />
+              <Pressable
+                onPress={handlePickFiles}
+                disabled={sending || selectedFiles.length >= MAX_FILES}
+                style={styles.composerToolButton}
+                accessibilityRole="button"
+                accessibilityLabel="Adjuntar ZIP o JSON"
+              >
+                <Ionicons name="attach-outline" size={23} color="#64748b" />
+              </Pressable>
+            </View>
+          </View>
           <Pressable
             onPress={handleSend}
             disabled={!canSend}
+            accessibilityRole="button"
+            accessibilityLabel="Enviar mensaje"
             style={({ pressed }) => [
               styles.sendButton,
               !canSend && styles.sendButtonDisabled,
               pressed && canSend && styles.sendButtonPressed,
             ]}
           >
-            <Ionicons name="send" size={18} color="#ffffff" />
+            <Ionicons name="send" size={23} color="#ffffff" />
           </Pressable>
         </View>
 
@@ -2891,48 +3007,85 @@ const styles = StyleSheet.create({
   },
   composer: {
     flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 8,
-    paddingHorizontal: 10,
-    paddingTop: 9,
-    paddingBottom: 5,
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 7,
     backgroundColor: "#fff",
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#d1d5db",
+    borderTopColor: "#e2e8f0",
   },
   imageButton: {
-    width: 42,
-    height: 42,
+    width: 56,
+    height: 56,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#eff6ff",
+    borderWidth: 1,
+    borderColor: "#dbeafe",
+    ...Platform.select({ web: { boxShadow: "0px 3px 12px rgba(37,99,235,0.09)" }, default: { elevation: 2 } }),
+  },
+  attachmentDisabled: { opacity: 0.45 },
+  attachmentPressed: { backgroundColor: "#dbeafe" },
+  composerInputShell: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#f8fbff",
+    ...Platform.select({ web: { boxShadow: "0px 2px 9px rgba(37,99,235,0.07)" }, default: {} }),
   },
   messageInput: {
     flex: 1,
-    minHeight: 42,
-    maxHeight: 120,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 10,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "#fff",
+    minWidth: 0,
+    minHeight: 54,
+    maxHeight: 125,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
     fontSize: 15,
-    color: "#111827",
+    color: "#0f172a",
+    textAlignVertical: "center",
+    ...Platform.select({ web: { outlineStyle: "none" }, default: {} }),
+  },
+  composerTools: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: 8,
+    gap: 2,
+  },
+  composerToolButton: {
+    minWidth: 34,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  composerToolDivider: {
+    width: 1,
+    height: 24,
+    marginHorizontal: 3,
+    backgroundColor: "#cbd5e1",
   },
   sendButton: {
-    width: 42,
-    height: 42,
+    width: 56,
+    height: 56,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#2563eb",
+    ...Platform.select({ web: { boxShadow: "0px 3px 12px rgba(37,99,235,0.21)" }, default: { elevation: 3 } }),
   },
-  sendButtonDisabled: { backgroundColor: "#9ca3af" },
+  sendButtonDisabled: { backgroundColor: "#94a3b8" },
   sendButtonPressed: { opacity: 0.8 },
   footer: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingBottom: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
     backgroundColor: "#fff",
   },
   counter: { fontSize: 10, color: "#9ca3af" },

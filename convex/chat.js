@@ -109,6 +109,12 @@ function isOwnedBy(message, ownerId) {
 async function withImageUrls(ctx, message) {
   return {
     ...message,
+    files: message.files
+      ? await Promise.all(message.files.map(async (file) => ({
+          ...file,
+          uri: await ctx.storage.getUrl(file.storageId),
+        })))
+      : undefined,
     images: message.images
       ? await Promise.all(
           message.images.map(async (image) => ({
@@ -222,6 +228,12 @@ export const sendMessage = mutation({
         }),
       ),
     ),
+    files: v.optional(v.array(v.object({
+      storageId: v.id("_storage"),
+      name: v.string(),
+      mimeType: v.string(),
+      size: v.number(),
+    }))),
     product: v.optional(
       v.object({
         barcode: v.string(),
@@ -239,6 +251,20 @@ export const sendMessage = mutation({
     const username = cleanUsername(args.username);
     const text = cleanText(args.text);
     const images = Array.isArray(args.images) ? args.images : [];
+    const files = Array.isArray(args.files) ? args.files : [];
+    if (files.length > 4) throw new Error("Máximo 4 archivos por mensaje.");
+    for (const file of files) {
+      const extension = file.name?.split(".").pop()?.toLowerCase();
+      const expectedMime = extension === "zip" ? "application/zip" : extension === "json" ? "application/json" : null;
+      if (!expectedMime || file.mimeType !== expectedMime || !file.name || file.name.length > 160 ||
+          !Number.isFinite(file.size) || file.size <= 0 || file.size > 10 * 1024 * 1024) {
+        throw new Error("Archivo no válido: solo ZIP y JSON hasta 10 MB.");
+      }
+      const metadata = await ctx.storage.getMetadata(file.storageId);
+      if (!metadata || metadata.size !== file.size || metadata.contentType !== expectedMime) {
+        throw new Error("El archivo almacenado no coincide con sus metadatos.");
+      }
+    }
     if (images.length > 8) throw new Error("Máximo 8 imágenes por mensaje.");
     for (const image of images) {
       if (image.mimeType !== "image/jpeg" || image.size > 10 * 1024 * 1024 || image.size <= 0 ||
@@ -253,7 +279,7 @@ export const sendMessage = mutation({
     const messageLengthLimit =
       room === "youtube" ? MAX_YOUTUBE_MESSAGE_LENGTH : MAX_MESSAGE_LENGTH;
 
-    if (!text && images.length === 0)
+    if (!text && images.length === 0 && files.length === 0)
       throw new Error("El mensaje no puede estar vacío.");
     if (text.length > messageLengthLimit) {
       throw new Error(
@@ -272,6 +298,7 @@ export const sendMessage = mutation({
       username,
       text,
       images: images.length > 0 ? images : undefined,
+      files: files.length > 0 ? files : undefined,
       product: args.product,
       createdAt: now,
       expiresAt: args.keepIndefinitely ? undefined : now + MESSAGE_TTL_MS,
@@ -707,6 +734,11 @@ export const deleteMessage = mutation({
 
     if (viewer.isAdmin) {
       // El administrador realiza un borrado definitivo, también de los adjuntos.
+      for (const file of message.files || []) {
+        try { await ctx.storage.delete(file.storageId); } catch (error) {
+          console.warn("[chat] attached file cleanup failed", error);
+        }
+      }
       if (Array.isArray(message.images)) {
         for (const image of message.images) {
           try {
@@ -765,6 +797,11 @@ export const deleteExpiredMessages = internalMutation({
       .collect();
 
     for (const message of expired) {
+      for (const file of message.files || []) {
+        try { await ctx.storage.delete(file.storageId); } catch (error) {
+          console.warn("[chat] expired file cleanup failed", error);
+        }
+      }
       if (Array.isArray(message.images)) {
         for (const image of message.images) {
           try {
