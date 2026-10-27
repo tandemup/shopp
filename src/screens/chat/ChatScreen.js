@@ -49,6 +49,8 @@ const ROOMS = [
 const MAX_MESSAGE_LENGTH = 280;
 const MAX_YOUTUBE_MESSAGE_LENGTH = 2048;
 const MAX_IMAGES = 8;
+const CHAT_IMAGE_MAX_DIMENSION = 2560;
+const CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const CHAT_CLIENT_ID_KEY = "shopp-chat-client-id";
 
 function createChatClientId() {
@@ -870,46 +872,43 @@ export default function ChatScreen() {
       });
       if (result.canceled || !result.assets?.length) return;
 
-      const resizedImages = await Promise.all(
+      // Las miniaturas se muestran por CSS; el fichero enviado mantiene hasta
+      // 2560 px en su lado mayor. Reconversión JPEG elimina EXIF (incluido GPS).
+      const preparedImages = await Promise.all(
         result.assets.slice(0, MAX_IMAGES).map(async (asset) => {
           if (!asset.uri) return null;
-          const resize =
-            asset.width > asset.height ? { width: 256 } : { height: 256 };
-          const actions =
-            Math.max(asset.width || 0, asset.height || 0) > 256
-              ? [{ resize }]
-              : [];
-          const resized = await ImageManipulator.manipulateAsync(
+          const longest = Math.max(asset.width || 0, asset.height || 0);
+          const actions = longest > CHAT_IMAGE_MAX_DIMENSION
+            ? [{ resize: asset.width >= asset.height
+                ? { width: CHAT_IMAGE_MAX_DIMENSION }
+                : { height: CHAT_IMAGE_MAX_DIMENSION } }]
+            : [];
+          const prepared = await ImageManipulator.manipulateAsync(
             asset.uri,
             actions,
-            {
-              compress: 0.72,
-              format: ImageManipulator.SaveFormat.JPEG,
-              base64: true,
-            },
+            { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG },
           );
-          if (!resized.uri) return null;
-
-          const base64Length = resized.base64?.length || 0;
-          const approximateSize = base64Length
-            ? Math.ceil((base64Length * 3) / 4)
-            : 0;
-
+          if (!prepared.uri) return null;
+          const blob = await (await fetch(prepared.uri)).blob();
+          if (blob.size > CHAT_IMAGE_MAX_BYTES) {
+            throw new Error(`Una imagen supera el límite de 10 MB (${Math.ceil(blob.size / 1048576)} MB).`);
+          }
           return {
-            uri: resized.uri,
-            width: resized.width || 256,
-            height: resized.height || 256,
+            uri: prepared.uri,
+            width: prepared.width || asset.width || 1,
+            height: prepared.height || asset.height || 1,
             mimeType: "image/jpeg",
-            size: approximateSize,
+            size: blob.size,
           };
         }),
       );
 
       setSelectedImages((current) =>
-        [...current, ...resizedImages.filter(Boolean)].slice(0, MAX_IMAGES),
+        [...current, ...preparedImages.filter(Boolean)].slice(0, MAX_IMAGES),
       );
     } catch (error) {
       console.error("[Chat] No se pudieron seleccionar las imágenes:", error);
+      safeAlert("Imágenes", error?.message || "No se pudieron preparar las imágenes.");
     }
   }, []);
 
@@ -1180,6 +1179,10 @@ export default function ChatScreen() {
         const imageResponse = await fetch(image.uri);
         const blob = await imageResponse.blob();
 
+        if (blob.size > CHAT_IMAGE_MAX_BYTES) {
+          throw new Error("La imagen supera los 10 MB permitidos.");
+        }
+
         const uploadResponse = await fetch(uploadUrl, {
           method: "POST",
           headers: {
@@ -1224,10 +1227,7 @@ export default function ChatScreen() {
       }
     } catch (error) {
       console.error("[Chat] No se pudo enviar el mensaje:", error);
-      safeAlert(
-        "No se pudo enviar el mensaje",
-        error?.message || "Comprueba la conexión e inténtalo de nuevo.",
-      );
+      safeAlert("Chat", error?.message || "No se pudo enviar el mensaje.");
     } finally {
       setSending(false);
     }

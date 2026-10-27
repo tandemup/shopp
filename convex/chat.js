@@ -239,6 +239,17 @@ export const sendMessage = mutation({
     const username = cleanUsername(args.username);
     const text = cleanText(args.text);
     const images = Array.isArray(args.images) ? args.images : [];
+    if (images.length > 8) throw new Error("Máximo 8 imágenes por mensaje.");
+    for (const image of images) {
+      if (image.mimeType !== "image/jpeg" || image.size > 10 * 1024 * 1024 || image.size <= 0 ||
+          image.width < 1 || image.height < 1 || image.width > 2560 || image.height > 2560) {
+        throw new Error("Imagen no válida: solo JPEG, hasta 2560 px y 10 MB.");
+      }
+      const stored = await ctx.storage.getMetadata(image.storageId);
+      if (!stored || stored.size > 10 * 1024 * 1024 || stored.contentType !== "image/jpeg") {
+        throw new Error("Archivo de imagen no válido en el almacenamiento.");
+      }
+    }
     const messageLengthLimit =
       room === "youtube" ? MAX_YOUTUBE_MESSAGE_LENGTH : MAX_MESSAGE_LENGTH;
 
@@ -385,6 +396,9 @@ export const createCustomYouTubePlaylist = mutation({
       };
     });
     const now = Date.now();
+    const previous = await ctx.db.query("chatPlaylistShares").withIndex("by_sender",q=>q.eq("senderId",userId)).take(30);
+    if (previous.filter(s => s.expiresAt > now).length >= 5)
+      throw new Error("Máximo cinco playlists compartidas activas. Espera a que caduquen.");
     const messageId = await ctx.db.insert("chatMessages", {
       userId: viewer.ownerId,
       room: "youtube",
