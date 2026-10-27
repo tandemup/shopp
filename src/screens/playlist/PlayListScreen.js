@@ -52,6 +52,15 @@ const normalizeSearchText = (value) =>
     .toLowerCase()
     .trim();
 
+// A "Parte 01" title is a reversible grouping convention: no storage/schema
+// migration and no modification to the existing individual playlist records.
+const getMultipartCollection = (title) => {
+  const value = String(title || "").trim();
+  const match = value.match(/^(.*?)\s*[·—–-]\s*Parte\s+(\d{1,3})(?:\s*\([^)]*\))?\s*$/i);
+  if (!match || !match[1].trim()) return null;
+  return { title: match[1].trim(), part: Number(match[2]) };
+};
+
 const initialTracks = () => {
   const first = {
     kind: "single",
@@ -723,6 +732,43 @@ export default function PlayListScreen({ guestMode = false }) {
       return searchTerms.every((term) => text.includes(term));
     });
   }, [playlists, searchTerms]);
+
+  // Only group playlists with matching numbered titles (at least two parts).
+  // The underlying playlists remain independent for playback, editing, P2P
+  // sharing and export; this is strictly a presentation layer.
+  const [expandedCollections, setExpandedCollections] = useState({});
+  const collectionRows = useMemo(() => {
+    if (isTutorialStyle) return filteredPlaylists.map(item => ({ type: "playlist", item, key: String(item._id) }));
+    const groups = new Map();
+    filteredPlaylists.forEach((item) => {
+      const info = getMultipartCollection(item.title);
+      if (!info) return;
+      const key = normalizeSearchText(info.title);
+      if (!groups.has(key)) groups.set(key, { title: info.title, parts: [] });
+      groups.get(key).parts.push({ item, part: info.part });
+    });
+    const rows = [];
+    const handled = new Set();
+    filteredPlaylists.forEach((item) => {
+      const info = getMultipartCollection(item.title);
+      const key = info && normalizeSearchText(info.title);
+      const group = key ? groups.get(key) : null;
+      if (!group || group.parts.length < 2) {
+        rows.push({ type: "playlist", item, key: String(item._id) });
+        return;
+      }
+      if (handled.has(key)) return;
+      handled.add(key);
+      const ordered = [...group.parts].sort((a, b) => a.part - b.part);
+      const count = ordered.reduce((total, part) => total + (part.item.tracks?.length || 0), 0);
+      rows.push({ type: "group", key: `group:${key}`, groupKey: key, title: group.title, count, parts: ordered.length });
+      // Search results show their matching playlists immediately.
+      if (expandedCollections[key] || searchTerms.length) {
+        ordered.forEach(part => rows.push({ type: "playlist", item: part.item, key: String(part.item._id), nested: true }));
+      }
+    });
+    return rows;
+  }, [filteredPlaylists, isTutorialStyle, expandedCollections, searchTerms.length]);
 
   useEffect(() => {
     setSearchText("");
@@ -1883,18 +1929,33 @@ export default function PlayListScreen({ guestMode = false }) {
         </View>
       ) : (
         <FlatList
-          data={filteredPlaylists}
+          data={collectionRows}
           ListHeaderComponent={searchHeader}
           keyboardShouldPersistTaps="handled"
-          keyExtractor={(item) => item._id}
+          keyExtractor={(row) => row.key}
           contentContainerStyle={[
             styles.list,
             narrowMobile && styles.listPhone,
             !filteredPlaylists.length && styles.emptyList,
           ]}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-          renderItem={({ item }) => (
-            <View style={styles.playerCard}>
+          renderItem={({ item: row }) => row.type === "group" ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${row.title}, ${row.parts} partes, ${row.count} pistas`}
+              accessibilityState={{ expanded: Boolean(expandedCollections[row.groupKey] || searchTerms.length) }}
+              onPress={() => setExpandedCollections(current => ({ ...current, [row.groupKey]: !current[row.groupKey] }))}
+              style={styles.multipartCollectionHeader}
+            >
+              <Ionicons name="albums-outline" size={30} color="#2563eb" />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.multipartCollectionTitle} numberOfLines={2}>{row.title}</Text>
+                <Text style={styles.multipartCollectionSubtitle}>{row.parts} partes · {row.count} pistas</Text>
+              </View>
+              <Ionicons name={expandedCollections[row.groupKey] || searchTerms.length ? "chevron-up" : "chevron-down"} size={24} color="#334155" />
+            </Pressable>
+          ) : ((item) => (
+            <View style={[styles.playerCard, row.nested && styles.multipartNestedCard]}>
               <CustomYouTubePlaylistPlayer
                 playlist={item}
                 isClassical={isClassical}
@@ -1943,7 +2004,7 @@ export default function PlayListScreen({ guestMode = false }) {
                 onReorder={(nextTracks) => reorderPlaylist(item, nextTracks)}
               />
             </View>
-          )}
+          ))(row.item)}
           ListEmptyComponent={
             searchTerms.length ? (
               <View style={styles.empty}>
@@ -2948,6 +3009,14 @@ const styles = StyleSheet.create({
   list: { width: "100%", maxWidth: 760, alignSelf: "center", padding: 14 },
   listPhone: { paddingHorizontal: 10, paddingTop: 12, paddingBottom: 30 },
   playerCard: { alignItems: "center" },
+  multipartNestedCard: { marginLeft: 12, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: "#bfdbfe" },
+  multipartCollectionHeader: {
+    flexDirection: "row", alignItems: "center", gap: 14,
+    borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff",
+    borderRadius: 16, paddingVertical: 16, paddingHorizontal: 18,
+  },
+  multipartCollectionTitle: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
+  multipartCollectionSubtitle: { marginTop: 5, fontSize: 13, color: "#475569" },
   emptyList: { flexGrow: 1 },
   empty: { alignItems: "center", padding: 24 },
   emptyTitle: {

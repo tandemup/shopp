@@ -334,6 +334,12 @@ export default defineSchema({
         }),
       ),
     ),
+    files: v.optional(v.array(v.object({
+      storageId: v.id("_storage"),
+      name: v.string(),
+      mimeType: v.string(),
+      size: v.float64(),
+    }))),
     product: v.optional(
       v.object({
         barcode: v.string(),
