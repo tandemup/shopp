@@ -13,12 +13,13 @@ const ITEMS = [
 export default function GuestFeaturesScreen({ value, onChange }) {
   const toggle = (id) => {
     const next = { ...value, [id]: !value[id] };
+    if (!["compras", "alimentos", "musica"].some(key => next[key])) return;
     onChange(next);
   };
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Mis funcionalidades</Text>
-      <Text style={styles.intro}>Elige las herramientas que quieres ver. Puedes cambiar la selección cuando quieras y no se borrarán tus datos.</Text>
+      <Text style={styles.title}>Funcionalidades del invitado</Text>
+      <Text style={styles.intro}>Configura las herramientas visibles en el modo invitado de este dispositivo. Los datos no se borrarán al ocultar una herramienta.</Text>
       {ITEMS.map(item => (
         <Pressable
           key={item.id}
@@ -36,7 +37,7 @@ export default function GuestFeaturesScreen({ value, onChange }) {
           {item.available ? <Ionicons name={value[item.id] ? "checkbox" : "square-outline"} size={27} color="#2563eb" /> : <Text style={styles.soon}>Próximamente</Text>}
         </Pressable>
       ))}
-      <Text style={styles.note}>Tus preferencias se guardan en este dispositivo. Compras, Recetas y Music Playlist disponibles sin iniciar sesión.</Text>
+      <Text style={styles.note}>La configuración se guarda únicamente en este dispositivo. No modifica los permisos de usuarios registrados.</Text>
     </ScrollView>
   );
 }

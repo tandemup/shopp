@@ -8,6 +8,7 @@ import { DEFAULT_HEADER_OPTIONS } from "@/src/utils/layout/headerStyles";
 import MenuScreen from "@/src/screens/settings/MenuScreen";
 import ProfileScreen from "@/src/screens/profile/ProfileScreen";
 import AdminUsersScreen from "@/src/screens/admin/AdminUsersScreen";
+import AdminGuestFeaturesScreen from "@/src/screens/admin/AdminGuestFeaturesScreen";
 import BarcodeSettingsScreen from "@/src/screens/settings/BarcodeSettingsScreen";
 import SearchEngines from "@/src/screens/settings/SearchEngines";
 import AdminStoreRequestsScreen from "@/src/screens/admin/AdminStoreRequestsScreen";
@@ -39,6 +40,12 @@ export default function MenuStack() {
         name={ROUTES.ADMIN_USERS}
         component={AdminUsersScreen}
         options={{ title: "Administrar usuarios" }}
+      />
+
+      <Stack.Screen
+        name={ROUTES.ADMIN_GUEST_FEATURES}
+        component={AdminGuestFeaturesScreen}
+        options={{ title: "Funcionalidades del invitado" }}
       />
 
       <Stack.Screen
