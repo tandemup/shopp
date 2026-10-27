@@ -141,10 +141,32 @@ export default function PublicMusicCardScreen() {
   const [lyricsError, setLyricsError] = useState("");
   const [youtubeClockReceived, setYoutubeClockReceived] = useState(false);
   const lyricsDebug = getCardQuery()?.get("debugLrc") === "1";
+  // Las tarjetas públicas se abren en una columna sin mostrar el selector.
+  // Se respetan los enlaces con ?view=... y las preferencias del navegador.
   const [viewMode, setViewMode] = useState(() => {
     const mode = getCardQuery()?.get("view");
-    return ["simple", "complete", "app-one", "app-two"].includes(mode) ? mode : "simple";
+    const valid = ["simple", "complete", "app-one", "app-two"];
+    if (valid.includes(mode)) return mode;
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      try {
+        const saved = window.localStorage.getItem("shopp-public-player-view");
+        if (valid.includes(saved)) return saved;
+      } catch { /* Almacenamiento no disponible: usar predeterminado. */ }
+    }
+    return "app-one";
   });
+  const [showViewSettings, setShowViewSettings] = useState(false);
+  const selectViewMode = (value) => {
+    setViewMode(value);
+    setShowViewSettings(false);
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      try { window.localStorage.setItem("shopp-public-player-view", value); } catch { /* Modo privado. */ }
+      // Conservar el cambio en la URL para poder compartir esta vista concreta.
+      const url = new URL(window.location.href);
+      url.searchParams.set("view", value);
+      window.history.replaceState(null, "", url.toString());
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -397,41 +419,39 @@ export default function PublicMusicCardScreen() {
           </View>
         ) : (
           <>
-            <View style={[styles.header, isMobile && styles.headerMobile]}>
-              <Text style={styles.eyebrow}>{data.tracks.length > 1 ? "PLAYLIST COMPARTIDA" : "VÍDEO COMPARTIDO"}</Text>
-              <Text style={styles.title}>{data.title}</Text>
-              {data.author ? <Text style={styles.author}>{data.author}</Text> : null}
-              <Text style={styles.trackCount}>{data.tracks.length} {data.tracks.length === 1 ? "vídeo" : "vídeos"}</Text>
+            <View style={styles.publicHeaderRow}>
+              <View style={[styles.header, styles.publicHeaderContent, isMobile && styles.headerMobile]}>
+                <Text style={styles.eyebrow}>{data.tracks.length > 1 ? "PLAYLIST COMPARTIDA" : "VÍDEO COMPARTIDO"}</Text>
+                <Text style={styles.title}>{data.title}</Text>
+                {data.author ? <Text style={styles.author}>{data.author}</Text> : null}
+                <Text style={styles.trackCount}>{data.tracks.length} {data.tracks.length === 1 ? "vídeo" : "vídeos"}</Text>
+              </View>
+              <Pressable
+                onPress={() => setShowViewSettings((open) => !open)}
+                accessibilityRole="button"
+                accessibilityLabel={showViewSettings ? "Ocultar opciones de visualización" : "Cambiar vista del reproductor"}
+                accessibilityState={{ expanded: showViewSettings }}
+                style={styles.viewSettingsToggle}>
+                <Ionicons name="options-outline" size={20} color="#64748b" />
+              </Pressable>
             </View>
 
-            <View style={[styles.modeSelector, isMobile && styles.modeSelectorMobile]}>
-              <Text style={styles.modeTitle}>Vista del reproductor público</Text>
-              <View style={styles.modeControlRow}>
-              <View style={styles.modeButtons}>
-                {[["simple", "Simplificado"], ["complete", "Completo"], ["app-one", "App · 1 col"], ["app-two", "App · 2 col"]].map(([value, label]) => (
-                  <Pressable key={value} accessibilityRole="radio"
-                    accessibilityState={{ selected: viewMode === value }}
-                    onPress={() => {
-                      setViewMode(value);
-                      if (Platform.OS === "web" && typeof window !== "undefined") {
-                        const url = new URL(window.location.href);
-                        url.searchParams.set("view", value);
-                        window.history.replaceState(null, "", url.toString());
-                      }
-                    }}
-                    style={[styles.modeButton, width < 620 && styles.modeButtonMobile, viewMode === value && styles.modeButtonActive]}>
-                    <Text style={[styles.modeButtonText, viewMode === value && styles.modeButtonTextActive]}>{label}</Text>
-                  </Pressable>
-                ))}
+            {showViewSettings ? (
+              <View style={[styles.modeSelector, isMobile && styles.modeSelectorMobile]}>
+                <Text style={styles.modeTitle}>Vista del reproductor público</Text>
+                <View style={styles.modeButtons}>
+                  {[["simple", "Simplificado"], ["complete", "Completo"], ["app-one", "App · 1 col"], ["app-two", "App · 2 col"]].map(([value, label]) => (
+                    <Pressable key={value} accessibilityRole="radio"
+                      accessibilityState={{ selected: viewMode === value }}
+                      onPress={() => selectViewMode(value)}
+                      style={[styles.modeButton, width < 620 && styles.modeButtonMobile, viewMode === value && styles.modeButtonActive]}>
+                      <Text style={[styles.modeButtonText, viewMode === value && styles.modeButtonTextActive]}>{label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={styles.modeHint}>Elige cómo mostrar el vídeo y la lista de canciones. La preferencia se recuerda en este navegador.</Text>
               </View>
-
-              </View>
-              <Text style={styles.modeHint}>{viewMode === "complete"
-                ? "Vídeo y lista de canciones, con selección de pistas."
-                : viewMode === "simple" ? "Reproductor sencillo, sin mostrar la lista de canciones."
-                : viewMode === "app-one" ? "Vista de Music Playlist: vídeo y lista en una columna."
-                : "Vista de Music Playlist: vídeo y lista en dos columnas (una en móviles)."}</Text>
-            </View>
+            ) : null}
             <View style={[
               styles.mainArea,
               (isWide && viewMode === "complete" || twoColumnApp) && styles.mainAreaWide,
@@ -660,6 +680,9 @@ const styles = StyleSheet.create({
   appPlaylistCentered: { width: "100%", maxWidth: 660 },
   appTrackRow: { backgroundColor: "#19191d", borderColor: "#34343a" },
   appTrackSelected: { backgroundColor: "#291522", borderColor: "#ec1680" },
+  publicHeaderRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  publicHeaderContent: { flex: 1, minWidth: 0 },
+  viewSettingsToggle: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff" },
   modeSelector: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12, padding: 9, marginBottom: 12, gap: 5 },
   modeTitle: { color: "#0f172a", fontSize: 13, fontWeight: "800" },
   modeButtons: { flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" },
