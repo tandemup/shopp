@@ -62,6 +62,11 @@ export default defineSchema({
     })),
   }).index("by_email", ["email"]),
 
+  publicGuestSettings: defineTable({
+    key: v.string(),
+    features: v.object({ compras: v.boolean(), alimentos: v.boolean(), musica: v.boolean() }),
+  }).index("by_key", ["key"]),
+
   products: defineTable({
     barcode: v.string(),
 

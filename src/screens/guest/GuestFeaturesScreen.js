@@ -10,7 +10,7 @@ const ITEMS = [
   { id: "musica", label: "Music Playlist", detail: "Playlists y letras guardadas en este dispositivo", icon: "musical-notes-outline", available: true },
 ];
 
-export default function GuestFeaturesScreen({ value, onChange }) {
+export default function GuestFeaturesScreen({ value, onChange, saving = false }) {
   const toggle = (id) => {
     const next = { ...value, [id]: !value[id] };
     if (!["compras", "alimentos", "musica"].some(key => next[key])) return;
@@ -19,13 +19,13 @@ export default function GuestFeaturesScreen({ value, onChange }) {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Funcionalidades del invitado</Text>
-      <Text style={styles.intro}>Configura las herramientas visibles en el modo invitado de este dispositivo. Los datos no se borrarán al ocultar una herramienta.</Text>
+      <Text style={styles.intro}>Configura las herramientas visibles en el modo invitado de todos los dispositivos. Los datos no se borrarán al ocultar una herramienta.</Text>
       {ITEMS.map(item => (
         <Pressable
           key={item.id}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: !!value[item.id], disabled: !item.available }}
-          disabled={!item.available}
+          disabled={!item.available || saving}
           onPress={() => toggle(item.id)}
           style={[styles.card, !item.available && styles.disabled]}
         >
@@ -37,7 +37,7 @@ export default function GuestFeaturesScreen({ value, onChange }) {
           {item.available ? <Ionicons name={value[item.id] ? "checkbox" : "square-outline"} size={27} color="#2563eb" /> : <Text style={styles.soon}>Próximamente</Text>}
         </Pressable>
       ))}
-      <Text style={styles.note}>La configuración se guarda únicamente en este dispositivo. No modifica los permisos de usuarios registrados.</Text>
+      <Text style={styles.note}>La configuración se guarda en Convex y se aplica a los invitados de todos los dispositivos conectados. No modifica los permisos de usuarios registrados.</Text>
     </ScrollView>
   );
 }
