@@ -1224,6 +1224,10 @@ export default function ChatScreen() {
       }
     } catch (error) {
       console.error("[Chat] No se pudo enviar el mensaje:", error);
+      safeAlert(
+        "No se pudo enviar el mensaje",
+        error?.message || "Comprueba la conexión e inténtalo de nuevo.",
+      );
     } finally {
       setSending(false);
     }
