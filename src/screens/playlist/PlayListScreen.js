@@ -32,6 +32,7 @@ import { savePlaylistArchive, savePublicMusicCardZip, savePublicWorksArchive } f
 import { readPlaylistImportAsset } from "@/src/services/playlistArchiveImport";
 import { validatePlaylistBackupV2, importPlaylistBackupV2 } from "@/src/services/playlistImportV2";
 import * as localRepo from "@/src/storage/playlists/playlistRepository";
+import MusicSyncPanel from "./MusicSyncPanel";
 import { importPlaylistsLocally } from "@/src/services/playlistLocalImport";
 import { videoIdFromTrack, youtubePlaylistIdFromTrack, publicIdForPlaylist, buildPlaylistCardUrl, buildPublicManifest, comparePublicPlaylist, getPublicManifestUrl } from "@/src/services/musicCardLinks";
 
@@ -470,6 +471,7 @@ export default function PlayListScreen({ guestMode = false }) {
       ? MAX_TUTORIAL_ITEMS
       : MAX_PLAYLIST_ITEMS;
   const [transferVisible, setTransferVisible] = useState(false);
+  const [musicSyncVisible, setMusicSyncVisible] = useState(false);
   const exportItemType = isNews
     ? "shopp-youtube-news-item"
     : isTutorials
@@ -1763,6 +1765,7 @@ export default function PlayListScreen({ guestMode = false }) {
 
   return (
     <SafeAreaView style={styles.screen}>
+      <MusicSyncPanel visible={musicSyncVisible} onClose={() => setMusicSyncVisible(false)} collection={collection} onImported={refreshLocalPlaylists} />
       <View style={[styles.header, compactHeader && styles.headerCompact, narrowMobile && styles.headerPhone]}>
         <View style={[styles.headerText, compactHeader && styles.headerTextCompact]}>
           <Text style={styles.heading}>{collectionTitle}</Text>
@@ -1783,6 +1786,12 @@ export default function PlayListScreen({ guestMode = false }) {
               <Text style={styles.newButtonText}>
                 {isNews ? "Añadir noticia" : isTutorials ? "Nuevo tutorial" : isClassical ? "Nueva colección" : "Nueva playlist"}
               </Text>
+            </Pressable>
+          ) : null}
+          {localMode && !guestMode && (isClassical || (!isNews && !isTutorials)) ? (
+            <Pressable onPress={() => setMusicSyncVisible(true)} accessibilityRole="button" style={styles.secondaryButton}>
+              <Ionicons name="cloud-outline" size={21} color="#2563eb" />
+              <Text style={styles.secondaryButtonText}>Sincronizar</Text>
             </Pressable>
           ) : null}
           {isTutorials ? (

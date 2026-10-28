@@ -268,6 +268,7 @@ export default defineSchema({
     collectionType: v.union(v.literal("playlist"), v.literal("classical")),
     revision: v.number(),
     snapshot: v.any(),
+    lyrics: v.optional(v.array(v.object({key:v.string(), record:v.any()}))),
     updatedAt: v.number(),
     deletedAt: v.optional(v.number()),
   }).index("by_owner_localId", ["ownerId", "localId"])
