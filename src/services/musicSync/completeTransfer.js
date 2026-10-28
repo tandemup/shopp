@@ -1,3 +1,4 @@
+import { assertMusicSyncPackage } from './packageValidation.mjs';
 // Fase 3: transferencia manual; nunca sobrescribe una playlist existente.
 import * as repository from '@/src/storage/playlists/playlistRepository';
 import { getLocalLyrics, getLyricsStorageKey } from '@/src/storage/lyricsStorage';
@@ -32,6 +33,7 @@ export async function buildCompleteSnapshot(id) {
   }
   const payload={schema:'shopp-music-sync-package',version:1,snapshot,lyrics};
   if (size(payload)>MAX_BYTES) throw new Error('Paquete demasiado grande: usar almacenamiento de archivos');
+  assertMusicSyncPackage({localId:id, collectionType:snapshot.collectionType, snapshot, lyrics});
   return payload;
 }
 
@@ -46,6 +48,7 @@ export async function uploadCompleteManual(client, api, id) {
 export async function previewRemoteComplete(client, api, localId) {
   const result=await client.query(api.musicSync.readSnapshot,{localId});
   if(!result) return null;
+  assertMusicSyncPackage({localId, collectionType:result.snapshot?.collectionType, snapshot:result.snapshot, lyrics:result.lyrics || []});
   const existing=await repository.get(localId);
   return {localId,revision:result.revision,existsLocally:!!existing,
     tracks:result.snapshot?.tracks?.length||0,lyrics:result.lyrics?.length||0,
@@ -56,5 +59,6 @@ export async function importNewRemoteManual(client, api, localId) {
   // Backup the device before invoking this method. Existing IDs cannot be replaced.
   const result=await client.query(api.musicSync.readSnapshot,{localId});
   if(!result) throw new Error('Playlist remota inexistente');
+  assertMusicSyncPackage({localId, collectionType:result.snapshot?.collectionType, snapshot:result.snapshot, lyrics:result.lyrics || []});
   return repository.importSyncedNew(result.snapshot,result.lyrics || []);
 }
