@@ -5,7 +5,8 @@ import { api } from '@/convex/_generated/api';
 import { I18nText as Text } from '@/src/i18n';
 import { safeAlert, safeConfirm } from '@/src/components/ui/alert/safeAlert';
 import { previewManualSync } from '@/src/services/musicSync/manualSync';
-import { uploadCompleteManual, previewRemoteComplete, importNewRemoteManual } from '@/src/services/musicSync/completeTransfer';
+import { uploadCompleteManual, previewRemoteComplete, importNewRemoteManual, buildCompleteSnapshot } from '@/src/services/musicSync/completeTransfer';
+import { comparePlaylistVersions } from '@/src/services/musicSync/compareVersions';
 
 // No automatic writes. Preview only, then explicit per-playlist consent.
 export default function MusicSyncPanel({ visible, onClose, collection, onImported }) {
@@ -13,8 +14,9 @@ export default function MusicSyncPanel({ visible, onClose, collection, onImporte
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [comparison, setComparison] = useState(null);
   const refresh = useCallback(async () => {
-    setBusy(true); setMessage('');
+    setBusy(true); setMessage(''); setComparison(null);
     try { setPreview(await previewManualSync(client, api)); }
     catch (error) { setMessage(error?.message || 'No se pudo consultar Convex'); }
     finally { setBusy(false); }
@@ -38,6 +40,17 @@ export default function MusicSyncPanel({ visible, onClose, collection, onImporte
       await importNewRemoteManual(client, api, row.localId);
       await onImported?.();
     }), [client, execute, onImported]);
+  const inspect = useCallback(async row => {
+    setBusy(true);setMessage('');setComparison(null);
+    try {
+      const local = await buildCompleteSnapshot(row.id);
+      const remote = await client.query(api.musicSync.readSnapshot, {localId:row.id});
+      if (!remote) throw new Error('Playlist remota no disponible');
+      const result = comparePlaylistVersions(local.snapshot,remote.snapshot,local.lyrics,remote.lyrics);
+      setComparison({...result,revision:remote.revision});
+    } catch (error) {setMessage(error?.message || 'No se pudo comparar la playlist');}
+    finally {setBusy(false);}
+  }, [client]);
   const localOnly = (preview?.localOnly || []).filter(x => x.collectionType === collection);
   const remoteOnly = (preview?.remoteOnly || []).filter(x => x.collectionType === collection);
   const conflicts = (preview?.requiresReview || []).filter(x => x.collectionType === collection || !x.collectionType);
@@ -56,10 +69,22 @@ export default function MusicSyncPanel({ visible, onClose, collection, onImporte
           <Text style={styles.section}>Solo en Convex ({remoteOnly.length})</Text>
           {remoteOnly.map(row => <View style={styles.item} key={`remote-${row.localId}`}><Text style={styles.itemText}>{row.localId}</Text><Pressable disabled={busy || Platform.OS !== 'web'} accessibilityRole="button" onPress={() => download(row)}><Text style={styles.action}>{Platform.OS === 'web' ? 'Importar' : 'Solo PWA'}</Text></Pressable></View>)}
           <Text style={styles.section}>Requieren revisión ({conflicts.length})</Text>
-          {conflicts.map(row => <View style={styles.item} key={`review-${row.id}`}><Text style={styles.itemText}>{row.title || row.id} · revisión remota {row.serverRevision}</Text><Text style={styles.warning}>Sin cambios</Text></View>)}
+          {conflicts.map(row => <View style={styles.item} key={`review-${row.id}`}><Text style={styles.itemText}>{row.title || row.id} · revisión remota {row.serverRevision}</Text><Pressable disabled={busy} accessibilityRole="button" onPress={() => inspect(row)}><Text style={styles.action}>Comparar</Text></Pressable></View>)}
+          {comparison ? <View style={styles.comparison}>
+            <Text style={styles.section}>Comparación · {comparison.title}</Text>
+            <Text style={styles.itemText}>Local: {comparison.localCount} pistas · Convex: {comparison.remoteCount} pistas · revisión {comparison.revision}</Text>
+            <Text style={styles.itemText}>{comparison.equal ? 'Sin diferencias detectadas en los datos comparados.' : `${comparison.differences} grupos de diferencias detectados.`}</Text>
+            <Text style={styles.itemText}>Solo locales ({comparison.onlyLocal.length}): {comparison.onlyLocal.map(x=>x.title).join(', ') || '—'}</Text>
+            <Text style={styles.itemText}>Solo remotas ({comparison.onlyRemote.length}): {comparison.onlyRemote.map(x=>x.title).join(', ') || '—'}</Text>
+            <Text style={styles.itemText}>Pistas modificadas ({comparison.modified.length}): {comparison.modified.map(x=>x.title).join(', ') || '—'}</Text>
+            <Text style={styles.itemText}>Orden diferente: {comparison.reordered?'Sí':'No'}</Text>
+            <Text style={styles.itemText}>Metadatos diferentes: {comparison.metadataChanged?'Sí':'No'}</Text>
+            <Text style={styles.itemText}>Letras LRC diferentes: {comparison.lyricsChanged?'Sí':'No'}</Text>
+            <Text style={styles.warning}>Vista informativa: no se realiza ninguna fusión ni sobrescritura.</Text>
+          </View> : null}
         </> : null}
       </ScrollView>
     </View></View>
   </Modal>;
 }
-const styles=StyleSheet.create({overlay:{flex:1,backgroundColor:'rgba(0,0,0,.45)',justifyContent:'center',padding:12},sheet:{backgroundColor:'#fff',borderRadius:14,padding:16,maxHeight:'90%'},top:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12},title:{fontSize:18,fontWeight:'700',color:'#10253d',flex:1},note:{fontSize:13,color:'#475569',marginVertical:10},warning:{fontSize:12,color:'#a3420c',marginVertical:6},button:{backgroundColor:'#2563eb',padding:11,borderRadius:8,alignItems:'center'},disabled:{opacity:.5},buttonText:{color:'#fff',fontWeight:'700'},scroll:{marginTop:12},section:{fontWeight:'700',fontSize:15,color:'#1e293b',marginTop:15,marginBottom:5},item:{borderBottomWidth:1,borderBottomColor:'#e2e8f0',paddingVertical:10,flexDirection:'row',alignItems:'center',gap:10,justifyContent:'space-between'},itemText:{flex:1,color:'#334155'},action:{color:'#2563eb',fontWeight:'700'}});
+const styles=StyleSheet.create({overlay:{flex:1,backgroundColor:'rgba(0,0,0,.45)',justifyContent:'center',padding:12},sheet:{backgroundColor:'#fff',borderRadius:14,padding:16,maxHeight:'90%'},top:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12},title:{fontSize:18,fontWeight:'700',color:'#10253d',flex:1},note:{fontSize:13,color:'#475569',marginVertical:10},warning:{fontSize:12,color:'#a3420c',marginVertical:6},button:{backgroundColor:'#2563eb',padding:11,borderRadius:8,alignItems:'center'},disabled:{opacity:.5},buttonText:{color:'#fff',fontWeight:'700'},scroll:{marginTop:12},section:{fontWeight:'700',fontSize:15,color:'#1e293b',marginTop:15,marginBottom:5},item:{borderBottomWidth:1,borderBottomColor:'#e2e8f0',paddingVertical:10,flexDirection:'row',alignItems:'center',gap:10,justifyContent:'space-between'},itemText:{flex:1,color:'#334155'},action:{color:'#2563eb',fontWeight:'700'},comparison:{marginTop:12,padding:12,borderWidth:1,borderColor:'#93c5fd',borderRadius:8,gap:5}});
