@@ -304,35 +304,3 @@ export async function auditLocalPlaylists(type) {
     keysReq.onsuccess = () => { keys = keysReq.result; inspect(); };
   });
 }
-
-// Importación segura de UNA playlist nueva junto con sus letras en una única transacción.
-// Rechaza IDs preexistentes y letras incompatibles, sin sobrescribir nunca datos locales.
-export async function importSyncedNew(item, lyrics = []) {
-  assertType(item?.collectionType);
-  if (!item?.id || !Array.isArray(item.tracks) || item.tracks.length > 300 || !Array.isArray(lyrics))
-    throw new Error('Paquete de sincronización inválido');
-  const keys=new Set(item.tracks.map(t=>t.lyricsKey).filter(Boolean));
-  if (item.tracks.some(t=>t.lyricsKey && !isScopedLyricsKey(t.lyricsKey)))
-    throw new Error('Clave LRC heredada: importación no permitida');
-  if (lyrics.some(l=>!isScopedLyricsKey(l?.key) || !keys.has(l.key) ||
-      typeof l.record?.text !== 'string' || !String(l.record.fileName||'').endsWith('.lrc')))
-    throw new Error('Letras LRC inválidas');
-  if ([...keys].some(key=>!lyrics.some(l=>l.key===key)))
-    throw new Error('LRC incompletas');
-  return transaction([STORE,LRC], 'readwrite', (tx,done)=>{
-    const playlists=tx.objectStore(STORE),entries=tx.objectStore(LRC);
-    const exists=playlists.get(item.id);
-    exists.onsuccess=()=>{
-      if(exists.result){tx.abort();return;}
-      // Avoid corrupting unrelated playlists which happen to reference same lyric keys.
-      const all=playlists.getAll();
-      all.onsuccess=()=>{
-        const used=referencedLyrics(all.result||[]);
-        if(lyrics.some(l=>used.has(l.key))){tx.abort();return;}
-        playlists.add({...item,_id:item.id});
-        for(const l of lyrics) entries.add(l.record,l.key); // abort on any collision
-        done({status:'imported',id:item.id,lyrics:lyrics.length});
-      };
-    };
-  });
-}
