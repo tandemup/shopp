@@ -3198,7 +3198,7 @@ export default function PrintMusicCardScreen() {
                   gap: 8,
                 }}
               >
-                <Text style={styles.sideLabel}>REVERSO ÚNICO</Text>
+                <Text style={[styles.sideLabel, { marginBottom: 0 }]}>REVERSO ÚNICO</Text>
                 <Text style={{ color: "#64748b", fontSize: 12 }}>
                   1 diseño de tarjeta
                 </Text>
