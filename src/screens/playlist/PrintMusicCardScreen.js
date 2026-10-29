@@ -24,6 +24,7 @@ import {
   buildSongCardUrl,
   buildPlaylistCardUrl,
   buildPublicManifest,
+  permanentSongCardId,
   comparePublicPlaylist,
   getPublicManifestUrl,
   normalizePublicBase,
@@ -1311,7 +1312,8 @@ export default function PrintMusicCardScreen() {
           // Para una canción individual, el QR Shopp debe consultar el
           // manifiesto publicado: sólo allí está la lyricsUrl del LRC.
           // El parámetro song (índice 0-based) ya lo reconoce el reproductor.
-          const publicSongUrl = buildPlaylistCardUrl(origin, publicId, qrDestination);
+          const permanentId = permanentSongCardId(publicId, track);
+          const publicSongUrl = buildPlaylistCardUrl(origin, permanentId, qrDestination);
           const url = multi
             ? buildPlaylistCardUrl(
                 origin,
@@ -1319,7 +1321,7 @@ export default function PrintMusicCardScreen() {
                 qrDestination === "youtube" ? "landing" : qrDestination,
               )
             : qrDestination !== "youtube" && publicSongUrl
-              ? `${publicSongUrl}&song=${index}`
+              ? publicSongUrl
               : buildSongCardUrl(
                   origin,
                   track,

@@ -3,7 +3,7 @@
 import { Platform } from "react-native";
 import * as Sharing from "expo-sharing";
 import { getLocalLyrics } from "@/src/storage/lyricsStorage";
-import { buildPublicManifest, publicIdForPlaylist, videoIdFromTrack, youtubePlaylistIdFromTrack } from "./musicCardLinks";
+import { buildPublicManifest, permanentSongCardId, publicIdForPlaylist, videoIdFromTrack, youtubePlaylistIdFromTrack } from "./musicCardLinks";
 
 function safeName(name) {
   return (String(name || "lyrics")
@@ -178,8 +178,33 @@ export function makePublicMusicCardZip(playlist, publicId, isClassical = false, 
       lyricsCount++;
     });
   }
+  // Las tarjetas individuales consultan una instantánea pública propia.
+  // No sobrescribir ni borrar otros ficheros de public/music-cards/ al desplegar.
+  // El ID sólo depende del vídeo y de la identidad original de la playlist.
+  const publishedSongIds = new Set();
+  tracks.forEach((track, index) => {
+    const songId = permanentSongCardId(publicId, track);
+    if (!songId || publishedSongIds.has(songId)) return;
+    publishedSongIds.add(songId);
+    const songManifest = {
+      schema: "shopp-public-music-card", version: 1, id: songId,
+      collectionType: manifest.collectionType,
+      title: manifest.tracks[index].title,
+      author: manifest.tracks[index].author,
+      tracks: [{ ...manifest.tracks[index] }],
+    };
+    // Copiar la letra a una ruta inmutable por canción. Si cambiase la
+    // playlist original, no debe perderse el archivo LRC anterior.
+    if (songManifest.tracks[0].lyricsUrl) {
+      const source = String(track?.lyricsBackup?.text || "");
+      const localPath = `/music-cards/lyrics/${songId}/001.lrc`;
+      songManifest.tracks[0].lyricsUrl = localPath;
+      entries.push([`music-cards/lyrics/${songId}/001.lrc`, source]);
+    }
+    entries.push([`music-cards/${songId}.json`, JSON.stringify(songManifest, null, 2)]);
+  });
   entries.unshift([`music-cards/${publicId}.json`, JSON.stringify(manifest, null, 2)]);
-  entries.push(["INSTRUCCIONES_PUBLICACION.txt", `SHopp - publicación pública\n\nCopia la carpeta music-cards/ de este ZIP dentro de public/ del repositorio Shopp.\nPublica el proyecto completo en Netlify, sin reemplazar el sitio por este ZIP.\nComprueba la publicación desde Imprimir tarjeta antes de imprimir.\nLos archivos LRC se publican como texto accesible por URL; asegúrate de disponer de derechos.\n`]);
+  entries.push(["INSTRUCCIONES_PUBLICACION.txt", `SHopp - publicación pública\n\nCOPIA O COMBINA la carpeta music-cards/ de este ZIP dentro de public/ del repositorio Shopp, SIN BORRAR los JSON individuales antiguos.\nPublica el proyecto completo en Netlify, sin reemplazar el sitio por este ZIP.\nComprueba la publicación desde Imprimir tarjeta antes de imprimir.\nLos archivos LRC se publican como texto accesible por URL; asegúrate de disponer de derechos.\n`]);
   return { buffer: makeZip(entries), lyricsCount, manifest };
 }
 
