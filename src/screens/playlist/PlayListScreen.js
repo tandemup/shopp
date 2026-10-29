@@ -1783,9 +1783,9 @@ export default function PlayListScreen({ guestMode = false }) {
           onClose={() => setMusicCardsManagerVisible(false)}
           playlists={playlists || []}
           isClassical={isClassical}
-          onPrepare={(item) => {
+          onPrepare={(item, convexCard = null) => {
             setMusicCardsManagerVisible(false);
-            navigation.navigate(ROUTES.PRINT_MUSIC_CARD, { playlist: item, isClassical });
+            navigation.navigate(ROUTES.PRINT_MUSIC_CARD, { playlist: item, isClassical, convexCard });
           }}
         />
       ) : null}

@@ -9,7 +9,6 @@ import { I18nText as Text } from "@/src/i18n";
 import { buildPlaylistCardUrl, buildPublicManifest, comparePublicPlaylist, getPublicManifestUrl, publicIdForPlaylist } from "@/src/services/musicCardLinks";
 
 const ORIGIN = "https://ramworks.netlify.app";
-const permanentCardUrl = (id) => `${ORIGIN}/music-card.html?card=${encodeURIComponent(id)}`;
 
 export default function MusicCardsManager({ visible, onClose, playlists = [], isClassical, onPrepare }) {
   const [results, setResults] = useState({});
@@ -27,7 +26,7 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], is
       if (!videoId) throw new Error("Esta canción no tiene un vídeo YouTube válido.");
       const localLyrics = await getLocalLyrics(track);
       const lyrics = localLyrics?.text?.trim() || undefined;
-      // Publicación inmutable: una nueva edición requiere una tarjeta nueva explícita.
+      // Cada publicación recibe un ID nuevo. No se vincula a posteriores cambios de playlist.
       const uuid = typeof globalThis.crypto?.randomUUID === "function"
         ? globalThis.crypto.randomUUID()
         : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
@@ -37,7 +36,7 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], is
         author: track.author || track.artist || card.playlist.author || card.playlist.artist || "",
         videoId, ...(lyrics ? { lyrics } : {}),
       });
-      setResults(old => ({ ...old, [key]: { kind: "published", message: `Guardada en Convex: ${id}. Publica la fase 2 en Netlify antes de imprimir.` } }));
+      setResults(old => ({ ...old, [key]: { kind: "published", message: `Guardada en Convex: ${id} (todavía sin QR público)` } }));
     } catch (error) {
       setResults(old => ({ ...old, [key]: { kind: "error", message: error?.message || "No se pudo publicar" } }));
     } finally { setBusyId(null); }
@@ -130,18 +129,26 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], is
               </View>
             </View>;
           })}
-          <Text style={styles.title}>Tarjetas guardadas en Convex</Text>
-          <Text style={styles.hint}>Comprueba primero el enlace en Netlify. El QR solo será definitivo cuando Netlify y Shopp consulten el mismo despliegue de Convex.</Text>
-          {(publishedCards || []).map(item => (
-            <View key={item.id} style={styles.item}>
+          <Text style={styles.title}>Fichas publicadas en Convex</Text>
+          <Text style={styles.hint}>Cada ficha conserva su ID aunque cambie la playlist local. Antes de imprimir, comprueba que el reproductor público funciona. No publiques otra copia innecesariamente.</Text>
+          {(publishedCards || []).map(item => {
+            const match = cards.find(c => (c.playlist.tracks || []).length === 1 && videoIdFromTrack(c.playlist.tracks[0]) === item.videoId);
+            const publicUrl = `https://develop--ramworks.netlify.app/music-card.html?card=${encodeURIComponent(item.id)}`;
+            return <View key={item.id} style={styles.item}>
               <Text style={styles.title}>{item.title}</Text>
               <Text style={styles.hint}>{item.id}</Text>
-              <Pressable accessibilityRole="button" style={styles.button} onPress={() => Linking.openURL(permanentCardUrl(item.id))}>
-                <Ionicons name="open-outline" color="#1d4ed8" size={17} />
-                <Text style={styles.buttonText}>Probar enlace público</Text>
-              </Pressable>
-            </View>
-          ))}
+              <View style={styles.actions}>
+                <Pressable accessibilityRole="button" style={styles.button} onPress={() => Linking.openURL(publicUrl)}>
+                  <Ionicons name="open-outline" color="#1d4ed8" size={17} />
+                  <Text style={styles.buttonText}>Probar reproductor</Text>
+                </Pressable>
+                {match ? <Pressable accessibilityRole="button" style={styles.button} onPress={() => onPrepare(match.playlist, { id: item.id, videoId: item.videoId, origin: "https://develop--ramworks.netlify.app" })}>
+                  <Ionicons name="print-outline" color="#1d4ed8" size={17} />
+                  <Text style={styles.buttonText}>Preparar QR Convex</Text>
+                </Pressable> : <Text style={styles.hint}>La canción original no está disponible localmente para preparar la tarjeta.</Text>}
+              </View>
+            </View>;
+          })}
           {cards.length === 0 ? <Text style={styles.hint}>No hay playlists para gestionar.</Text> : null}
         </ScrollView>
       </View>

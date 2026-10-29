@@ -562,13 +562,18 @@ export default function PrintMusicCardScreen() {
   const previewCardWidth = Math.min(340, Math.max(260, viewportWidth - 64));
   const previewCardHeight = (previewCardWidth * 56) / 90;
   const playlist = route.params?.playlist || {};
+  const convexCard = route.params?.convexCard || null;
+  const convexQrUrl = convexCard?.id && /^card-[a-z0-9-]{12,70}$/.test(convexCard.id) &&
+    (playlist.tracks || []).length === 1 && videoIdFromTrack(playlist.tracks[0]) === convexCard.videoId
+      ? `${convexCard.origin || "https://develop--ramworks.netlify.app"}/music-card.html?card=${encodeURIComponent(convexCard.id)}`
+      : null;
   const isClassical = Boolean(route.params?.isClassical);
   const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
-  const [cardMode, setCardMode] = useState("playlist"); // QR directo al reproductor público
+  const [cardMode, setCardMode] = useState(() => convexCard ? "single" : "playlist"); // QR directo al reproductor público
   const [selectedSongIndex, setSelectedSongIndex] = useState(0);
   const customPlaylistReverses = false; // Un único reverso: sin personalización de diez tarjetas.
   const [qrDestination, setQrDestination] = useState("shopp");
-  const [publicBaseUrl, setPublicBaseUrl] = useState(initialLandingUrl);
+  const [publicBaseUrl, setPublicBaseUrl] = useState(() => convexCard?.origin || initialLandingUrl());
   const [publicId] = useState(() => publicIdForPlaylist(playlist));
   const [published, setPublished] = useState(false);
   const [includePublicLyrics, setIncludePublicLyrics] = useState(false);
@@ -1199,11 +1204,11 @@ export default function PrintMusicCardScreen() {
 
   const cardEntries = useMemo(() => {
     const origin = normalizePublicBase(publicBaseUrl);
-    if (!origin) return [];
+    if (!origin || (convexCard && !convexQrUrl)) return [];
     if (cardMode === "playlist") {
       const first = validTracks[0];
       if (!first) return [];
-      const url =
+      const url = convexCard ? convexQrUrl :
         qrDestination === "youtube"
           ? buildSongCardUrl(origin, first, title, author, "youtube")
           : buildPlaylistCardUrl(origin, publicId, qrDestination);
@@ -1314,7 +1319,7 @@ export default function PrintMusicCardScreen() {
           // El parámetro song (índice 0-based) ya lo reconoce el reproductor.
           const permanentId = permanentSongCardId(publicId, track);
           const publicSongUrl = buildPlaylistCardUrl(origin, permanentId, qrDestination);
-          const url = multi
+          const url = convexCard ? convexQrUrl : multi
             ? buildPlaylistCardUrl(
                 origin,
                 groupId,
@@ -1367,6 +1372,8 @@ export default function PrintMusicCardScreen() {
     cardOverrides,
     customPlaylistReverses,
     selectedSongIndex,
+    convexCard,
+    convexQrUrl,
   ]);
   // Reordena exclusivamente las tarjetas activas, sin modificar las pistas ni sus QR.
   const movePrintedCard = (position, direction) => {
@@ -2709,7 +2716,7 @@ export default function PrintMusicCardScreen() {
                 localhost.
               </Text>
             </View>
-            {(cardMode === "playlist" || cardMode === "single") && qrDestination !== "youtube" ? (
+            {!convexCard && (cardMode === "playlist" || cardMode === "single") && qrDestination !== "youtube" ? (
               <View style={styles.infoBox}>
                 <Text style={styles.infoBoxTitle}>
                   Publicar playlist antes de imprimir
@@ -3464,6 +3471,9 @@ export default function PrintMusicCardScreen() {
           </View>
         </View>
 
+        {convexCard ? <Text style={styles.note}>
+          QR Convex permanente: {convexCard.id}. Verifica el enlace antes de imprimir. La tarjeta es independiente de futuras modificaciones de la playlist. El enlace utiliza Netlify develop para pruebas.
+        </Text> : null}
         <Text style={styles.note}>
           Texto impreso bajo el QR: «{qrActionLabel.replace("\n", " ")}». Para
           compartir playlists completas en otro dispositivo, publica antes su
@@ -3473,7 +3483,7 @@ export default function PrintMusicCardScreen() {
           disabled={
             !targetUrl ||
             Platform.OS !== "web" ||
-            (cardMode === "playlist" &&
+            (!convexCard && cardMode === "playlist" &&
               qrDestination !== "youtube" &&
               !published)
           }
@@ -3487,7 +3497,7 @@ export default function PrintMusicCardScreen() {
             styles.button,
             (!targetUrl ||
               Platform.OS !== "web" ||
-              (cardMode === "playlist" &&
+              (!convexCard && cardMode === "playlist" &&
                 qrDestination !== "youtube" &&
                 !published)) &&
               styles.disabled,
