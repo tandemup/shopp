@@ -74,6 +74,18 @@ export function buildSongCardUrl(base, track, title = "", author = "", destinati
   return url.toString();
 }
 
+// ID público estable basado en la playlist de origen y el vídeo (no en el índice).
+// Las ocurrencias duplicadas del mismo vídeo comparten ficha pública.
+export function permanentSongCardId(publicId, track) {
+  const key = videoIdFromTrack(track) || youtubePlaylistIdFromTrack(track);
+  if (!PUBLIC_ID.test(String(publicId)) || !key) return "";
+  let hash = 2166136261;
+  for (const character of `${publicId}:${key}`) {
+    hash = Math.imul(hash ^ character.charCodeAt(0), 16777619) >>> 0;
+  }
+  return `${String(publicId).slice(0, 48).replace(/-+$/, "")}-c${hash.toString(16).padStart(8, "0")}`;
+}
+
 export function buildPlaylistCardUrl(base, publicId, destination = "landing") {
   const origin = normalizePublicBase(base);
   if (!origin || !PUBLIC_ID.test(String(publicId))) return "";
