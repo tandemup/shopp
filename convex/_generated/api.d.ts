@@ -34,6 +34,7 @@ import type * as playlists from "../playlists.js";
 import type * as productCache from "../productCache.js";
 import type * as productReviewSubmissions from "../productReviewSubmissions.js";
 import type * as products from "../products.js";
+import type * as publicMusicCards from "../publicMusicCards.js";
 import type * as rightsReportActions from "../rightsReportActions.js";
 import type * as rightsReports from "../rightsReports.js";
 import type * as scanHistory from "../scanHistory.js";
@@ -80,6 +81,7 @@ declare const fullApi: ApiFromModules<{
   productCache: typeof productCache;
   productReviewSubmissions: typeof productReviewSubmissions;
   products: typeof products;
+  publicMusicCards: typeof publicMusicCards;
   rightsReportActions: typeof rightsReportActions;
   rightsReports: typeof rightsReports;
   scanHistory: typeof scanHistory;
