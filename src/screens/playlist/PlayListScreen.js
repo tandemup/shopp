@@ -37,6 +37,7 @@ import { videoIdFromTrack, youtubePlaylistIdFromTrack, publicIdForPlaylist, buil
 
 import TutorialTransferScreen from "./TutorialTransferScreen";
 import EditorVideoPreview from "./EditorVideoPreview";
+import MusicCardsManager from "./MusicCardsManager";
 import { MAX_TUTORIAL_ITEMS } from "@/convex/lib/tutorialItems";
 import {
   MIN_PLAYLIST_ITEMS,
@@ -438,6 +439,7 @@ export default function PlayListScreen({ guestMode = false }) {
   const [localNoticeExpanded, setLocalNoticeExpanded] = useState(false);
   const route = useRoute();
   const navigation = useNavigation();
+  const [musicCardsManagerVisible, setMusicCardsManagerVisible] = useState(false);
   const isTutorials = route.name === ROUTES.TUTORIALS;
   const isNews = route.name === ROUTES.NEWS;
   const isTutorialStyle = isTutorials || isNews;
@@ -1775,6 +1777,18 @@ export default function PlayListScreen({ guestMode = false }) {
 
   return (
     <SafeAreaView style={styles.screen}>
+      {!isTutorialStyle ? (
+        <MusicCardsManager
+          visible={musicCardsManagerVisible}
+          onClose={() => setMusicCardsManagerVisible(false)}
+          playlists={playlists || []}
+          isClassical={isClassical}
+          onPrepare={(item) => {
+            setMusicCardsManagerVisible(false);
+            navigation.navigate(ROUTES.PRINT_MUSIC_CARD, { playlist: item, isClassical });
+          }}
+        />
+      ) : null}
       <View style={[styles.header, compactHeader && styles.headerCompact, narrowMobile && styles.headerPhone]}>
         <View style={[styles.headerText, compactHeader && styles.headerTextCompact]}>
           <Text style={styles.heading}>{collectionTitle}</Text>
@@ -1806,6 +1820,12 @@ export default function PlayListScreen({ guestMode = false }) {
               <Text style={styles.secondaryButtonText}>
                 Copiar entre listas
               </Text>
+            </Pressable>
+          ) : null}
+          {!isTutorialStyle ? (
+            <Pressable onPress={() => setMusicCardsManagerVisible(true)} accessibilityRole="button" style={styles.secondaryButton}>
+              <Ionicons name="albums-outline" size={20} color="#2563eb" />
+              <Text style={styles.secondaryButtonText}>Music Cards</Text>
             </Pressable>
           ) : null}
           <Pressable

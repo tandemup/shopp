@@ -1,0 +1,3306 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  FlatList,
+  Modal,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  Share,
+  Linking,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Ionicons } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
+
+import { api } from "@/convex/_generated/api";
+import CustomYouTubePlaylistPlayer from "@/src/components/chat/CustomYouTubePlaylistPlayer";
+import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
+import { safeAlert, safeConfirm } from "@/src/components/ui/alert/safeAlert";
+import { parseYouTubeUrl } from "@/src/services/urlSafety";
+import { ROUTES } from "@/src/navigation/ROUTES";
+import { makePlaylistBackupV2 } from "@/src/services/playlistBackupV2";
+import { savePlaylistArchive, savePublicMusicCardZip, savePublicWorksArchive } from "@/src/services/playlistArchiveZip";
+import { readPlaylistImportAsset } from "@/src/services/playlistArchiveImport";
+import { validatePlaylistBackupV2, importPlaylistBackupV2 } from "@/src/services/playlistImportV2";
+import * as localRepo from "@/src/storage/playlists/playlistRepository";
+import { importPlaylistsLocally } from "@/src/services/playlistLocalImport";
+import { videoIdFromTrack, youtubePlaylistIdFromTrack, publicIdForPlaylist, buildPlaylistCardUrl, buildPublicManifest, comparePublicPlaylist, getPublicManifestUrl } from "@/src/services/musicCardLinks";
+
+import TutorialTransferScreen from "./TutorialTransferScreen";
+import EditorVideoPreview from "./EditorVideoPreview";
+import { MAX_TUTORIAL_ITEMS } from "@/convex/lib/tutorialItems";
+import {
+  MIN_PLAYLIST_ITEMS,
+  MAX_PLAYLIST_ITEMS,
+} from "@/convex/lib/playlistItems";
+import { getLocalLyrics, newLyricsStorageKey } from "@/src/storage/lyricsStorage";
+
+// Limpieza de la funcionalidad provisional de catálogos documentales.
+// Clave exclusiva de esa sección: NO contiene playlists reproducibles.
+const LEGACY_CLASSICAL_CATALOGS_KEY = "shopp-classical-documentary-catalogs-v1";
+
+const CLIENT_ID_KEY = "shopp-playlist-client-id";
+const normalizeSearchText = (value) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const initialTracks = () => {
+  const first = {
+    kind: "single",
+    title: "",
+    url: "",
+    lyrics: null,
+    artworkUrl: "",
+  };
+  return [first];
+};
+
+function createClientId() {
+  if (typeof globalThis?.crypto?.randomUUID === "function")
+    return globalThis.crypto.randomUUID();
+  return `playlist-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function getWebClientId() {
+  if (Platform.OS !== "web" || typeof window === "undefined") return null;
+  try {
+    const saved = window.localStorage?.getItem(CLIENT_ID_KEY);
+    if (saved) return saved;
+    const next = createClientId();
+    window.localStorage?.setItem(CLIENT_ID_KEY, next);
+    return next;
+  } catch {
+    return createClientId();
+  }
+}
+
+function formatDate(value) {
+  try {
+    return new Date(value).toLocaleDateString("es-ES", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
+}
+
+function safeFileName(value) {
+  return (
+    String(value || "playlist")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "playlist"
+  );
+}
+
+function jsonFileName(value, fallback) {
+  const baseName = String(value || "")
+    .trim()
+    .replace(/[\\/]+/g, "-")
+    .replace(/\.json$/i, "");
+  return `${baseName || fallback}.json`;
+}
+
+function toExportedPlaylist(playlist, type = "shopp-youtube-playlist") {
+  return {
+    version: 1,
+    type,
+    title: playlist.title,
+    ...(playlist.collectionType === "classical"
+      ? {
+          collectionType: "classical",
+          composer: playlist.composer || "",
+          performer: playlist.performer || "",
+          conductor: playlist.conductor || "",
+          orchestra: playlist.orchestra || "",
+          period: playlist.period || "",
+          year: playlist.year || "",
+        }
+      : {}),
+    exportedAt: new Date().toISOString(),
+    tracks: playlist.tracks.map((track) => ({
+      kind: track.kind === "album" ? "album" : "single",
+      title: track.title,
+      url:
+        track.url ||
+        (track.playlistId
+          ? `https://www.youtube.com/playlist?list=${track.playlistId}`
+          : `https://www.youtube.com/watch?v=${track.videoId}`),
+      ...(track.lyricsFileName ? { lyricsFileName: track.lyricsFileName } : {}),
+    })),
+  };
+}
+
+async function saveJsonFile(fileName, data) {
+  const json = JSON.stringify(data, null, 2);
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    // Chrome/Edge y navegadores compatibles: selector nativo de nombre y carpeta.
+    // Si el USB aparece en el sistema de archivos, puede elegirse directamente aquí.
+    if (typeof window.showSaveFilePicker === "function") {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: fileName,
+          types: [
+            {
+              description: "Archivo JSON de Shopp",
+              accept: { "application/json": [".json"] },
+            },
+          ],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(json);
+        await writable.close();
+        return;
+      } catch (error) {
+        if (String(error?.name || "") === "AbortError") return;
+        // Si el navegador falla al abrir el selector, probamos el panel nativo.
+      }
+    }
+
+    // Safari en iPhone/iPad no implementa showSaveFilePicker.
+    // Compartir un File abre el panel nativo de iPadOS; desde él se puede elegir
+    // “Guardar en Archivos” y seleccionar una memoria USB conectada.
+    if (typeof navigator !== "undefined" && typeof File !== "undefined") {
+      const file = new File([json], fileName, { type: "application/json" });
+      const canShareFile =
+        typeof navigator.share === "function" &&
+        (typeof navigator.canShare !== "function" ||
+          navigator.canShare({ files: [file] }));
+
+      if (canShareFile) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: fileName,
+          });
+          return;
+        } catch (error) {
+          if (String(error?.name || "") === "AbortError") return;
+          // Último recurso: descarga convencional del navegador.
+        }
+      }
+    }
+
+    if (typeof document !== "undefined") {
+      const url = URL.createObjectURL(
+        new Blob([json], { type: "application/json" }),
+      );
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      return;
+    }
+  }
+
+  const FileSystem = await import("expo-file-system/legacy");
+  const uri = `${FileSystem.cacheDirectory}${fileName}`;
+  await FileSystem.writeAsStringAsync(uri, json, {
+    encoding: FileSystem.EncodingType.UTF8,
+  });
+  await Share.share({
+    title: fileName,
+    url: uri,
+    message: Platform.OS === "android" ? json : undefined,
+  });
+}
+
+function normalizeNewsImportPayload(value) {
+  const toNewsItem = (item, index) => {
+    const title = String(item?.title || `Noticia ${index + 1}`).trim();
+    const url = String(item?.url || item?.youtubeUrl || "").trim();
+    return {
+      version: 1,
+      type: "shopp-youtube-news-item",
+      title,
+      tracks: [
+        {
+          kind: "single",
+          title,
+          url,
+        },
+      ],
+    };
+  };
+
+  // Formato sencillo de lista: [{ title, url }].
+  if (Array.isArray(value)) {
+    return {
+      version: 1,
+      type: "shopp-youtube-news",
+      playlists: value.map(toNewsItem),
+    };
+  }
+
+  // Formato anterior: una única noticia contenía todos los vídeos. Cada vídeo
+  // pasa a ser una noticia independiente, que es el nuevo modelo de Noticias.
+  if (
+    value?.type === "shopp-youtube-news-item" &&
+    Array.isArray(value.tracks) &&
+    value.tracks.length > 1
+  ) {
+    return {
+      version: 1,
+      type: "shopp-youtube-news",
+      playlists: value.tracks.map((track, index) =>
+        toNewsItem(
+          {
+            title: track?.title || `Noticia ${index + 1}`,
+            url: track?.url,
+          },
+          index,
+        ),
+      ),
+    };
+  }
+
+  return value;
+}
+
+function parseImportedPayload(
+  value,
+  collectionType = "shopp-youtube-playlist",
+  collectionListType = "shopp-youtube-playlists",
+  minimumTracks = MIN_PLAYLIST_ITEMS,
+  maximumTracks = MAX_PLAYLIST_ITEMS,
+  compatibleItemTypes = [],
+  compatibleListTypes = [],
+) {
+  const acceptedItemTypes = [collectionType, ...compatibleItemTypes];
+  const acceptedListTypes = [collectionListType, ...compatibleListTypes];
+  const candidates =
+    acceptedListTypes.includes(value?.type) && Array.isArray(value.playlists)
+      ? value.playlists
+      : [value];
+  return candidates.map((playlist, playlistIndex) => {
+    if (
+      !acceptedItemTypes.includes(playlist?.type) ||
+      !String(playlist.title || "").trim()
+    ) {
+      throw new Error(
+        `La playlist ${playlistIndex + 1} no tiene un formato compatible.`,
+      );
+    }
+    if (
+      !Array.isArray(playlist.tracks) ||
+      playlist.tracks.length < minimumTracks ||
+      playlist.tracks.length > maximumTracks
+    ) {
+      throw new Error(
+        `«${playlist.title}» debe contener entre ${minimumTracks} y ${maximumTracks} elementos.`,
+      );
+    }
+    const tracks = playlist.tracks.map((track, index) => {
+      const kind = track.kind === "album" ? "album" : "single";
+      const parsed = parseYouTubeUrl(String(track.url || ""));
+      if (
+        !parsed.isValid ||
+        (kind === "album" ? !parsed.playlistId : !parsed.videoId)
+      ) {
+        throw new Error(
+          `El elemento ${index + 1} de «${playlist.title}» no es válido.`,
+        );
+      }
+      return {
+        kind,
+        videoId: parsed.videoId || undefined,
+        playlistId: parsed.playlistId || undefined,
+        title: String(track.title || "").trim() || `Elemento ${index + 1}`,
+      };
+    });
+    return {
+      title: String(playlist.title).trim(),
+      tracks,
+      ...(collectionType === "shopp-youtube-classical-playlist"
+        ? {
+            collectionType: "classical",
+            composer: String(playlist.composer || "").trim(),
+            performer: String(playlist.performer || "").trim(),
+            conductor: String(playlist.conductor || "").trim(),
+            orchestra: String(playlist.orchestra || "").trim(),
+            period: String(playlist.period || "").trim(),
+            year: String(playlist.year || "").trim(),
+          }
+        : {}),
+    };
+  });
+}
+
+/**
+ * React Native Web ScrollView puede medir su fila de botones al ancho de la
+ * pantalla en Safari iOS. En web usamos overflow-x nativo y un contenido que
+ * siempre conserva su ancho intrínseco (max-content). Android/iOS nativos
+ * continúan usando ScrollView.
+ */
+function HeaderActionsScroller({ compact, scrollRef, children }) {
+  if (Platform.OS === "web") {
+    return React.createElement(
+      "div",
+      {
+        ref: scrollRef,
+        role: "region",
+        "aria-label": "Acciones de la lista; desplaza horizontalmente para ver más botones",
+        tabIndex: 0,
+        style: {
+          display: "block",
+          width: "100%",
+          flex: compact ? "0 1 auto" : "1 1 0%",
+          minWidth: 0,
+          maxWidth: "100%",
+          alignSelf: compact ? "stretch" : "center",
+          overflowX: "scroll",
+          overflowY: "hidden",
+          WebkitOverflowScrolling: "touch",
+          touchAction: "pan-x",
+          overscrollBehaviorX: "contain",
+          scrollbarWidth: "none",
+          position: "relative",
+          isolation: "isolate",
+        },
+      },
+      React.createElement(
+        "div",
+        {
+          style: {
+            display: "inline-flex",
+            flexDirection: "row",
+            alignItems: "center",
+            flexWrap: "nowrap",
+            gap: 7,
+            width: "max-content",
+            minWidth: "max-content",
+            flex: "0 0 auto",
+            whiteSpace: "nowrap",
+            paddingRight: 16,
+            boxSizing: "border-box",
+          },
+        },
+        children,
+      ),
+    );
+  }
+  return (
+    <ScrollView
+      ref={scrollRef}
+      horizontal
+      nestedScrollEnabled
+      directionalLockEnabled
+      showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps="always"
+      style={[styles.headerActionsScroll, compact && styles.headerActionsScrollCompact]}
+      contentContainerStyle={styles.headerActions}
+      accessibilityLabel="Acciones de la lista; desplaza horizontalmente para ver más botones"
+    >
+      {children}
+    </ScrollView>
+  );
+}
+
+export default function PlayListScreen({ guestMode = false }) {
+  const { width: viewportWidth } = useWindowDimensions();
+  // En teléfonos y tablets, el título y la botonera se apilan: los botones
+  // permanecen en una única fila y se desplazan con el gesto horizontal.
+  const compactHeader = viewportWidth < 850;
+  const narrowMobile = viewportWidth < 600;
+  const headerActionsRef = useRef(null);
+  const scrollHeaderActions = (direction) => {
+    if (Platform.OS === "web") {
+      const element = headerActionsRef.current;
+      if (element) {
+        const next = Math.max(0, Math.min(element.scrollWidth - element.clientWidth, element.scrollLeft + direction * 220));
+        // Asignación directa: funciona también si scrollTo({behavior}) no está soportado.
+        element.scrollLeft = next;
+      }
+    } else {
+      headerActionsRef.current?.scrollTo?.({ x: Math.max(0, direction * 220), animated: true });
+    }
+  };
+  const [localNoticeExpanded, setLocalNoticeExpanded] = useState(false);
+  const route = useRoute();
+  const navigation = useNavigation();
+  const isTutorials = route.name === ROUTES.TUTORIALS;
+  const isNews = route.name === ROUTES.NEWS;
+  const isTutorialStyle = isTutorials || isNews;
+  const isClassical = route.name === ROUTES.CLASSICAL_MUSIC;
+  const contentApi = isTutorialStyle ? api.tutorials : api.playlists;
+  const collectionLabel = isNews
+    ? "noticia"
+    : isTutorials
+      ? "tutorial"
+      : isClassical
+        ? "colección clásica"
+        : "playlist";
+  const collectionTitle = isNews
+    ? "Mis noticias"
+    : isTutorials
+      ? "Mis tutoriales"
+      : isClassical
+        ? "Mis playlists clásicas"
+        : "Mis playlists";
+  const itemLabel = isTutorialStyle ? "vídeo" : "elemento";
+  const exportType = isNews
+    ? "shopp-youtube-news"
+    : isTutorials
+      ? "shopp-youtube-tutorials"
+      : isClassical
+        ? "shopp-youtube-classical-playlists"
+        : "shopp-youtube-playlists";
+  const minimumTracks = MIN_PLAYLIST_ITEMS;
+  // Noticias se guarda como una noticia por registro: título descriptivo y
+  // un único enlace de YouTube. Tutoriales conserva sus colecciones.
+  const maximumTracks = isNews
+    ? 1
+    : isTutorialStyle
+      ? MAX_TUTORIAL_ITEMS
+      : MAX_PLAYLIST_ITEMS;
+  const [transferVisible, setTransferVisible] = useState(false);
+  const exportItemType = isNews
+    ? "shopp-youtube-news-item"
+    : isTutorials
+      ? "shopp-youtube-tutorial"
+      : isClassical
+        ? "shopp-youtube-classical-playlist"
+        : "shopp-youtube-playlist";
+  const [clientId, setClientId] = useState(getWebClientId);
+  const collection = isClassical ? "classical" : "playlist";
+  // Music/Classical on the PWA always read IndexedDB; an empty collection is
+  // valid. Other Shopp utilities and native builds keep their existing backend.
+  const localMode = !isTutorialStyle && (Platform.OS === "web" || guestMode);
+  const [localPlaylists, setLocalPlaylists] = useState(undefined);
+  const [localError, setLocalError] = useState(null);
+  const refreshLocalPlaylists = useCallback(async () => {
+    const items = await localRepo.list(collection);
+    setLocalError(null);
+    setLocalPlaylists(items);
+    return items;
+  }, [collection]);
+  useEffect(() => {
+    if (!localMode) return;
+    let active = true;
+    setLocalPlaylists(undefined);
+    setLocalError(null);
+    localRepo.list(collection).then(items => {
+      if (active) setLocalPlaylists(items); // [] is intentional: never fall back to Convex.
+    }).catch(error => {
+      if (active) { setLocalError(error?.message || "IndexedDB no disponible"); setLocalPlaylists([]); }
+    });
+    return () => { active = false; };
+  }, [collection, localMode]);
+  // A tab can stay mounted while P2P imports data: refresh when returning to it.
+  useFocusEffect(useCallback(() => {
+    if (localMode) refreshLocalPlaylists().catch(error => {
+      setLocalError(error?.message || "IndexedDB no disponible");
+    });
+    return undefined;
+  }, [localMode, refreshLocalPlaylists]));
+  const remotePlaylists = useQuery(
+    contentApi.listMine,
+    clientId && !localMode
+      ? isTutorialStyle
+        ? { clientId, contentType: isNews ? "news" : "tutorial" }
+        : { clientId, collectionType: collection }
+      : "skip",
+  );
+  const playlists = localMode ? localPlaylists : remotePlaylists;
+  const createPlaylist = useMutation(contentApi.create);
+  const setPlaylistShareable = useMutation(api.playlists.setShareable);
+  const replacePlaylists = useMutation(contentApi.replaceMine);
+  const updatePlaylist = useMutation(contentApi.update);
+  const removePlaylist = useMutation(contentApi.remove);
+  const refreshNewsYouTubePublishedDates = useAction(
+    api.tutorials.refreshNewsYouTubePublishedDates,
+  );
+  const refreshNewsDatesInFlight = useRef(false);
+  const [newsDatesRefreshCycle, setNewsDatesRefreshCycle] = useState(0);
+  const generateUploadUrl = useMutation(contentApi.generateUploadUrl);
+  // Catálogo de obras clásicas, compartido con impresión mediante playlist.works.
+  const [worksPlaylist, setWorksPlaylist] = useState(null);
+  const [worksDraft, setWorksDraft] = useState(null);
+  const [worksBusy, setWorksBusy] = useState(false);
+  const [workPublishBusy, setWorkPublishBusy] = useState(false);
+  const PUBLIC_MUSIC_ORIGIN = "https://ramworks.netlify.app";
+  // Seleccionar ocurrencias, no solo IDs: una playlist puede repetir un mismo vídeo.
+  const resolveWorkTracks = (playlist, work) => {
+    const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
+    const used = new Set();
+    return (work.trackKeys || []).map(key => {
+      const index = tracks.findIndex((track, i) => !used.has(i) &&
+        String(videoIdFromTrack(track) || youtubePlaylistIdFromTrack(track) || "") === key);
+      if (index < 0) throw new Error(`Falta un movimiento de la obra «${work.title}». Revísala antes de publicar.`);
+      used.add(index);
+      return tracks[index];
+    });
+  };
+  const publicWorkId = (playlist, work) => {
+    const value = `${publicIdForPlaylist(playlist)}:${work.id}`;
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i++) hash = Math.imul(hash ^ value.charCodeAt(i), 16777619) >>> 0;
+    return `shopp-work-${hash.toString(16).padStart(8, "0")}`;
+  };
+  const publicWorkSource = (playlist, work) => ({
+    title: work.title,
+    author: work.composer || playlist.composer || "",
+    composer: work.composer || playlist.composer || "",
+    tracks: resolveWorkTracks(playlist, work),
+  });
+  const publishCatalogWork = async (work) => {
+    if (workPublishBusy || !worksPlaylist) return;
+    setWorkPublishBusy(true);
+    try {
+      const latest = await localRepo.get(worksPlaylist._id);
+      if (!latest) throw new Error("No se encuentra la colección local.");
+      const current = (latest.works || []).find(item => item.id === work.id);
+      if (!current) throw new Error("La obra se ha eliminado. Vuelve a abrir el catálogo.");
+      const source = publicWorkSource(latest, current);
+      if (!source.tracks.length) throw new Error("La obra debe contener al menos un movimiento.");
+      const id = publicWorkId(latest, current);
+      await savePublicMusicCardZip(source, id, true, false);
+      safeAlert("ZIP preparado", `Copia music-cards/ del ZIP a public/music-cards/ y publica Netlify. Después verifica el QR desde el catálogo. ID: ${id}`);
+    } catch (error) { safeAlert("No se pudo exportar la obra", String(error?.message || error)); }
+    finally { setWorkPublishBusy(false); }
+  };
+  const publishAllCatalogWorks = async () => {
+    if (workPublishBusy || !worksPlaylist) return;
+    setWorkPublishBusy(true);
+    try {
+      const latest = await localRepo.get(worksPlaylist._id);
+      if (!latest) throw new Error("No se encuentra la colección local.");
+      const catalog = Array.isArray(latest.works) ? latest.works : [];
+      if (!catalog.length) throw new Error("Todavía no hay obras guardadas.");
+      // Rechazar el lote si alguna obra está incompleta, evitando publicar un catálogo parcial.
+      const sources = catalog.map(work => {
+        const playlist = publicWorkSource(latest, work);
+        if (!playlist.tracks.length) throw new Error(`La obra «${work.title}» no tiene movimientos.`);
+        return { playlist, publicId: publicWorkId(latest, work), isClassical: true };
+      });
+      const result = await savePublicWorksArchive(sources);
+      safeAlert("ZIP conjunto preparado", `${result.worksCount} obras exportadas. Copia music-cards/ dentro de public/ y despliega Netlify. Comprueba los QR desde el catálogo antes de imprimir.`);
+    } catch (error) { safeAlert("No se pudieron exportar las obras", String(error?.message || error)); }
+    finally { setWorkPublishBusy(false); }
+  };
+  const openPublishedCatalogWork = async (work) => {
+    if (workPublishBusy || !worksPlaylist) return;
+    setWorkPublishBusy(true);
+    try {
+      const latest = await localRepo.get(worksPlaylist._id);
+      if (!latest) throw new Error("No se encuentra la colección local.");
+      const current = (latest.works || []).find(item => item.id === work.id);
+      if (!current) throw new Error("La obra ya no existe.");
+      const id = publicWorkId(latest, current);
+      const expected = buildPublicManifest(publicWorkSource(latest, current), id, true);
+      const manifestUrl = getPublicManifestUrl(PUBLIC_MUSIC_ORIGIN, id);
+      const response = await fetch(`${manifestUrl}?check=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`No está publicada en Netlify (HTTP ${response.status}). Exporta el ZIP y despliega la carpeta music-cards/.`);
+      const published = await response.json();
+      const comparison = comparePublicPlaylist(expected, published);
+      if (comparison !== true && !comparison?.ok) {
+        throw new Error(comparison?.reason || "El manifiesto publicado no coincide con los movimientos actuales. Exporta y publica de nuevo.");
+      }
+      const url = buildPlaylistCardUrl(PUBLIC_MUSIC_ORIGIN, id, "landing");
+      await Linking.openURL(url);
+    } catch (error) { safeAlert("No se pudo abrir el QR", String(error?.message || error)); }
+    finally { setWorkPublishBusy(false); }
+  };
+
+  const trackKey = (track) => String(videoIdFromTrack(track) || youtubePlaylistIdFromTrack(track) || "").trim();
+  const newWorkDraft = () => ({ id: "", title: "", subtitle: "", composer: "", conductor: "", orchestra: "", soloist: "", image: "auto", trackKeys: [] });
+  const openWorksCatalog = async (item) => {
+    if (!localMode) { safeAlert("Catálogo de obras", "Disponible para playlists guardadas localmente."); return; }
+    try {
+      const latest = await localRepo.get(item._id);
+      setWorksPlaylist(latest || item);
+      setWorksDraft(null);
+    } catch (error) { safeAlert("Catálogo de obras", String(error?.message || error)); }
+  };
+  const saveCatalogWork = async () => {
+    if (!worksPlaylist || !worksDraft || worksBusy) return;
+    if (!worksDraft.title.trim() || !worksDraft.trackKeys.length) {
+      safeAlert("Obra incompleta", "Introduce un título y selecciona al menos un movimiento."); return;
+    }
+    const keys = worksDraft.trackKeys;
+    if (keys.some(key => !key)) { safeAlert("Obra incompleta", "Todos los movimientos deben tener un identificador YouTube."); return; }
+    setWorksBusy(true);
+    try {
+      const latest = await localRepo.get(worksPlaylist._id);
+      if (!latest) throw new Error("No se encuentra la colección local.");
+      const catalog = Array.isArray(latest.works) ? latest.works : [];
+      const id = worksDraft.id || `work-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const saved = { ...worksDraft, id, title: worksDraft.title.trim(), trackKeys: [...keys] };
+      const next = [...catalog.filter(work => work.id !== id), saved];
+      await localRepo.update(latest._id, { works: next });
+      setWorksPlaylist({ ...latest, works: next });
+      setWorksDraft(null);
+      await refreshLocalPlaylists();
+    } catch (error) { safeAlert("No se pudo guardar la obra", String(error?.message || error)); }
+    finally { setWorksBusy(false); }
+  };
+  const deleteCatalogWork = async (work) => {
+    if (!worksPlaylist || worksBusy) return;
+    safeConfirm("Eliminar obra", `¿Eliminar «${work.title}» del catálogo? No se borrarán sus pistas.`, async () => {
+      setWorksBusy(true);
+      try {
+        const latest = await localRepo.get(worksPlaylist._id);
+        if (!latest) throw new Error("No se encuentra la colección local.");
+        const next = (latest.works || []).filter(item => item.id !== work.id);
+        await localRepo.update(latest._id, { works: next });
+        setWorksPlaylist({ ...latest, works: next });
+        setWorksDraft(null);
+        await refreshLocalPlaylists();
+      } catch (error) { safeAlert("No se pudo eliminar", String(error?.message || error)); }
+      finally { setWorksBusy(false); }
+    });
+  };
+  const [editorVisible, setEditorVisible] = useState(false);
+  const canEditLyricsLocally = Platform.OS === "web" && !isTutorialStyle;
+  const [lyricsEditorIndex, setLyricsEditorIndex] = useState(null);
+  const [lyricsDraft, setLyricsDraft] = useState("");
+  const [lyricsFileName, setLyricsFileName] = useState("lyrics.lrc");
+  const [lyricsEditorVisible, setLyricsEditorVisible] = useState(false);
+  const [lyricsEditorLoading, setLyricsEditorLoading] = useState(false);
+  const [previewKey, setPreviewKey] = useState(null);
+  useEffect(() => {
+    if (!editorVisible) setPreviewKey(null);
+  }, [editorVisible]);
+  const [editingId, setEditingId] = useState(null);
+  const [title, setTitle] = useState("");
+  const [classicalDetails, setClassicalDetails] = useState({
+    composer: "",
+    performer: "",
+    conductor: "",
+    orchestra: "",
+    period: "",
+    year: "",
+  });
+  const [classicalDetailsExpanded, setClassicalDetailsExpanded] =
+    useState(true);
+  const [tracks, setTracks] = useState(initialTracks);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const [importing, setImporting] = useState(false);
+  useEffect(() => {
+    if (!isClassical) return;
+    // Retirar exclusivamente los 17 catálogos documentales provisionales.
+    // Las colecciones reproducibles permanecen en el repositorio de playlists.
+    AsyncStorage.removeItem(LEGACY_CLASSICAL_CATALOGS_KEY)
+      .catch((error) => console.warn("No se pudieron limpiar los catálogos documentales:", error));
+  }, [isClassical]);
+
+  const [importModeVisible, setImportModeVisible] = useState(false);
+  const [pendingImportAsset, setPendingImportAsset] = useState(null);
+  const [exportNameVisible, setExportNameVisible] = useState(false);
+  const [exportFileName, setExportFileName] = useState("");
+  const [exportTarget, setExportTarget] = useState(null);
+  const [draggingIndex, setDraggingIndex] = useState(null);
+  const [searchText, setSearchText] = useState("");
+  const searchTerms = useMemo(
+    () => normalizeSearchText(searchText).split(/\s+/).filter(Boolean),
+    [searchText],
+  );
+  const filteredPlaylists = useMemo(() => {
+    const items = playlists ?? [];
+    if (!searchTerms.length) return items;
+    return items.filter((item) => {
+      const text = normalizeSearchText(
+        [
+          item.title,
+          item.composer,
+          item.performer,
+          item.conductor,
+          item.orchestra,
+          item.period,
+          item.year,
+          ...(item.tracks ?? []).map((track) => track.title),
+        ].join(" "),
+      );
+      return searchTerms.every((term) => text.includes(term));
+    });
+  }, [playlists, searchTerms]);
+
+  useEffect(() => {
+    setSearchText("");
+  }, [isClassical, isNews, isTutorials]);
+
+  useEffect(() => {
+    const hasPendingNewsDates = (playlists || []).some(
+      (item) => !item.youtubePublishedCheckedAt,
+    );
+    if (
+      !isNews ||
+      !clientId ||
+      !hasPendingNewsDates ||
+      refreshNewsDatesInFlight.current
+    )
+      return;
+
+    refreshNewsDatesInFlight.current = true;
+    refreshNewsYouTubePublishedDates({ clientId })
+      .then((result) => {
+        // Cada acción procesa como máximo doce vídeos. El ciclo continúa solo
+        // cuando se han encontrado registros pendientes.
+        if (result?.checked) setNewsDatesRefreshCycle((value) => value + 1);
+      })
+      .catch((error) =>
+        console.warn("No se pudieron actualizar las fechas de YouTube", error),
+      )
+      .finally(() => {
+        refreshNewsDatesInFlight.current = false;
+      });
+  }, [
+    clientId,
+    isNews,
+    newsDatesRefreshCycle,
+    playlists,
+    refreshNewsYouTubePublishedDates,
+  ]);
+
+  useEffect(() => {
+    if (Platform.OS === "web" || clientId) return;
+    let active = true;
+    AsyncStorage.getItem(CLIENT_ID_KEY)
+      .then(async (saved) => {
+        const next = saved || createClientId();
+        if (!saved) await AsyncStorage.setItem(CLIENT_ID_KEY, next);
+        if (active) setClientId(next);
+      })
+      .catch(() => {
+        if (active) setClientId(createClientId());
+      });
+    return () => {
+      active = false;
+    };
+  }, [clientId]);
+
+  const canSave = useMemo(
+    () =>
+      Boolean(title.trim()) &&
+      tracks.length >= minimumTracks &&
+      tracks.length <= maximumTracks &&
+      tracks.every((track) => {
+        const parsed = parseYouTubeUrl(track.url.trim());
+        if (isNews) return parsed.isValid && Boolean(parsed.videoId);
+        return (
+          parsed.isValid &&
+          (track.kind === "album"
+            ? Boolean(parsed.playlistId)
+            : Boolean(parsed.videoId))
+        );
+      }) &&
+      !saving,
+    [isNews, minimumTracks, maximumTracks, saving, title, tracks],
+  );
+
+  const openNew = useCallback(() => {
+    setEditingId(null);
+    setTitle("");
+    setClassicalDetails({
+      composer: "",
+      performer: "",
+      conductor: "",
+      orchestra: "",
+      period: "",
+      year: "",
+    });
+    setTracks(initialTracks());
+    setClassicalDetailsExpanded(true);
+    setEditorVisible(true);
+  }, [isTutorialStyle]);
+
+  const openEdit = useCallback(
+    async (item) => {
+      setEditingId(item._id);
+      setTitle(
+        isNews
+          ? item.tracks?.[0]?.title || item.title || ""
+          : item.title || "",
+      );
+      setClassicalDetails({
+        composer: item.composer || "",
+        performer: item.performer || "",
+        conductor: item.conductor || "",
+        orchestra: item.orchestra || "",
+        period: item.period || "",
+        year: item.year || "",
+      });
+      setClassicalDetailsExpanded(false);
+      const baseTracks = item.tracks.map((track, index) => ({
+        kind: track.kind === "album" ? "album" : "single",
+        title:
+          track.title ||
+          `${isTutorialStyle ? "Vídeo" : "Elemento"} ${index + 1}`,
+        lyricsFileName: track.lyricsFileName || null,
+        artworkUrl: track.artworkUrl || "",
+        lyricsKey: track.lyricsKey || null,
+        lyricsDisabled: track.lyricsDisabled === true,
+        url:
+          track.url ||
+          (track.playlistId
+            ? `https://www.youtube.com/playlist?list=${track.playlistId}`
+            : `https://www.youtube.com/watch?v=${track.videoId || ""}`),
+        lyrics: track.lyricsStorageId
+          ? {
+              existing: true,
+              storageId: track.lyricsStorageId,
+              fileName: track.lyricsFileName || "lyrics.lrc",
+              mimeType: track.lyricsMimeType || "text/plain",
+              size: track.lyricsSize || 0,
+              sourceUri: track.lyricsUrl || track.lyricsUri || null,
+            }
+          : null,
+        localLyrics: null,
+      }));
+      if (Platform.OS === "web" && !isTutorialStyle) {
+        const hydrated = await Promise.all(
+          baseTracks.map(async (track) => {
+            try {
+              const parsed = parseYouTubeUrl(track.url.trim());
+              const local = await getLocalLyrics({
+                kind: track.kind,
+                videoId: parsed.videoId,
+                playlistId: parsed.playlistId,
+                url: track.url, lyricsKey: track.lyricsKey,
+                lyricsDisabled: track.lyricsDisabled,
+              });
+              return local ? { ...track, localLyrics: local } : track;
+            } catch {
+              return track;
+            }
+          }),
+        );
+        setTracks(hydrated);
+      } else {
+        setTracks(baseTracks);
+      }
+      setEditorVisible(true);
+    },
+    [isNews, isTutorialStyle],
+  );
+
+  const updateTrack = useCallback((index, field, value) => {
+    setTracks((current) =>
+      current.map((track, currentIndex) => {
+        if (currentIndex !== index) return track;
+        // Una URL de playlist no es un vídeo individual. Seleccionamos el
+        // tipo correcto al pegar el enlace y conservamos las URLs mixtas.
+        if (field === "url") {
+          const parsed = parseYouTubeUrl(String(value).trim());
+          const previous = parseYouTubeUrl(String(track.url || "").trim());
+          if (parsed.videoId !== previous.videoId || parsed.playlistId !== previous.playlistId) {
+            return {
+              ...track, url: value, kind: parsed.playlistId && !parsed.videoId ? "album" : "single",
+              lyrics: null, localLyrics: null, lyricsFileName: null,
+              lyricsKey: null, lyricsDisabled: true, localLyricsRemoved: false,
+            };
+          }
+          if (parsed.isValid && parsed.playlistId && !parsed.videoId) {
+            return { ...track, url: value, kind: "album" };
+          }
+          if (parsed.isValid && parsed.videoId && !parsed.playlistId) {
+            return { ...track, url: value, kind: "single" };
+          }
+        }
+        return { ...track, [field]: value };
+      }),
+    );
+  }, []);
+
+  const pickLyrics = useCallback(
+    async (index) => {
+      try {
+        const result = await DocumentPicker.getDocumentAsync({
+          // .lrc does not have a consistently registered MIME type. In
+          // particular, iOS/iPadOS can disable valid LRC files when the picker
+          // is restricted to text/plain. Allow selection here and validate the
+          // extension and size below instead.
+          type: "*/*",
+          copyToCacheDirectory: true,
+          multiple: false,
+        });
+        const asset = result.assets?.[0];
+        if (result.canceled || !asset?.uri) return;
+        const fileName = asset.name || "lyrics.lrc";
+        if (!fileName.toLowerCase().endsWith(".lrc"))
+          return safeAlert(
+            "Formato no válido",
+            "Selecciona un fichero con extensión .lrc.",
+          );
+        if ((asset.size || 0) > 512 * 1024)
+          return safeAlert(
+            "Fichero demasiado grande",
+            "El fichero LRC no puede superar 512 KB.",
+          );
+        updateTrack(index, "lyrics", {
+          uri: asset.uri,
+          fileName,
+          mimeType: "text/plain",
+          size: asset.size || 0,
+        });
+      } catch (error) {
+        safeAlert(
+          "No se pudieron añadir las letras",
+          error?.message || "Inténtalo de nuevo.",
+        );
+      }
+    },
+    [updateTrack],
+  );
+
+  // La imagen es opcional. Guardamos un data URI para que permanezca con
+  // la pista en IndexedDB y en los respaldos JSON, también sin conexión.
+  const pickTrackCover = useCallback(async (index) => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 0.72,
+        base64: true,
+        exif: false,
+      });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset) return;
+      const mime = asset.mimeType || "image/jpeg";
+      if (!/^image\/(jpeg|png|webp)$/.test(mime)) {
+        safeAlert("Formato no válido", "Selecciona una imagen JPG, PNG o WebP.");
+        return;
+      }
+      if (!asset.base64) throw new Error("No se pudo leer la imagen seleccionada.");
+      if (asset.base64.length > 2_800_000) {
+        safeAlert("Imagen demasiado grande", "Selecciona una imagen inferior a 2 MB.");
+        return;
+      }
+      updateTrack(index, "artworkUrl", `data:${mime};base64,${asset.base64}`);
+    } catch (error) {
+      safeAlert("No se pudo añadir la carátula", error?.message || "Inténtalo de nuevo.");
+    }
+  }, [updateTrack]);
+
+  const openLocalLyricsEditor = useCallback(
+    async (index) => {
+      const editorTrack = tracks[index];
+      if (!editorTrack) return;
+      const parsed = parseYouTubeUrl(editorTrack.url.trim());
+      if (
+        !parsed.isValid ||
+        (editorTrack.kind === "album" ? !parsed.playlistId : !parsed.videoId)
+      ) {
+        safeAlert(
+          "Enlace de YouTube requerido",
+          "Introduce primero un enlace válido para esta canción.",
+        );
+        return;
+      }
+      setLyricsEditorIndex(index);
+      setLyricsEditorVisible(true);
+      setLyricsEditorLoading(true);
+      try {
+        const identity = {
+          kind: editorTrack.kind,
+          videoId: parsed.videoId,
+          playlistId: parsed.playlistId,
+          url: editorTrack.url, lyricsKey: editorTrack.lyricsKey,
+          lyricsDisabled: editorTrack.lyricsDisabled,
+        };
+        const local = editorTrack.localLyricsRemoved
+          ? null
+          : editorTrack.localLyrics || await getLocalLyrics(identity);
+        if (local?.text != null) {
+          setLyricsDraft(local.text);
+          setLyricsFileName(local.fileName || "lyrics.lrc");
+          return;
+        }
+        const sourceUri =
+          editorTrack.lyrics?.uri || editorTrack.lyrics?.sourceUri;
+        if (sourceUri && !localMode) {
+          const response = await fetch(sourceUri);
+          const sourceText = response.ok ? await response.text() : "";
+          setLyricsDraft(sourceText);
+          setLyricsFileName(editorTrack.lyrics?.fileName || "lyrics.lrc");
+        } else {
+          setLyricsDraft("");
+          setLyricsFileName(editorTrack.lyrics?.fileName || "lyrics.lrc");
+        }
+      } catch (error) {
+        safeAlert(
+          "No se pudo abrir la letra",
+          error?.message || "Inténtalo de nuevo.",
+        );
+      } finally {
+        setLyricsEditorLoading(false);
+      }
+    },
+    [tracks, localMode],
+  );
+
+  const importLyricsIntoEditor = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset?.uri) return;
+      const fileName = asset.name || "lyrics.lrc";
+      if (!fileName.toLowerCase().endsWith(".lrc")) {
+        safeAlert(
+          "Formato no válido",
+          "Selecciona un fichero con extensión .lrc.",
+        );
+        return;
+      }
+      if ((asset.size || 0) > 512 * 1024) {
+        safeAlert(
+          "Fichero demasiado grande",
+          "El fichero LRC no puede superar 512 KB.",
+        );
+        return;
+      }
+      const response = await fetch(asset.uri);
+      setLyricsDraft(await response.text());
+      setLyricsFileName(fileName);
+    } catch (error) {
+      safeAlert(
+        "No se pudo importar la letra",
+        error?.message || "Inténtalo de nuevo.",
+      );
+    }
+  }, []);
+
+  const saveLyricsEditor = useCallback(async () => {
+    if (lyricsEditorIndex == null) return;
+    const editorTrack = tracks[lyricsEditorIndex];
+    if (!editorTrack) return;
+    const parsed = parseYouTubeUrl(editorTrack.url.trim());
+    if (!parsed.isValid) return;
+    try {
+      if (!String(lyricsFileName).toLowerCase().endsWith(".lrc")) {
+        throw new Error("El nombre del fichero debe terminar en .lrc.");
+      }
+      if (new TextEncoder().encode(lyricsDraft).byteLength > 512 * 1024) {
+        throw new Error("La letra LRC supera el límite de 512 KB.");
+      }
+      const identity = {
+        kind: editorTrack.kind,
+        videoId: parsed.videoId,
+        playlistId: parsed.playlistId,
+        url: editorTrack.url,
+      };
+      // Solo preparar: la letra y la playlist se confirman juntas al pulsar Guardar.
+      const record = {
+        text: lyricsDraft,
+        fileName: lyricsFileName || "lyrics.lrc",
+        mimeType: "text/plain",
+        updatedAt: Date.now(),
+        videoId: identity.videoId || null,
+        playlistId: identity.playlistId || null,
+      };
+      setTracks((current) =>
+        current.map((item, index) =>
+          index === lyricsEditorIndex
+            ? { ...item, localLyrics: record, localLyricsRemoved: false,
+                lyricsDisabled: false, lyricsFileName: record.fileName }
+            : item,
+        ),
+      );
+      setLyricsEditorVisible(false);
+    } catch (error) {
+      safeAlert(
+        "No se pudo guardar la letra",
+        error?.message || "Inténtalo de nuevo.",
+      );
+    }
+  }, [lyricsDraft, lyricsEditorIndex, lyricsFileName, tracks]);
+
+  const removeLocalLyricsFromEditor = useCallback(async () => {
+    if (lyricsEditorIndex == null) return;
+    const editorTrack = tracks[lyricsEditorIndex];
+    if (!editorTrack) return;
+    const parsed = parseYouTubeUrl(editorTrack.url.trim());
+    if (!parsed.isValid) return;
+    // No borrar todavía: esperar a que se guarde la playlist.
+    setTracks((current) =>
+      current.map((item, index) =>
+        index === lyricsEditorIndex
+          ? { ...item, localLyrics: null, localLyricsRemoved: true,
+                lyricsDisabled: true, lyrics: null, lyricsFileName: null }
+          : item,
+      ),
+    );
+    setLyricsDraft("");
+    setLyricsEditorVisible(false);
+  }, [lyricsEditorIndex, tracks]);
+
+  const addTrack = useCallback(
+    () =>
+      setTracks((current) =>
+        current.length >= maximumTracks
+          ? current
+          : [
+              ...current,
+              {
+                kind: "single",
+                title: `${isTutorialStyle ? "Vídeo" : isClassical ? "Obra" : "Single"} ${current.length + 1}`,
+                url: "",
+                lyrics: null,
+              },
+            ],
+      ),
+    [isClassical, isTutorialStyle, maximumTracks],
+  );
+  const removeTrack = useCallback(
+    (index) => {
+      const track = tracks[index];
+      if (!track || saving || tracks.length <= minimumTracks) return;
+      const trackTitle =
+        track.title?.trim() ||
+        `${isTutorialStyle ? "Vídeo" : "Elemento"} ${index + 1}`;
+      safeAlert(
+        isTutorialStyle
+          ? isNews
+            ? "Quitar vídeo de noticias"
+            : "Quitar vídeo del tutorial"
+          : "Quitar elemento de la playlist",
+        `¿Quieres quitar «${trackTitle}»? El cambio se aplicará cuando guardes.`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Borrar",
+            style: "destructive",
+            onPress: () =>
+              setTracks((current) =>
+                current.length <= minimumTracks
+                  ? current
+                  : current.filter((item) => item !== track),
+              ),
+          },
+        ],
+      );
+    },
+    [isNews, isTutorialStyle, minimumTracks, saving, tracks],
+  );
+  const moveTrack = useCallback((index, direction) => {
+    setTracks((current) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.length) return current;
+      const next = [...current];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  }, []);
+  const dropTrack = useCallback(
+    (targetIndex) => {
+      if (draggingIndex === null || draggingIndex === targetIndex) return;
+      setTracks((current) => {
+        const next = [...current];
+        const [moved] = next.splice(draggingIndex, 1);
+        next.splice(targetIndex, 0, moved);
+        return next;
+      });
+      setDraggingIndex(null);
+    },
+    [draggingIndex],
+  );
+
+  const uploadLyrics = useCallback(
+    async (lyrics, index) => {
+      if (!lyrics) return {};
+      if (lyrics.existing)
+        return {
+          lyricsStorageId: lyrics.storageId,
+          lyricsFileName: lyrics.fileName,
+          lyricsMimeType: lyrics.mimeType,
+          lyricsSize: lyrics.size,
+        };
+      const uploadUrl = await generateUploadUrl();
+      const response = await fetch(lyrics.uri);
+      const blob = await response.blob();
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": lyrics.mimeType || "text/plain" },
+        body: blob,
+      });
+      if (!uploadResponse.ok)
+        throw new Error(
+          `No se pudieron subir las letras del elemento ${index + 1}.`,
+        );
+      const { storageId } = await uploadResponse.json();
+      return {
+        lyricsStorageId: storageId,
+        lyricsFileName: lyrics.fileName,
+        lyricsMimeType: lyrics.mimeType || "text/plain",
+        lyricsSize: lyrics.size || blob.size || 0,
+      };
+    },
+    [generateUploadUrl],
+  );
+
+  const save = useCallback(async () => {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      const normalizedTracks = [];
+      const pendingLyrics = [];
+      for (let index = 0; index < tracks.length; index += 1) {
+        const track = tracks[index];
+        const parsed = parseYouTubeUrl(track.url.trim());
+        let lyrics;
+        if (localMode) {
+          // Cada pista almacena su LRC en una clave propia. La lectura de
+          // registros antiguos compartidos sigue permitida sin sobrescribirlos.
+          const identity = { kind: track.kind, videoId: parsed.videoId,
+            playlistId: parsed.playlistId, url: track.url };
+          if (track.localLyricsRemoved || track.lyricsDisabled) {
+            // A previous per-track entry is removed only after a successful
+            // atomic save. Never remove the old shared video-wide entry.
+            if (track.lyricsKey && track.localLyricsRemoved) {
+              pendingLyrics.push({ key: track.lyricsKey, remove: true });
+            }
+            lyrics = { lyricsDisabled: true };
+          } else {
+            let record = track.localLyrics;
+            if (track.lyrics && !track.lyrics.existing && track.lyrics.uri) {
+              const response = await fetch(track.lyrics.uri);
+              if (!response.ok) throw new Error(`No se pudo leer el LRC del elemento ${index + 1}.`);
+              record = { text: await response.text(), fileName: track.lyrics.fileName || "lyrics.lrc" };
+            }
+            if (record && typeof record.text === "string") {
+              const size = new TextEncoder().encode(record.text).length;
+              if (size > 512 * 1024) throw new Error("La letra LRC supera 512 KB.");
+              const key = track.lyricsKey || newLyricsStorageKey();
+              pendingLyrics.push({ key, record: { ...record,
+                mimeType: "text/plain", updatedAt: Date.now(),
+                videoId: identity.videoId || null, playlistId: identity.playlistId || null } });
+              lyrics = { lyricsKey: key, lyricsDisabled: false,
+                lyricsFileName: record.fileName || "lyrics.lrc", lyricsMimeType: "text/plain", lyricsSize: size };
+            } else if (track.lyricsFileName) {
+              // Evitar guardar metadatos de letras cuyo contenido falta.
+              throw new Error(`Falta el archivo LRC local para el elemento ${index + 1}. Restaura el respaldo o migra desde Convex.`);
+            } else {
+              // Nueva pista sin letra: no heredar por accidente una LRC
+              // antigua compartida que utiliza el mismo ID de YouTube.
+              // Los registros heredados existentes permanecen intactos.
+              lyrics = { lyricsDisabled: true };
+            }
+          }
+        } else {
+          lyrics = await uploadLyrics(track.lyrics, index);
+        }
+        normalizedTracks.push({
+          kind: isNews ? "single" : track.kind === "album" ? "album" : "single",
+          videoId: parsed.videoId || undefined,
+          playlistId: parsed.playlistId || undefined,
+          ...(localMode && !isTutorialStyle ? { artworkUrl: String(track.artworkUrl || "").trim() } : {}),
+          title:
+            (isNews ? title.trim() : track.title.trim()) ||
+            `${track.kind === "album" ? "Álbum" : "Single"} ${index + 1}`,
+          ...lyrics,
+        });
+      }
+      const args = {
+        clientId,
+        ...(isTutorialStyle
+          ? { contentType: isNews ? "news" : "tutorial" }
+          : {}),
+        title: title.trim(),
+        tracks: normalizedTracks,
+        ...(!isTutorialStyle
+          ? {
+              collectionType: isClassical ? "classical" : "playlist",
+              ...(isClassical ? classicalDetails : {}),
+            }
+          : {}),
+      };
+      if (localMode) {
+        // Keep all edits local. The original Convex documents are never overwritten.
+        const localItem = {
+          title: args.title,
+          tracks: normalizedTracks,
+          collectionType: collection,
+          ...(isClassical ? classicalDetails : {}),
+          ...(isClassical && editingId ? { works: (await localRepo.get(editingId))?.works || [] } : {}),
+        };
+        await localRepo.saveWithLyrics(editingId, localItem, pendingLyrics);
+        await refreshLocalPlaylists();
+      } else if (editingId) await updatePlaylist({ playlistId: editingId, ...args });
+      else await createPlaylist(args);
+      setEditorVisible(false);
+    } catch (error) {
+      safeAlert(
+        isNews ? "No se pudo guardar la noticia" : `No se pudo guardar el ${collectionLabel}`,
+        error?.message || "Revisa los enlaces de YouTube.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    canSave,
+    classicalDetails,
+    clientId,
+    collectionLabel,
+    createPlaylist,
+    editingId,
+    isClassical,
+    isNews,
+    isTutorialStyle,
+    localMode,
+    collection,
+    refreshLocalPlaylists,
+    title,
+    tracks,
+    updatePlaylist,
+    uploadLyrics,
+  ]);
+
+  const confirmRemove = useCallback(
+    (item) =>
+      safeConfirm(
+        `Borrar ${collectionLabel}`,
+        isNews
+          ? `¿Quieres borrar «${item.title}»? Esta acción no se puede deshacer.`
+          : `¿Quieres borrar «${item.title}» y todos sus elementos? Esta acción no se puede deshacer.`,
+        async () => {
+          setDeletingId(item._id);
+          try {
+            if (localMode) {
+              await localRepo.remove(item._id);
+              await refreshLocalPlaylists();
+            } else {
+              await removePlaylist({
+                playlistId: item._id,
+                clientId,
+                ...(isTutorialStyle
+                  ? { contentType: isNews ? "news" : "tutorial" }
+                  : {}),
+              });
+            }
+          } catch (error) {
+            safeAlert(
+              "No se pudo borrar",
+              error?.message || "Inténtalo de nuevo.",
+            );
+          } finally {
+            setDeletingId(null);
+          }
+        },
+        { confirmText: "Borrar", destructive: true },
+      ),
+    [clientId, collectionLabel, isNews, isTutorialStyle, removePlaylist, localMode, refreshLocalPlaylists],
+  );
+
+  const exportPlaylist = useCallback(
+    async (item, fileName) => {
+      try {
+        const payload = isTutorialStyle
+          ? toExportedPlaylist(item, exportItemType)
+          : await makePlaylistBackupV2([item], exportItemType, { single: true, allowRemoteLyrics: !localMode });
+        if (isTutorialStyle) {
+          await saveJsonFile(jsonFileName(fileName, safeFileName(item.title)), payload);
+        } else {
+          await savePlaylistArchive(payload, fileName || safeFileName(item.title));
+        }
+      } catch (error) {
+        safeAlert("No se pudo exportar", error?.message || "Inténtalo de nuevo.");
+      }
+    },
+    [exportItemType, isTutorialStyle, localMode],
+  );
+
+  const defaultExportName = isNews
+    ? "Noticias"
+    : isTutorials
+      ? "Tutoriales"
+      : isClassical
+        ? "Classic playlist"
+        : "Music playlist";
+
+  const exportAll = useCallback(
+    async (fileName) => {
+      try {
+        if (!Array.isArray(playlists)) throw new Error("Las playlists todavía no están disponibles.");
+        const payload = isTutorialStyle
+          ? {
+              version: 1,
+              type: exportType,
+              exportedAt: new Date().toISOString(),
+              playlists: playlists.map((item) => toExportedPlaylist(item, exportItemType)),
+            }
+          : await makePlaylistBackupV2(playlists, exportType, { allowRemoteLyrics: !localMode });
+        if (isTutorialStyle) {
+          await saveJsonFile(jsonFileName(fileName, defaultExportName), payload);
+        } else {
+          await savePlaylistArchive(payload, fileName || defaultExportName);
+        }
+      } catch (error) {
+        safeAlert(
+          "No se pudo exportar",
+          error?.message || "Inténtalo de nuevo.",
+        );
+      }
+    },
+    [defaultExportName, exportItemType, exportType, isTutorialStyle, localMode, playlists],
+  );
+
+  const openExportAll = useCallback(() => {
+    setExportTarget(null);
+    setExportFileName(defaultExportName);
+    setExportNameVisible(true);
+  }, [defaultExportName]);
+
+  const openExportPlaylist = useCallback((item) => {
+    setExportTarget(item);
+    setExportFileName(item.title || "playlist");
+    setExportNameVisible(true);
+  }, []);
+
+  const confirmExport = useCallback(async () => {
+    const fileName = exportFileName.trim();
+    if (!fileName) {
+      safeAlert("Nombre requerido", "Escribe un nombre para el fichero JSON.");
+      return;
+    }
+    setExportNameVisible(false);
+    if (exportTarget) await exportPlaylist(exportTarget, fileName);
+    else await exportAll(fileName);
+  }, [exportAll, exportFileName, exportPlaylist, exportTarget]);
+  const reorderPlaylist = useCallback(
+    async (item, nextTracks) => {
+      try {
+        if (localMode) {
+          await localRepo.update(item._id, { tracks: nextTracks });
+          await refreshLocalPlaylists();
+          return;
+        }
+        await updatePlaylist({
+          playlistId: item._id,
+          clientId,
+          ...(isTutorialStyle
+            ? { contentType: isNews ? "news" : "tutorial" }
+            : {}),
+          title: item.title,
+          ...(!isTutorialStyle
+            ? {
+                collectionType: isClassical ? "classical" : "playlist",
+                ...(isClassical
+                  ? {
+                      composer: item.composer,
+                      performer: item.performer,
+                      conductor: item.conductor,
+                      orchestra: item.orchestra,
+                      period: item.period,
+                      year: item.year,
+                    }
+                  : {}),
+              }
+            : {}),
+          tracks: nextTracks.map((track) => ({
+            kind: track.kind === "album" ? "album" : "single",
+            videoId: track.videoId || undefined,
+            playlistId: track.playlistId || undefined,
+            title: track.title,
+            ...(track.lyricsStorageId
+              ? {
+                  lyricsStorageId: track.lyricsStorageId,
+                  lyricsFileName: track.lyricsFileName,
+                  lyricsMimeType: track.lyricsMimeType,
+                  lyricsSize: track.lyricsSize,
+                }
+              : {}),
+          })),
+        });
+      } catch (error) {
+        safeAlert(
+          "No se pudo reordenar",
+          error?.message || "Inténtalo de nuevo.",
+        );
+      }
+    },
+    [clientId, isClassical, isNews, isTutorialStyle, updatePlaylist, localMode, refreshLocalPlaylists],
+  );
+
+  const importJsonFile = useCallback(async (asset, importMode = "combine") => {
+    setImporting(true);
+    try {
+      if (!asset?.uri) return;
+      const payload = await readPlaylistImportAsset(asset);
+      if (!isTutorialStyle && payload?.version === 2) {
+        if (importMode === "replace" && !localMode) {
+          throw new Error("Reemplazar datos en Convex está desactivado. Exporta una copia e impórtala en el almacenamiento local.");
+        }
+        if (!Array.isArray(playlists)) throw new Error("Espera a que se carguen las playlists actuales antes de importar.");
+        const validated = validatePlaylistBackupV2(payload, payload.type === exportType ? exportType : exportItemType, { minimumTracks, maximumTracks });
+        const result = localMode
+          ? await importPlaylistsLocally({ playlists: validated, collection, replace: importMode === "replace" })
+          : await importPlaylistBackupV2({ playlists: validated, existing: playlists, clientId, createPlaylist, generateUploadUrl, setPlaylistShareable });
+        if (localMode) await refreshLocalPlaylists();
+        safeAlert("Importación v2 terminada", `${result.added} playlists añadidas, ${result.skipped} duplicadas omitidas y ${result.lyricsRestored} letras LRC restauradas.${result.conflicts ? ` ${result.conflicts} letras locales distintas se conservaron sin sobrescribir.` : ""} ${localMode ? "No se escribió ningún dato en Convex." : "Los datos anteriores de Convex no se han eliminado."}`);
+        return;
+      }
+      const imported = parseImportedPayload(
+        isNews ? normalizeNewsImportPayload(payload) : payload,
+        exportItemType,
+        exportType,
+        minimumTracks,
+        maximumTracks,
+        isNews ? ["shopp-youtube-tutorial"] : [],
+        isNews ? ["shopp-youtube-tutorials"] : [],
+      );
+
+      if (localMode) {
+        // JSON v1 no incorpora el contenido LRC. Guardamos TODO el lote
+        // atómicamente; si falla una pista no queda una importación parcial.
+        const prepared = imported.map(item => ({
+          ...item, collectionType: collection,
+          tracks: item.tracks.map(track => ({ ...track, lyricsDisabled: true })),
+        }));
+        const result = await localRepo.importBatch(collection, prepared, [], { replace: importMode === "replace" });
+        await refreshLocalPlaylists();
+        safeAlert("Importación terminada", `${result.added} playlists guardadas y ${result.skipped} duplicadas omitidas. ` +
+          (importMode === "replace" ? `${result.replaced} listas previas sustituidas. ` : "") +
+          "Importación transaccional en IndexedDB; Convex no se modificó.");
+        return;
+      }
+
+      if (importMode === "replace") {
+        await replacePlaylists({
+          clientId,
+          ...(isTutorialStyle
+            ? { contentType: isNews ? "news" : "tutorial" }
+            : { collectionType: isClassical ? "classical" : "playlist" }),
+          items: imported,
+        });
+        safeAlert(
+          "Importación terminada",
+          `${imported.length} ${
+            isNews
+              ? "noticia"
+              : isTutorials
+                ? "tutorial"
+                : isClassical
+                  ? "colección"
+                  : "playlist"
+          }${
+            imported.length === 1 ? "" : isClassical ? "es" : "s"
+          } importada${imported.length === 1 ? "" : "s"}. Los elementos anteriores de esta utilidad se han reemplazado.`,
+        );
+        return;
+      }
+
+      const existingSignatures = new Set(
+        (playlists || []).map(
+          (item) =>
+            `${item.title.toLowerCase()}|${item.tracks.map((track) => track.videoId || track.playlistId).join(",")}`,
+        ),
+      );
+      let added = 0;
+      let skipped = 0;
+      for (const playlist of imported) {
+        const signature = `${playlist.title.toLowerCase()}|${playlist.tracks.map((track) => track.videoId || track.playlistId).join(",")}`;
+        if (existingSignatures.has(signature)) {
+          skipped += 1;
+          continue;
+        }
+        await createPlaylist({
+          clientId,
+          ...(isTutorialStyle
+            ? { contentType: isNews ? "news" : "tutorial" }
+            : {}),
+          ...playlist,
+        });
+        existingSignatures.add(signature);
+        added += 1;
+      }
+      safeAlert(
+        "Importación terminada",
+        `${added} ${
+          isNews
+            ? "noticia"
+            : isTutorials
+              ? "tutorial"
+              : isClassical
+                ? "colección"
+                : "playlist"
+        }${
+          added === 1 ? "" : isClassical ? "es" : "s"
+        } importada${added === 1 ? "" : "s"}.${
+          skipped
+            ? ` ${skipped} duplicada${
+                skipped === 1 ? "" : "s"
+              } omitida${skipped === 1 ? "" : "s"}.`
+            : ""
+        }`,
+      );
+    } catch (error) {
+      safeAlert(
+        "No se pudo importar",
+        error instanceof SyntaxError
+          ? "El fichero no contiene un JSON válido."
+          : error?.message || "Revisa el fichero seleccionado.",
+      );
+    } finally {
+      setImporting(false);
+    }
+  }, [
+    clientId,
+    createPlaylist,
+    exportItemType,
+    exportType,
+    generateUploadUrl,
+    localMode,
+    collection,
+    refreshLocalPlaylists,
+    isClassical,
+    isNews,
+    isTutorialStyle,
+    isTutorials,
+    minimumTracks,
+    maximumTracks,
+    playlists,
+    replacePlaylists,
+    setPlaylistShareable,
+  ]);
+
+  const importJson = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/json", "text/json", "text/plain", "application/zip", "application/x-zip-compressed", ".zip"],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset?.uri) return;
+
+      setPendingImportAsset(asset);
+      setImportModeVisible(true);
+    } catch (error) {
+      safeAlert(
+        "No se pudo importar",
+        error?.message || "Revisa el fichero seleccionado.",
+      );
+    }
+  }, []);
+
+  const chooseImportMode = useCallback(
+    async (importMode) => {
+      const asset = pendingImportAsset;
+      setImportModeVisible(false);
+      setPendingImportAsset(null);
+      await importJsonFile(asset, importMode);
+    },
+    [importJsonFile, pendingImportAsset],
+  );
+
+  const searchHeader = (
+    <View style={[styles.searchSection, isNews && styles.newsSearchSection]}>
+      <View style={styles.searchBar}>
+        <View style={styles.searchIcon}>
+          <Ionicons name="search-outline" size={21} color="#64748b" />
+        </View>
+        <TextInput
+          value={searchText}
+          onChangeText={setSearchText}
+          placeholder={
+            isNews
+              ? "Buscar noticias…"
+              : isTutorials
+                ? "Buscar tutoriales…"
+                : isClassical
+                  ? "Buscar música clásica…"
+                  : "Buscar playlists…"
+          }
+          accessibilityLabel={
+            isNews
+              ? "Buscar noticias"
+              : isTutorials
+                ? "Buscar tutoriales"
+                : isClassical
+                  ? "Buscar música clásica"
+                  : "Buscar playlists"
+          }
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          style={styles.searchInput}
+        />
+        {searchText.length > 0 ? (
+          <Pressable
+            onPress={() => setSearchText("")}
+            accessibilityRole="button"
+            accessibilityLabel="Limpiar búsqueda"
+            style={styles.clearSearchButton}
+          >
+            <Ionicons name="close-circle" size={21} color="#64748b" />
+          </Pressable>
+        ) : (
+          <View style={styles.searchIcon} />
+        )}
+      </View>
+      <Text style={styles.searchHint}>
+        {isClassical
+          ? "Busca por obra, compositor, intérprete, director, orquesta o periodo."
+          : isNews
+            ? "Busca por el título descriptivo."
+            : "Busca en el título de la lista y de sus elementos."}
+      </Text>
+      {isClassical && localMode ? (
+        <Text style={[styles.searchHint, { marginTop: 9 }]}>Catálogo de obras: gestiona cada colección desde su menú ⋮.</Text>
+      ) : null}
+      {playlists !== undefined ? (
+        <Text style={styles.searchCount} accessibilityLiveRegion="polite">
+          {searchTerms.length
+            ? `${filteredPlaylists.length} ${filteredPlaylists.length === 1 ? "coincidencia" : "coincidencias"} de ${playlists.length}`
+            : `${playlists.length} ${isNews ? "noticias" : isTutorials ? "tutoriales" : isClassical ? "colecciones" : "playlists"}`}
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={styles.screen}>
+      <View style={[styles.header, compactHeader && styles.headerCompact, narrowMobile && styles.headerPhone]}>
+        <View style={[styles.headerText, compactHeader && styles.headerTextCompact]}>
+          <Text style={styles.heading}>{collectionTitle}</Text>
+          <Text style={styles.subtitle}>
+            {isNews
+              ? "Guarda un enlace de YouTube con un título descriptivo. Se ordenan por fecha de publicación."
+              : isTutorials
+                ? "Organiza vídeos y series de YouTube para aprender a tu ritmo."
+                : isClassical
+                  ? "Organiza obras, conciertos, intérpretes y grabaciones de YouTube."
+                  : "Combina canciones individuales y álbumes de YouTube."}
+          </Text>
+        </View>
+        <HeaderActionsScroller compact={compactHeader} scrollRef={headerActionsRef}>
+          {compactHeader ? (
+            <Pressable onPress={openNew} disabled={Boolean(localError)} accessibilityRole="button" style={styles.newButton}>
+              <Ionicons name="add-circle-outline" size={20} color="#fff" />
+              <Text style={styles.newButtonText}>
+                {isNews ? "Añadir noticia" : isTutorials ? "Nuevo tutorial" : isClassical ? "Nueva colección" : "Nueva playlist"}
+              </Text>
+            </Pressable>
+          ) : null}
+          {isTutorials ? (
+            <Pressable
+              onPress={() => setTransferVisible(true)}
+              style={styles.secondaryButton}
+            >
+              <Ionicons name="copy-outline" size={21} color="#2563eb" />
+              <Text style={styles.secondaryButtonText}>
+                Copiar entre listas
+              </Text>
+            </Pressable>
+          ) : null}
+          <Pressable
+            onPress={importJson}
+            disabled={importing}
+            style={styles.secondaryButton}
+          >
+            <Ionicons name="download-outline" size={21} color="#2563eb" />
+            <Text style={styles.secondaryButtonText}>
+              {importing ? "Importando…" : "Importar"}
+            </Text>
+          </Pressable>
+          {playlists?.length ? (
+            <Pressable onPress={openExportAll} style={styles.secondaryButton}>
+              <Ionicons name="share-outline" size={21} color="#2563eb" />
+              <Text style={styles.secondaryButtonText}>
+                {isNews ? "Exportar" : "Exportar todo"}
+              </Text>
+            </Pressable>
+          ) : null}
+          {!compactHeader ? (
+            <Pressable onPress={openNew} disabled={Boolean(localError)} accessibilityRole="button" style={styles.newButton}>
+              <Ionicons name="add-circle-outline" size={20} color="#fff" />
+              <Text style={styles.newButtonText}>
+                {isNews ? "Añadir noticia" : isTutorials ? "Nuevo tutorial" : isClassical ? "Nueva colección" : "Nueva playlist"}
+              </Text>
+            </Pressable>
+          ) : null}
+        </HeaderActionsScroller>
+        {narrowMobile ? (
+          <View style={styles.horizontalHint}>
+            <Ionicons name="swap-horizontal-outline" size={13} color="#64748b" />
+            <Text style={styles.horizontalHintText}>Desliza para ver más acciones</Text>
+            {Platform.OS === "web" ? (
+              <View style={styles.headerScrollArrows}>
+                <Pressable
+                  onPress={() => scrollHeaderActions(-1)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ver acciones anteriores"
+                  style={styles.headerScrollArrow}
+                >
+                  <Ionicons name="chevron-back" size={18} color="#2563eb" />
+                </Pressable>
+                <Pressable
+                  onPress={() => scrollHeaderActions(1)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ver más acciones"
+                  style={styles.headerScrollArrow}
+                >
+                  <Ionicons name="chevron-forward" size={18} color="#2563eb" />
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+      {localMode ? (
+        <View style={[styles.localModeNotice, narrowMobile && styles.localModeNoticePhone]}>
+          <Ionicons name="information-circle-outline" size={16} color="#92400e" />
+          <View style={styles.localModeNoticeContent}>
+            <Text style={styles.localModeNoticeText}>
+              {narrowMobile && !localNoticeExpanded
+                ? "Datos guardados en este navegador (IndexedDB). Exporta copias ZIP."
+                : "IndexedDB: playlists y LRC locales de este navegador. El intercambio P2P utiliza Convex para coordinar las conexiones. Exporta ZIP periódicamente."}
+            </Text>
+          </View>
+          {narrowMobile ? (
+            <Pressable
+              onPress={() => setLocalNoticeExpanded((expanded) => !expanded)}
+              accessibilityRole="button"
+              accessibilityLabel={localNoticeExpanded ? "Ocultar detalles de almacenamiento" : "Mostrar detalles de almacenamiento"}
+              style={styles.localModeNoticeToggle}
+            >
+              <Text style={styles.localModeNoticeToggleText}>{localNoticeExpanded ? "Menos" : "Más"}</Text>
+              <Ionicons name={localNoticeExpanded ? "chevron-up" : "chevron-down"} size={14} color="#92400e" />
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+      {localError ? (
+        <View style={styles.center}>
+          <Text>IndexedDB no está disponible: {localError}. No se ha activado Convex como alternativa para evitar escrituras accidentales.</Text>
+        </View>
+      ) : playlists === undefined ? (
+        <View style={styles.center}>
+          <ActivityIndicator color="#dc2626" />
+        </View>
+      ) : (
+        <FlatList
+          data={filteredPlaylists}
+          ListHeaderComponent={
+            <View>
+              {searchHeader}
+            </View>
+          }
+          keyboardShouldPersistTaps="handled"
+          keyExtractor={(item) => String(item._id)}
+          contentContainerStyle={[
+            styles.list,
+            narrowMobile && styles.listPhone,
+            !filteredPlaylists.length && styles.emptyList,
+          ]}
+          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+          renderItem={({ item }) => (
+            <View style={styles.playerCard}>
+              <CustomYouTubePlaylistPlayer
+                playlist={item}
+                isClassical={isClassical}
+                onOpenCatalog={isClassical && localMode ? () => openWorksCatalog(item) : undefined}
+                worksCount={(item.works || []).length}
+                userName={
+                  isNews
+                    ? "Mis noticias"
+                    : isTutorials
+                      ? "Mis tutoriales"
+                      : isClassical
+                        ? [item.composer, item.performer]
+                            .filter(Boolean)
+                            .join(" · ") || "Música clásica"
+                        : item.title || "Mi playlist"
+                }
+                isTutorial={isTutorialStyle}
+                isNews={isNews}
+                dateLabel={formatDate(
+                  isNews ? item.youtubePublishedAt || item.updatedAt : item.updatedAt,
+                )}
+                canEdit
+                canDelete
+                deleting={deletingId === item._id}
+                onEdit={() => openEdit(item)}
+                onDelete={() => confirmRemove(item)}
+                onExport={() => openExportPlaylist(item)}
+                onCreateCard={!isTutorialStyle ? () => navigation.navigate(ROUTES.PRINT_MUSIC_CARD, { playlist: item, isClassical }) : undefined}
+                shareable={item.shareable === true}
+                onToggleShareable={!isTutorialStyle ? async (shareable) => {
+                  try {
+                    if (localMode) {
+                      await localRepo.update(item._id, { shareable });
+                      await refreshLocalPlaylists();
+                    } else {
+                      await setPlaylistShareable({
+                        playlistId: item._id,
+                        clientId: clientId || undefined,
+                        shareable,
+                      });
+                    }
+                  } catch (error) {
+                    safeAlert("Carpeta Compartidos", error?.message || "No se pudo actualizar la carpeta.");
+                  }
+                } : undefined}
+                onReorder={(nextTracks) => reorderPlaylist(item, nextTracks)}
+              />
+            </View>
+          )}
+          ListEmptyComponent={
+            searchTerms.length ? (
+              <View style={styles.empty}>
+                <Ionicons name="search-outline" size={46} color="#64748b" />
+                <Text style={styles.emptyTitle}>No hay coincidencias</Text>
+                <Text style={styles.emptyText}>
+                  Prueba con otras palabras o limpia la búsqueda para ver todas
+                  las listas.
+                </Text>
+                <Pressable
+                  onPress={() => setSearchText("")}
+                  accessibilityRole="button"
+                  style={styles.emptyButton}
+                >
+                  <Text style={styles.emptyButtonText}>Limpiar búsqueda</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.empty}>
+                <Ionicons name="logo-youtube" size={46} color="#dc2626" />
+                <Text style={styles.emptyTitle}>
+                  {isNews
+                    ? "Todavía no hay noticias"
+                    : isTutorials
+                      ? "Todavía no hay tutoriales"
+                      : isClassical
+                        ? "Todavía no hay música clásica"
+                        : "Todavía no hay playlists"}
+                </Text>
+                <Text style={styles.emptyText}>
+                  {isNews
+                    ? "Añade una noticia con su título y enlace de YouTube, o importa una lista JSON."
+                    : isTutorials
+                      ? "Crea una colección con vídeos o series de YouTube."
+                      : isClassical
+                        ? "Crea una colección de obras o conciertos mediante sus enlaces de YouTube."
+                        : "Crea una combinando singles o álbumes mediante sus enlaces de YouTube."}
+                </Text>
+                <Pressable onPress={openNew} style={styles.emptyButton}>
+                  <Text style={styles.emptyButtonText}>
+                    {isNews
+                      ? "Añadir noticia"
+                      : isTutorials
+                        ? "Nuevo tutorial"
+                        : isClassical
+                          ? "Nueva colección"
+                          : "Nueva playlist"}
+                  </Text>
+                </Pressable>
+              </View>
+            )
+          }
+        />
+      )}
+      {isTutorialStyle && transferVisible ? (
+        <TutorialTransferScreen
+          tutorials={playlists}
+          clientId={clientId}
+          contentType={isNews ? "news" : "tutorial"}
+          collectionName={isNews ? "noticias" : "tutoriales"}
+          onClose={() => setTransferVisible(false)}
+        />
+      ) : null}
+      <Modal
+        visible={importModeVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!importing) {
+            setImportModeVisible(false);
+            setPendingImportAsset(null);
+          }
+        }}
+      >
+        <View style={styles.backdrop}>
+          <View style={styles.importModeCard}>
+            <Text style={styles.editorTitle}>Importar {collectionTitle}</Text>
+            <Text style={styles.editorSubtitle}>
+              Elige cómo incorporar el contenido del fichero JSON.
+            </Text>
+            <Pressable
+              onPress={() => chooseImportMode("combine")}
+              style={styles.importModeButton}
+            >
+              <Ionicons name="git-merge-outline" size={20} color="#2563eb" />
+              <View style={styles.importModeButtonText}>
+                <Text style={styles.importModeTitle}>Combinar</Text>
+                <Text style={styles.importModeDescription}>
+                  Conserva los elementos actuales y añade los nuevos. Los duplicados se omiten.
+                </Text>
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={() => chooseImportMode("replace")}
+              style={[styles.importModeButton, styles.importModeReplaceButton]}
+            >
+              <Ionicons name="trash-outline" size={20} color="#b91c1c" />
+              <View style={styles.importModeButtonText}>
+                <Text style={[styles.importModeTitle, styles.importModeReplaceTitle]}>
+                  Reescribir todo
+                </Text>
+                <Text style={styles.importModeDescription}>
+                  Elimina los elementos actuales de esta utilidad y los sustituye por los del fichero.
+                </Text>
+              </View>
+            </Pressable>
+            <View style={styles.importModeActions}>
+              <Pressable
+                onPress={() => {
+                  setImportModeVisible(false);
+                  setPendingImportAsset(null);
+                }}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonText}>Cancelar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={exportNameVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setExportNameVisible(false)}
+      >
+        <View style={styles.backdrop}>
+          <View style={styles.exportNameCard}>
+            <Text style={styles.editorTitle}>
+              {exportTarget
+                ? `Exportar «${exportTarget.title}»`
+                : "Nombre del fichero JSON"}
+            </Text>
+            <Text style={styles.editorSubtitle}>
+              Escribe el nombre del fichero. Se añadirá automáticamente la
+              extensión .json.
+            </Text>
+            <TextInput
+              value={exportFileName}
+              onChangeText={setExportFileName}
+              placeholder={defaultExportName}
+              autoFocus
+              selectTextOnFocus
+              style={styles.titleInput}
+            />
+            <View style={styles.exportNameActions}>
+              <Pressable
+                onPress={() => setExportNameVisible(false)}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonText}>Cancelar</Text>
+              </Pressable>
+              <Pressable onPress={confirmExport} style={styles.newButton}>
+                <Ionicons name="share-outline" size={18} color="#fff" />
+                <Text style={styles.newButtonText}>Exportar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={Boolean(worksPlaylist)} transparent animationType="fade" onRequestClose={() => { setWorksPlaylist(null); setWorksDraft(null); }}>
+        <View style={styles.backdrop}>
+          <View style={[styles.editorCard, { maxHeight: "92%", maxWidth: 750, width: "96%" }]}>
+            <View style={styles.editorHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.editorTitle}>Catálogo de obras</Text>
+                <Text style={styles.editorSubtitle}>{worksPlaylist?.title || "Música clásica"}</Text>
+              </View>
+              <Pressable onPress={() => { setWorksPlaylist(null); setWorksDraft(null); }} style={{ padding: 8 }} accessibilityLabel="Cerrar catálogo"><Ionicons name="close" size={23} color="#475569" /></Pressable>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 24, gap: 12 }}>
+              {!worksDraft ? <>
+                <Pressable style={styles.newButton} onPress={() => setWorksDraft(newWorkDraft())}>
+                  <Ionicons name="add-circle-outline" size={18} color="#fff"/><Text style={styles.newButtonText}>Nueva obra</Text>
+                </Pressable>
+                <Pressable disabled={workPublishBusy || !(worksPlaylist?.works || []).length} onPress={publishAllCatalogWorks}
+                  style={[styles.newButton, { backgroundColor: "#047857", opacity: workPublishBusy ? 0.55 : 1 }]}>
+                  <Ionicons name="archive-outline" size={18} color="#fff"/>
+                  <Text style={styles.newButtonText}>{workPublishBusy ? "Preparando…" : `Exportar todas las obras (${(worksPlaylist?.works || []).length})`}</Text>
+                </Pressable>
+                {(worksPlaylist?.works || []).map(work => {
+                  const allKeys = (worksPlaylist?.tracks || []).map(trackKey);
+                  const remaining = [...allKeys];
+                  const complete = (work.trackKeys || []).every(key => { const ix = remaining.indexOf(key); if (ix < 0) return false; remaining.splice(ix, 1); return true; });
+                  return <View key={work.id} style={{ padding: 12, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, gap: 6 }}>
+                    <Text style={{ fontWeight: "700" }}>{work.title}</Text>
+                    <Text style={{ color: "#64748b" }}>{[work.composer, work.conductor, work.orchestra].filter(Boolean).join(" · ")} · {(work.trackKeys || []).length} movimientos{complete ? "" : " · Faltan pistas"}</Text>
+                    <View style={{ flexDirection: "row", gap: 15 }}>
+                      <Pressable disabled={!complete || workPublishBusy} onPress={() => publishCatalogWork(work)}><Text style={{ color: complete ? "#047857" : "#94a3b8", fontWeight: "700" }}>Exportar QR</Text></Pressable>
+                      <Pressable disabled={!complete || workPublishBusy} onPress={() => openPublishedCatalogWork(work)}><Text style={{ color: complete ? "#2563eb" : "#94a3b8", fontWeight: "700" }}>Verificar y reproducir</Text></Pressable>
+                      <Pressable onPress={() => setWorksDraft({ ...newWorkDraft(), ...work })}><Text style={{ color: "#2563eb", fontWeight: "700" }}>Editar</Text></Pressable>
+                      <Pressable onPress={() => deleteCatalogWork(work)}><Text style={{ color: "#b91c1c", fontWeight: "700" }}>Eliminar</Text></Pressable>
+                    </View>
+                  </View>;
+                })}
+                {!worksPlaylist?.works?.length ? <Text style={{ color: "#64748b" }}>Aún no hay obras. Añade una y selecciona sus movimientos.</Text> : null}
+              </> : <>
+                {[["title", "Título de la obra"], ["subtitle", "Subtítulo"], ["composer", "Compositor"], ["conductor", "Director"], ["orchestra", "Orquesta"], ["soloist", "Solistas"]].map(([key, label]) => (
+                  <View key={key} style={{ gap: 3 }}>
+                    <Text style={{ fontWeight: "600" }}>{label}</Text>
+                    <TextInput value={worksDraft[key] || ""} onChangeText={value => setWorksDraft(draft => ({ ...draft, [key]: value }))} style={styles.titleInput} placeholder={label}/>
+                  </View>
+                ))}
+                <Text style={{ fontWeight: "700" }}>Movimientos (en orden de la playlist)</Text>
+                {(worksPlaylist?.tracks || []).map((track, index) => {
+                  const key = trackKey(track);
+                  const selected = (worksDraft.trackKeys || []).filter(k => k === key).length;
+                  const available = (worksPlaylist.tracks || []).slice(0, index + 1).filter(t => trackKey(t) === key).length;
+                  const checked = Boolean(key) && selected >= available;
+                  return <Pressable key={index} disabled={!key} onPress={() => setWorksDraft(draft => {
+                    const next = [...draft.trackKeys];
+                    if (checked) { const pos = next.lastIndexOf(key); if (pos >= 0) next.splice(pos, 1); }
+                    else next.push(key);
+                    // Almacenar en orden original para la reproducción continua.
+                    const ordered = [];
+                    const counts = new Map(); next.forEach(k => counts.set(k, (counts.get(k) || 0) + 1));
+                    (worksPlaylist?.tracks || []).forEach(t => { const k = trackKey(t); if ((counts.get(k) || 0) > 0) { ordered.push(k); counts.set(k, counts.get(k) - 1); } });
+                    return { ...draft, trackKeys: ordered };
+                  })} style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 8, opacity: key ? 1 : 0.5 }}>
+                    <Ionicons name={checked ? "checkbox" : "square-outline"} size={21} color="#2563eb" />
+                    <Text style={{ flex: 1 }}>{index + 1}. {track.title || "Movimiento"}{key ? "" : " · Sin vídeo"}</Text>
+                  </Pressable>;
+                })}
+                <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                  <Pressable style={styles.secondaryButton} onPress={() => setWorksDraft(null)}><Text style={styles.secondaryButtonText}>Cancelar</Text></Pressable>
+                  <Pressable style={styles.newButton} disabled={worksBusy} onPress={saveCatalogWork}><Text style={styles.newButtonText}>{worksBusy ? "Guardando…" : "Guardar obra"}</Text></Pressable>
+                </View>
+              </>}
+              <Text style={{ color: "#64748b", fontSize: 12 }}>Las obras se guardan en esta playlist y se incluyen en sus copias JSON v2. Exportar QR genera un ZIP individual y Exportar todas las obras genera uno conjunto. Después de publicarlo en Netlify, Verificar y reproducir comprueba los movimientos antes de abrir el reproductor. No se publica automáticamente.</Text>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={editorVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !saving && setEditorVisible(false)}
+      >
+        <View style={styles.backdrop}>
+          <View style={styles.editorCard}>
+            <View style={styles.editorHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.editorTitle}>
+                  {isNews
+                    ? editingId
+                      ? "Editar noticia"
+                      : "Añadir noticia"
+                    : editingId
+                      ? `Editar ${collectionLabel}`
+                      : `Nuevo ${collectionLabel}`}
+                </Text>
+                <Text style={styles.editorSubtitle}>
+                  {isNews
+                    ? "Pega el enlace de YouTube y escribe un título descriptivo."
+                    : isTutorials
+                      ? "Añade vídeos y series mediante sus enlaces de YouTube."
+                      : isClassical
+                        ? "Añade obras o conciertos mediante sus enlaces de YouTube."
+                        : "Añade singles o álbumes mediante sus enlaces de YouTube."}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => !saving && setEditorVisible(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color="#475569" />
+              </Pressable>
+            </View>
+            {!isNews ? <View style={styles.tutorialTypeHelp}>
+              <View style={styles.tutorialTypeHelpItem}>
+                <Ionicons
+                  name={
+                    isTutorialStyle
+                      ? "play-circle-outline"
+                      : "musical-note-outline"
+                  }
+                  size={21}
+                  color="#2563eb"
+                />
+                <View style={styles.tutorialTypeHelpText}>
+                  <Text style={styles.tutorialTypeHelpTitle}>
+                    {isTutorialStyle
+                      ? "Vídeo"
+                      : isClassical
+                        ? "Obra"
+                        : "Single"}
+                  </Text>
+                  <Text style={styles.tutorialTypeHelpDescription}>
+                    {isTutorialStyle
+                      ? "Un único vídeo o capítulo de YouTube."
+                      : isClassical
+                        ? "Una obra, movimiento o interpretación individual."
+                        : "Una canción o vídeo individual de YouTube."}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.tutorialTypeHelpItem}>
+                <Ionicons
+                  name={isTutorialStyle ? "list-outline" : "albums-outline"}
+                  size={21}
+                  color="#2563eb"
+                />
+                <View style={styles.tutorialTypeHelpText}>
+                  <Text style={styles.tutorialTypeHelpTitle}>
+                    {isTutorialStyle
+                      ? "Serie"
+                      : isClassical
+                        ? "Concierto"
+                        : "Álbum"}
+                  </Text>
+                  <Text style={styles.tutorialTypeHelpDescription}>
+                    {isTutorialStyle
+                      ? "Una playlist de YouTube con varios capítulos."
+                      : isClassical
+                        ? "Una playlist con varios movimientos u obras."
+                        : "Una playlist de YouTube con varias canciones."}
+                  </Text>
+                </View>
+              </View>
+            </View> : null}
+            {isClassical ? (
+              <View style={styles.classicalSection}>
+                <Pressable
+                  onPress={() => setClassicalDetailsExpanded((value) => !value)}
+                  style={styles.classicalSectionHeader}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    classicalDetailsExpanded
+                      ? "Ocultar datos de la colección"
+                      : "Mostrar datos de la colección"
+                  }
+                >
+                  <View style={styles.classicalSectionHeaderText}>
+                    <Text style={styles.classicalSectionTitle}>
+                      Datos de la colección
+                    </Text>
+                    {!classicalDetailsExpanded ? (
+                      <Text
+                        style={styles.classicalSectionSummary}
+                        numberOfLines={1}
+                      >
+                        {[
+                          title,
+                          classicalDetails.composer,
+                          classicalDetails.performer,
+                          classicalDetails.period,
+                          classicalDetails.year,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "Sin datos"}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Ionicons
+                    name={
+                      classicalDetailsExpanded ? "chevron-up" : "chevron-down"
+                    }
+                    size={20}
+                    color="#2563eb"
+                  />
+                </Pressable>
+
+                {classicalDetailsExpanded ? (
+                  <View style={styles.classicalSectionBody}>
+                    <Text style={styles.label}>
+                      Nombre de la obra o colección
+                    </Text>
+                    <TextInput
+                      value={title}
+                      onChangeText={setTitle}
+                      maxLength={120}
+                      placeholder="Concierto para piano n.º 5"
+                      style={styles.titleInput}
+                    />
+                    <View style={styles.classicalDetails}>
+                      {[
+                        ["composer", "Compositor", "Ludwig van Beethoven"],
+                        ["performer", "Intérprete", "Daniel Barenboim"],
+                        ["conductor", "Director", "Nombre del director"],
+                        ["orchestra", "Orquesta", "Nombre de la orquesta"],
+                        ["period", "Periodo", "Clasicismo"],
+                        ["year", "Año", "1809"],
+                      ].map(([field, label, placeholder]) => (
+                        <View key={field} style={styles.classicalField}>
+                          <Text style={styles.label}>{label}</Text>
+                          <TextInput
+                            value={classicalDetails[field]}
+                            onChangeText={(value) =>
+                              setClassicalDetails((current) => ({
+                                ...current,
+                                [field]: value,
+                              }))
+                            }
+                            maxLength={field === "year" ? 20 : 120}
+                            placeholder={placeholder}
+                            style={styles.compactClassicalInput}
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+              </View>
+            ) : isNews ? (
+              <View style={styles.newsEditorFields}>
+                <Text style={styles.label}>Título descriptivo</Text>
+                <TextInput
+                  value={title}
+                  onChangeText={setTitle}
+                  maxLength={120}
+                  placeholder="Ej.: Análisis de la actualidad económica"
+                  style={styles.titleInput}
+                />
+                <Text style={styles.label}>Enlace de YouTube</Text>
+                <TextInput
+                  value={tracks[0]?.url || ""}
+                  onChangeText={(value) => updateTrack(0, "url", value)}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder="https://youtu.be/..."
+                  style={styles.trackInput}
+                />
+              </View>
+            ) : (
+              <>
+                <Text style={styles.label}>
+                  {isNews
+                    ? "Nombre de la colección de noticias"
+                    : isTutorials
+                      ? "Nombre del curso o colección"
+                      : "Nombre del concierto o playlist"}
+                </Text>
+                <TextInput
+                  value={title}
+                  onChangeText={setTitle}
+                  maxLength={120}
+                  placeholder={
+                    isNews
+                      ? "Actualidad nacional · Septiembre"
+                      : isTutorials
+                        ? "React Native · Curso de iniciación"
+                        : "Mozart · Concierto para piano · Daniel Barenboim"
+                  }
+                  style={styles.titleInput}
+                />
+              </>
+            )}
+            {!isNews ? <ScrollView
+              style={styles.tracksScroll}
+              keyboardShouldPersistTaps="handled"
+            >
+              {tracks.map((track, index) => (
+                <View
+                  key={`track-${index}`}
+                  draggable={Platform.OS === "web"}
+                  onDragStart={() => setDraggingIndex(index)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => dropTrack(index)}
+                  style={[
+                    styles.trackEditor,
+                    draggingIndex === index && styles.trackEditorDragging,
+                  ]}
+                >
+                  <View style={styles.trackHeader}>
+                    <Text style={styles.trackNumber}>ELEMENTO {index + 1}</Text>
+                    <View style={styles.trackOrderActions}>
+                      <Pressable
+                        onPress={() => moveTrack(index, -1)}
+                        disabled={index === 0}
+                        style={styles.orderButton}
+                        accessibilityLabel="Subir elemento"
+                      >
+                        <Ionicons
+                          name="chevron-up"
+                          size={18}
+                          color={index === 0 ? "#cbd5e1" : "#2563eb"}
+                        />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => moveTrack(index, 1)}
+                        disabled={index === tracks.length - 1}
+                        style={styles.orderButton}
+                        accessibilityLabel="Bajar elemento"
+                      >
+                        <Ionicons
+                          name="chevron-down"
+                          size={18}
+                          color={
+                            index === tracks.length - 1 ? "#cbd5e1" : "#2563eb"
+                          }
+                        />
+                      </Pressable>
+                      {tracks.length > minimumTracks ? (
+                        <Pressable
+                          onPress={() => removeTrack(index)}
+                          style={styles.removeButton}
+                          accessibilityLabel="Eliminar elemento"
+                        >
+                          <Ionicons
+                            name="trash-outline"
+                            size={18}
+                            color="#dc2626"
+                          />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </View>
+                  <View style={styles.kindRow}>
+                    <Pressable
+                      onPress={() => updateTrack(index, "kind", "single")}
+                      style={[
+                        styles.kindButton,
+                        track.kind !== "album" && styles.kindActive,
+                      ]}
+                    >
+                      <Ionicons
+                        name={
+                          isTutorialStyle
+                            ? "play-circle-outline"
+                            : "musical-note-outline"
+                        }
+                        size={16}
+                        color={track.kind !== "album" ? "#fff" : "#475569"}
+                      />
+                      <Text
+                        style={[
+                          styles.kindText,
+                          track.kind !== "album" && styles.kindTextActive,
+                        ]}
+                      >
+                        {isTutorialStyle
+                          ? "Vídeo"
+                          : isClassical
+                            ? "Obra"
+                            : "Single"}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => updateTrack(index, "kind", "album")}
+                      style={[
+                        styles.kindButton,
+                        track.kind === "album" && styles.kindActive,
+                      ]}
+                    >
+                      <Ionicons
+                        name={
+                          isTutorialStyle ? "list-outline" : "albums-outline"
+                        }
+                        size={16}
+                        color={track.kind === "album" ? "#fff" : "#475569"}
+                      />
+                      <Text
+                        style={[
+                          styles.kindText,
+                          track.kind === "album" && styles.kindTextActive,
+                        ]}
+                      >
+                        {isTutorialStyle
+                          ? "Serie"
+                          : isClassical
+                            ? "Concierto"
+                            : "Álbum"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <TextInput
+                    value={track.title}
+                    onChangeText={(value) => updateTrack(index, "title", value)}
+                    maxLength={120}
+                    placeholder={
+                      isTutorialStyle
+                        ? track.kind === "album"
+                          ? "Título de la serie"
+                          : "Título del vídeo"
+                        : track.kind === "album"
+                          ? isClassical
+                            ? "Título del concierto o ciclo"
+                            : "Título del álbum"
+                          : isClassical
+                            ? "I. Allegro"
+                            : "Título del single"
+                    }
+                    style={styles.trackInput}
+                  />
+                  <TextInput
+                    value={track.url}
+                    onChangeText={(value) => updateTrack(index, "url", value)}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder={
+                      track.kind === "album"
+                        ? "https://youtube.com/playlist?list=..."
+                        : "https://youtu.be/..."
+                    }
+                    style={styles.trackInput}
+                  />
+                  {!isTutorialStyle && (
+                    <View style={{ marginTop: 8, marginBottom: 8 }}>
+                      <Text style={{ color: "#475569", fontSize: 12, marginBottom: 5 }}>
+                        Carátula de la canción (opcional)
+                      </Text>
+                      <Pressable
+                        onPress={() => pickTrackCover(index)}
+                        accessibilityRole="button"
+                        style={{ alignSelf: "flex-start", paddingVertical: 9, paddingHorizontal: 14, borderRadius: 8, backgroundColor: "#e2e8f0", marginBottom: 8 }}>
+                        <Text style={{ color: "#0f172a", fontWeight: "600" }}>Añadir carátula desde el dispositivo</Text>
+                      </Pressable>
+                      {Boolean(track.artworkUrl) && (
+                        <Pressable onPress={() => updateTrack(index, "artworkUrl", "")}
+                          accessibilityRole="button" style={{ marginBottom: 7 }}>
+                          <Text style={{ color: "#b91c1c" }}>Quitar carátula</Text>
+                        </Pressable>
+                      )}
+                      {!track.artworkUrl?.startsWith("data:image/") && <TextInput
+                        value={track.artworkUrl || ""}
+                        onChangeText={(value) => updateTrack(index, "artworkUrl", value)}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        placeholder="https://.../portada.jpg"
+                        style={styles.trackInput}
+                      />}
+                      {Boolean(track.artworkUrl?.trim()) && (
+                        (/^(https:\/\/[^\s]+|data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+)$/i.test(track.artworkUrl.trim())) ? (
+                          <Image source={{ uri: track.artworkUrl.trim() }}
+                            style={{ width: 72, height: 72, borderRadius: 6, marginTop: 6 }}
+                            resizeMode="cover" />
+                        ) : (
+                          <Text style={{ color: "#b91c1c", fontSize: 12 }}>
+                            Utiliza una URL HTTPS o selecciona una imagen.
+                          </Text>
+                        )
+                      )}
+                    </View>
+                  )}
+                  {Boolean(track.url.trim()) && (() => {
+                    const parsed = parseYouTubeUrl(track.url.trim());
+                    const message = !parsed.isValid
+                      ? "Introduce un enlace válido de YouTube."
+                      : track.kind === "album" && !parsed.playlistId
+                        ? "Para Álbum utiliza un enlace de playlist de YouTube."
+                        : track.kind !== "album" && !parsed.videoId
+                          ? "Para Single utiliza un enlace de vídeo de YouTube."
+                          : null;
+                    return message ? (
+                      <Text style={{ color: "#b91c1c", fontSize: 12, marginTop: 4 }}>
+                        {message}
+                      </Text>
+                    ) : null;
+                  })()}
+                  {isTutorialStyle && editorVisible ? (
+                    <EditorVideoPreview
+                      track={track}
+                      active={
+                        previewKey === `${index}:${track.kind}:${track.url}`
+                      }
+                      disabled={saving}
+                      onToggle={() => {
+                        const key = `${index}:${track.kind}:${track.url}`;
+                        setPreviewKey((current) =>
+                          current === key ? null : key,
+                        );
+                      }}
+                    />
+                  ) : null}
+                  {!isTutorialStyle ? (
+                    <View style={styles.lyricsRow}>
+                      <Pressable
+                        onPress={() =>
+                          canEditLyricsLocally
+                            ? openLocalLyricsEditor(index)
+                            : pickLyrics(index)
+                        }
+                        style={styles.lyricsButton}
+                      >
+                        <Ionicons
+                          name={
+                            track.localLyrics
+                              ? "create-outline"
+                              : "document-text-outline"
+                          }
+                          size={20}
+                          color="#2563eb"
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.lyricsTitle} numberOfLines={1}>
+                            {track.localLyrics?.fileName ||
+                              track.lyrics?.fileName ||
+                              (canEditLyricsLocally
+                                ? "Editar letra local"
+                                : "Añadir letras .lrc")}
+                          </Text>
+                          <Text style={styles.lyricsHint}>
+                            {track.localLyrics
+                              ? "Disponible en IndexedDB o pendiente de guardar la playlist"
+                              : canEditLyricsLocally
+                                ? "Crear, pegar o importar .lrc · guardado local"
+                                : "Opcional · máximo 512 KB"}
+                          </Text>
+                        </View>
+                      </Pressable>
+                      {canEditLyricsLocally ? (
+                        <Pressable
+                          onPress={() => openLocalLyricsEditor(index)}
+                          style={styles.removeLyrics}
+                          accessibilityLabel="Editar letra"
+                        >
+                          <Ionicons
+                            name="pencil-outline"
+                            size={20}
+                            color="#2563eb"
+                          />
+                        </Pressable>
+                      ) : track.lyrics ? (
+                        <Pressable
+                          onPress={() => updateTrack(index, "lyrics", null)}
+                          style={styles.removeLyrics}
+                        >
+                          <Ionicons
+                            name="close-circle"
+                            size={21}
+                            color="#dc2626"
+                          />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+              ))}
+              {tracks.length < maximumTracks ? (
+                <Pressable onPress={addTrack} style={styles.addButton}>
+                  <Ionicons
+                    name="add-circle-outline"
+                    size={20}
+                    color="#dc2626"
+                  />
+                  <Text style={styles.addText}>Añadir elemento</Text>
+                </Pressable>
+              ) : null}
+            </ScrollView> : null}
+            {!isNews ? <Text style={styles.editorSubtitle}>
+              {tracks.length} / {maximumTracks} elementos
+            </Text> : null}
+            <View style={styles.actions}>
+              <Pressable
+                onPress={() => setEditorVisible(false)}
+                disabled={saving}
+                style={styles.cancelButton}
+              >
+                <Text style={styles.cancelText}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                onPress={save}
+                disabled={!canSave}
+                style={[styles.saveButton, !canSave && styles.disabled]}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.saveText}>
+                    {editingId ? "Guardar cambios" : `Crear ${collectionLabel}`}
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={lyricsEditorVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLyricsEditorVisible(false)}
+      >
+        <View style={styles.backdrop}>
+          <View style={styles.lyricsEditorCard}>
+            <View style={styles.editorHeader}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.editorTitle}>Editar letra .lrc</Text>
+                <Text style={styles.editorSubtitle} numberOfLines={1}>
+                  {lyricsEditorIndex != null
+                    ? tracks[lyricsEditorIndex]?.title
+                    : ""}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setLyricsEditorVisible(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color="#475569" />
+              </Pressable>
+            </View>
+            <TextInput
+              value={lyricsFileName}
+              onChangeText={setLyricsFileName}
+              placeholder="lyrics.lrc"
+              style={styles.trackInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TextInput
+              value={lyricsDraft}
+              onChangeText={setLyricsDraft}
+              multiline
+              textAlignVertical="top"
+              editable={!lyricsEditorLoading}
+              placeholder={"[00:00.00]Primera línea\n[00:05.20]Segunda línea"}
+              style={styles.lyricsTextArea}
+            />
+            <Text style={styles.editorSubtitle}>La letra se guarda junto con la playlist al confirmar «Guardar» en la pantalla anterior.</Text>
+            <View style={styles.lyricsEditorActions}>
+              <Pressable
+                onPress={importLyricsIntoEditor}
+                style={styles.lyricsSecondaryButton}
+              >
+                <Ionicons
+                  name="folder-open-outline"
+                  size={18}
+                  color="#2563eb"
+                />
+                <Text style={styles.lyricsSecondaryText}>Importar .lrc</Text>
+              </Pressable>
+              <Pressable
+                onPress={removeLocalLyricsFromEditor}
+                style={styles.lyricsSecondaryButton}
+              >
+                <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                <Text
+                  style={[styles.lyricsSecondaryText, { color: "#dc2626" }]}
+                >
+                  Quitar letra
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={saveLyricsEditor}
+                style={styles.lyricsSaveButton}
+              >
+                <Ionicons name="save-outline" size={18} color="#fff" />
+                <Text style={styles.lyricsSaveText}>Aplicar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  localModeNotice: { flexDirection: "row", gap: 8, alignItems: "center", backgroundColor: "#fffbeb", borderBottomWidth: 1, borderBottomColor: "#fde68a", paddingHorizontal: 16, paddingVertical: 6 },
+  localModeNoticePhone: { paddingHorizontal: 12, paddingVertical: 5, alignItems: "flex-start" },
+  localModeNoticeContent: { flex: 1, minWidth: 0 },
+  localModeNoticeText: { flexShrink: 1, fontSize: 11, color: "#92400e", lineHeight: 15 },
+  localModeNoticeToggle: { flexDirection: "row", gap: 2, alignItems: "center", minHeight: 28, paddingHorizontal: 4 },
+  localModeNoticeToggleText: { fontSize: 11, fontWeight: "800", color: "#92400e" },
+  sourceSwitch: { flexDirection: "row", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 6, overflow: "hidden", alignSelf: "center", marginRight: 6 },
+  sourceSwitchOption: { paddingVertical: 9, paddingHorizontal: 12, backgroundColor: "#f8fafc" },
+  sourceSwitchActive: { backgroundColor: "#2563eb" },
+  sourceSwitchText: { color: "#334155", fontWeight: "700", fontSize: 12 },
+  sourceSwitchTextActive: { color: "#ffffff" },
+  classicalDetails: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 10,
+  },
+  classicalField: { flexGrow: 1, flexBasis: 210, minWidth: 180 },
+  trackOrderActions: { flexDirection: "row", alignItems: "center", gap: 2 },
+  trackEditorDragging: {
+    opacity: 0.55,
+    borderColor: "#2563eb",
+    borderStyle: "dashed",
+  },
+  orderButton: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+  screen: { flex: 1, backgroundColor: "#f4f7fb" },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+    backgroundColor: "#fff",
+  },
+  headerCompact: {
+    flexDirection: "column",
+    alignItems: "stretch",
+  },
+  headerPhone: { paddingHorizontal: 12, paddingVertical: 11, gap: 9 },
+  headerText: { width: 280, maxWidth: "100%", flexShrink: 1 },
+  headerTextCompact: { width: "100%", flexShrink: 0 },
+  heading: { fontSize: 22, fontWeight: "900", color: "#111827" },
+  subtitle: { marginTop: 3, fontSize: 12, color: "#64748b" },
+  headerActionsScroll: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: "100%",
+    alignSelf: "center",
+  },
+  headerActionsScrollCompact: {
+    width: "100%",
+    flexGrow: 0,
+    flexShrink: 0,
+    alignSelf: "stretch",
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    flexWrap: "nowrap",
+    paddingRight: 16,
+  },
+  horizontalHint: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: -3 },
+  horizontalHintText: { fontSize: 10, color: "#64748b", flex: 1 },
+  headerScrollArrows: { flexDirection: "row", alignItems: "center", gap: 6 },
+  headerScrollArrow: {
+    width: 34,
+    height: 28,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 5,
+  },
+  secondaryButton: {
+    minHeight: 44,
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+  secondaryButtonText: { fontSize: 13, fontWeight: "800", color: "#2563eb", flexShrink: 0 },
+  newButton: {
+    minHeight: 42,
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    backgroundColor: "#dc2626",
+  },
+  newButtonText: { fontWeight: "800", color: "#fff", flexShrink: 0 },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  searchSection: {
+    width: 440,
+    maxWidth: "100%",
+    alignSelf: "center",
+    paddingBottom: 14,
+    gap: 6,
+  },
+  newsSearchSection: { width: 560 },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+  },
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 46,
+    paddingHorizontal: 10,
+    color: "#111827",
+    fontSize: 15,
+    textAlign: "left",
+    ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}),
+  },
+  searchIcon: {
+    width: 44,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  clearSearchButton: {
+    width: 44,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  searchHint: { fontSize: 12, color: "#64748b", textAlign: "center" },
+  searchCount: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
+    textAlign: "center",
+  },
+  list: { width: "100%", maxWidth: 760, alignSelf: "center", padding: 14 },
+  listPhone: { paddingHorizontal: 10, paddingTop: 12, paddingBottom: 30 },
+  playerCard: { alignItems: "center" },
+  emptyList: { flexGrow: 1 },
+  empty: { alignItems: "center", padding: 24 },
+  emptyTitle: {
+    marginTop: 12,
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#111827",
+  },
+  emptyText: {
+    maxWidth: 410,
+    marginTop: 7,
+    textAlign: "center",
+    color: "#64748b",
+  },
+  emptyButton: {
+    marginTop: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    backgroundColor: "#dc2626",
+  },
+  emptyButtonText: { fontWeight: "800", color: "#fff" },
+  backdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+    backgroundColor: "rgba(15,23,42,0.55)",
+  },
+  editorCard: {
+    width: "100%",
+    maxWidth: 750,
+    // A fixed available height lets the internal list shrink and scroll instead
+    // of pushing the Cancel/Save actions below the viewport on web or mobile.
+    height: "92%",
+    maxHeight: "92%",
+    padding: 14,
+    backgroundColor: "#fff",
+  },
+  editorHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 14,
+  },
+  editorTitle: { fontSize: 20, fontWeight: "900", color: "#111827" },
+  editorSubtitle: { marginTop: 3, fontSize: 12, color: "#64748b" },
+  newsEditorFields: { gap: 8, paddingTop: 8, paddingBottom: 12 },
+  tutorialTypeHelp: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: -4,
+    marginBottom: 14,
+  },
+  tutorialTypeHelpItem: {
+    flex: 1,
+    minWidth: 245,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+  tutorialTypeHelpText: { flex: 1 },
+  tutorialTypeHelpTitle: { fontSize: 12, fontWeight: "900", color: "#1d4ed8" },
+  tutorialTypeHelpDescription: { marginTop: 2, fontSize: 10, color: "#475569" },
+  closeButton: {
+    width: 42,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+  },
+  label: { marginBottom: 7, fontSize: 12, fontWeight: "900", color: "#334155" },
+  titleInput: {
+    minHeight: 48,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    color: "#111827",
+  },
+  classicalSection: {
+    marginTop: 2,
+    borderWidth: 1,
+    borderColor: "#dbe2ea",
+    backgroundColor: "#f8fafc",
+  },
+  classicalSectionHeader: {
+    minHeight: 50,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "#f8fafc",
+  },
+  classicalSectionHeaderText: { flex: 1, minWidth: 0 },
+  classicalSectionTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
+  classicalSectionSummary: {
+    marginTop: 3,
+    fontSize: 11,
+    color: "#64748b",
+  },
+  classicalSectionBody: {
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+  },
+  compactClassicalInput: {
+    minHeight: 40,
+    marginTop: 0,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+    color: "#111827",
+  },
+  tracksScroll: {
+    marginTop: 10,
+    flex: 1,
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  trackEditor: {
+    marginBottom: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#dbe2ea",
+    backgroundColor: "#f8fafc",
+  },
+  trackHeader: { flexDirection: "row", alignItems: "center" },
+  trackNumber: { flex: 1, fontSize: 11, fontWeight: "900", color: "#dc2626" },
+  removeButton: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  kindRow: { flexDirection: "row", marginTop: 6 },
+  kindButton: {
+    minHeight: 38,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+  },
+  kindActive: { borderColor: "#dc2626", backgroundColor: "#dc2626" },
+  kindText: { fontSize: 12, fontWeight: "800", color: "#475569" },
+  kindTextActive: { color: "#fff" },
+  trackInput: {
+    minHeight: 44,
+    marginTop: 8,
+    paddingHorizontal: 11,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+    color: "#111827",
+  },
+  lyricsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#93c5fd",
+    backgroundColor: "#eff6ff",
+  },
+  lyricsButton: {
+    flex: 1,
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 12,
+  },
+  lyricsTitle: { fontSize: 12, fontWeight: "800", color: "#2563eb" },
+  lyricsHint: { marginTop: 2, fontSize: 10, color: "#64748b" },
+  removeLyrics: {
+    width: 42,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  lyricsEditorCard: {
+    width: 760,
+    maxWidth: "94%",
+    maxHeight: "88%",
+    padding: 18,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+  },
+  exportNameCard: {
+    width: 460,
+    maxWidth: "92%",
+    gap: 12,
+    padding: 18,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+  },
+  importModeCard: {
+    width: 520,
+    maxWidth: "92%",
+    gap: 12,
+    padding: 18,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+  },
+  importModeButton: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    padding: 13,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+  },
+  importModeReplaceButton: {
+    borderColor: "#fecaca",
+    backgroundColor: "#fff7f7",
+  },
+  importModeButtonText: { flex: 1, minWidth: 0 },
+  importModeTitle: { fontSize: 14, fontWeight: "900", color: "#1d4ed8" },
+  importModeReplaceTitle: { color: "#b91c1c" },
+  importModeDescription: { marginTop: 3, fontSize: 12, color: "#475569" },
+  importModeActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 2,
+  },
+  exportNameActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 8,
+  },
+  lyricsTextArea: {
+    minHeight: 240,
+    maxHeight: 520,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#0f172a",
+    color: "#f8fafc",
+    fontSize: 14,
+    lineHeight: 21,
+    fontFamily: Platform.OS === "web" ? "monospace" : undefined,
+  },
+  lyricsEditorActions: {
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  lyricsSecondaryButton: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    backgroundColor: "#fff",
+  },
+  lyricsSecondaryText: { fontSize: 12, fontWeight: "800", color: "#2563eb" },
+  lyricsSaveButton: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 18,
+    backgroundColor: "#dc2626",
+  },
+  lyricsSaveText: { fontSize: 12, fontWeight: "900", color: "#fff" },
+  addButton: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#f87171",
+  },
+  addText: { fontWeight: "800", color: "#b91c1c" },
+  actions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 14,
+    flexShrink: 0,
+  },
+  cancelButton: {
+    minWidth: 115,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+  },
+  cancelText: { fontWeight: "800", color: "#475569" },
+  saveButton: {
+    minWidth: 155,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#dc2626",
+  },
+  disabled: { opacity: 0.4 },
+  saveText: { fontWeight: "900", color: "#fff" },
+
+  printCardButton: {
+    marginTop: 8,
+    alignSelf: "flex-end",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    borderRadius: 8,
+    backgroundColor: "#eff6ff",
+  },
+  printCardButtonText: { color: "#2563eb", fontWeight: "600" },
+});
