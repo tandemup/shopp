@@ -98,6 +98,7 @@
       .player-note {
         font-size: 13px;
       }
+      #lyric { min-height: 25px; color: #a16207; font-weight: 650; font-style: italic; margin: 12px 0; }
       [hidden] {
         display: none !important;
       }
@@ -144,6 +145,7 @@
           Reproducir aquí
         </button>
       </div>
+      <p id="lyric" hidden aria-live="off"></p>
       <p id="player-note" class="player-note" hidden>
         Si el vídeo no permite reproducción integrada, utiliza «Abrir en
         YouTube».
@@ -201,6 +203,54 @@
           };
           $("shopp").hidden = false;
         };
+        // Fase 2: tarjetas permanentes almacenadas en Convex (sin JSON en public).
+        const cardId = q.get("card");
+        if (cardId !== null) {
+          if (!/^card-[a-z0-9-]{12,70}$/.test(cardId)) { err("Identificador de tarjeta inválido."); return; }
+          fetch(`/.netlify/functions/publicMusicCard?id=${encodeURIComponent(cardId)}`, { cache: "no-store" })
+            .then(async response => {
+              if (!response.ok) throw new Error(response.status === 404 ? "Esta tarjeta no está publicada en el Convex de Netlify." : `No se pudo cargar la tarjeta (HTTP ${response.status}).`);
+              return response.json();
+            })
+            .then(card => {
+              if (card.id !== cardId || !videoRe.test(card.videoId || "")) throw new Error("Ficha inválida.");
+              show(card.title, card.author, card.videoId, "", "");
+              if (typeof card.lyrics === "string" && card.lyrics.trim()) {
+                const lines = card.lyrics.split(/\r?\n/).map(line => {
+                  const match = line.match(/^\[(\d{1,3}):(\d{2})(?:[.,](\d{1,3}))?\](.*)$/);
+                  if (!match) return null;
+                  const fraction = match[3] ? Number(`0.${match[3]}`) : 0;
+                  return { at: Number(match[1]) * 60 + Number(match[2]) + fraction, text: match[4].trim() };
+                }).filter(Boolean).sort((a,b)=>a.at-b.at);
+                if (lines.length) {
+                  const lyric = $("lyric"); lyric.hidden = false;
+                  lyric.textContent = "Letra sincronizada disponible al reproducir";
+                  // IFrame API reads current playback time on permitted YouTube embeds.
+                  const oldClick = $("shopp").onclick;
+                  $("shopp").onclick = () => {
+                    oldClick();
+                    $("player").src = `https://www.youtube-nocookie.com/embed/${card.videoId}?enablejsapi=1&origin=${encodeURIComponent(location.origin)}&playsinline=1&rel=0`;
+                    let seconds = 0, lastIndex = -1;
+                    const frame = $("player");
+                    const listener = (event) => {
+                      if (!/^https:\/\/(www\.)?youtube(-nocookie)?\.com$/.test(event.origin) || event.source !== frame.contentWindow) return;
+                      let msg; try { msg = typeof event.data === "string" ? JSON.parse(event.data) : event.data; } catch { return; }
+                      if (msg?.event === "infoDelivery" && Number.isFinite(msg.info?.currentTime)) seconds = msg.info.currentTime;
+                    };
+                    window.addEventListener("message", listener);
+                    const timer = setInterval(() => {
+                      if (!frame.isConnected || frame.hidden) { clearInterval(timer); window.removeEventListener("message", listener); return; }
+                      frame.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "getCurrentTime", args: [] }), "https://www.youtube-nocookie.com");
+                      let index = -1; for (let i = 0; i < lines.length; i++) if (lines[i].at <= seconds) index = i; else break;
+                      if (index !== lastIndex) { lastIndex = index; lyric.textContent = index < 0 ? "" : lines[index].text; }
+                    }, 400);
+                  };
+                }
+              }
+            })
+            .catch(error => err(error?.message || "No se pudo acceder a la tarjeta."));
+          return;
+        }
         const p = q.get("p");
         if (p) {
           if (!publicRe.test(p)) {
