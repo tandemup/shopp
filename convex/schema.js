@@ -16,7 +16,9 @@ export default defineSchema({
     phone: v.optional(v.string()),
     phoneVerificationTime: v.optional(v.float64()),
     isAnonymous: v.optional(v.boolean()),
-    role: v.optional(v.union(v.literal("user"), v.literal("tester"), v.literal("admin"))),
+    role: v.optional(
+      v.union(v.literal("user"), v.literal("tester"), v.literal("admin")),
+    ),
     // Los permisos son independientes del rol. Un administrador los tiene
     // implícitamente todos; a un usuario normal se le pueden conceder uno a uno.
     permissions: v.optional(
@@ -51,20 +53,33 @@ export default defineSchema({
     acceptedAt: v.optional(v.number()),
     acceptedBy: v.optional(v.id("users")),
     revokedAt: v.optional(v.number()),
-    permissions: v.optional(v.object({
-      scanner: v.optional(v.boolean()), stores: v.optional(v.boolean()),
-      chat: v.optional(v.boolean()), parking: v.optional(v.boolean()),
-      englishTutor: v.optional(v.boolean()), library: v.optional(v.boolean()),
-      musicPlaylist: v.optional(v.boolean()), classicalMusic: v.optional(v.boolean()),
-      tutorials: v.optional(v.boolean()), news: v.optional(v.boolean()),
-      shoppLive: v.optional(v.boolean()), p2pPlaylistExchange: v.optional(v.boolean()),
-      fireAlarm: v.optional(v.boolean()), investments: v.optional(v.boolean()),
-    })),
+    permissions: v.optional(
+      v.object({
+        scanner: v.optional(v.boolean()),
+        stores: v.optional(v.boolean()),
+        chat: v.optional(v.boolean()),
+        parking: v.optional(v.boolean()),
+        englishTutor: v.optional(v.boolean()),
+        library: v.optional(v.boolean()),
+        musicPlaylist: v.optional(v.boolean()),
+        classicalMusic: v.optional(v.boolean()),
+        tutorials: v.optional(v.boolean()),
+        news: v.optional(v.boolean()),
+        shoppLive: v.optional(v.boolean()),
+        p2pPlaylistExchange: v.optional(v.boolean()),
+        fireAlarm: v.optional(v.boolean()),
+        investments: v.optional(v.boolean()),
+      }),
+    ),
   }).index("by_email", ["email"]),
 
   publicGuestSettings: defineTable({
     key: v.string(),
-    features: v.object({ compras: v.boolean(), alimentos: v.boolean(), musica: v.boolean() }),
+    features: v.object({
+      compras: v.boolean(),
+      alimentos: v.boolean(),
+      musica: v.boolean(),
+    }),
   }).index("by_key", ["key"]),
 
   products: defineTable({
@@ -153,7 +168,15 @@ export default defineSchema({
     initiatorName: v.string(),
     recipientName: v.string(),
     confirmCode: v.string(),
-    offeredPlaylists: v.optional(v.array(v.object({ id: v.string(), title: v.string(), tracks: v.array(v.object({ title: v.string(), artist: v.string() })) }))),
+    offeredPlaylists: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          title: v.string(),
+          tracks: v.array(v.object({ title: v.string(), artist: v.string() })),
+        }),
+      ),
+    ),
     status: v.union(
       v.literal("pending"),
       v.literal("accepted"),
@@ -339,12 +362,16 @@ export default defineSchema({
         }),
       ),
     ),
-    files: v.optional(v.array(v.object({
-      storageId: v.id("_storage"),
-      name: v.string(),
-      mimeType: v.string(),
-      size: v.float64(),
-    }))),
+    files: v.optional(
+      v.array(
+        v.object({
+          storageId: v.id("_storage"),
+          name: v.string(),
+          mimeType: v.string(),
+          size: v.float64(),
+        }),
+      ),
+    ),
     product: v.optional(
       v.object({
         barcode: v.string(),
@@ -446,7 +473,9 @@ export default defineSchema({
     trackCount: v.float64(),
     payload: v.string(),
     expiresAt: v.float64(),
-  }).index("by_message", ["messageId"]).index("by_sender", ["senderId"]),
+  })
+    .index("by_message", ["messageId"])
+    .index("by_sender", ["senderId"]),
 
   computerLinkFolders: defineTable({
     name: v.string(),
@@ -1283,4 +1312,16 @@ export default defineSchema({
     candidate: v.string(),
     createdAt: v.float64(),
   }).index("by_session_side", ["sessionId", "side"]),
+
+  publicMusicCards: defineTable({
+    publicId: v.string(),
+    ownerId: v.id("users"),
+    title: v.string(),
+    author: v.string(),
+    videoId: v.string(),
+    lyrics: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_public_id", ["publicId"])
+    .index("by_owner", ["ownerId"]),
 });
