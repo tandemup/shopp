@@ -9,6 +9,7 @@ import { I18nText as Text } from "@/src/i18n";
 import { buildPlaylistCardUrl, buildPublicManifest, comparePublicPlaylist, getPublicManifestUrl, publicIdForPlaylist } from "@/src/services/musicCardLinks";
 
 const ORIGIN = "https://ramworks.netlify.app";
+const permanentCardUrl = (id) => `${ORIGIN}/music-card.html?card=${encodeURIComponent(id)}`;
 
 export default function MusicCardsManager({ visible, onClose, playlists = [], isClassical, onPrepare }) {
   const [results, setResults] = useState({});
@@ -26,7 +27,7 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], is
       if (!videoId) throw new Error("Esta canción no tiene un vídeo YouTube válido.");
       const localLyrics = await getLocalLyrics(track);
       const lyrics = localLyrics?.text?.trim() || undefined;
-      // Cada publicación recibe un ID nuevo. No se vincula a posteriores cambios de playlist.
+      // Publicación inmutable: una nueva edición requiere una tarjeta nueva explícita.
       const uuid = typeof globalThis.crypto?.randomUUID === "function"
         ? globalThis.crypto.randomUUID()
         : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
@@ -36,7 +37,7 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], is
         author: track.author || track.artist || card.playlist.author || card.playlist.artist || "",
         videoId, ...(lyrics ? { lyrics } : {}),
       });
-      setResults(old => ({ ...old, [key]: { kind: "published", message: `Guardada en Convex: ${id} (todavía sin QR público)` } }));
+      setResults(old => ({ ...old, [key]: { kind: "published", message: `Guardada en Convex: ${id}. Publica la fase 2 en Netlify antes de imprimir.` } }));
     } catch (error) {
       setResults(old => ({ ...old, [key]: { kind: "error", message: error?.message || "No se pudo publicar" } }));
     } finally { setBusyId(null); }
@@ -129,9 +130,18 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], is
               </View>
             </View>;
           })}
-          <Text style={styles.title}>Fichas publicadas en Convex (fase 1)</Text>
-          <Text style={styles.hint}>Todavía no generan un QR funcional: falta conectar el reproductor público. No imprimas estos IDs.</Text>
-          {(publishedCards || []).map(item => <Text key={item.id} style={styles.hint}>{item.title} · {item.id}</Text>)}
+          <Text style={styles.title}>Tarjetas guardadas en Convex</Text>
+          <Text style={styles.hint}>Comprueba primero el enlace en Netlify. El QR solo será definitivo cuando Netlify y Shopp consulten el mismo despliegue de Convex.</Text>
+          {(publishedCards || []).map(item => (
+            <View key={item.id} style={styles.item}>
+              <Text style={styles.title}>{item.title}</Text>
+              <Text style={styles.hint}>{item.id}</Text>
+              <Pressable accessibilityRole="button" style={styles.button} onPress={() => Linking.openURL(permanentCardUrl(item.id))}>
+                <Ionicons name="open-outline" color="#1d4ed8" size={17} />
+                <Text style={styles.buttonText}>Probar enlace público</Text>
+              </Pressable>
+            </View>
+          ))}
           {cards.length === 0 ? <Text style={styles.hint}>No hay playlists para gestionar.</Text> : null}
         </ScrollView>
       </View>
