@@ -33,6 +33,7 @@ import {
 } from "@/src/services/musicCardLinks";
 
 import { savePublicMusicCardZip } from "@/src/services/playlistArchiveZip";
+import { getLocalLyrics } from "@/src/storage/lyricsStorage";
 import {
   resolveCardCover,
   getCollectionCover,
@@ -1307,19 +1308,25 @@ export default function PrintMusicCardScreen() {
           const multi = selectedIndices.length > 1;
           const groupId =
             settings.workPublicId || selectionCardId(publicId, selectedIndices);
+          // Para una canción individual, el QR Shopp debe consultar el
+          // manifiesto publicado: sólo allí está la lyricsUrl del LRC.
+          // El parámetro song (índice 0-based) ya lo reconoce el reproductor.
+          const publicSongUrl = buildPlaylistCardUrl(origin, publicId, qrDestination);
           const url = multi
             ? buildPlaylistCardUrl(
                 origin,
                 groupId,
                 qrDestination === "youtube" ? "landing" : qrDestination,
               )
-            : buildSongCardUrl(
-                origin,
-                track,
-                trackTitle,
-                trackAuthor,
-                qrDestination,
-              );
+            : qrDestination !== "youtube" && publicSongUrl
+              ? `${publicSongUrl}&song=${index}`
+              : buildSongCardUrl(
+                  origin,
+                  track,
+                  trackTitle,
+                  trackAuthor,
+                  qrDestination,
+                );
           return {
             title:
               cardMode === "single"
@@ -1861,14 +1868,18 @@ export default function PrintMusicCardScreen() {
         );
       // Evitar tarjetas impresas cuando el manifiesto apunta a LRC inexistentes.
       if (includePublicLyrics) {
-        const expectedLyrics = playlistWithPrintLyrics().tracks
+        // Contabilizar también LRC que sólo existen en IndexedDB.
+        // El objeto playlist no contiene normalmente el texto de esas letras.
+        const expectedTracks = playlistWithPrintLyrics().tracks
           .filter((track) => videoIdFromTrack(track) || youtubePlaylistIdFromTrack(track))
-          .slice(0, 100)
-          .filter(
-            (track) =>
-              typeof track?.lyricsBackup?.text === "string" &&
-              track.lyricsBackup.text.trim(),
-          ).length;
+          .slice(0, 100);
+        const expectedRecords = await Promise.all(expectedTracks.map(async (track) => {
+          if (track.lyricsDisabled === true) return false;
+          if (typeof track.lyricsBackup?.text === "string" && track.lyricsBackup.text.trim()) return true;
+          const stored = await getLocalLyrics(track);
+          return typeof stored?.text === "string" && Boolean(stored.text.trim());
+        }));
+        const expectedLyrics = expectedRecords.filter(Boolean).length;
         const urls = (data.tracks || [])
           .map((track) => track.lyricsUrl)
           .filter(Boolean);
