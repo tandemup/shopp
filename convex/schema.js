@@ -260,20 +260,6 @@ export default defineSchema({
     .index("by_user_barcode", ["userId", "barcode"])
     .index("by_expiresAt", ["expiresAt"]),
 
-  // Synchronization v1 is separate from legacy youtubePlaylists.
-  // No automatic uploads until initial device inventories are reviewed.
-  musicSyncPlaylists: defineTable({
-    ownerId: v.id("users"),
-    localId: v.string(),
-    collectionType: v.union(v.literal("playlist"), v.literal("classical")),
-    revision: v.number(),
-    snapshot: v.any(),
-    lyrics: v.optional(v.array(v.object({key:v.string(), record:v.any()}))),
-    updatedAt: v.number(),
-    deletedAt: v.optional(v.number()),
-  }).index("by_owner_localId", ["ownerId", "localId"])
-    .index("by_owner_updatedAt", ["ownerId", "updatedAt"]),
-
   youtubePlaylists: defineTable({
     ownerId: v.string(),
     collectionType: v.optional(

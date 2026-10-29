@@ -32,7 +32,6 @@ import { savePlaylistArchive, savePublicMusicCardZip, savePublicWorksArchive } f
 import { readPlaylistImportAsset } from "@/src/services/playlistArchiveImport";
 import { validatePlaylistBackupV2, importPlaylistBackupV2 } from "@/src/services/playlistImportV2";
 import * as localRepo from "@/src/storage/playlists/playlistRepository";
-import MusicSyncPanel from "./MusicSyncPanel";
 import { importPlaylistsLocally } from "@/src/services/playlistLocalImport";
 import { videoIdFromTrack, youtubePlaylistIdFromTrack, publicIdForPlaylist, buildPlaylistCardUrl, buildPublicManifest, comparePublicPlaylist, getPublicManifestUrl } from "@/src/services/musicCardLinks";
 
@@ -44,6 +43,10 @@ import {
   MAX_PLAYLIST_ITEMS,
 } from "@/convex/lib/playlistItems";
 import { getLocalLyrics, newLyricsStorageKey } from "@/src/storage/lyricsStorage";
+
+// Limpieza de la funcionalidad provisional de catálogos documentales.
+// Clave exclusiva de esa sección: NO contiene playlists reproducibles.
+const LEGACY_CLASSICAL_CATALOGS_KEY = "shopp-classical-documentary-catalogs-v1";
 
 const CLIENT_ID_KEY = "shopp-playlist-client-id";
 const normalizeSearchText = (value) =>
@@ -471,7 +474,6 @@ export default function PlayListScreen({ guestMode = false }) {
       ? MAX_TUTORIAL_ITEMS
       : MAX_PLAYLIST_ITEMS;
   const [transferVisible, setTransferVisible] = useState(false);
-  const [musicSyncVisible, setMusicSyncVisible] = useState(false);
   const exportItemType = isNews
     ? "shopp-youtube-news-item"
     : isTutorials
@@ -695,6 +697,14 @@ export default function PlayListScreen({ guestMode = false }) {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [importing, setImporting] = useState(false);
+  useEffect(() => {
+    if (!isClassical) return;
+    // Retirar exclusivamente los 17 catálogos documentales provisionales.
+    // Las colecciones reproducibles permanecen en el repositorio de playlists.
+    AsyncStorage.removeItem(LEGACY_CLASSICAL_CATALOGS_KEY)
+      .catch((error) => console.warn("No se pudieron limpiar los catálogos documentales:", error));
+  }, [isClassical]);
+
   const [importModeVisible, setImportModeVisible] = useState(false);
   const [pendingImportAsset, setPendingImportAsset] = useState(null);
   const [exportNameVisible, setExportNameVisible] = useState(false);
@@ -1765,7 +1775,6 @@ export default function PlayListScreen({ guestMode = false }) {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <MusicSyncPanel visible={musicSyncVisible} onClose={() => setMusicSyncVisible(false)} collection={collection} onImported={refreshLocalPlaylists} />
       <View style={[styles.header, compactHeader && styles.headerCompact, narrowMobile && styles.headerPhone]}>
         <View style={[styles.headerText, compactHeader && styles.headerTextCompact]}>
           <Text style={styles.heading}>{collectionTitle}</Text>
@@ -1786,12 +1795,6 @@ export default function PlayListScreen({ guestMode = false }) {
               <Text style={styles.newButtonText}>
                 {isNews ? "Añadir noticia" : isTutorials ? "Nuevo tutorial" : isClassical ? "Nueva colección" : "Nueva playlist"}
               </Text>
-            </Pressable>
-          ) : null}
-          {localMode && !guestMode && (isClassical || (!isNews && !isTutorials)) ? (
-            <Pressable onPress={() => setMusicSyncVisible(true)} accessibilityRole="button" style={styles.secondaryButton}>
-              <Ionicons name="cloud-outline" size={21} color="#2563eb" />
-              <Text style={styles.secondaryButtonText}>Sincronizar</Text>
             </Pressable>
           ) : null}
           {isTutorials ? (
@@ -1893,7 +1896,11 @@ export default function PlayListScreen({ guestMode = false }) {
       ) : (
         <FlatList
           data={filteredPlaylists}
-          ListHeaderComponent={searchHeader}
+          ListHeaderComponent={
+            <View>
+              {searchHeader}
+            </View>
+          }
           keyboardShouldPersistTaps="handled"
           keyExtractor={(item) => String(item._id)}
           contentContainerStyle={[
