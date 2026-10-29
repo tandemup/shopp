@@ -569,6 +569,7 @@ export default function PrintMusicCardScreen() {
   const [publicBaseUrl, setPublicBaseUrl] = useState(initialLandingUrl);
   const [publicId] = useState(() => publicIdForPlaylist(playlist));
   const [published, setPublished] = useState(false);
+  const [publicDiagnostics, setPublicDiagnostics] = useState(null);
   const [includePublicLyrics, setIncludePublicLyrics] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
@@ -1867,6 +1868,72 @@ export default function PrintMusicCardScreen() {
     }
   };
 
+  // Diagnóstico público de solo lectura: no modifica playlists ni el estado de impresión.
+  const diagnosePublicMusicCard = async () => {
+    const url = getPublicManifestUrl(publicBaseUrl, publicId);
+    if (!url) {
+      setPublicDiagnostics({ ok: false, message: "Dirección pública HTTPS no válida." });
+      return;
+    }
+    setBusy(true);
+    setPublicDiagnostics(null);
+    try {
+      const response = await fetch(`${url}?diagnostic=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`JSON público: HTTP ${response.status}`);
+      if (!(response.headers.get("content-type") || "").toLowerCase().includes("json")) {
+        throw new Error("El servidor devuelve HTML en lugar de JSON.");
+      }
+      const manifest = await response.json();
+      if (manifest?.schema !== "shopp-public-music-card" || !Array.isArray(manifest?.tracks)) {
+        throw new Error("La ficha JSON no tiene el formato público de Shopp.");
+      }
+      if (manifest.id !== publicId) throw new Error("El ID de la ficha publicada no coincide con el QR.");
+      const expected = buildPublicManifest(playlist, publicId, isClassical);
+      const match = comparePublicPlaylist(expected, manifest);
+      const errors = [];
+      let lyricsOk = 0;
+      let lyricRefs = 0;
+      for (let i = 0; i < manifest.tracks.length; i++) {
+        const track = manifest.tracks[i];
+        if (!track?.lyricsUrl) continue;
+        lyricRefs++;
+        const path = String(track.lyricsUrl);
+        if (!/^\/music-cards\/lyrics\/shopp-[a-z0-9-]+\/\d{3}\.lrc$/.test(path)) {
+          errors.push(`Pista ${i + 1}: ruta LRC no válida`);
+          continue;
+        }
+        try {
+          const lyricUrl = new URL(path, url).toString();
+          const result = await fetch(`${lyricUrl}?diagnostic=${Date.now()}`, { cache: "no-store" });
+          const type = (result.headers.get("content-type") || "").toLowerCase();
+          if (!result.ok || type.includes("text/html")) {
+            errors.push(`Pista ${i + 1}: LRC no disponible (HTTP ${result.status})`);
+            continue;
+          }
+          const body = await result.text();
+          if (!/\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/.test(body)) {
+            errors.push(`Pista ${i + 1}: LRC sin marcas de tiempo`);
+          } else lyricsOk++;
+        } catch (e) {
+          errors.push(`Pista ${i + 1}: no se pudo consultar su LRC`);
+        }
+      }
+      const message = [
+        `JSON: HTTP ${response.status} · ${manifest.tracks.length} pistas`,
+        `Comparación local: ${match.ok ? "coincide" : match.reason || "diferente"}`,
+        `LRC públicos: ${lyricsOk}/${lyricRefs} correctos`,
+        lyricRefs === 0 ? "No hay letras LRC referenciadas en el JSON publicado." : "",
+        ...errors.slice(0, 8),
+        errors.length > 8 ? `...y ${errors.length - 8} incidencias más` : "",
+      ].filter(Boolean).join("\n");
+      setPublicDiagnostics({ ok: match.ok && errors.length === 0, message });
+    } catch (e) {
+      setPublicDiagnostics({ ok: false, message: e?.message || "No se pudo comprobar la ficha." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const changeCopies = (delta) =>
     setCopies((value) => Math.max(1, Math.min(99, value + delta)));
 
@@ -2717,6 +2784,29 @@ export default function PrintMusicCardScreen() {
                       {busy ? "Comprobando..." : "3. Comprobar publicación"}
                     </Text>
                   </Pressable>
+                  <Pressable
+                    style={[styles.secondaryButton, busy && styles.disabled]}
+                    onPress={diagnosePublicMusicCard}
+                    disabled={busy}
+                  >
+                    <Ionicons name="document-text-outline" size={17} color="#2563eb" />
+                    <Text style={styles.secondaryButtonText}>
+                      {busy ? "Analizando..." : "Diagnóstico JSON y letras LRC"}
+                    </Text>
+                  </Pressable>
+                  {publicDiagnostics ? (
+                    <View style={{
+                      borderWidth: 1,
+                      borderColor: publicDiagnostics.ok ? "#86efac" : "#fca5a5",
+                      backgroundColor: publicDiagnostics.ok ? "#f0fdf4" : "#fff7ed",
+                      borderRadius: 8,
+                      padding: 12,
+                    }}>
+                      <Text selectable style={{ color: "#334155", lineHeight: 21 }}>
+                        {publicDiagnostics.message}
+                      </Text>
+                    </View>
+                  ) : null}
                   <View
                     style={{
                       flexDirection: "row",
