@@ -55,6 +55,6 @@ export const listMine = query({
     const ownerId = await getAuthUserId(ctx);
     if (!ownerId) return [];
     return (await ctx.db.query("publicMusicCards").withIndex("by_owner", q => q.eq("ownerId", ownerId)).collect())
-      .map(c => ({ id: c.publicId, title: c.title, author: c.author, createdAt: c.createdAt }));
+      .map(c => ({ id: c.publicId, title: c.title, author: c.author, videoId: c.videoId, createdAt: c.createdAt }));
   },
 });
