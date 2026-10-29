@@ -44,6 +44,10 @@ import {
 } from "@/convex/lib/playlistItems";
 import { getLocalLyrics, newLyricsStorageKey } from "@/src/storage/lyricsStorage";
 
+// Limpieza de la funcionalidad provisional de catálogos documentales.
+// Clave exclusiva de esa sección: NO contiene playlists reproducibles.
+const LEGACY_CLASSICAL_CATALOGS_KEY = "shopp-classical-documentary-catalogs-v1";
+
 const CLIENT_ID_KEY = "shopp-playlist-client-id";
 const normalizeSearchText = (value) =>
   String(value ?? "")
@@ -693,6 +697,14 @@ export default function PlayListScreen({ guestMode = false }) {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [importing, setImporting] = useState(false);
+  useEffect(() => {
+    if (!isClassical) return;
+    // Retirar exclusivamente los 17 catálogos documentales provisionales.
+    // Las colecciones reproducibles permanecen en el repositorio de playlists.
+    AsyncStorage.removeItem(LEGACY_CLASSICAL_CATALOGS_KEY)
+      .catch((error) => console.warn("No se pudieron limpiar los catálogos documentales:", error));
+  }, [isClassical]);
+
   const [importModeVisible, setImportModeVisible] = useState(false);
   const [pendingImportAsset, setPendingImportAsset] = useState(null);
   const [exportNameVisible, setExportNameVisible] = useState(false);
@@ -1884,7 +1896,11 @@ export default function PlayListScreen({ guestMode = false }) {
       ) : (
         <FlatList
           data={filteredPlaylists}
-          ListHeaderComponent={searchHeader}
+          ListHeaderComponent={
+            <View>
+              {searchHeader}
+            </View>
+          }
           keyboardShouldPersistTaps="handled"
           keyExtractor={(item) => String(item._id)}
           contentContainerStyle={[
