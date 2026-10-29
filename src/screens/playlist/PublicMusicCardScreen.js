@@ -198,16 +198,23 @@ export default function PublicMusicCardScreen() {
           const tracks = manifest.tracks.slice(0, 100).map(normalizeTrack).filter(Boolean);
           if (!tracks.length) throw new Error("La playlist no contiene vídeos de YouTube válidos.");
           if (active) {
-            // QR individuales: abrir directamente la pista deseada sin perder
-            // lyricsUrl, que viene del JSON público y no de la URL del vídeo.
+            // ?song=N indica tarjeta de canción individual (N empieza en cero).
+            // Reducir el conjunto de pistas para impedir que se muestre o
+            // reproduzca la playlist completa y conservar lyricsUrl del JSON.
             const requestedSong = query.get("song");
-            const parsedSong = requestedSong !== null && /^\d{1,3}$/.test(requestedSong)
-              ? Number(requestedSong) : 0;
-            setIndex(parsedSong >= 0 && parsedSong < tracks.length ? parsedSong : 0);
+            const singleSong = requestedSong !== null && /^\d{1,3}$/.test(requestedSong);
+            const parsedSong = singleSong ? Number(requestedSong) : 0;
+            if (singleSong && parsedSong >= tracks.length) {
+              throw new Error("La canción indicada en el QR no existe en la playlist publicada.");
+            }
+            const visibleTracks = singleSong ? [tracks[parsedSong]] : tracks;
+            setIndex(0);
             setData({
-              title: clean(manifest.title || "Playlist Shopp"),
+              title: singleSong
+                ? clean(tracks[parsedSong].title || manifest.title || "Canción Shopp")
+                : clean(manifest.title || "Playlist Shopp"),
               author: clean(manifest.author, 100),
-              tracks,
+              tracks: visibleTracks,
             });
             setStatus("ready");
           }
