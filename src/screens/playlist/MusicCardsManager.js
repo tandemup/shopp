@@ -1,4 +1,8 @@
 import React, { useMemo, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { getLocalLyrics } from "@/src/storage/lyricsStorage";
+import { videoIdFromTrack } from "@/src/services/musicCardLinks";
 import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { I18nText as Text } from "@/src/i18n";
@@ -8,6 +12,35 @@ const ORIGIN = "https://ramworks.netlify.app";
 
 export default function MusicCardsManager({ visible, onClose, playlists = [], isClassical, onPrepare }) {
   const [results, setResults] = useState({});
+  const publishSingle = useMutation(api.publicMusicCards.publishSingle);
+  const publishedCards = useQuery(api.publicMusicCards.listMine);
+  const publish = async (card) => {
+    const key = String(card.playlist._id || card.id);
+    if (busyId) return;
+    setBusyId(key);
+    try {
+      const tracks = card.playlist.tracks || [];
+      if (tracks.length !== 1) throw new Error("Fase 1: publicación disponible solo para playlists de una canción.");
+      const track = tracks[0];
+      const videoId = videoIdFromTrack(track);
+      if (!videoId) throw new Error("Esta canción no tiene un vídeo YouTube válido.");
+      const localLyrics = await getLocalLyrics(track);
+      const lyrics = localLyrics?.text?.trim() || undefined;
+      // Cada publicación recibe un ID nuevo. No se vincula a posteriores cambios de playlist.
+      const uuid = typeof globalThis.crypto?.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+      const id = `card-${uuid}`;
+      await publishSingle({
+        id, title: track.title || card.playlist.title || "Canción",
+        author: track.author || track.artist || card.playlist.author || card.playlist.artist || "",
+        videoId, ...(lyrics ? { lyrics } : {}),
+      });
+      setResults(old => ({ ...old, [key]: { kind: "published", message: `Guardada en Convex: ${id} (todavía sin QR público)` } }));
+    } catch (error) {
+      setResults(old => ({ ...old, [key]: { kind: "error", message: error?.message || "No se pudo publicar" } }));
+    } finally { setBusyId(null); }
+  };
   const [busyId, setBusyId] = useState(null);
   const cards = useMemo(() => (Array.isArray(playlists) ? playlists : []).map((playlist) => ({
     playlist,
@@ -78,7 +111,13 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], is
                   <Ionicons name="print-outline" color="#1d4ed8" size={17} />
                   <Text style={styles.buttonText}>Preparar</Text>
                 </Pressable>
-                {result?.kind === "published" || result?.kind === "outdated" ? (
+                {(card.playlist.tracks || []).length === 1 ? (
+                  <Pressable accessibilityRole="button" disabled={!!busyId} style={styles.button} onPress={() => publish(card)}>
+                    <Ionicons name="cloud-upload-outline" color="#1d4ed8" size={17} />
+                    <Text style={styles.buttonText}>Guardar en Convex (fase 1)</Text>
+                  </Pressable>
+                ) : null}
+                {result?.kind === "outdated" || (result?.kind === "published" && !result.message?.includes("Convex")) ? (
                   <Pressable accessibilityRole="button" style={styles.button} onPress={() => {
                     const url = buildPlaylistCardUrl(ORIGIN, card.id, "landing");
                     if (url) Linking.openURL(url);
@@ -90,6 +129,9 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], is
               </View>
             </View>;
           })}
+          <Text style={styles.title}>Fichas publicadas en Convex (fase 1)</Text>
+          <Text style={styles.hint}>Todavía no generan un QR funcional: falta conectar el reproductor público. No imprimas estos IDs.</Text>
+          {(publishedCards || []).map(item => <Text key={item.id} style={styles.hint}>{item.title} · {item.id}</Text>)}
           {cards.length === 0 ? <Text style={styles.hint}>No hay playlists para gestionar.</Text> : null}
         </ScrollView>
       </View>
