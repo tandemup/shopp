@@ -13,10 +13,14 @@ const ORIGIN = "https://ramworks.netlify.app";
 export default function MusicCardsManager({ visible, onClose, playlists = [], selectedPlaylist = null, isClassical, onPrepare }) {
   const [results, setResults] = useState({});
   const publishSingle = useMutation(api.publicMusicCards.publishSingle);
+  const linkExisting = useMutation(api.publicMusicCards.linkExisting);
   const publishedCards = useQuery(api.publicMusicCards.listMine);
   const selectedKey = selectedPlaylist == null ? null : String(selectedPlaylist._id || publicIdForPlaylist(selectedPlaylist));
   const published = Array.isArray(publishedCards) ? publishedCards : [];
-  const hasPublishedCard = (playlist) => (playlist.tracks || []).length === 1 && published.some(item => item.videoId === videoIdFromTrack(playlist.tracks[0]));
+  const hasPublishedCard = (playlist) => (playlist.tracks || []).length === 1 && published.some(item =>
+    item.sourcePlaylistId
+      ? item.sourcePlaylistId === String(playlist._id || playlist.id || publicIdForPlaylist(playlist)) && item.sourceTrackKey === "single"
+      : item.videoId === videoIdFromTrack(playlist.tracks[0]));
   const publish = async (card) => {
     const key = String(card.playlist._id || card.id);
     if (busyId) return;
@@ -33,17 +37,21 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], se
       if (!videoId) throw new Error("Esta canción no tiene un vídeo YouTube válido.");
       const localLyrics = await getLocalLyrics(track);
       const lyrics = localLyrics?.text?.trim() || undefined;
+      if ((publishedCards || []).some(c => !c.sourcePlaylistId && c.videoId === videoId)) {
+        throw new Error("Ya hay una ficha antigua con este vídeo. Vincúlala primero para evitar duplicados.");
+      }
       // Cada publicación recibe un ID nuevo. No se vincula a posteriores cambios de playlist.
       const uuid = typeof globalThis.crypto?.randomUUID === "function"
         ? globalThis.crypto.randomUUID()
         : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
       const id = `card-${uuid}`;
-      await publishSingle({
-        id, title: track.title || card.playlist.title || "Canción",
+      const saved = await publishSingle({
+        id, sourcePlaylistId: String(card.playlist._id || card.playlist.id || publicIdForPlaylist(card.playlist)), sourceTrackKey: "single", title: track.title || card.playlist.title || "Canción",
         author: track.author || track.artist || card.playlist.author || card.playlist.artist || "",
         videoId, ...(lyrics ? { lyrics } : {}),
       });
-      setResults(old => ({ ...old, [key]: { kind: "published", message: `Guardada en Convex: ${id} (todavía sin QR público)` } }));
+      setResults(old => ({ ...old, [key]: { kind: "published", message: saved.reused
+        ? `Ficha existente reutilizada: ${saved.id}` : `Guardada en Convex: ${saved.id}` } }));
     } catch (error) {
       setResults(old => ({ ...old, [key]: { kind: "error", message: error?.message || "No se pudo publicar" } }));
     } finally { setBusyId(null); }
@@ -55,7 +63,10 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], se
   })), [playlists]);
 
   const visibleCards = selectedKey == null ? cards : cards.filter(card => String(card.playlist._id || card.id) === selectedKey);
-  const visiblePublished = selectedKey == null ? published : published.filter(item => visibleCards.some(card => (card.playlist.tracks || []).length === 1 && videoIdFromTrack(card.playlist.tracks[0]) === item.videoId));
+  const visiblePublished = selectedKey == null ? published : published.filter(item => visibleCards.some(card =>
+    (card.playlist.tracks || []).length === 1 && (item.sourcePlaylistId
+      ? (String(card.playlist._id || card.playlist.id || card.id) === item.sourcePlaylistId && item.sourceTrackKey === "single")
+      : videoIdFromTrack(card.playlist.tracks[0]) === item.videoId)));
 
   const verify = async (card) => {
     if (busyId) return;
@@ -151,7 +162,11 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], se
           <Text style={styles.hint}>Cada ficha conserva su ID aunque cambie la playlist local. Antes de imprimir, comprueba que el reproductor público funciona. No publiques otra copia innecesariamente.</Text>
           {publishedCards === undefined ? <ActivityIndicator size="small" color="#1d4ed8" /> : null}
           {visiblePublished.map(item => {
-            const match = visibleCards.find(c => (c.playlist.tracks || []).length === 1 && videoIdFromTrack(c.playlist.tracks[0]) === item.videoId);
+            const exactMatches = visibleCards.filter(c => (c.playlist.tracks || []).length === 1 &&
+              String(c.playlist._id || c.playlist.id || c.id) === item.sourcePlaylistId && item.sourceTrackKey === "single");
+            const match = exactMatches.length === 1 ? exactMatches[0] : null;
+            const legacyCandidates = !item.sourcePlaylistId ? visibleCards.filter(c => (c.playlist.tracks || []).length === 1 &&
+              videoIdFromTrack(c.playlist.tracks[0]) === item.videoId) : [];
             const publicUrl = `${ORIGIN}/music-card.html?card=${encodeURIComponent(item.id)}`;
             return <View key={item.id} style={styles.item}>
               <Text style={styles.title}>{item.title}</Text>
@@ -161,10 +176,28 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], se
                   <Ionicons name="open-outline" color="#1d4ed8" size={17} />
                   <Text style={styles.buttonText}>Probar reproductor</Text>
                 </Pressable>
+                {!item.sourcePlaylistId && legacyCandidates.length === 1 ? (
+                  <Pressable accessibilityRole="button" style={styles.button} onPress={async () => {
+                    const candidate = legacyCandidates[0];
+                    try {
+                      await linkExisting({ id: item.id,
+                        sourcePlaylistId: String(candidate.playlist._id || candidate.playlist.id || publicIdForPlaylist(candidate.playlist)),
+                        sourceTrackKey: "single", expectedVideoId: item.videoId });
+                      setResults(old => ({ ...old, [String(candidate.playlist._id || candidate.id)]: {
+                        kind: "published", message: `Ficha ${item.id} vinculada a esta playlist` } }));
+                    } catch (err) {
+                      setResults(old => ({ ...old, [String(candidate.playlist._id || candidate.id)]: {
+                        kind: "error", message: err?.message || "No se pudo vincular" } }));
+                    }
+                  }}>
+                    <Ionicons name="link-outline" color="#1d4ed8" size={17} />
+                    <Text style={styles.buttonText}>Vincular ficha antigua</Text>
+                  </Pressable>
+                ) : null}
                 {match ? <Pressable accessibilityRole="button" style={styles.button} onPress={() => onPrepare(match.playlist, { id: item.id, videoId: item.videoId, origin: ORIGIN })}>
                   <Ionicons name="print-outline" color="#1d4ed8" size={17} />
                   <Text style={styles.buttonText}>Preparar QR Convex</Text>
-                </Pressable> : <Text style={styles.hint}>La canción original no está disponible localmente para preparar la tarjeta.</Text>}
+                </Pressable> : <Text style={styles.hint}>{!item.sourcePlaylistId ? "Primero vincula explícitamente la ficha antigua a su playlist." : "La playlist original no está disponible localmente."}</Text>}
               </View>
             </View>;
           })}
