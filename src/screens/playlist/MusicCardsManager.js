@@ -10,13 +10,20 @@ import { buildPlaylistCardUrl, buildPublicManifest, comparePublicPlaylist, getPu
 
 const ORIGIN = "https://ramworks.netlify.app";
 
-export default function MusicCardsManager({ visible, onClose, playlists = [], isClassical, onPrepare }) {
+export default function MusicCardsManager({ visible, onClose, playlists = [], selectedPlaylist = null, isClassical, onPrepare }) {
   const [results, setResults] = useState({});
   const publishSingle = useMutation(api.publicMusicCards.publishSingle);
   const publishedCards = useQuery(api.publicMusicCards.listMine);
+  const selectedKey = selectedPlaylist == null ? null : String(selectedPlaylist._id || publicIdForPlaylist(selectedPlaylist));
+  const published = Array.isArray(publishedCards) ? publishedCards : [];
+  const hasPublishedCard = (playlist) => (playlist.tracks || []).length === 1 && published.some(item => item.videoId === videoIdFromTrack(playlist.tracks[0]));
   const publish = async (card) => {
     const key = String(card.playlist._id || card.id);
     if (busyId) return;
+    if (hasPublishedCard(card.playlist)) {
+      setResults(old => ({ ...old, [key]: { kind: "published", message: "Ya hay una ficha Convex para este vídeo. Utiliza Preparar QR Convex." } }));
+      return;
+    }
     setBusyId(key);
     try {
       const tracks = card.playlist.tracks || [];
@@ -46,6 +53,9 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], is
     playlist,
     id: publicIdForPlaylist(playlist),
   })), [playlists]);
+
+  const visibleCards = selectedKey == null ? cards : cards.filter(card => String(card.playlist._id || card.id) === selectedKey);
+  const visiblePublished = selectedKey == null ? published : published.filter(item => visibleCards.some(card => (card.playlist.tracks || []).length === 1 && videoIdFromTrack(card.playlist.tracks[0]) === item.videoId));
 
   const verify = async (card) => {
     if (busyId) return;
@@ -83,16 +93,16 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], is
       <View style={styles.root}>
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.heading}>Gestionar Music Cards</Text>
-            <Text style={styles.hint}>{cards.length} colecciones · estado público en Netlify</Text>
+            <Text style={styles.heading}>{selectedKey == null ? "Gestionar Music Cards" : "Preparar tarjeta musical"}</Text>
+            <Text style={styles.hint}>{selectedKey == null ? `${cards.length} colecciones · fichas Convex y compatibilidad` : (selectedPlaylist?.title || "Playlist seleccionada")}</Text>
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel="Cerrar gestor" onPress={onClose} style={styles.close}>
             <Ionicons name="close" size={23} color="#334155" />
           </Pressable>
         </View>
         <ScrollView contentContainerStyle={styles.list}>
-          <Text style={styles.hint}>Pulsa «Verificar» para comprobar una ficha. No se modifica la playlist, el QR ni la publicación.</Text>
-          {cards.map((card, index) => {
+          <Text style={styles.hint}>{selectedKey == null ? "Las fichas Convex se pueden imprimir sin ZIP. La verificación JSON se conserva solo para publicaciones antiguas." : "Publica la canción una sola vez; después reutiliza su QR permanente. Las playlists de varias pistas mantienen temporalmente su impresión heredada."}</Text>
+          {visibleCards.map((card, index) => {
             const key = String(card.playlist._id || card.id);
             const result = results[key];
             const checking = busyId === key;
@@ -103,18 +113,26 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], is
                 {result?.message || "Sin comprobar"}
               </Text>
               <View style={styles.actions}>
-                <Pressable accessibilityRole="button" disabled={!!busyId} style={styles.button} onPress={() => verify(card)}>
-                  {checking ? <ActivityIndicator size="small" color="#1d4ed8" /> : <Ionicons name="checkmark-circle-outline" color="#1d4ed8" size={17} />}
-                  <Text style={styles.buttonText}>Verificar</Text>
-                </Pressable>
-                <Pressable accessibilityRole="button" style={styles.button} onPress={() => onPrepare(card.playlist)}>
-                  <Ionicons name="print-outline" color="#1d4ed8" size={17} />
-                  <Text style={styles.buttonText}>Preparar</Text>
-                </Pressable>
-                {(card.playlist.tracks || []).length === 1 ? (
-                  <Pressable accessibilityRole="button" disabled={!!busyId} style={styles.button} onPress={() => publish(card)}>
-                    <Ionicons name="cloud-upload-outline" color="#1d4ed8" size={17} />
-                    <Text style={styles.buttonText}>Guardar en Convex (fase 1)</Text>
+                {(card.playlist.tracks || []).length !== 1 ? (
+                  <>
+                    <Text style={styles.hint}>La publicación Convex de varias pistas se incorporará en una entrega posterior.</Text>
+                    <Pressable accessibilityRole="button" style={styles.button} onPress={() => onPrepare(card.playlist)}>
+                      <Ionicons name="print-outline" color="#1d4ed8" size={17} />
+                      <Text style={styles.buttonText}>Impresión heredada</Text>
+                    </Pressable>
+                  </>
+                ) : hasPublishedCard(card.playlist) ? (
+                  <Text style={styles.good}>Ficha ya publicada. Selecciona «Preparar QR Convex» más abajo.</Text>
+                ) : (
+                  <Pressable accessibilityRole="button" disabled={!!busyId || publishedCards === undefined} style={styles.button} onPress={() => publish(card)}>
+                    {checking ? <ActivityIndicator size="small" color="#1d4ed8" /> : <Ionicons name="cloud-upload-outline" color="#1d4ed8" size={17} />}
+                    <Text style={styles.buttonText}>Publicar en Convex</Text>
+                  </Pressable>
+                )}
+                {selectedKey == null ? (
+                  <Pressable accessibilityRole="button" disabled={!!busyId} style={styles.button} onPress={() => verify(card)}>
+                    <Ionicons name="checkmark-circle-outline" color="#1d4ed8" size={17} />
+                    <Text style={styles.buttonText}>Verificar JSON antiguo</Text>
                   </Pressable>
                 ) : null}
                 {result?.kind === "outdated" || (result?.kind === "published" && !result.message?.includes("Convex")) ? (
@@ -131,9 +149,10 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], is
           })}
           <Text style={styles.title}>Fichas publicadas en Convex</Text>
           <Text style={styles.hint}>Cada ficha conserva su ID aunque cambie la playlist local. Antes de imprimir, comprueba que el reproductor público funciona. No publiques otra copia innecesariamente.</Text>
-          {(publishedCards || []).map(item => {
-            const match = cards.find(c => (c.playlist.tracks || []).length === 1 && videoIdFromTrack(c.playlist.tracks[0]) === item.videoId);
-            const publicUrl = `https://develop--ramworks.netlify.app/music-card.html?card=${encodeURIComponent(item.id)}`;
+          {publishedCards === undefined ? <ActivityIndicator size="small" color="#1d4ed8" /> : null}
+          {visiblePublished.map(item => {
+            const match = visibleCards.find(c => (c.playlist.tracks || []).length === 1 && videoIdFromTrack(c.playlist.tracks[0]) === item.videoId);
+            const publicUrl = `${ORIGIN}/music-card.html?card=${encodeURIComponent(item.id)}`;
             return <View key={item.id} style={styles.item}>
               <Text style={styles.title}>{item.title}</Text>
               <Text style={styles.hint}>{item.id}</Text>
@@ -142,14 +161,14 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], is
                   <Ionicons name="open-outline" color="#1d4ed8" size={17} />
                   <Text style={styles.buttonText}>Probar reproductor</Text>
                 </Pressable>
-                {match ? <Pressable accessibilityRole="button" style={styles.button} onPress={() => onPrepare(match.playlist, { id: item.id, videoId: item.videoId, origin: "https://develop--ramworks.netlify.app" })}>
+                {match ? <Pressable accessibilityRole="button" style={styles.button} onPress={() => onPrepare(match.playlist, { id: item.id, videoId: item.videoId, origin: ORIGIN })}>
                   <Ionicons name="print-outline" color="#1d4ed8" size={17} />
                   <Text style={styles.buttonText}>Preparar QR Convex</Text>
                 </Pressable> : <Text style={styles.hint}>La canción original no está disponible localmente para preparar la tarjeta.</Text>}
               </View>
             </View>;
           })}
-          {cards.length === 0 ? <Text style={styles.hint}>No hay playlists para gestionar.</Text> : null}
+          {visibleCards.length === 0 ? <Text style={styles.hint}>No se ha encontrado la playlist seleccionada. Cierra y vuelve a abrir Music Cards.</Text> : null}
         </ScrollView>
       </View>
     </Modal>
