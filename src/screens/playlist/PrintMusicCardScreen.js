@@ -563,9 +563,11 @@ export default function PrintMusicCardScreen() {
   const previewCardHeight = (previewCardWidth * 56) / 90;
   const playlist = route.params?.playlist || {};
   const convexCard = route.params?.convexCard || null;
+  // Dominio estable de las tarjetas impresas. No depender de origin (develop).
+  const convexProductionOrigin = "https://ramworks.netlify.app";
   const convexQrUrl = convexCard?.id && /^card-[a-z0-9-]{12,70}$/.test(convexCard.id) &&
     (playlist.tracks || []).length === 1 && videoIdFromTrack(playlist.tracks[0]) === convexCard.videoId
-      ? `${convexCard.origin || "https://develop--ramworks.netlify.app"}/music-card.html?card=${encodeURIComponent(convexCard.id)}`
+      ? `${convexProductionOrigin}/music-card.html?card=${encodeURIComponent(convexCard.id)}`
       : null;
   const isClassical = Boolean(route.params?.isClassical);
   const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
@@ -573,7 +575,7 @@ export default function PrintMusicCardScreen() {
   const [selectedSongIndex, setSelectedSongIndex] = useState(0);
   const customPlaylistReverses = false; // Un único reverso: sin personalización de diez tarjetas.
   const [qrDestination, setQrDestination] = useState("shopp");
-  const [publicBaseUrl, setPublicBaseUrl] = useState(() => convexCard?.origin || initialLandingUrl());
+  const [publicBaseUrl, setPublicBaseUrl] = useState(() => convexCard ? convexProductionOrigin : initialLandingUrl());
   const [publicId] = useState(() => publicIdForPlaylist(playlist));
   const [published, setPublished] = useState(false);
   const [includePublicLyrics, setIncludePublicLyrics] = useState(false);
@@ -627,7 +629,7 @@ export default function PrintMusicCardScreen() {
   const [author, setAuthor] = useState(inferredMusic.author);
   const [single, setSingle] = useState(inferredMusic.single);
   const [subtitle, setSubtitle] = useState(
-    isClassical
+    convexCard ? "" : isClassical
       ? [playlist.composer, playlist.performer].filter(Boolean).join(" · ")
       : `${tracks.length} ${tracks.length === 1 ? "item" : "items"}`,
   );
@@ -1187,7 +1189,7 @@ export default function PrintMusicCardScreen() {
     setSelectedSongIndex(index);
     setAuthor(nextAuthor);
     setSingle(nextSingle);
-    setSubtitle("1 item");
+    setSubtitle(convexCard ? "" : "1 item");
     setCoverUri(nextCover);
     setCoverDimensions(null);
   };
@@ -1743,7 +1745,7 @@ export default function PrintMusicCardScreen() {
       }
     }
   };
-  const qrActionLabel = getQrActionLabel(qrDestination);
+  const qrActionLabel = convexCard ? "Escuchar en Shopp" : getQrActionLabel(qrDestination);
 
   const downloadPublicManifest = () => {
     if (Platform.OS !== "web") return;
@@ -2459,7 +2461,12 @@ export default function PrintMusicCardScreen() {
                 </Text>
               </View>
             </View>
-            <View style={styles.choicesGrid}>
+            {convexCard ? (
+              <View style={styles.infoBox}>
+                <Text style={styles.infoBoxTitle}>Canción publicada en Convex</Text>
+                <Text style={styles.infoBoxText}>Se imprimirá Eye in the Sky o la canción indicada en esta ficha, con el QR de la publicación existente. Cambiar imagen y texto no genera otro QR.</Text>
+              </View>
+            ) : <View style={styles.choicesGrid}>
               {[
                 [
                   "songs",
@@ -2515,7 +2522,7 @@ export default function PrintMusicCardScreen() {
                   <Text style={styles.choiceDescription}>{detail}</Text>
                 </Pressable>
               ))}
-            </View>
+            </View>}
             {cardMode === "single" ? (
               <View style={{ marginTop: 12, gap: 8 }}>
                 <Text style={styles.fieldLabel}>
@@ -2576,7 +2583,10 @@ export default function PrintMusicCardScreen() {
                     </Pressable>
                   ))}
                 </View>
-                <View style={{ padding: 12, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", borderRadius: 10, gap: 9 }}>
+                {convexCard ? <View style={{ padding: 12, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", borderRadius: 10, gap: 7 }}>
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: "#1e3a8a" }}>Letra publicada en Convex</Text>
+                  <Text style={{ color: "#334155" }}>Se utiliza el LRC asociado a esta ficha pública, si existe. No es necesario importar un archivo ni publicar un ZIP. Comprueba la sincronización en «Probar reproductor».</Text>
+                </View> : <View style={{ padding: 12, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", borderRadius: 10, gap: 9 }}>
                   <Text style={{ fontSize: 15, fontWeight: "700", color: "#1e3a8a" }}>
                     Letra de la canción seleccionada
                   </Text>
@@ -2608,7 +2618,7 @@ export default function PrintMusicCardScreen() {
                   <Text style={styles.fieldHelp}>
                     Asociación temporal para esta preparación. Para el QR público, publica el ZIP con LRC autorizado en Netlify.
                   </Text>
-                </View>
+                </View>}
                 <Text style={styles.fieldHelp}>
                   Los campos del reverso se rellenan con la canción elegida y
                   siguen siendo editables. El número de copias se configura al
@@ -2642,7 +2652,11 @@ export default function PrintMusicCardScreen() {
                 </Text>
               </View>
             </View>
-            <View style={styles.choicesGrid}>
+            {convexCard ? <View style={styles.infoBox}>
+              <Text style={styles.infoBoxTitle}>Reproductor Shopp · URL fija de Convex</Text>
+              <Text style={styles.infoBoxText}>{convexQrUrl || "La ficha no coincide con la canción seleccionada. Impresión bloqueada."}</Text>
+              <Text style={styles.infoBoxText}>El destino no se puede cambiar en este modo. Utiliza la ficha publicada, no YouTube ni el JSON antiguo.</Text>
+            </View> : <View style={styles.choicesGrid}>
               {[
                 [
                   "landing",
@@ -2696,8 +2710,8 @@ export default function PrintMusicCardScreen() {
                   <Text style={styles.choiceDescription}>{detail}</Text>
                 </Pressable>
               ))}
-            </View>
-            <View style={styles.inputField}>
+            </View>}
+            {!convexCard && <View style={styles.inputField}>
               <Text style={styles.fieldLabel}>Dirección pública de Shopp</Text>
               <TextInput
                 value={publicBaseUrl}
@@ -2715,7 +2729,7 @@ export default function PrintMusicCardScreen() {
                 Para entregar tarjetas, utiliza la URL HTTPS publicada, no
                 localhost.
               </Text>
-            </View>
+            </View>}
             {!convexCard && (cardMode === "playlist" || cardMode === "single") && qrDestination !== "youtube" ? (
               <View style={styles.infoBox}>
                 <Text style={styles.infoBoxTitle}>
@@ -2896,7 +2910,7 @@ export default function PrintMusicCardScreen() {
                   value={subtitle}
                   onChangeText={setSubtitle}
                   style={styles.input}
-                  placeholder="1 item"
+                  placeholder={convexCard ? "Opcional" : "1 item"}
                   placeholderTextColor="#94a3b8"
                 />
               </View>
@@ -3472,12 +3486,12 @@ export default function PrintMusicCardScreen() {
         </View>
 
         {convexCard ? <Text style={styles.note}>
-          QR Convex permanente: {convexCard.id}. Verifica el enlace antes de imprimir. La tarjeta es independiente de futuras modificaciones de la playlist. El enlace utiliza Netlify develop para pruebas.
+          QR de la ficha Convex {convexCard.id}. URL de producción fija: {convexQrUrl}. La dirección no cambia al editar el reverso. Verifica que el QR abre el vídeo y su letra en producción antes de imprimir.
         </Text> : null}
         <Text style={styles.note}>
-          Texto impreso bajo el QR: «{qrActionLabel.replace("\n", " ")}». Para
-          compartir playlists completas en otro dispositivo, publica antes su
-          ficha JSON estática en Netlify.
+          {convexCard
+            ? "El QR abre el reproductor público de Shopp y carga el LRC guardado en Convex, si existe. No es necesario publicar un ZIP."
+            : `Texto impreso bajo el QR: «${qrActionLabel.replace("\n", " ")}». Para compartir playlists completas en otro dispositivo, publica antes su ficha JSON estática en Netlify.`}
         </Text>
         <Pressable
           disabled={
