@@ -1321,7 +1321,11 @@ export default defineSchema({
     videoId: v.string(),
     lyrics: v.optional(v.string()),
     createdAt: v.number(),
+    // Optional: existing printed cards remain valid without backfill.
+    sourcePlaylistId: v.optional(v.string()),
+    sourceTrackKey: v.optional(v.string()),
   })
     .index("by_public_id", ["publicId"])
-    .index("by_owner", ["ownerId"]),
+    .index("by_owner", ["ownerId"])
+    .index("by_owner_source", ["ownerId", "sourcePlaylistId", "sourceTrackKey"]),
 });
