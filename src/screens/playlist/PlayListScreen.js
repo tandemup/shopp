@@ -440,6 +440,7 @@ export default function PlayListScreen({ guestMode = false }) {
   const route = useRoute();
   const navigation = useNavigation();
   const [musicCardsManagerVisible, setMusicCardsManagerVisible] = useState(false);
+  const [musicCardsSourcePlaylist, setMusicCardsSourcePlaylist] = useState(null);
   const isTutorials = route.name === ROUTES.TUTORIALS;
   const isNews = route.name === ROUTES.NEWS;
   const isTutorialStyle = isTutorials || isNews;
@@ -1780,11 +1781,13 @@ export default function PlayListScreen({ guestMode = false }) {
       {!isTutorialStyle ? (
         <MusicCardsManager
           visible={musicCardsManagerVisible}
-          onClose={() => setMusicCardsManagerVisible(false)}
+          selectedPlaylist={musicCardsSourcePlaylist}
+          onClose={() => { setMusicCardsManagerVisible(false); setMusicCardsSourcePlaylist(null); }}
           playlists={playlists || []}
           isClassical={isClassical}
           onPrepare={(item, convexCard = null) => {
             setMusicCardsManagerVisible(false);
+            setMusicCardsSourcePlaylist(null);
             navigation.navigate(ROUTES.PRINT_MUSIC_CARD, { playlist: item, isClassical, convexCard });
           }}
         />
@@ -1823,7 +1826,7 @@ export default function PlayListScreen({ guestMode = false }) {
             </Pressable>
           ) : null}
           {!isTutorialStyle ? (
-            <Pressable onPress={() => setMusicCardsManagerVisible(true)} accessibilityRole="button" style={styles.secondaryButton}>
+            <Pressable onPress={() => { setMusicCardsSourcePlaylist(null); setMusicCardsManagerVisible(true); }} accessibilityRole="button" style={styles.secondaryButton}>
               <Ionicons name="albums-outline" size={20} color="#2563eb" />
               <Text style={styles.secondaryButtonText}>Music Cards</Text>
             </Pressable>
@@ -1958,7 +1961,7 @@ export default function PlayListScreen({ guestMode = false }) {
                 onEdit={() => openEdit(item)}
                 onDelete={() => confirmRemove(item)}
                 onExport={() => openExportPlaylist(item)}
-                onCreateCard={!isTutorialStyle ? () => navigation.navigate(ROUTES.PRINT_MUSIC_CARD, { playlist: item, isClassical }) : undefined}
+                onCreateCard={!isTutorialStyle ? () => { setMusicCardsSourcePlaylist(item); setMusicCardsManagerVisible(true); } : undefined}
                 shareable={item.shareable === true}
                 onToggleShareable={!isTutorialStyle ? async (shareable) => {
                   try {
