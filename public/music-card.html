@@ -225,26 +225,59 @@
                 if (lines.length) {
                   const lyric = $("lyric"); lyric.hidden = false;
                   lyric.textContent = "Letra sincronizada disponible al reproducir";
-                  // IFrame API reads current playback time on permitted YouTube embeds.
-                  const oldClick = $("shopp").onclick;
-                  $("shopp").onclick = () => {
-                    oldClick();
-                    $("player").src = `https://www.youtube-nocookie.com/embed/${card.videoId}?enablejsapi=1&origin=${encodeURIComponent(location.origin)}&playsinline=1&rel=0`;
-                    let seconds = 0, lastIndex = -1;
-                    const frame = $("player");
-                    const listener = (event) => {
-                      if (!/^https:\/\/(www\.)?youtube(-nocookie)?\.com$/.test(event.origin) || event.source !== frame.contentWindow) return;
-                      let msg; try { msg = typeof event.data === "string" ? JSON.parse(event.data) : event.data; } catch { return; }
-                      if (msg?.event === "infoDelivery" && Number.isFinite(msg.info?.currentTime)) seconds = msg.info.currentTime;
-                    };
-                    window.addEventListener("message", listener);
-                    const timer = setInterval(() => {
-                      if (!frame.isConnected || frame.hidden) { clearInterval(timer); window.removeEventListener("message", listener); return; }
-                      frame.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "getCurrentTime", args: [] }), "https://www.youtube-nocookie.com");
-                      let index = -1; for (let i = 0; i < lines.length; i++) if (lines[i].at <= seconds) index = i; else break;
-                      if (index !== lastIndex) { lastIndex = index; lyric.textContent = index < 0 ? "" : lines[index].text; }
-                    }, 400);
-                  };
+                                     // Usar la API oficial de YouTube: getCurrentTime() es un método
+                   // del objeto YT.Player, no una respuesta garantizada a postMessage.
+                   $("shopp").onclick = () => {
+                     const frame = $("player");
+                     $("cover").hidden = true;
+                     $("media").hidden = false;
+                     frame.hidden = false;
+                     $("player-note").hidden = false;
+                     $("shopp").hidden = true;
+                     lyric.textContent = "Cargando sincronización…";
+                     frame.src = `https://www.youtube.com/embed/${card.videoId}?enablejsapi=1&origin=${encodeURIComponent(location.origin)}&playsinline=1&rel=0`;
+
+                     function startPlayer() {
+                       if (!window.YT?.Player) return;
+                       const player = new window.YT.Player(frame, {
+                         events: {
+                           onReady: () => {
+                             let lastIndex = -2;
+                             const update = () => {
+                               if (!frame.isConnected) { clearInterval(timer); return; }
+                               const seconds = Number(player.getCurrentTime());
+                               if (!Number.isFinite(seconds)) return;
+                               let index = -1;
+                               for (let i = 0; i < lines.length; i++) {
+                                 if (lines[i].at <= seconds) index = i;
+                                 else break;
+                               }
+                               if (index !== lastIndex) {
+                                 lastIndex = index;
+                                 lyric.textContent = index < 0 ? "" : lines[index].text;
+                               }
+                             };
+                             const timer = setInterval(update, 250);
+                             update();
+                           },
+                           onError: () => {
+                             lyric.textContent = "No se puede sincronizar este vídeo en el reproductor integrado.";
+                           }
+                         }
+                       });
+                     }
+                     if (window.YT?.Player) startPlayer();
+                     else {
+                       window.onYouTubeIframeAPIReady = startPlayer;
+                       if (!document.querySelector('script[data-shopp-yt-api]')) {
+                         const script = document.createElement("script");
+                         script.src = "https://www.youtube.com/iframe_api";
+                         script.dataset.shoppYtApi = "true";
+                         script.onerror = () => { lyric.textContent = "No se pudo cargar la API de YouTube."; };
+                         document.head.appendChild(script);
+                       }
+                     }
+                   };
                 }
               }
             })
