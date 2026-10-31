@@ -1320,6 +1320,20 @@ export default defineSchema({
     author: v.string(),
     videoId: v.string(),
     lyrics: v.optional(v.string()),
+    tracks: v.optional(v.array(v.object({
+      title: v.string(),
+      author: v.string(),
+      videoId: v.string(),
+      lyrics: v.optional(v.string()),
+    }))),
+    // Compatibilidad con la estructura usada por Music Cards Entrega 3C.
+    collectionTracks: v.optional(v.array(v.object({
+      title: v.string(),
+      author: v.string(),
+      videoId: v.string(),
+      lyrics: v.optional(v.string()),
+    }))),
+    collectionType: v.optional(v.union(v.literal("music"), v.literal("classical"))),
     createdAt: v.number(),
     // Optional: existing printed cards remain valid without backfill.
     sourcePlaylistId: v.optional(v.string()),

@@ -28,7 +28,7 @@ export default function App() {
 }
 
 function ShoppApp() {
-  // Acceso público desde tarjetas QR: no requiere Convex ni autenticación.
+  // Acceso público desde QR: sin sesión; las fichas Convex usan el proxy público de Netlify.
   if (Platform.OS === "web" && typeof window !== "undefined" &&
       new URLSearchParams(window.location.search).get("shoppCard") === "1") {
     return <SafeAreaProvider><PublicMusicCardScreen /></SafeAreaProvider>;

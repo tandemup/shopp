@@ -58,6 +58,48 @@ export const publishSingle = mutation({
   },
 });
 
+// Publica una selección multipista inmutable. El source key identifica la
+// selección y permite reutilizar el QR sin sobrescribir una ficha ya impresa.
+export const publishCollection = mutation({
+  args: {
+    id: v.string(),
+    title: v.string(),
+    author: v.string(),
+    collectionType: v.union(v.literal("music"), v.literal("classical")),
+    tracks: v.array(v.object({
+      title: v.string(), author: v.string(), videoId: v.string(), lyrics: v.optional(v.string()),
+    })),
+    sourcePlaylistId: v.string(),
+    sourceTrackKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await requireOwner(ctx);
+    if (!publicIdPattern.test(args.id) || !sourceIdOK(args.sourcePlaylistId) ||
+        !/^selection-[a-f0-9]{16}$/.test(args.sourceTrackKey)) throw new Error("Identificador de colección no válido.");
+    if (!args.title.trim() || args.title.length > 120 || args.author.length > 100 ||
+        args.tracks.length < 2 || args.tracks.length > 100) throw new Error("Datos de colección no válidos.");
+    if (JSON.stringify(args.tracks).length > 500000) throw new Error("La colección supera el límite público de 500 KB.");
+    for (const track of args.tracks) {
+      if (!youtubeIdPattern.test(track.videoId) || !track.title.trim() || track.title.length > 120 || track.author.length > 100 ||
+          (track.lyrics != null && track.lyrics.length > 90000)) throw new Error("Una pista de la selección no es válida.");
+    }
+    const current = await getBySource(ctx, ownerId, args.sourcePlaylistId, args.sourceTrackKey);
+    if (current) return { id: current.publicId, reused: true };
+    const existingId = await ctx.db.query("publicMusicCards").withIndex("by_public_id", q => q.eq("publicId", args.id)).unique();
+    if (existingId) throw new Error("El identificador de tarjeta ya existe.");
+    const tracks = args.tracks.map(track => ({
+      title: clean(track.title, 120), author: clean(track.author, 100), videoId: track.videoId,
+      ...(track.lyrics ? { lyrics: track.lyrics } : {}),
+    }));
+    await ctx.db.insert("publicMusicCards", {
+      publicId: args.id, ownerId, title: clean(args.title, 120), author: clean(args.author, 100),
+      videoId: tracks[0].videoId, tracks, collectionType: args.collectionType,
+      sourcePlaylistId: args.sourcePlaylistId, sourceTrackKey: args.sourceTrackKey, createdAt: Date.now(),
+    });
+    return { id: args.id, reused: false };
+  },
+});
+
 // Explicit migration for existing cards. Requires owner AND the previous video to match.
 // Never guess a source by title or YouTube ID alone.
 export const linkExisting = mutation({
@@ -85,7 +127,8 @@ export const getPublic = query({
     if (!publicIdPattern.test(id)) return null;
     const card = await ctx.db.query("publicMusicCards").withIndex("by_public_id", q => q.eq("publicId", id)).unique();
     if (!card) return null;
-    return { id: card.publicId, title: card.title, author: card.author, videoId: card.videoId, lyrics: card.lyrics || null };
+    return { id: card.publicId, title: card.title, author: card.author, videoId: card.videoId,
+      lyrics: card.lyrics || null, tracks: card.tracks || null, collectionType: card.collectionType || "music" };
   },
 });
 
@@ -95,7 +138,9 @@ export const listMine = query({
     const ownerId = await getAuthUserId(ctx);
     if (!ownerId) return [];
     return (await ctx.db.query("publicMusicCards").withIndex("by_owner", q => q.eq("ownerId", ownerId)).collect())
-      .map(c => ({ id: c.publicId, title: c.title, author: c.author, videoId: c.videoId, createdAt: c.createdAt,
+      .map(c => ({ id: c.publicId, title: c.title, author: c.author, videoId: c.videoId, trackCount: c.tracks?.length || 1,
+        collectionType: c.collectionType || "music", createdAt: c.createdAt,
+        tracks: c.tracks?.map(track => ({ title: track.title, author: track.author, videoId: track.videoId })) || null,
         sourcePlaylistId: c.sourcePlaylistId || null, sourceTrackKey: c.sourceTrackKey || null }));
   },
 });

@@ -19,6 +19,8 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as Sharing from "expo-sharing";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import * as localRepo from "@/src/storage/playlists/playlistRepository";
 import {
   buildSongCardUrl,
@@ -57,6 +59,24 @@ function selectionCardId(publicId, indices) {
   return `${String(publicId).slice(0, 54).replace(/-+$/, "")}-s${hash.toString(16).padStart(8, "0")}`;
 }
 
+function selectionSourceKey(playlist, indices, tracks, payload) {
+  const source = `${String(playlist?._id || playlist?.id || "")}:` +
+    indices.map((index) => `${index}:${workTrackKey(tracks[index])}`).join("|") +
+    `:${JSON.stringify(payload || null)}`;
+  const hash = (seed) => {
+    let value = seed >>> 0;
+    for (let i = 0; i < source.length; i++) value = Math.imul(value ^ source.charCodeAt(i), 16777619) >>> 0;
+    return value.toString(16).padStart(8, "0");
+  };
+  return `selection-${hash(2166136261)}${hash(0x9e3779b9)}`;
+}
+function selectionUiFingerprint(playlist, indices, tracks, settings, includeLyrics, overrides) {
+  return selectionSourceKey(playlist, indices, tracks, {
+    title: settings?.title || "", subtitle: settings?.subtitle || "", includePublicLyrics: includeLyrics,
+    lyrics: includeLyrics ? indices.map(index => overrides[index]?.text || tracks[index]?.lyricsBackup?.text || "") : [],
+  });
+}
+
 // Identificador lógico de pista independiente de su posición en la playlist.
 // Los vídeos repetidos se diferencian con su ocurrencia al reconstruir la selección.
 // Mismo identificador publicado por el catálogo (PlayListScreen.js).
@@ -91,6 +111,20 @@ function matchWorkTrackIndices(keys, tracks) {
 
 function qrUrl(value, size = 360) {
   return `https://quickchart.io/qr?size=${size}&margin=1&text=${encodeURIComponent(value)}`;
+}
+
+function convexPlayerUrl(origin, cardId, destination = "shopp", firstVideoId = "") {
+  if (!cardId) return "";
+  if (destination === "youtube") {
+    return /^[A-Za-z0-9_-]{11}$/.test(firstVideoId)
+      ? `https://www.youtube.com/watch?v=${firstVideoId}`
+      : "";
+  }
+  const url = new URL("/", origin);
+  url.searchParams.set("shoppCard", "1");
+  url.searchParams.set("card", cardId);
+  url.searchParams.set("player", "shopp");
+  return url.toString();
 }
 
 // La leyenda impresa coincide con el destino real configurado para el QR.
@@ -563,21 +597,30 @@ export default function PrintMusicCardScreen() {
   const previewCardHeight = (previewCardWidth * 56) / 90;
   const playlist = route.params?.playlist || {};
   const convexCard = route.params?.convexCard || null;
+  const publishCollectionMutation = useMutation(api.publicMusicCards.publishCollection);
+  const publishSingleMutation = useMutation(api.publicMusicCards.publishSingle);
   // Dominio estable de las tarjetas impresas. No depender de origin (develop).
   const convexProductionOrigin = "https://ramworks.netlify.app";
-  const convexQrUrl = convexCard?.id && /^card-[a-z0-9-]{12,70}$/.test(convexCard.id) &&
-    (playlist.tracks || []).length === 1 && videoIdFromTrack(playlist.tracks[0]) === convexCard.videoId
-      ? `${convexProductionOrigin}/music-card.html?card=${encodeURIComponent(convexCard.id)}`
-      : null;
   const isClassical = Boolean(route.params?.isClassical);
-  const tracks = Array.isArray(playlist.tracks) ? playlist.tracks : [];
-  const [cardMode, setCardMode] = useState(() => convexCard ? "single" : "playlist"); // QR directo al reproductor público
+  const tracks = Array.isArray(convexCard?.tracks) && convexCard.tracks.length > 1
+    ? convexCard.tracks
+    : Array.isArray(playlist.tracks) ? playlist.tracks : [];
+  const isValidConvexCardId = Boolean(convexCard?.id && /^card-[a-z0-9-]{12,70}$/.test(convexCard.id));
+  const convexQrUrl = isValidConvexCardId && (tracks.length === 1
+    ? videoIdFromTrack(tracks[0]) === convexCard.videoId
+    : tracks.length > 1 && videoIdFromTrack(tracks[0]) === convexCard.videoId && tracks.every(track => videoIdFromTrack(track)))
+      ? convexPlayerUrl(convexProductionOrigin, convexCard.id, "shopp", videoIdFromTrack(tracks[0]))
+      : null;
+  const [cardMode, setCardMode] = useState(() => convexCard ? (tracks.length > 1 ? "playlist" : "single") : "playlist"); // QR directo al reproductor público
   const [selectedSongIndex, setSelectedSongIndex] = useState(0);
   const customPlaylistReverses = false; // Un único reverso: sin personalización de diez tarjetas.
   const [qrDestination, setQrDestination] = useState("shopp");
   const [publicBaseUrl, setPublicBaseUrl] = useState(() => convexCard ? convexProductionOrigin : initialLandingUrl());
   const [publicId] = useState(() => publicIdForPlaylist(playlist));
   const [published, setPublished] = useState(false);
+  const [convexSelectionCards, setConvexSelectionCards] = useState([]);
+  const [publishedPlaylistCard, setPublishedPlaylistCard] = useState(null);
+  const [publishingSelection, setPublishingSelection] = useState(false);
   const [includePublicLyrics, setIncludePublicLyrics] = useState(false);
   // LRC importados durante la preparación: índice de pista -> contenido y nombre.
   const [singleLyricsOverrides, setSingleLyricsOverrides] = useState({});
@@ -592,6 +635,85 @@ export default function PrintMusicCardScreen() {
       ),
     [tracks],
   );
+  const publishWholePlaylistToConvex = async () => {
+    if (publishingSelection || validTracks.length < 1) return;
+    setPublishingSelection(true);
+    try {
+      const collectionTracks = [];
+      let includedLyricsCount = 0;
+      for (let index = 0; index < validTracks.length; index += 1) {
+        const track = validTracks[index];
+        const videoId = videoIdFromTrack(track);
+        if (!videoId) throw new Error(`«${track?.title || `Pista ${index + 1}`}» no tiene un vídeo individual de YouTube.`);
+        let lyrics = "";
+        if (includePublicLyrics) {
+          try {
+            const localLyrics = await getLocalLyrics(track);
+            lyrics = localLyrics?.text?.trim() || track.lyricsBackup?.text?.trim() || "";
+          } catch (_) {
+            lyrics = track.lyricsBackup?.text?.trim() || "";
+          }
+        }
+        if (lyrics) includedLyricsCount += 1;
+        collectionTracks.push({
+          title: String(track.title || `Pista ${index + 1}`).slice(0, 120),
+          author: String(track.author || track.artist || author || "").slice(0, 100),
+          videoId,
+          ...(lyrics ? { lyrics } : {}),
+        });
+      }
+      const sourcePlaylistId = String(playlist._id || playlist.id || publicId);
+      const generatedId = `card-${typeof globalThis.crypto?.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`}`;
+      if (collectionTracks.length === 1) {
+        const track = collectionTracks[0];
+        const saved = await publishSingleMutation({
+          id: generatedId,
+          title: track.title,
+          author: track.author,
+          videoId: track.videoId,
+          ...(track.lyrics ? { lyrics: track.lyrics } : {}),
+          sourcePlaylistId,
+          sourceTrackKey: "single",
+        });
+        setPublishedPlaylistCard({ id: saved.id, sourceTrackKey: "single" });
+        setQrDestination("shopp");
+        setPublicBaseUrl(convexProductionOrigin);
+        setPublished(true);
+        showNotice(saved.reused ? "QR permanente reutilizado" : "Canción publicada en Convex", "La canción ya tiene un QR permanente de Shopp.", "success");
+        return;
+      }
+      const sourceTrackKey = selectionSourceKey(playlist, collectionTracks.map((_, index) => index), validTracks, {
+        title: String(title || playlist.title || "Colección Shopp"),
+        author: String(author || ""),
+        collectionType: isClassical ? "classical" : "music",
+        tracks: collectionTracks,
+      });
+      const saved = await publishCollectionMutation({
+        id: generatedId,
+        sourcePlaylistId,
+        sourceTrackKey,
+        title: String(title || playlist.title || "Colección Shopp").slice(0, 120),
+        author: String(author || "").slice(0, 100),
+        collectionType: isClassical ? "classical" : "music",
+        tracks: collectionTracks,
+      });
+      setPublishedPlaylistCard({ id: saved.id, sourceTrackKey });
+      setQrDestination("shopp");
+      setPublicBaseUrl(convexProductionOrigin);
+      setPublished(true);
+      showNotice(
+        saved.reused ? "QR permanente reutilizado" : "Playlist publicada en Convex",
+        `${collectionTracks.length} pistas publicadas. El QR abre el reproductor público de Shopp y conserva su dirección.${includePublicLyrics ? (includedLyricsCount ? ` Se añadieron ${includedLyricsCount} letras LRC.` : " No se encontraron letras LRC locales.") : " No se incluyeron letras LRC."}`,
+        "success",
+      );
+    } catch (error) {
+      showNotice("No se pudo publicar la playlist", error?.message || String(error), "warning");
+    } finally {
+      setPublishingSelection(false);
+    }
+  };
   const inferredMusic = useMemo(() => {
     const firstTrack = tracks[0] || {};
     const candidates = [
@@ -1210,10 +1332,9 @@ export default function PrintMusicCardScreen() {
     if (cardMode === "playlist") {
       const first = validTracks[0];
       if (!first) return [];
-      const url = convexCard ? convexQrUrl :
-        qrDestination === "youtube"
-          ? buildSongCardUrl(origin, first, title, author, "youtube")
-          : buildPlaylistCardUrl(origin, publicId, qrDestination);
+      const url = convexCard ? convexPlayerUrl(convexProductionOrigin, convexCard.id, qrDestination, videoIdFromTrack(first)) : publishedPlaylistCard
+        ? convexPlayerUrl(convexProductionOrigin, publishedPlaylistCard.id, qrDestination, videoIdFromTrack(first))
+        : "";
       if (!url) return [];
       if (!customPlaylistReverses)
         return [
@@ -1311,7 +1432,6 @@ export default function PrintMusicCardScreen() {
                     (i) =>
                       Number.isInteger(i) && i >= 0 && i < validTracks.length,
                   )
-                  .sort((a, b) => a - b)
               : [index];
           const multi = selectedIndices.length > 1;
           const groupId =
@@ -1321,12 +1441,19 @@ export default function PrintMusicCardScreen() {
           // El parámetro song (índice 0-based) ya lo reconoce el reproductor.
           const permanentId = permanentSongCardId(publicId, track);
           const publicSongUrl = buildPlaylistCardUrl(origin, permanentId, qrDestination);
-          const url = convexCard ? convexQrUrl : multi
-            ? buildPlaylistCardUrl(
-                origin,
-                groupId,
-                qrDestination === "youtube" ? "landing" : qrDestination,
-              )
+          const selectionFingerprint = selectionUiFingerprint(playlist, selectedIndices, validTracks, settings, includePublicLyrics, singleLyricsOverrides);
+          const publishedSelection = multi && convexSelectionCards.find(card =>
+            card.sourcePlaylistId === String(playlist._id || playlist.id || publicId) &&
+            card.trackIndices.join(",") === selectedIndices.join(",") && card.uiKey === selectionFingerprint);
+          const selectionAlreadyPublished = Boolean(publishedSelection);
+          const permanentCollectionUrl = selectionAlreadyPublished
+            ? convexPlayerUrl(convexProductionOrigin, publishedSelection.id, qrDestination, videoIdFromTrack(track))
+            : "";
+          // Las selecciones multipista ya no deben producir el QR del manifiesto
+          // JSON antiguo. Sin una publicación Convex, dejamos el enlace vacío y
+          // la validación de impresión bloquea la tarjeta hasta publicarla.
+          const url = convexCard ? convexPlayerUrl(convexProductionOrigin, convexCard.id, qrDestination, videoId) : selectionAlreadyPublished ? permanentCollectionUrl : multi
+            ? ""
             : qrDestination !== "youtube" && publicSongUrl
               ? publicSongUrl
               : buildSongCardUrl(
@@ -1349,7 +1476,8 @@ export default function PrintMusicCardScreen() {
             cover: trackCover,
             url,
             trackIndices: selectedIndices,
-            selectionPublicId: multi ? groupId : null,
+            selectionPublicId: multi && !selectionAlreadyPublished ? groupId : null,
+            convexCollectionCardId: selectionAlreadyPublished ? publishedSelection.id : null,
             printOrder: Number.isInteger(settings.printOrder)
               ? settings.printOrder
               : index,
@@ -1376,6 +1504,11 @@ export default function PrintMusicCardScreen() {
     selectedSongIndex,
     convexCard,
     convexQrUrl,
+    publishedPlaylistCard,
+    convexSelectionCards,
+    convexProductionOrigin,
+    singleLyricsOverrides,
+    includePublicLyrics,
   ]);
   // Reordena exclusivamente las tarjetas activas, sin modificar las pistas ni sus QR.
   const movePrintedCard = (position, direction) => {
@@ -1672,6 +1805,72 @@ export default function PrintMusicCardScreen() {
   };
   const selectedSettings = editableCards[selectedCardIndex] || null;
   const selectedTrackIndices = selectedSettings?.trackIndices || [];
+  const selectionUiKey = selectionUiFingerprint(playlist, selectedTrackIndices, validTracks, selectedSettings, includePublicLyrics, singleLyricsOverrides);
+  const selectedPublishedCollection = convexSelectionCards.find(card =>
+    card.sourcePlaylistId === String(playlist._id || playlist.id || publicId) &&
+    card.trackIndices.join(",") === selectedTrackIndices.join(",") && card.uiKey === selectionUiKey);
+  const selectedCollectionIsPublished = Boolean(selectedPublishedCollection);
+  const publishSelectedCollection = async () => {
+    if (!selectedSettings || selectedTrackIndices.length < 2 || publishingSelection) return;
+    const selectedIndices = [...selectedTrackIndices];
+    const sourcePlaylistId = String(playlist._id || playlist.id || publicId);
+    setPublishingSelection(true);
+    try {
+      const collectionTracks = [];
+      let includedLyricsCount = 0;
+      for (const index of selectedIndices) {
+        const track = validTracks[index];
+        const videoId = videoIdFromTrack(track);
+        if (!videoId) throw new Error(`«${track?.title || `Pista ${index + 1}`}» no contiene un vídeo individual de YouTube.`);
+        const override = singleLyricsOverrides[index];
+        let localLyrics = null;
+        if (includePublicLyrics) {
+          if (override?.text) localLyrics = override;
+          else {
+            try { localLyrics = (await getLocalLyrics(track)) || null; } catch (_) { localLyrics = null; }
+            if (!localLyrics?.text && track.lyricsBackup?.text) localLyrics = { text: track.lyricsBackup.text };
+          }
+        }
+        if (localLyrics?.text?.trim()) includedLyricsCount++;
+        collectionTracks.push({
+          title: String(track.title || `Pista ${index + 1}`).slice(0, 120),
+          author: String(track.author || track.artist || author || "").slice(0, 100),
+          videoId,
+          ...(localLyrics?.text?.trim() ? { lyrics: localLyrics.text } : {}),
+        });
+      }
+      const generatedId = `card-${typeof globalThis.crypto?.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`}`;
+      const selectedTitle = String(selectedSettings.title || title || "Colección Shopp").slice(0, 120);
+      const selectedAuthor = String(selectedSettings.subtitle || author || "").slice(0, 100);
+      const sourceTrackKey = selectionSourceKey(playlist, selectedIndices, validTracks, {
+        title: selectedTitle, author: selectedAuthor, collectionType: isClassical ? "classical" : "music", tracks: collectionTracks,
+      });
+      const saved = await publishCollectionMutation({
+        id: generatedId,
+        sourcePlaylistId,
+        sourceTrackKey,
+        title: selectedTitle,
+        author: selectedAuthor,
+        collectionType: isClassical ? "classical" : "music",
+        tracks: collectionTracks,
+      });
+      const publishedEntry = { id: saved.id, trackIndices: selectedIndices, sourceTrackKey, sourcePlaylistId, uiKey: selectionUiKey };
+      setConvexSelectionCards(previous => [...previous.filter(card =>
+        !(card.sourcePlaylistId === sourcePlaylistId && card.trackIndices.join(",") === selectedIndices.join(","))), publishedEntry]);
+      setQrDestination("shopp");
+      setPublished(true);
+      setVerifiedSelections((previous) => ({ ...previous, [selectedSettings.workPublicId || selectionCardId(publicId, selectedIndices)]: true }));
+      showNotice(saved.reused ? "QR permanente reutilizado" : "Colección publicada",
+        `${collectionTracks.length} pistas publicadas en Shopp. El QR conserva el mismo enlace aunque cambies el reverso.${includePublicLyrics ? (includedLyricsCount ? ` Se incluyeron ${includedLyricsCount} letras LRC disponibles y autorizadas.` : " No se encontraron letras LRC locales para incluir.") : " No se incluyeron letras LRC."}`,
+        "success");
+    } catch (error) {
+      showNotice("No se pudo publicar la colección", error?.message || String(error), "warning");
+    } finally {
+      setPublishingSelection(false);
+    }
+  };
   const exportCardSelection = async () => {
     if (
       !selectedSettings ||
@@ -1722,6 +1921,11 @@ export default function PrintMusicCardScreen() {
       : cardEntries[0];
   const previewCoverUri = previewEntry?.cover || coverUri;
   const targetUrl = previewEntry?.url || "";
+  const activeConvexCardId = convexCard?.id || publishedPlaylistCard?.id || previewEntry?.convexCollectionCardId || null;
+  const activeConvexVideoId = convexCard?.videoId || videoIdFromTrack(validTracks[previewEntry?.trackIndices?.[0] ?? 0]);
+  const activeConvexQrUrl = activeConvexCardId
+    ? convexPlayerUrl(convexProductionOrigin, activeConvexCardId, qrDestination, activeConvexVideoId)
+    : "";
   // En iOS Chrome reconoce googlechromes://; Safari utiliza el enlace HTTPS normal.
   const openQrBrowser = async (browser) => {
     if (!/^https:\/\//i.test(targetUrl)) return;
@@ -1745,7 +1949,9 @@ export default function PrintMusicCardScreen() {
       }
     }
   };
-  const qrActionLabel = convexCard ? "Escuchar en Shopp" : getQrActionLabel(qrDestination);
+  const qrActionLabel = activeConvexCardId
+    ? qrDestination === "youtube" ? "Escuchar en\nYouTube" : "Escuchar en Shopp"
+    : getQrActionLabel(qrDestination);
 
   const downloadPublicManifest = () => {
     if (Platform.OS !== "web") return;
@@ -1986,8 +2192,8 @@ export default function PrintMusicCardScreen() {
           indices.some((index) => !validTracks[index])
         )
           errors.push(`Tarjeta ${n}: movimientos inexistentes o duplicados.`);
-        if (!card.selectionPublicId)
-          errors.push(`Tarjeta ${n}: falta identificador público de la obra.`);
+        if (!card.convexCollectionCardId)
+          errors.push(`Tarjeta ${n}: publica la selección en Convex para generar su QR permanente.`);
       }
     });
     if (format === "a4" && cardMode === "songs" && active.length < 10)
@@ -2149,6 +2355,7 @@ export default function PrintMusicCardScreen() {
         subtitle: card.subtitle || "",
         trackIndices: card.trackIndices,
         selectionPublicId: card.selectionPublicId,
+        convexCollectionCardId: card.convexCollectionCardId || null,
         qrUrl: card.url || "",
         imageUrl: /^https:\/\//i.test(card.cover || "") ? card.cover : null,
         embeddedImage: /^data:image\//i.test(card.cover || ""),
@@ -2176,10 +2383,10 @@ export default function PrintMusicCardScreen() {
   const print = async () => {
     if (Platform.OS !== "web" || typeof window === "undefined" || !targetUrl)
       return;
-    if (cardMode === "playlist" && qrDestination !== "youtube" && !published) {
+    if (!convexCard && !publishedPlaylistCard && cardMode === "playlist" && qrDestination !== "youtube" && !published) {
       showNotice(
         "Publicación pendiente",
-        "Antes de imprimir, exporta la ficha JSON, publícala en Netlify y comprueba su URL.",
+        "Antes de imprimir la playlist completa, publícala en Convex para generar su QR permanente.",
         "warning",
       );
       return;
@@ -2637,7 +2844,7 @@ export default function PrintMusicCardScreen() {
                   ? `${Math.min(cardEntries.length, 99)} canciones válidas; hasta 10 tarjetas por hoja A4.`
                   : cardMode === "single"
                     ? "Puedes elegir cuántas copias hacer desde el cuadro de impresión."
-                    : "Para compartir la playlist debes publicar su ficha JSON si el QR abre Shopp."}
+                    : "Publica la playlist en Convex para obtener un QR permanente de Shopp."}
               </Text>
             </View>
           </View>
@@ -2652,10 +2859,39 @@ export default function PrintMusicCardScreen() {
                 </Text>
               </View>
             </View>
-            {convexCard ? <View style={styles.infoBox}>
-              <Text style={styles.infoBoxTitle}>Reproductor Shopp · URL fija de Convex</Text>
-              <Text style={styles.infoBoxText}>{convexQrUrl || "La ficha no coincide con la canción seleccionada. Impresión bloqueada."}</Text>
-              <Text style={styles.infoBoxText}>El destino no se puede cambiar en este modo. Utiliza la ficha publicada, no YouTube ni el JSON antiguo.</Text>
+            {activeConvexCardId ? <View style={styles.infoBox}>
+              <Text style={styles.infoBoxTitle}>Elige el reproductor del QR</Text>
+              <View style={styles.choicesGrid}>
+                {[
+                  ["shopp", "Reproductor Shopp", "Reproduce la colección completa", "play-circle-outline"],
+                  ["youtube", "YouTube", "Abre la primera canción", "logo-youtube"],
+                ].map(([value, label, detail, icon]) => {
+                  const selected = (qrDestination === "youtube" ? "youtube" : "shopp") === value;
+                  return <Pressable
+                    key={value}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    onPress={() => setQrDestination(value)}
+                    style={[styles.choiceTile, selected && styles.choiceTileActive]}
+                  >
+                    <View style={styles.choiceTop}>
+                      <Ionicons name={icon} size={19} color={selected ? "#1d4ed8" : "#64748b"} />
+                      <Ionicons name={selected ? "radio-button-on" : "radio-button-off"} size={19} color={selected ? "#2563eb" : "#94a3b8"} />
+                    </View>
+                    <Text style={styles.choiceTitle}>{label}</Text>
+                    <Text style={styles.choiceDescription}>{detail}</Text>
+                  </Pressable>;
+                })}
+              </View>
+              <Text style={styles.infoBoxText}>
+                {qrDestination === "youtube"
+                  ? "YouTube abre la primera pista; para escuchar todas las pistas seguidas, elige Reproductor Shopp."
+                  : "El enlace conserva el ID permanente de Convex y abre la lista completa en Shopp."}
+              </Text>
+              <Text style={styles.infoBoxText}>URL del QR: {activeConvexQrUrl}</Text>
+            </View> : cardMode === "playlist" ? <View style={styles.infoBox}>
+              <Text style={styles.infoBoxTitle}>Reproductor Shopp · publicación en Convex</Text>
+              <Text style={styles.infoBoxText}>Publica la playlist en Convex en esta pantalla para generar su QR permanente.</Text>
             </View> : <View style={styles.choicesGrid}>
               {[
                 [
@@ -2711,7 +2947,7 @@ export default function PrintMusicCardScreen() {
                 </Pressable>
               ))}
             </View>}
-            {!convexCard && <View style={styles.inputField}>
+            {!convexCard && !publishedPlaylistCard && cardMode !== "playlist" && <View style={styles.inputField}>
               <Text style={styles.fieldLabel}>Dirección pública de Shopp</Text>
               <TextInput
                 value={publicBaseUrl}
@@ -2730,144 +2966,35 @@ export default function PrintMusicCardScreen() {
                 localhost.
               </Text>
             </View>}
-            {!convexCard && (cardMode === "playlist" || cardMode === "single") && qrDestination !== "youtube" ? (
+            {!convexCard && cardMode === "playlist" ? (
               <View style={styles.infoBox}>
-                <Text style={styles.infoBoxTitle}>
-                  Publicar playlist antes de imprimir
-                </Text>
-                <Text style={styles.infoBoxText}>
-                  El QR abrirá la playlist completa en Shopp, sin iniciar
-                  sesión. Descargar archivos NO los publica automáticamente en
-                  Netlify.
-                </Text>
-                <View style={{ gap: 8, marginTop: 12 }}>
-                  <Text style={{ color: "#334155", fontWeight: "700" }}>
-                    1 · Preparar archivos
-                  </Text>
-                  <Text style={styles.infoBoxText}>
-                    Genera un ZIP con music-cards/ y la ficha JSON. Las letras
-                    LRC son opcionales y solo deben difundirse con autorización.
-                  </Text>
+                <Text style={styles.infoBoxTitle}>Publicación permanente en Convex</Text>
+                <Text style={styles.infoBoxText}>Publica la playlist completa como ficha de Shopp. El QR se genera con el ID permanente de Convex; no tienes que descargar ZIPs ni copiar JSON a Netlify.</Text>
+                <Pressable
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: includePublicLyrics }}
+                  onPress={() => {
+                    setIncludePublicLyrics(value => !value);
+                    setPublishedPlaylistCard(null);
+                    setPublished(false);
+                  }}
+                  style={[styles.secondaryButton, { marginTop: 10 }]}
+                >
+                  <Ionicons name={includePublicLyrics ? "checkbox-outline" : "square-outline"} size={20} color="#2563eb" />
+                  <Text style={styles.secondaryButtonText}>Incluir LRC autorizados disponibles</Text>
+                </Pressable>
+                {publishedPlaylistCard ? (
+                  <Text style={{ color: "#15803d", fontWeight: "700", marginTop: 10 }}>✓ Playlist publicada · {publishedPlaylistCard.id}</Text>
+                ) : (
                   <Pressable
-                    style={styles.secondaryButton}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: includePublicLyrics }}
-                    onPress={() => {
-                      setIncludePublicLyrics((value) => !value);
-                      setPublished(false);
-                    }}
+                    onPress={publishWholePlaylistToConvex}
+                    disabled={publishingSelection || validTracks.length === 0}
+                    style={[styles.secondaryButton, (publishingSelection || validTracks.length === 0) && styles.disabled, { marginTop: 10 }]}
                   >
-                    <Ionicons
-                      name={
-                        includePublicLyrics
-                          ? "checkbox-outline"
-                          : "square-outline"
-                      }
-                      color="#2563eb"
-                      size={20}
-                    />
-                    <Text style={styles.secondaryButtonText}>
-                      Incluir LRC autorizados
-                    </Text>
+                    <Ionicons name="cloud-upload-outline" color="#2563eb" size={18} />
+                    <Text style={styles.secondaryButtonText}>{publishingSelection ? "Publicando en Convex…" : "Publicar playlist y preparar QR"}</Text>
                   </Pressable>
-                  <Pressable
-                    style={styles.secondaryButton}
-                    onPress={downloadPublicationZip}
-                  >
-                    <Ionicons
-                      name="archive-outline"
-                      color="#2563eb"
-                      size={17}
-                    />
-                    <Text style={styles.secondaryButtonText}>
-                      1. Descargar ZIP para Netlify
-                    </Text>
-                  </Pressable>
-                  <Text
-                    style={{
-                      color: "#334155",
-                      fontWeight: "700",
-                      marginTop: 5,
-                    }}
-                  >
-                    2 · Publicar en Netlify
-                  </Text>
-                  <Text style={styles.infoBoxText}>
-                    Descomprime el ZIP y copia su carpeta music-cards/ dentro de
-                    public/ del proyecto, sin borrar otras playlists. Haz
-                    commit, push a develop y, si Netlify despliega main, fusiona
-                    la PR a main. Espera al despliegue completado.
-                  </Text>
-                  <Text style={styles.fieldHelp}>
-                    Archivo esperado: public/music-cards/{publicId}.json
-                  </Text>
-                  <Text
-                    style={{
-                      color: "#334155",
-                      fontWeight: "700",
-                      marginTop: 5,
-                    }}
-                  >
-                    3 · Comprobar antes de imprimir
-                  </Text>
-                  <Text style={styles.infoBoxText}>
-                    Compara el JSON publicado con la playlist actual. Esta
-                    comprobación no sube ningún archivo.
-                  </Text>
-                  <Pressable
-                    style={[styles.secondaryButton, busy && styles.disabled]}
-                    onPress={verifyPublicManifest}
-                    disabled={busy}
-                  >
-                    <Ionicons
-                      name="checkmark-circle-outline"
-                      color="#2563eb"
-                      size={17}
-                    />
-                    <Text style={styles.secondaryButtonText}>
-                      {busy ? "Comprobando..." : "3. Comprobar publicación"}
-                    </Text>
-                  </Pressable>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 7,
-                    }}
-                  >
-                    <Ionicons
-                      name={
-                        published ? "checkmark-circle" : "alert-circle-outline"
-                      }
-                      size={19}
-                      color={published ? "#15803d" : "#9a6700"}
-                    />
-                    <Text
-                      style={{
-                        color: published ? "#15803d" : "#854d0e",
-                        fontWeight: "700",
-                        flex: 1,
-                      }}
-                    >
-                      {published
-                        ? "Publicación verificada: puedes imprimir"
-                        : "Pendiente de verificar: impresión bloqueada"}
-                    </Text>
-                  </View>
-                  <Pressable
-                    style={styles.secondaryButton}
-                    onPress={downloadPublicManifest}
-                  >
-                    <Ionicons
-                      name="document-text-outline"
-                      color="#2563eb"
-                      size={17}
-                    />
-                    <Text style={styles.secondaryButtonText}>
-                      Avanzado: descargar solo JSON
-                    </Text>
-                  </Pressable>
-                </View>
+                )}
               </View>
             ) : null}
           </View>
@@ -3486,18 +3613,20 @@ export default function PrintMusicCardScreen() {
         </View>
 
         {convexCard ? <Text style={styles.note}>
-          QR de la ficha Convex {convexCard.id}. URL de producción fija: {convexQrUrl}. La dirección no cambia al editar el reverso. Verifica que el QR abre el vídeo y su letra en producción antes de imprimir.
+          Ficha Convex {convexCard.id}. URL del QR: {targetUrl}. {qrDestination === "youtube" ? "YouTube abre la primera pista." : "Shopp reproduce la colección completa."} Cambiar el destino no crea otra ficha. Verifica el enlace antes de imprimir.
         </Text> : null}
         <Text style={styles.note}>
-          {convexCard
-            ? "El QR abre el reproductor público de Shopp y carga el LRC guardado en Convex, si existe. No es necesario publicar un ZIP."
-            : `Texto impreso bajo el QR: «${qrActionLabel.replace("\n", " ")}». Para compartir playlists completas en otro dispositivo, publica antes su ficha JSON estática en Netlify.`}
+          {activeConvexCardId
+            ? qrDestination === "youtube"
+              ? "El QR abre la primera pista en YouTube. Para escuchar la colección completa con letras disponibles, selecciona Reproductor Shopp."
+              : "El QR abre el reproductor público de Shopp y carga las pistas y letras guardadas en Convex. No es necesario publicar un ZIP."
+            : `Texto impreso bajo el QR: «${qrActionLabel.replace("\n", " ")}».`}
         </Text>
         <Pressable
           disabled={
             !targetUrl ||
             Platform.OS !== "web" ||
-            (!convexCard && cardMode === "playlist" &&
+            (!convexCard && !publishedPlaylistCard && cardMode === "playlist" &&
               qrDestination !== "youtube" &&
               !published)
           }
@@ -3511,7 +3640,7 @@ export default function PrintMusicCardScreen() {
             styles.button,
             (!targetUrl ||
               Platform.OS !== "web" ||
-              (!convexCard && cardMode === "playlist" &&
+              (!convexCard && !publishedPlaylistCard && cardMode === "playlist" &&
                 qrDestination !== "youtube" &&
                 !published)) &&
               styles.disabled,
@@ -4081,8 +4210,8 @@ export default function PrintMusicCardScreen() {
                     Pistas que reproducirá el QR ({selectedTrackIndices.length})
                   </Text>
                   <Text style={styles.note}>
-                    Una pista: enlace original. Varias pistas: manifiesto
-                    público de la selección, que debes exportar y publicar.
+                    Una pista: enlace original. Varias pistas: publica la
+                    selección en Convex para generar su QR permanente antes de imprimir.
                   </Text>
                   {validTracks.map((track, trackIndex) => {
                     const included = selectedTrackIndices.includes(trackIndex);
@@ -4149,55 +4278,40 @@ export default function PrintMusicCardScreen() {
                     </Pressable>
                   ) : null}
                   {selectedTrackIndices.length > 1 ? (
-                    <Pressable
-                      onPress={exportCardSelection}
-                      disabled={exportingSelection}
-                      style={styles.previewButton}
-                    >
-                      <Ionicons
-                        name="download-outline"
-                        size={18}
-                        color="#fff"
-                      />
-                      <Text style={styles.buttonText}>
-                        {exportingSelection
-                          ? "Exportando…"
-                          : "Exportar QR y selección para Netlify"}
+                    <View style={{ gap: 7, padding: 10, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", borderRadius: 10 }}>
+                      <Text style={{ color: "#1e3a8a", fontWeight: "700" }}>
+                        Publicación permanente en Shopp
                       </Text>
-                    </Pressable>
-                  ) : null}
-                  {selectedTrackIndices.length > 1 ? (
-                    <View style={{ gap: 7 }}>
+                      <Text style={styles.note}>
+                        Publica esta selección multipista en Convex. El QR abrirá el reproductor público de Shopp y conservará el enlace aunque cambie la playlist. La ficha será accesible a cualquiera que tenga el QR.
+                      </Text>
                       <Pressable
-                        onPress={checkCardSelection}
-                        disabled={checkingSelection}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: includePublicLyrics }}
+                        onPress={() => setIncludePublicLyrics((value) => !value)}
                         style={styles.modalToggleRow}
                       >
-                        <Ionicons
-                          name="cloud-done-outline"
-                          size={21}
-                          color="#2563eb"
-                        />
-                        <Text
-                          style={{
-                            flex: 1,
-                            color: "#0f172a",
-                            fontWeight: "700",
-                          }}
-                        >
-                          {checkingSelection
-                            ? "Comprobando Netlify…"
-                            : "Verificar QR publicado"}
+                        <Ionicons name={includePublicLyrics ? "checkbox-outline" : "square-outline"} size={21} color="#2563eb" />
+                        <Text style={{ flex: 1, color: "#0f172a", fontWeight: "600" }}>
+                          Incluir LRC autorizados disponibles
                         </Text>
                       </Pressable>
-                      <Text style={styles.note}>
-                        {verifiedSelections[
-                          selectedSettings.workPublicId ||
-                            selectionCardId(publicId, selectedTrackIndices)
-                        ]
-                          ? "✓ Selección pública comprobada. Si editas los movimientos, vuelve a exportar y verificar."
-                          : "Pendiente de verificar. Antes de distribuir la tarjeta, exporta, publica y verifica el JSON de esta obra."}
-                      </Text>
+                      {selectedCollectionIsPublished ? (
+                        <Text style={{ color: "#15803d", fontWeight: "700" }}>
+                          ✓ QR permanente publicado · {selectedPublishedCollection.id}
+                        </Text>
+                      ) : (
+                        <Pressable
+                          onPress={publishSelectedCollection}
+                          disabled={publishingSelection}
+                          style={[styles.previewButton, publishingSelection && styles.disabled]}
+                        >
+                          <Ionicons name="cloud-upload-outline" size={18} color="#fff" />
+                          <Text style={styles.buttonText}>
+                            {publishingSelection ? "Publicando selección…" : "Publicar selección y preparar QR"}
+                          </Text>
+                        </Pressable>
+                      )}
                     </View>
                   ) : null}
                   <Text style={styles.fieldLabel}>Fuente de imagen</Text>
