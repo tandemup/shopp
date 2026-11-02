@@ -17,6 +17,9 @@ const MAX_MESSAGE_LENGTH = 280;
 const MAX_YOUTUBE_MESSAGE_LENGTH = 2048;
 const MAX_USERNAME_LENGTH = 40;
 const MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
+const ROOM_SUMMARY_MAX_ROOMS = 25;
+const ROOM_SUMMARY_MAX_MESSAGES = 200;
+const ROOM_DELETE_BATCH_SIZE = 10;
 
 function cleanRoom(value) {
   return (
@@ -205,6 +208,45 @@ export const listMessages = query({
   },
 });
 
+export const listRoomSummaries = query({
+  args: {
+    rooms: v.array(v.object({ id: v.string(), label: v.string() })),
+    clientId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (args.rooms.length > ROOM_SUMMARY_MAX_ROOMS) {
+      throw new Error(`Máximo ${ROOM_SUMMARY_MAX_ROOMS} salas por petición.`);
+    }
+    const viewer = await getViewer(ctx, args.clientId);
+    const rooms = await Promise.all(
+      args.rooms.map(async ({ id, label }) => {
+        const room = cleanRoom(id);
+        const control = await ctx.db
+          .query("chatRoomControls")
+          .withIndex("by_room", (q) => q.eq("room", room))
+          .first();
+        if (control?.status === "deleted" || (!control?.status && control?.deletedAt)) {
+          return { id: room, label, count: 0, hasMore: false, deleted: true, deleting: false };
+        }
+        const messages = await ctx.db
+          .query("chatMessages")
+          .withIndex("by_room_createdAt", (q) => q.eq("room", room))
+          .order("desc")
+          .take(ROOM_SUMMARY_MAX_MESSAGES + 1);
+        return {
+          id: room,
+          label,
+          count: Math.min(messages.length, ROOM_SUMMARY_MAX_MESSAGES),
+          hasMore: messages.length > ROOM_SUMMARY_MAX_MESSAGES,
+          deleted: false,
+          deleting: control?.status === "deleting",
+        };
+      }),
+    );
+    return { isAdmin: viewer.isAdmin, rooms };
+  },
+});
+
 export const generateImageUploadUrl = mutation({
   args: {},
   handler: async (ctx) => await ctx.storage.generateUploadUrl(),
@@ -248,6 +290,17 @@ export const sendMessage = mutation({
   },
   handler: async (ctx, args) => {
     const room = cleanRoom(args.room);
+    const roomControl = await ctx.db
+      .query("chatRoomControls")
+      .withIndex("by_room", (q) => q.eq("room", room))
+      .first();
+    if (
+      roomControl?.status === "deleting" ||
+      roomControl?.status === "deleted" ||
+      (!roomControl?.status && roomControl?.deletedAt)
+    ) {
+      throw new Error("Esta sala está siendo eliminada o ya fue eliminada por un administrador.");
+    }
     const username = cleanUsername(args.username);
     const text = cleanText(args.text);
     const images = Array.isArray(args.images) ? args.images : [];
@@ -717,6 +770,132 @@ export const updateYouTubeAlbum = mutation({
   },
 });
 
+async function deleteMessagePermanently(ctx, message) {
+  for (const file of message.files || []) {
+    try {
+      await ctx.storage.delete(file.storageId);
+    } catch (error) {
+      console.warn("[chat.deleteRoom] attached file cleanup failed", error);
+    }
+  }
+  for (const image of message.images || []) {
+    try {
+      await ctx.storage.delete(image.storageId);
+    } catch (error) {
+      console.warn("[chat.deleteRoom] image cleanup failed", error);
+    }
+  }
+  const album = message.youtubeAlbum;
+  for (const storageId of [album?.thumbnailStorageId, album?.lyricsStorageId]) {
+    if (!storageId) continue;
+    try {
+      await ctx.storage.delete(storageId);
+    } catch (error) {
+      console.warn("[chat.deleteRoom] album asset cleanup failed", error);
+    }
+  }
+  for (const track of message.customYouTubePlaylist?.tracks || []) {
+    if (!track.lyricsStorageId) continue;
+    try {
+      await ctx.storage.delete(track.lyricsStorageId);
+    } catch (error) {
+      console.warn("[chat.deleteRoom] track lyrics cleanup failed", error);
+    }
+  }
+  const shares = await ctx.db
+    .query("chatPlaylistShares")
+    .withIndex("by_message", (q) => q.eq("messageId", message._id))
+    .take(10);
+  for (const share of shares) await ctx.db.delete(share._id);
+  await ctx.db.delete(message._id);
+}
+
+export const deleteRoom = mutation({
+  args: {
+    room: v.string(),
+    removeRoom: v.boolean(),
+    clientId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const viewer = await getViewer(ctx, args.clientId);
+    if (!viewer.isAdmin) {
+      throw new Error("Solo un administrador puede borrar salas y mensajes.");
+    }
+    const room = cleanRoom(args.room);
+    const control = await ctx.db
+      .query("chatRoomControls")
+      .withIndex("by_room", (q) => q.eq("room", room))
+      .first();
+    if (control?.status === "deleted" || (!control?.status && control?.deletedAt)) {
+      return { ok: true, started: false, deleted: true };
+    }
+    if (control?.status === "deleting") {
+      return { ok: true, started: false, deleting: true };
+    }
+
+    const values = {
+      room,
+      status: "deleting",
+      removeRoom: args.removeRoom,
+      startedAt: Date.now(),
+      deletedBy: viewer.ownerId || "admin",
+    };
+    if (control) await ctx.db.patch(control._id, values);
+    else await ctx.db.insert("chatRoomControls", values);
+
+    await ctx.scheduler.runAfter(0, internal.chat.deleteRoomBatch, {
+      room,
+      cursor: null,
+    });
+    return { ok: true, started: true, batchSize: ROOM_DELETE_BATCH_SIZE };
+  },
+});
+
+export const deleteRoomBatch = internalMutation({
+  args: {
+    room: v.string(),
+    cursor: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const room = cleanRoom(args.room);
+    const control = await ctx.db
+      .query("chatRoomControls")
+      .withIndex("by_room", (q) => q.eq("room", room))
+      .first();
+    if (!control || control.status !== "deleting") {
+      return { ok: true, done: true, deleted: 0 };
+    }
+
+    const page = await ctx.db
+      .query("chatMessages")
+      .withIndex("by_room_createdAt", (q) => q.eq("room", room))
+      .order("asc")
+      .paginate({ numItems: ROOM_DELETE_BATCH_SIZE, cursor: args.cursor });
+    for (const message of page.page) {
+      await deleteMessagePermanently(ctx, message);
+    }
+
+    if (page.isDone) {
+      if (control.removeRoom) {
+        await ctx.db.patch(control._id, {
+          status: "deleted",
+          deletedAt: Date.now(),
+        });
+      } else {
+        // Built-in rooms remain available after their messages are cleared.
+        await ctx.db.delete(control._id);
+      }
+      return { ok: true, done: true, deleted: page.page.length };
+    }
+
+    await ctx.scheduler.runAfter(0, internal.chat.deleteRoomBatch, {
+      room,
+      cursor: page.continueCursor,
+    });
+    return { ok: true, done: false, deleted: page.page.length };
+  },
+});
+
 export const deleteMessage = mutation({
   args: {
     messageId: v.id("chatMessages"),
@@ -794,62 +973,19 @@ export const deleteExpiredMessages = internalMutation({
     const expired = await ctx.db
       .query("chatMessages")
       .withIndex("by_expiresAt", (q) => q.lte("expiresAt", now))
-      .collect();
+      .take(ROOM_DELETE_BATCH_SIZE);
 
     for (const message of expired) {
-      for (const file of message.files || []) {
-        try { await ctx.storage.delete(file.storageId); } catch (error) {
-          console.warn("[chat] expired file cleanup failed", error);
-        }
-      }
-      if (Array.isArray(message.images)) {
-        for (const image of message.images) {
-          try {
-            await ctx.storage.delete(image.storageId);
-          } catch (error) {
-            console.warn(
-              "[chat.deleteExpiredMessages] storage delete failed",
-              error,
-            );
-          }
-        }
-      }
-      if (message.youtubeAlbum?.thumbnailStorageId) {
-        try {
-          await ctx.storage.delete(message.youtubeAlbum.thumbnailStorageId);
-        } catch (error) {
-          console.warn(
-            "[chat.deleteExpiredMessages] album thumbnail delete failed",
-            error,
-          );
-        }
-      }
-      if (message.youtubeAlbum?.lyricsStorageId) {
-        try {
-          await ctx.storage.delete(message.youtubeAlbum.lyricsStorageId);
-        } catch (error) {
-          console.warn(
-            "[chat.deleteExpiredMessages] lyrics delete failed",
-            error,
-          );
-        }
-      }
-      if (message.customYouTubePlaylist?.tracks) {
-        for (const track of message.customYouTubePlaylist.tracks) {
-          if (!track.lyricsStorageId) continue;
-          try {
-            await ctx.storage.delete(track.lyricsStorageId);
-          } catch (error) {
-            console.warn(
-              "[chat.deleteExpiredMessages] track lyrics delete failed",
-              error,
-            );
-          }
-        }
-      }
-      await ctx.db.delete(message._id);
+      await deleteMessagePermanently(ctx, message);
     }
-    return { ok: true, deleted: expired.length };
+    if (expired.length === ROOM_DELETE_BATCH_SIZE) {
+      await ctx.scheduler.runAfter(0, internal.chat.deleteExpiredMessages, {});
+    }
+    return {
+      ok: true,
+      deleted: expired.length,
+      hasMore: expired.length === ROOM_DELETE_BATCH_SIZE,
+    };
   },
 });
 

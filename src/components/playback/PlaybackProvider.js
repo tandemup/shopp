@@ -1485,15 +1485,15 @@ export default function PlaybackProvider({ children }) {
                             <View style={styles.queueTransport}>
                               <Pressable
                                 accessibilityRole="button"
-                                accessibilityLabel="Retroceder 10 segundos"
+                                accessibilityLabel="Retroceder 1 segundo"
                                 disabled={!status.ready}
                                 onPress={() => player.current?.seek(
-                                  Math.max(0, (status.time || 0) - 10)
+                                  Math.max(0, (status.time || 0) - 1)
                                 )}
                                 style={styles.queueSeekButton}
                               >
                                 <Ionicons name="play-back" size={18} color={status.ready ? "#f9a8d4" : "#71717a"} />
-                                <Text style={styles.queueSeekLabel}>10 s</Text>
+                                <Text style={styles.queueSeekLabel}>1 s</Text>
                               </Pressable>
                               <View style={styles.queueProgressArea}>
                                 <Slider
