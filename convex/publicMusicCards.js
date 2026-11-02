@@ -7,6 +7,14 @@ const youtubeIdPattern = /^[A-Za-z0-9_-]{11}$/;
 const clean = (s, limit) => String(s || "").trim().slice(0, limit);
 const sourceIdOK = s => typeof s === "string" && s.length > 0 && s.length <= 180;
 
+// `collectionTracks` se usó en documentos multipista publicados antes de
+// consolidar el formato en `tracks`. Conservamos ambas formas al leerlos.
+function getCollectionTracks(card) {
+  if (Array.isArray(card?.tracks) && card.tracks.length > 0) return card.tracks;
+  if (Array.isArray(card?.collectionTracks) && card.collectionTracks.length > 0) return card.collectionTracks;
+  return null;
+}
+
 async function requireOwner(ctx) {
   const ownerId = await getAuthUserId(ctx);
   if (!ownerId) throw new Error("Debes iniciar sesión para gestionar tus tarjetas.");
@@ -127,8 +135,9 @@ export const getPublic = query({
     if (!publicIdPattern.test(id)) return null;
     const card = await ctx.db.query("publicMusicCards").withIndex("by_public_id", q => q.eq("publicId", id)).unique();
     if (!card) return null;
+    const tracks = getCollectionTracks(card);
     return { id: card.publicId, title: card.title, author: card.author, videoId: card.videoId,
-      lyrics: card.lyrics || null, tracks: card.tracks || null, collectionType: card.collectionType || "music" };
+      lyrics: card.lyrics || null, tracks, collectionType: card.collectionType || "music" };
   },
 });
 
@@ -138,9 +147,12 @@ export const listMine = query({
     const ownerId = await getAuthUserId(ctx);
     if (!ownerId) return [];
     return (await ctx.db.query("publicMusicCards").withIndex("by_owner", q => q.eq("ownerId", ownerId)).collect())
-      .map(c => ({ id: c.publicId, title: c.title, author: c.author, videoId: c.videoId, trackCount: c.tracks?.length || 1,
-        collectionType: c.collectionType || "music", createdAt: c.createdAt,
-        tracks: c.tracks?.map(track => ({ title: track.title, author: track.author, videoId: track.videoId })) || null,
-        sourcePlaylistId: c.sourcePlaylistId || null, sourceTrackKey: c.sourceTrackKey || null }));
+      .map(c => {
+        const tracks = getCollectionTracks(c);
+        return { id: c.publicId, title: c.title, author: c.author, videoId: c.videoId, trackCount: tracks?.length || 1,
+          collectionType: c.collectionType || "music", createdAt: c.createdAt,
+          tracks: tracks?.map(track => ({ title: track.title, author: track.author, videoId: track.videoId })) || null,
+          sourcePlaylistId: c.sourcePlaylistId || null, sourceTrackKey: c.sourceTrackKey || null };
+      });
   },
 });

@@ -465,6 +465,15 @@ export default defineSchema({
     .index("by_userId_createdAt", ["userId", "createdAt"])
     .index("by_expiresAt", ["expiresAt"]),
 
+  chatRoomControls: defineTable({
+    room: v.string(),
+    status: v.optional(v.union(v.literal("deleting"), v.literal("deleted"))),
+    removeRoom: v.optional(v.boolean()),
+    startedAt: v.optional(v.float64()),
+    deletedAt: v.optional(v.float64()),
+    deletedBy: v.string(),
+  }).index("by_room", ["room"]),
+
   chatPlaylistShares: defineTable({
     messageId: v.id("chatMessages"),
     senderId: v.id("users"),
