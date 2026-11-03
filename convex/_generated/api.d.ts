@@ -25,6 +25,7 @@ import type * as items from "../items.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_playlistItems from "../lib/playlistItems.js";
 import type * as lib_tutorialItems from "../lib/tutorialItems.js";
+import type * as librarySync from "../librarySync.js";
 import type * as linkPreviews from "../linkPreviews.js";
 import type * as live from "../live.js";
 import type * as migrations from "../migrations.js";
@@ -72,6 +73,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/playlistItems": typeof lib_playlistItems;
   "lib/tutorialItems": typeof lib_tutorialItems;
+  librarySync: typeof librarySync;
   linkPreviews: typeof linkPreviews;
   live: typeof live;
   migrations: typeof migrations;
