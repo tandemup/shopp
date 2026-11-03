@@ -24,9 +24,13 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as Clipboard from "expo-clipboard";
-import { useAction } from "convex/react";
+import { useAction, useConvex, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { libraryJsonApi } from "@/src/services/libraryJsonApi";
+import {
+  downloadLibraryCloudSnapshot,
+  uploadLibraryCloudSnapshot,
+} from "@/src/services/libraryCloudSync";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 import WebPreviewCard from "@/src/components/chat/WebPreviewCard";
 import CachedLinkImage from "@/src/components/chat/CachedLinkImage";
@@ -1587,6 +1591,11 @@ function HashtagCatalogLoader({ onLoaded }) {
 
 export default function LibraryScreen({ navigation, route }) {
   const isFocused = useIsFocused();
+  const convexClient = useConvex();
+  const cloudManifest = useQuery(
+    api.librarySync.getManifest,
+    isFocused ? {} : "skip",
+  );
   const { width: screenWidth } = useWindowDimensions();
   const [clientId] = useState(getClientId);
   const [urlInput, setUrlInput] = useState("");
@@ -1644,6 +1653,11 @@ export default function LibraryScreen({ navigation, route }) {
   const importPauseRequestedRef = useRef(false);
   const newsCategoryCleanupStartedRef = useRef(false);
   const [localRevision, setLocalRevision] = useState(0);
+  const [cloudReady, setCloudReady] = useState(false);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState("Preparando sincronización…");
+  const [cloudSyncRetry, setCloudSyncRetry] = useState(0);
+  const lastAppliedCloudSnapshotRef = useRef(undefined);
+  const cloudSyncInFlightRef = useRef(false);
   const [rawFolders, setRawFolders] = useState([]);
   const [textLibraryResult, setTextLibraryResult] = useState(undefined);
   const [selectedHashtagLinks, setSelectedHashtagLinks] = useState([]);
@@ -1651,15 +1665,120 @@ export default function LibraryScreen({ navigation, route }) {
   const activeImportJobRef = useRef(null);
   const [exportedLinks, setExportedLinks] = useState([]);
   const [exportStatus, setExportStatus] = useState("Idle");
-  // No se recuperan automáticamente enlaces históricos de Convex. Una
-  // restauración desde USB/JSON es la fuente de verdad de la Biblioteca.
-  // El acceso a Convex se conserva únicamente para las vistas previas.
+  // La Biblioteca local se combina con una copia privada de Convex para que
+  // Safari, la app web y otros dispositivos de la misma cuenta compartan datos.
 
   useEffect(
     () =>
       libraryJsonApi.subscribe(() => setLocalRevision((value) => value + 1)),
     [],
   );
+
+  // Safari y las apps web de pantalla de inicio tienen almacenes locales
+  // separados en iPadOS. Al abrir Biblioteca, combinamos la copia de la cuenta
+  // con la copia local y después subimos los cambios locales al mismo usuario.
+  useEffect(() => {
+    if (!isFocused) {
+      setCloudReady(false);
+      return undefined;
+    }
+    if (cloudManifest === undefined) return undefined;
+
+    const incomingSnapshotId = cloudManifest?.snapshotId || null;
+    if (lastAppliedCloudSnapshotRef.current === incomingSnapshotId) {
+      setCloudReady(true);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setCloudReady(false);
+    setCloudSyncStatus("Descargando Biblioteca de la cuenta…");
+    (async () => {
+      try {
+        if (cloudManifest?.snapshotId) {
+          const snapshot = await downloadLibraryCloudSnapshot(
+            convexClient,
+            cloudManifest,
+          );
+          if (cancelled) return;
+          if (snapshot) await libraryJsonApi.applySyncSnapshot(snapshot);
+        }
+        lastAppliedCloudSnapshotRef.current = incomingSnapshotId;
+        if (!cancelled) {
+          setCloudReady(true);
+          setCloudSyncStatus("Biblioteca de la cuenta cargada");
+        }
+      } catch (error) {
+        console.warn("[LibraryScreen] cloud library download failed", error);
+        if (!cancelled) {
+          setCloudSyncStatus("Error al cargar la Biblioteca de la cuenta");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isFocused, cloudManifest?.snapshotId, cloudManifest?.chunkCount, convexClient, cloudSyncRetry]);
+
+  // Una subida se inicia después de que terminen las escrituras locales. El
+  // retraso agrupa las tandas de una importación grande en una sola copia.
+  useEffect(() => {
+    if (!isFocused || !cloudReady || cloudManifest === undefined || backupBusy) {
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      if (cloudSyncInFlightRef.current) return;
+      cloudSyncInFlightRef.current = true;
+      setCloudSyncStatus("Sincronizando Biblioteca con la cuenta…");
+      try {
+        const latestManifest = await convexClient.query(
+          api.librarySync.getManifest,
+          {},
+        );
+        if (
+          latestManifest?.snapshotId &&
+          latestManifest.snapshotId !== lastAppliedCloudSnapshotRef.current
+        ) {
+          const remoteSnapshot = await downloadLibraryCloudSnapshot(
+            convexClient,
+            latestManifest,
+          );
+          if (remoteSnapshot) await libraryJsonApi.applySyncSnapshot(remoteSnapshot);
+          lastAppliedCloudSnapshotRef.current = latestManifest.snapshotId;
+        }
+
+        const localSnapshot = await libraryJsonApi.getSyncSnapshot();
+        const result = await uploadLibraryCloudSnapshot(
+          convexClient,
+          localSnapshot,
+          latestManifest,
+        );
+        if (result.conflict) {
+          setCloudSyncStatus("Hay cambios nuevos; combinándolos…");
+          setCloudSyncRetry((value) => value + 1);
+          return;
+        }
+        lastAppliedCloudSnapshotRef.current = result.snapshotId;
+        if (!cancelled) setCloudSyncStatus("Biblioteca sincronizada con la cuenta");
+      } catch (error) {
+        console.warn("[LibraryScreen] cloud library upload failed", error);
+        if (!cancelled) {
+          setCloudSyncStatus("Error al sincronizar. Toca para reintentar.");
+        }
+      } finally {
+        cloudSyncInFlightRef.current = false;
+      }
+    }, 1400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [isFocused, cloudReady, cloudManifest === undefined, backupBusy, localRevision, convexClient, cloudSyncRetry]);
+
+  const retryCloudSync = useCallback(() => {
+    setCloudSyncRetry((value) => value + 1);
+  }, []);
   useEffect(() => {
     if (!isFocused || newsCategoryCleanupStartedRef.current) return;
     newsCategoryCleanupStartedRef.current = true;
@@ -3944,6 +4063,27 @@ export default function LibraryScreen({ navigation, route }) {
                   <Ionicons name="download-outline" size={17} color="#2563eb" />
                   <Text style={styles.backupButtonText}>Importar JSON</Text>
                 </Pressable>
+                <Pressable
+                  onPress={retryCloudSync}
+                  style={[
+                    styles.backupButton,
+                    styles.toolsModalActionButton,
+                  ]}
+                >
+                  <Ionicons name="cloud-sync-outline" size={17} color="#2563eb" />
+                  <Text style={styles.backupButtonText}>Sincronizar con mi cuenta</Text>
+                </Pressable>
+                <Text
+                  style={{
+                    color: cloudSyncStatus.startsWith("Error") ? "#b42318" : "#64748b",
+                    fontSize: 12,
+                    lineHeight: 17,
+                    textAlign: "center",
+                    paddingHorizontal: 8,
+                  }}
+                >
+                  {cloudSyncStatus}
+                </Text>
                 {activeImportJob ? (
                   <Pressable
                     onPress={() => {
