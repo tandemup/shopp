@@ -1,8 +1,9 @@
 # API local JSON de Biblioteca
 
-`libraryJsonApi.js` sustituye la persistencia de enlaces y categorías en Convex.
-En web escribe el documento JSON en IndexedDB; en iOS y Android utiliza la capa
-local de Shopp basada en AsyncStorage.
+`libraryJsonApi.js` es el almacenamiento local de la Biblioteca. En web usa
+IndexedDB; en iOS y Android utiliza AsyncStorage. `libraryCloudSync.js`
+sincroniza una copia por usuario en Convex para compartir los mismos datos entre
+Safari, la app web de pantalla de inicio y otros dispositivos.
 
 Operaciones incluidas: listado y búsqueda paginada, carpetas, altas, edición,
 favoritos, movimiento, archivado, importación (`combine`/`replace`), exportación
@@ -18,6 +19,7 @@ const backup = await libraryJsonApi.exportBackup();
 await libraryJsonApi.importBackup(backup, { mode: "combine" });
 ```
 
-La API no abre conexiones con Convex. El siguiente paso de integración consiste
-en cambiar los hooks `useQuery`/`useMutation` de `LibraryScreen.js` por llamadas
-a esta API y su método `subscribe`.
+La API local conserva las operaciones de listado y edición. La pantalla de
+Biblioteca descarga y combina la copia de la cuenta al abrirse y sube cambios
+locales después de un breve intervalo. El servidor autoriza las operaciones con
+la sesión y el permiso `library` del usuario.
