@@ -465,6 +465,15 @@ export default defineSchema({
     .index("by_userId_createdAt", ["userId", "createdAt"])
     .index("by_expiresAt", ["expiresAt"]),
 
+  chatRoomControls: defineTable({
+    room: v.string(),
+    status: v.optional(v.union(v.literal("deleting"), v.literal("deleted"))),
+    removeRoom: v.optional(v.boolean()),
+    startedAt: v.optional(v.float64()),
+    deletedAt: v.optional(v.float64()),
+    deletedBy: v.string(),
+  }).index("by_room", ["room"]),
+
   chatPlaylistShares: defineTable({
     messageId: v.id("chatMessages"),
     senderId: v.id("users"),
@@ -576,6 +585,23 @@ export default defineSchema({
     completedAt: v.optional(v.float64()),
   }).index("by_owner_updatedAt", ["ownerId", "updatedAt"]),
 
+  // Copia compartida de Biblioteca por cuenta. Los bloques permiten subir
+  // bibliotecas grandes sin superar el límite de tamaño de un documento.
+  libraryCloudSnapshots: defineTable({
+    ownerId: v.id("users"),
+    snapshotId: v.string(),
+    index: v.number(),
+    payload: v.string(),
+    createdAt: v.number(),
+  }).index("by_owner_snapshot_index", ["ownerId", "snapshotId", "index"]),
+
+  libraryCloudManifests: defineTable({
+    ownerId: v.id("users"),
+    snapshotId: v.string(),
+    chunkCount: v.number(),
+    updatedAt: v.number(),
+  }).index("by_owner", ["ownerId"]),
+
   // Adjuntos temporales para comunicaciones privadas con la administración.
   // Se eliminan del almacenamiento después de enviar el correo, incluso si
   // Resend devuelve un error.
@@ -621,6 +647,7 @@ export default defineSchema({
         lng: v.float64(),
         source: v.optional(v.string()),
       }),
+
     ),
 
     createdAt: v.optional(v.float64()),
@@ -1320,6 +1347,20 @@ export default defineSchema({
     author: v.string(),
     videoId: v.string(),
     lyrics: v.optional(v.string()),
+    tracks: v.optional(v.array(v.object({
+      title: v.string(),
+      author: v.string(),
+      videoId: v.string(),
+      lyrics: v.optional(v.string()),
+    }))),
+    // Compatibilidad con la estructura usada por Music Cards Entrega 3C.
+    collectionTracks: v.optional(v.array(v.object({
+      title: v.string(),
+      author: v.string(),
+      videoId: v.string(),
+      lyrics: v.optional(v.string()),
+    }))),
+    collectionType: v.optional(v.union(v.literal("music"), v.literal("classical"))),
     createdAt: v.number(),
     // Optional: existing printed cards remain valid without backfill.
     sourcePlaylistId: v.optional(v.string()),
