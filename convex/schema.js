@@ -585,8 +585,9 @@ export default defineSchema({
     completedAt: v.optional(v.float64()),
   }).index("by_owner_updatedAt", ["ownerId", "updatedAt"]),
 
-  // Copia compartida de Biblioteca por cuenta. Los bloques permiten subir
-  // bibliotecas grandes sin superar el límite de tamaño de un documento.
+  // Tablas heredadas de la antigua sincronización de Biblioteca.
+  // Se conservan sin funciones activas para no borrar la copia ya almacenada;
+  // no generan lecturas ni escrituras mientras no haya endpoints que las usen.
   libraryCloudSnapshots: defineTable({
     ownerId: v.id("users"),
     snapshotId: v.string(),

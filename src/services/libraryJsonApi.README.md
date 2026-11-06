@@ -1,9 +1,8 @@
 # API local JSON de Biblioteca
 
 `libraryJsonApi.js` es el almacenamiento local de la Biblioteca. En web usa
-IndexedDB; en iOS y Android utiliza AsyncStorage. `libraryCloudSync.js`
-sincroniza una copia por usuario en Convex para compartir los mismos datos entre
-Safari, la app web de pantalla de inicio y otros dispositivos.
+IndexedDB; en iOS y Android utiliza AsyncStorage. Los datos no se sincronizan
+con Convex y cada navegador o dispositivo conserva su propia copia local.
 
 Operaciones incluidas: listado y búsqueda paginada, carpetas, altas, edición,
 favoritos, movimiento, archivado, importación (`combine`/`replace`), exportación
@@ -19,7 +18,6 @@ const backup = await libraryJsonApi.exportBackup();
 await libraryJsonApi.importBackup(backup, { mode: "combine" });
 ```
 
-La API local conserva las operaciones de listado y edición. La pantalla de
-Biblioteca descarga y combina la copia de la cuenta al abrirse y sube cambios
-locales después de un breve intervalo. El servidor autoriza las operaciones con
-la sesión y el permiso `library` del usuario.
+La API local conserva las operaciones de listado, edición, importación y
+exportación. Usa Exportar JSON e Importar JSON para trasladar la Biblioteca
+manualmente entre dispositivos.
