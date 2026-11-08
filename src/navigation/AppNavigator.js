@@ -2,15 +2,14 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
+import { useCurrentUser } from "@/src/hooks/useCurrentUser";
+import { useShoppAuthSession } from "@/src/hooks/useShoppAuth";
 import {
-  Authenticated,
-  AuthLoading,
-  Unauthenticated,
-  useConvexAuth,
-  useQuery,
-} from "convex/react";
-import { useAuthActions } from "@convex-dev/auth/react";
-import { api } from "@/convex/_generated/api";
+  ShoppAuthenticated as Authenticated,
+  ShoppAuthLoading as AuthLoading,
+  ShoppUnauthenticated as Unauthenticated,
+} from "@/src/components/auth/ShoppAuthBoundary";
+import { useShoppAuthActions } from "@/src/hooks/useShoppAuth";
 
 import AuthStack from "@/src/navigation/AuthStack";
 import MainTabs from "@/src/navigation/MainTabs";
@@ -35,8 +34,8 @@ const SHOW_PUBLIC_ENTRY_FIRST =
   ACCESS_MODE === "landing" || ACCESS_MODE === "survey";
 
 function AuthenticatedApp() {
-  const currentUser = useQuery(api.users.current);
-  const { signOut } = useAuthActions();
+  const currentUser = useCurrentUser();
+  const { signOut } = useShoppAuthActions();
 
   if (currentUser === undefined) {
     return (
@@ -94,7 +93,7 @@ export default function AppNavigator() {
     return () => { active = false; };
   }, []);
   const initialAuthStateRef = useRef(null);
-  const { isAuthenticated, isLoading } = useConvexAuth();
+  const { isAuthenticated, isLoading } = useShoppAuthSession();
 
   const finishSplash = useCallback(() => setShowSplash(false), []);
   const continueToAuthenticatedApp = useCallback(() => {

@@ -13,9 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useQuery } from "convex/react";
-
-import { api } from "@/convex/_generated/api";
+import { useCurrentUser } from "@/src/hooks/useCurrentUser";
 import DatePill from "@/src/components/controls/DatePill";
 import CurrencyBadge from "@/src/components/ui/CurrencyBadge";
 import { safeAlert, safeMenu } from "@/src/components/ui/alert/safeAlert";
@@ -539,7 +537,7 @@ export default function ShoppingListsScreen() {
     updateList,
     archiveList,
   } = useLists();
-  const currentUser = useQuery(api.users.current, guestMode ? "skip" : {});
+  const currentUser = useCurrentUser({ enabled: !guestMode });
   const [editingList, setEditingList] = useState(undefined);
   const [editName, setEditName] = useState("");
 

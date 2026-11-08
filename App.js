@@ -18,9 +18,8 @@ const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL?.trim();
 const hasValidConvexUrl = /^https:\/\/[^\s/]+\.convex\.cloud\/?$/.test(
   convexUrl || "",
 );
+const convex = hasValidConvexUrl ? new ConvexReactClient(convexUrl) : null;
 const backendError = getBackendConfigurationError();
-const convex =
-  !backendError && hasValidConvexUrl ? new ConvexReactClient(convexUrl) : null;
 
 export default function App() {
   return (
