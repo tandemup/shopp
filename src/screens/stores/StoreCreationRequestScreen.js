@@ -9,8 +9,7 @@ import {
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 import { COLORS } from "@/src/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useStoreRequests } from "@/src/hooks/useStoreRequests";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 const EMPTY_FORM = {
@@ -56,7 +55,7 @@ function numberOrUndefined(value) {
 }
 
 export default function StoreCreationRequestScreen({ navigation }) {
-  const submitStoreRequest = useMutation(api.stores.submitStoreRequest);
+  const { submitStoreRequest } = useStoreRequests();
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
 

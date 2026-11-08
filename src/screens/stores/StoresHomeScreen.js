@@ -3,8 +3,7 @@ import { View, ScrollView, StyleSheet, Pressable, Platform, Share } from "react-
 import { I18nText as Text } from "@/src/i18n";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useCurrentUser } from "@/src/hooks/useCurrentUser";
 
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
@@ -98,9 +97,8 @@ function MenuItem({ icon, title, subtitle, onPress }) {
 -------------------------------------------------- */
 export default function StoresHomeScreen() {
   const navigation = useNavigation();
-  const currentUser = useQuery(api.users.current);
-  const { stores } = useStores();
-  const importStores = useMutation(api.stores.upsertStores);
+  const currentUser = useCurrentUser();
+  const { stores, importStores } = useStores();
   const [transferBusy, setTransferBusy] = useState(null);
   const isAdmin = currentUser?.isAdmin === true || currentUser?.role === "admin";
 
@@ -246,7 +244,7 @@ export default function StoresHomeScreen() {
             onPress: async () => {
               try {
                 setTransferBusy("import");
-                const summary = await importStores({ stores: normalizedStores });
+                const summary = await importStores(normalizedStores);
                 safeAlert(
                   "Importación terminada",
                   `${summary.inserted} nuevas y ${summary.updated} actualizadas.`,

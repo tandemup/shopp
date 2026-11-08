@@ -7,11 +7,7 @@ import React, {
 } from "react";
 
 import { useCurrentUser } from "@/src/hooks/useCurrentUser";
-import { loadLists, saveLists } from "@/src/storage/listsStorage";
-import {
-  STORAGE_KEYS,
-  getUserScopedStorageKey,
-} from "@/src/storage/storageKeys";
+import { getListsStorageKey, listsRepository } from "@/src/api/providers/local/listsRepository";
 import { DEFAULT_CURRENCY } from "@/src/constants/currency";
 import { buildPurchaseHistoryFromArchivedLists } from "@/src/utils/buildPurchaseHistoryFromArchivedLists";
 
@@ -26,10 +22,7 @@ const ListsContext = createContext(null);
 export function ListsProvider({ children, guestMode = false }) {
   const currentUser = useCurrentUser({ enabled: !guestMode });
   const userStorageKey = useMemo(() => {
-    return getUserScopedStorageKey(
-      guestMode ? "guest-local-v1" : (currentUser?._id || "anonymous"),
-      STORAGE_KEYS.LISTS,
-    );
+    return getListsStorageKey({ guestMode, userId: currentUser?._id });
   }, [currentUser?._id, guestMode]);
 
   const [lists, setLists] = useState([]);
@@ -46,7 +39,7 @@ export function ListsProvider({ children, guestMode = false }) {
       setIsReady(false);
 
       try {
-        const data = await loadLists(userStorageKey);
+        const data = await listsRepository.load(userStorageKey);
 
         if (!cancelled) {
           setLists(data);
@@ -76,7 +69,7 @@ export function ListsProvider({ children, guestMode = false }) {
   -------------------------------------------------- */
   useEffect(() => {
     if (!isReady) return;
-    saveLists(lists, userStorageKey);
+    listsRepository.save(lists, userStorageKey);
   }, [lists, isReady, userStorageKey]);
 
   /* -------------------------------------------------
@@ -224,7 +217,7 @@ export function ListsProvider({ children, guestMode = false }) {
       }
     }
     // Escribir antes de informar del éxito; actualizar además el estado visible.
-    await saveLists(next, userStorageKey);
+    await listsRepository.save(next, userStorageKey);
     setLists(next);
     return next.length;
   };
