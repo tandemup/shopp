@@ -6,6 +6,7 @@ import React, {
   useState,
 } from "react";
 import {
+  AppState,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -17,13 +18,14 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { CARREFOUR_LOS_FRESNOS_CHAT as DEMO_STORE } from "@/convex/nearbyChatConfig";
 import { Ionicons } from "@expo/vector-icons";
-import { useMutation, useQuery } from "convex/react";
+import { useChatMessages, useChatBasicActions, useChatMediaActions } from "@/src/hooks/useChatBackend";
+import { useCurrentUser } from "@/src/hooks/useCurrentUser";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 
-import { api } from "@/convex/_generated/api";
 import {
   I18nText as Text,
   I18nTextInput as TextInput,
@@ -33,15 +35,6 @@ import {
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 import QuickEan13Scanner from "@/src/components/features/scanner/QuickEan13Scanner";
 import { useProductLookupWithCache } from "@/src/hooks/useProductLookupWithCache";
-
-const DEMO_STORE = {
-  id: "carrefour-los-fresnos",
-  name: "Carrefour Los Fresnos",
-  address: "Centro Comercial Los Fresnos, 33206 Gijón",
-  radiusMeters: 3000,
-  latitude: 43.53263,
-  longitude: -5.661265,
-};
 
 const MAX_MESSAGE_LENGTH = 280;
 const MESSAGE_LIFETIME_MS = 24 * 60 * 60 * 1000;
@@ -83,6 +76,20 @@ function distanceToStoreMeters(latitude, longitude) {
       Math.cos(latitude2) *
       Math.sin(deltaLongitude / 2) ** 2;
   return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatDistanceMeters(value, language = "es") {
+  if (!Number.isFinite(value) || value < 0) return "";
+  const roundedMeters = Math.round(value);
+  if (roundedMeters < 1000) return `${roundedMeters} m`;
+
+  const kilometers = Math.round(roundedMeters / 100) / 10;
+  const label = Number.isInteger(kilometers)
+    ? String(kilometers)
+    : language === "en"
+      ? kilometers.toFixed(1)
+      : kilometers.toFixed(1).replace(".", ",");
+  return `${label} km`;
 }
 
 function formatTime(timestamp, language = "es") {
@@ -364,7 +371,55 @@ export default function ChatPrototypeScreen() {
   }, []);
 
   useEffect(() => {
-    checkLocation();
+    let active = true;
+    let watchSubscription = null;
+
+    const startLocationChecks = async () => {
+      await checkLocation();
+      try {
+        const permission = await Location.getForegroundPermissionsAsync();
+        if (!active || permission.status !== "granted") return;
+        const subscription = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.Balanced,
+            timeInterval: 30000,
+            distanceInterval: 100,
+          },
+          (result) => {
+            if (!active) return;
+            const nextLocation = {
+              latitude: result.coords.latitude,
+              longitude: result.coords.longitude,
+            };
+            const nearby =
+              distanceToStoreMeters(
+                nextLocation.latitude,
+                nextLocation.longitude,
+              ) <= DEMO_STORE.radiusMeters;
+            setLocation(nextLocation);
+            setLocationState(nearby ? "ready" : "outside");
+          },
+        );
+        if (active) watchSubscription = subscription;
+        else subscription.remove();
+      } catch (error) {
+        console.warn("[ChatPrototypeScreen] location watch failed", error);
+      }
+    };
+
+    startLocationChecks();
+    const appStateSubscription = AppState.addEventListener(
+      "change",
+      (state) => {
+        if (state === "active") checkLocation();
+      },
+    );
+
+    return () => {
+      active = false;
+      watchSubscription?.remove();
+      appStateSubscription.remove();
+    };
   }, [checkLocation]);
 
   useEffect(() => {
@@ -372,9 +427,8 @@ export default function ChatPrototypeScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  const currentUser = useQuery(api.users.current);
-  const messages = useQuery(
-    api.chat.listMessages,
+  const currentUser = useCurrentUser();
+  const messages = useChatMessages(
     location && locationState === "ready"
       ? {
           room: DEMO_STORE.id,
@@ -383,10 +437,8 @@ export default function ChatPrototypeScreen() {
         }
       : "skip",
   );
-  const sendMessage = useMutation(api.chat.sendMessage);
-  const deleteMessage = useMutation(api.chat.deleteMessage);
-  const generateImageUploadUrl = useMutation(api.chat.generateImageUploadUrl);
-  const updateYouTubeAlbum = useMutation(api.chat.updateYouTubeAlbum);
+  const { sendMessage, deleteMessage } = useChatBasicActions();
+  const { generateImageUploadUrl, updateYouTubeAlbum } = useChatMediaActions();
 
   const handleOpenPlaylistEditor = useCallback((item) => {
     setPlaylistEditor(item);
@@ -466,6 +518,12 @@ export default function ChatPrototypeScreen() {
 
     setSavingPlaylist(true);
     try {
+      const currentLocation = await checkLocation();
+      if (!currentLocation) {
+        throw new Error(
+          "Debes estar cerca de Carrefour Los Fresnos para editar el chat.",
+        );
+      }
       let thumbnail;
       if (playlistCover) {
         const uploadUrl = await generateImageUploadUrl();
@@ -490,6 +548,8 @@ export default function ChatPrototypeScreen() {
       }
       await updateYouTubeAlbum({
         messageId: playlistEditor._id,
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
         title: title.slice(0, MAX_YOUTUBE_TITLE_LENGTH),
         thumbnail,
       });
@@ -505,6 +565,7 @@ export default function ChatPrototypeScreen() {
       setSavingPlaylist(false);
     }
   }, [
+    checkLocation,
     generateImageUploadUrl,
     playlistCover,
     playlistEditor,
@@ -550,7 +611,17 @@ export default function ChatPrototypeScreen() {
       const performDelete = async () => {
         setDeletingMessageId(String(item._id));
         try {
-          await deleteMessage({ messageId: item._id });
+          const currentLocation = await checkLocation();
+          if (!currentLocation) {
+            throw new Error(
+              "Debes estar cerca de Carrefour Los Fresnos para borrar mensajes.",
+            );
+          }
+          await deleteMessage({
+            messageId: item._id,
+            latitude: currentLocation.latitude,
+            longitude: currentLocation.longitude,
+          });
         } catch (error) {
           console.error("[ChatPrototypeScreen] deleteMessage failed", error);
           safeAlert(
@@ -577,7 +648,7 @@ export default function ChatPrototypeScreen() {
         },
       ]);
     },
-    [deleteMessage, deletingMessageId, language],
+    [checkLocation, deleteMessage, deletingMessageId, language],
   );
 
   const handleOpenImage = useCallback((image) => {
@@ -597,10 +668,17 @@ export default function ChatPrototypeScreen() {
     );
   }, [currentUser]);
 
+  const currentDistanceMeters = location
+    ? distanceToStoreMeters(location.latitude, location.longitude)
+    : null;
+  const currentDistanceLabel = Number.isFinite(currentDistanceMeters)
+    ? formatDistanceMeters(currentDistanceMeters, language)
+    : "";
+
   const canSend =
-    text.trim().length > 0 &&
+    (text.trim().length > 0 || selectedImages.length > 0) &&
     !sending &&
-    currentUser !== null &&
+    Boolean(currentUser) &&
     locationState === "ready";
 
   const handleSend = useCallback(async () => {
@@ -996,6 +1074,18 @@ export default function ChatPrototypeScreen() {
                           : `Estás fuera del radio de ${DEMO_STORE.radiusMeters} metros de Carrefour Los Fresnos.`
                         : "El chat solo está disponible para personas situadas cerca de Carrefour Los Fresnos."}
               </Text>
+              {currentDistanceLabel &&
+              (locationState === "ready" || locationState === "outside") ? (
+                <View
+                  style={styles.noticeDistanceBadge}
+                  accessibilityLabel={`${language === "en" ? "Distance to the shopping center" : "Distancia al centro comercial"}: ${currentDistanceLabel}`}
+                >
+                  <Ionicons name="navigate-outline" size={13} color="#168AC0" />
+                  <Text style={styles.noticeDistanceText}>
+                    {language === "en" ? "Distance:" : "Distancia:"} {currentDistanceLabel}
+                  </Text>
+                </View>
+              ) : null}
               {locationState !== "ready" && locationState !== "checking" ? (
                 <Pressable onPress={checkLocation} style={styles.retryButton}>
                   <Text style={styles.retryButtonText}>Reintentar</Text>
@@ -1082,7 +1172,11 @@ export default function ChatPrototypeScreen() {
           <View style={styles.composer}>
             <Pressable
               onPress={handlePickImage}
-              style={styles.mediaButton}
+              disabled={locationState !== "ready"}
+              style={[
+                styles.mediaButton,
+                locationState !== "ready" && styles.mediaButtonDisabled,
+              ]}
               accessibilityRole="button"
               accessibilityLabel={tr("Añadir imagen")}
             >
@@ -1108,21 +1202,10 @@ export default function ChatPrototypeScreen() {
 
             <Pressable
               onPress={handleSendComposer}
-              disabled={
-                (text.trim().length === 0 && selectedImages.length === 0) ||
-                (text.trim().length > 0 &&
-                  selectedImages.length === 0 &&
-                  !canSend)
-              }
+              disabled={!canSend}
               style={({ pressed }) => [
                 styles.sendAction,
-                text.trim().length === 0 &&
-                  selectedImages.length === 0 &&
-                  styles.sendActionDisabled,
-                text.trim().length > 0 &&
-                  selectedImages.length === 0 &&
-                  !canSend &&
-                  styles.sendActionDisabled,
+                !canSend && styles.sendActionDisabled,
                 pressed && styles.sendButtonPressed,
               ]}
               accessibilityRole="button"
@@ -1162,6 +1245,7 @@ export default function ChatPrototypeScreen() {
 
               <Pressable
                 style={styles.attachmentAction}
+                disabled={locationState !== "ready"}
                 onPress={() => {
                   setAttachmentMenuVisible(false);
                   handlePickImage();
@@ -1458,6 +1542,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
   },
+  noticeDistanceBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: "#eaf5fb",
+  },
+  noticeDistanceText: {
+    color: "#1679a6",
+    fontSize: 10,
+    fontWeight: "800",
+  },
   emptyText: {
     marginTop: 26,
     color: "#667085",
@@ -1693,6 +1791,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 17,
   },
+  mediaButtonDisabled: { opacity: 0.4 },
 
   messageInputShell: {
     flex: 1,

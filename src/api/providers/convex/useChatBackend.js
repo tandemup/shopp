@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
@@ -33,7 +34,10 @@ export function useChatExtendedActionsBackend() {
   const shareLocalPlaylist = useMutation(api.chat.shareLocalPlaylist);
   const refreshNewsYouTubePublishedDates = useAction(api.chat.refreshNewsYouTubePublishedDates);
   const client = useConvex();
-  const getSharedPlaylist = (messageId) => client.query(api.chat.getSharedPlaylist, { messageId });
+  const getSharedPlaylist = useCallback(
+    (messageId) => client.query(api.chat.getSharedPlaylist, { messageId }),
+    [client],
+  );
   return {
     deleteRoomMutation,
     createCustomYouTubePlaylist,

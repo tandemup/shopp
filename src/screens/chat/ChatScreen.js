@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   FlatList,
   Image,
@@ -29,8 +30,13 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as DocumentPicker from "expo-document-picker";
-import { useAction, useMutation, useQuery, useConvex } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import {
+  useChatMessages,
+  useChatRoomSummaries,
+  useChatBasicActions,
+  useChatMediaActions,
+  useChatExtendedActions,
+} from "@/src/hooks/useChatBackend";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 import YouTubePlaylistPlayer from "@/src/components/chat/YouTubePlaylistPlayer";
 import CustomYouTubePlaylistPlayer from "@/src/components/chat/CustomYouTubePlaylistPlayer";
@@ -47,6 +53,7 @@ const ROOMS = [
   { id: "musica", label: "Música", icon: "musical-notes-outline" },
   { id: "youtube", label: "YouTube", icon: "logo-youtube" },
 ];
+const CUSTOM_ROOMS_STORAGE_KEY = "shopp-chat-custom-rooms";
 const MAX_MESSAGE_LENGTH = 280;
 const MAX_YOUTUBE_MESSAGE_LENGTH = 2048;
 const MAX_IMAGES = 8;
@@ -56,6 +63,7 @@ const FILE_TYPES = { zip: "application/zip", json: "application/json" };
 const CHAT_IMAGE_MAX_DIMENSION = 2560;
 const CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const CHAT_CLIENT_ID_KEY = "shopp-chat-client-id";
+const ROOM_SUMMARY_PAGE_SIZE = 25;
 
 function createChatClientId() {
   if (typeof globalThis?.crypto?.randomUUID === "function") {
@@ -358,16 +366,44 @@ function Message({
             {attachedFiles.map((file, index) => (
               <Pressable
                 key={`${item._id}-file-${index}`}
-                onPress={() => file.uri && Linking.openURL(file.uri).catch(() => safeAlert("Archivo", "No se pudo abrir el archivo."))}
+                onPress={() =>
+                  file.uri &&
+                  Linking.openURL(file.uri).catch(() =>
+                    safeAlert("Archivo", "No se pudo abrir el archivo."),
+                  )
+                }
                 disabled={!file.uri}
                 accessibilityRole="link"
                 accessibilityLabel={`${language === "en" ? "Download" : "Descargar"} ${file.name}`}
-                style={{ flexDirection: "row", gap: 10, alignItems: "center", padding: 12, borderWidth: 1, borderColor: "#bfdbfe", backgroundColor: "#eff6ff", borderRadius: 12 }}
+                style={{
+                  flexDirection: "row",
+                  gap: 10,
+                  alignItems: "center",
+                  padding: 12,
+                  borderWidth: 1,
+                  borderColor: "#bfdbfe",
+                  backgroundColor: "#eff6ff",
+                  borderRadius: 12,
+                }}
               >
-                <Ionicons name="document-attach-outline" size={23} color="#2563eb" />
+                <Ionicons
+                  name="document-attach-outline"
+                  size={23}
+                  color="#2563eb"
+                />
                 <View style={{ flex: 1 }}>
-                  <Text numberOfLines={2} style={{ fontWeight: "700", color: "#1e40af" }}>{file.name}</Text>
-                  <Text style={{ color: "#64748b", fontSize: 12 }}>{(file.size / 1048576).toFixed(2)} MB · {language === "en" ? "Open / download" : "Abrir / descargar"}</Text>
+                  <Text
+                    numberOfLines={2}
+                    style={{ fontWeight: "700", color: "#1e40af" }}
+                  >
+                    {file.name}
+                  </Text>
+                  <Text style={{ color: "#64748b", fontSize: 12 }}>
+                    {(file.size / 1048576).toFixed(2)} MB ·{" "}
+                    {language === "en"
+                      ? "Open / download"
+                      : "Abrir / descargar"}
+                  </Text>
                 </View>
                 <Ionicons name="download-outline" size={21} color="#2563eb" />
               </Pressable>
@@ -385,11 +421,37 @@ function Message({
           </Text>
         ) : null}
         {item.sharedPlaylist ? (
-          <View style={{padding: 10, borderWidth: 1, borderColor: "#93c5fd", borderRadius: 8, marginTop: 7}}>
-            <Text style={{fontWeight: "700"}}>{item.sharedPlaylist.title}</Text>
-            <Text>{item.sharedPlaylist.collectionType === "classical" ? "Música clásica" : "Música"} · {item.sharedPlaylist.trackCount} pistas</Text>
-            <Pressable accessibilityRole="button" onPress={() => onImportSharedPlaylist?.(item)} style={{padding: 10, backgroundColor: "#dbeafe", marginTop: 6, borderRadius: 6}}>
-              <Text style={{color: "#1d4ed8", fontWeight: "700"}}>Importar a IndexedDB</Text>
+          <View
+            style={{
+              padding: 10,
+              borderWidth: 1,
+              borderColor: "#93c5fd",
+              borderRadius: 8,
+              marginTop: 7,
+            }}
+          >
+            <Text style={{ fontWeight: "700" }}>
+              {item.sharedPlaylist.title}
+            </Text>
+            <Text>
+              {item.sharedPlaylist.collectionType === "classical"
+                ? "Música clásica"
+                : "Música"}{" "}
+              · {item.sharedPlaylist.trackCount} pistas
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => onImportSharedPlaylist?.(item)}
+              style={{
+                padding: 10,
+                backgroundColor: "#dbeafe",
+                marginTop: 6,
+                borderRadius: 6,
+              }}
+            >
+              <Text style={{ color: "#1d4ed8", fontWeight: "700" }}>
+                Importar a IndexedDB
+              </Text>
             </Pressable>
           </View>
         ) : null}
@@ -699,54 +761,197 @@ export default function ChatScreen() {
   const listRef = useRef(null);
   const refreshedNewsDatesRef = useRef(false);
   const { language } = useI18n();
-  const convexClient = useConvex();
-  const shareLocalPlaylist = useMutation(api.chat.shareLocalPlaylist);
+  const { shareLocalPlaylist, getSharedPlaylist,
+    deleteRoomMutation, createCustomYouTubePlaylist,
+    updateCustomYouTubePlaylist, refreshNewsYouTubePublishedDates,
+  } = useChatExtendedActions();
+  const { sendMessage, deleteMessage } = useChatBasicActions();
+  const { updateYouTubeAlbum, generateImageUploadUrl } = useChatMediaActions();
   const [sharePickerOpen, setSharePickerOpen] = useState(false);
   const [localShareChoices, setLocalShareChoices] = useState([]);
   const [shareBusy, setShareBusy] = useState(false);
   const [alias, setAlias] = useState(createDefaultAlias);
   const openSharePicker = useCallback(async () => {
     try {
-      const [music, classical] = await Promise.all([playlistRepo.list("playlist"), playlistRepo.list("classical")]);
+      const [music, classical] = await Promise.all([
+        playlistRepo.list("playlist"),
+        playlistRepo.list("classical"),
+      ]);
       setLocalShareChoices([...music, ...classical]);
       setSharePickerOpen(true);
-    } catch (e) { safeAlert("No se pudieron leer las playlists", e.message); }
+    } catch (e) {
+      safeAlert("No se pudieron leer las playlists", e.message);
+    }
   }, []);
-  const publishPlaylist = useCallback(async (playlist) => {
-    if (shareBusy) return;
-    setShareBusy(true);
-    try {
-      const backup = await makePlaylistBackupV2([playlist], playlist.collectionType === "classical" ? "shopp-youtube-classical-playlists" : "shopp-youtube-playlists");
-      const clean = validatePlaylistBackupV2(backup, backup.type, {maximumTracks:150})[0];
-      // Los datos se validan de nuevo en el servidor; aquí conservamos el respaldo portable con LRC.
-      await shareLocalPlaylist({title: clean.title, collectionType: clean.collectionType, username: alias,
-        payload: JSON.stringify(backup.playlists[0])});
-      setSharePickerOpen(false);
-      safeAlert("Compartida", "Playlist publicada en #musica durante 24 horas.");
-    } catch (e) { safeAlert("No se pudo compartir", e.message); }
-    finally { setShareBusy(false); }
-  }, [alias, shareBusy, shareLocalPlaylist]);
-  const importSharedPlaylist = useCallback((message) => {
-    safeAlert("Importar playlist", `¿Importar «${message.sharedPlaylist?.title}» en este dispositivo?`, [
-      {text:"Cancelar",style:"cancel"},
-      {text:"Importar",onPress: async () => {
-        try {
-          const shared = await convexClient.query(api.chat.getSharedPlaylist,{messageId:message._id});
-          const playlist = JSON.parse(shared.payload);
-          const type = shared.collectionType === "classical" ? "shopp-youtube-classical-playlists" : "shopp-youtube-playlists";
-          const validated = validatePlaylistBackupV2({app:"Shopp",version:2,type,backupStatus:"complete",playlists:[playlist],lyricsEntries:playlist.tracks.filter(t=>t.lyricsBackup).length},type,{maximumTracks:150});
-          const result = await importPlaylistsLocally({playlists:validated,collection:shared.collectionType});
-          safeAlert("Importación finalizada", `${result.added || 0} añadida(s), ${result.skipped || 0} duplicada(s).`);
-        } catch(e) {safeAlert("No se pudo importar",e.message);}
-      }}
-    ]);
-  },[convexClient]);
+  const publishPlaylist = useCallback(
+    async (playlist) => {
+      if (shareBusy) return;
+      setShareBusy(true);
+      try {
+        const backup = await makePlaylistBackupV2(
+          [playlist],
+          playlist.collectionType === "classical"
+            ? "shopp-youtube-classical-playlists"
+            : "shopp-youtube-playlists",
+        );
+        const clean = validatePlaylistBackupV2(backup, backup.type, {
+          maximumTracks: 150,
+        })[0];
+        // Los datos se validan de nuevo en el servidor; aquí conservamos el respaldo portable con LRC.
+        await shareLocalPlaylist({
+          title: clean.title,
+          collectionType: clean.collectionType,
+          username: alias,
+          payload: JSON.stringify(backup.playlists[0]),
+        });
+        setSharePickerOpen(false);
+        safeAlert(
+          "Compartida",
+          "Playlist publicada en #musica durante 24 horas.",
+        );
+      } catch (e) {
+        safeAlert("No se pudo compartir", e.message);
+      } finally {
+        setShareBusy(false);
+      }
+    },
+    [alias, shareBusy, shareLocalPlaylist],
+  );
+  const importSharedPlaylist = useCallback(
+    (message) => {
+      safeAlert(
+        "Importar playlist",
+        `¿Importar «${message.sharedPlaylist?.title}» en este dispositivo?`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Importar",
+            onPress: async () => {
+              try {
+                const shared = await getSharedPlaylist(message._id);
+                const playlist = JSON.parse(shared.payload);
+                const type =
+                  shared.collectionType === "classical"
+                    ? "shopp-youtube-classical-playlists"
+                    : "shopp-youtube-playlists";
+                const validated = validatePlaylistBackupV2(
+                  {
+                    app: "Shopp",
+                    version: 2,
+                    type,
+                    backupStatus: "complete",
+                    playlists: [playlist],
+                    lyricsEntries: playlist.tracks.filter((t) => t.lyricsBackup)
+                      .length,
+                  },
+                  type,
+                  { maximumTracks: 150 },
+                );
+                const result = await importPlaylistsLocally({
+                  playlists: validated,
+                  collection: shared.collectionType,
+                });
+                safeAlert(
+                  "Importación finalizada",
+                  `${result.added || 0} añadida(s), ${result.skipped || 0} duplicada(s).`,
+                );
+              } catch (e) {
+                safeAlert("No se pudo importar", e.message);
+              }
+            },
+          },
+        ],
+      );
+    },
+    [getSharedPlaylist],
+  );
   const [room, setRoom] = useState("compras");
+  const [customRooms, setCustomRooms] = useState([]);
+  const allRooms = useMemo(() => {
+    const rooms = [...ROOMS, ...customRooms];
+    if (room && !rooms.some((item) => item.id === room)) {
+      rooms.push({
+        id: room,
+        label: room.replace(/^custom-/, "").replace(/-/g, " "),
+        icon: "chatbubble-ellipses-outline",
+      });
+    }
+    return rooms;
+  }, [customRooms, room]);
+  const [roomsPickerVisible, setRoomsPickerVisible] = useState(false);
+  const [roomListPage, setRoomListPage] = useState(0);
+  const [deletingRoomId, setDeletingRoomId] = useState(null);
+  const [profileEditorVisible, setProfileEditorVisible] = useState(false);
+  const [profileField, setProfileField] = useState(null);
+  const [profileDraft, setProfileDraft] = useState("");
+  useEffect(() => {
+    let mounted = true;
+    AsyncStorage.getItem(CUSTOM_ROOMS_STORAGE_KEY)
+      .then((raw) => {
+        if (!mounted || !raw) return;
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return;
+        const seen = new Set(ROOMS.map((item) => item.id));
+        const restored = parsed
+          .filter((item) => item && typeof item.label === "string")
+          .map((item) => ({
+            id: String(item.id || ""),
+            label: item.label.trim().slice(0, 32),
+            icon: "chatbubble-ellipses-outline",
+          }))
+          .filter((item) => {
+            if (
+              !item.id.startsWith("custom-") ||
+              !item.label ||
+              seen.has(item.id)
+            )
+              return false;
+            seen.add(item.id);
+            return true;
+          });
+        setCustomRooms(restored);
+      })
+      .catch((error) =>
+        console.warn("[Chat] No se pudieron cargar las salas:", error),
+      );
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  const selectedRoomLabel =
+    allRooms.find((item) => item.id === room)?.label || room;
+  const customRoomsForList = useMemo(
+    () =>
+      allRooms.filter(
+        (item) => !ROOMS.some((builtin) => builtin.id === item.id),
+      ),
+    [allRooms],
+  );
+  const roomsOnPage = useMemo(
+    () =>
+      customRoomsForList.slice(
+        roomListPage * ROOM_SUMMARY_PAGE_SIZE,
+        (roomListPage + 1) * ROOM_SUMMARY_PAGE_SIZE,
+      ),
+    [customRoomsForList, roomListPage],
+  );
+  const totalRoomPages = Math.max(
+    1,
+    Math.ceil(customRoomsForList.length / ROOM_SUMMARY_PAGE_SIZE),
+  );
   const [chatClientId] = useState(getOrCreateChatClientId);
+  const roomSummaryArgs = useMemo(
+    () => ({
+      rooms: [...ROOMS, ...roomsOnPage].map(({ id, label }) => ({ id, label })),
+      clientId: chatClientId,
+    }),
+    [roomsOnPage, chatClientId],
+  );
   const [input, setInput] = useState("");
   const [selectedImages, setSelectedImages] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [sending, setSending] = useState(false);
+  const [sendPipeline, setSendPipeline] = useState({ stage: "idle", completed: 0, total: 0 });
   const [deletingMessageId, setDeletingMessageId] = useState(null);
   const [expandedImageUri, setExpandedImageUri] = useState(null);
   const [editingAlbum, setEditingAlbum] = useState(null);
@@ -769,8 +974,7 @@ export default function ChatScreen() {
 
   // Al mostrar la Biblioteca integrada no necesitamos mantener también la
   // suscripción reactiva al chat de esa sala.
-  const messages = useQuery(
-    api.chat.listMessages,
+  const messages = useChatMessages(
     computerMode === "library"
       ? "skip"
       : {
@@ -778,19 +982,45 @@ export default function ChatScreen() {
           clientId: chatClientId,
         },
   );
-  const sendMessage = useMutation(api.chat.sendMessage);
-  const deleteMessage = useMutation(api.chat.deleteMessage);
-  const updateYouTubeAlbum = useMutation(api.chat.updateYouTubeAlbum);
-  const createCustomYouTubePlaylist = useMutation(
-    api.chat.createCustomYouTubePlaylist,
+  const roomSummaries = useChatRoomSummaries(roomSummaryArgs);
+  const roomSummaryById = useMemo(
+    () => new Map((roomSummaries?.rooms || []).map((item) => [item.id, item])),
+    [roomSummaries],
   );
-  const updateCustomYouTubePlaylist = useMutation(
-    api.chat.updateCustomYouTubePlaylist,
+  const selectableRooms = useMemo(
+    () => [...ROOMS, ...roomsOnPage].filter((item) => !roomSummaryById.get(item.id)?.deleted),
+    [roomsOnPage, roomSummaryById],
   );
-  const generateImageUploadUrl = useMutation(api.chat.generateImageUploadUrl);
-  const refreshNewsYouTubePublishedDates = useAction(
-    api.chat.refreshNewsYouTubePublishedDates,
-  );
+  const isAdmin = roomSummaries?.isAdmin === true;
+
+  useEffect(() => {
+    const selectedSummary = roomSummaryById.get(room);
+    if (selectedSummary?.deleted || selectedSummary?.deleting) {
+      setRoom("compras");
+    }
+    const deletedIds = new Set(
+      [...roomSummaryById.values()]
+        .filter((item) => item.deleted)
+        .map((item) => item.id),
+    );
+    if (!deletedIds.size) return;
+    const next = customRooms.filter((item) => !deletedIds.has(item.id));
+    if (next.length !== customRooms.length) {
+      setCustomRooms(next);
+      AsyncStorage.setItem(
+        CUSTOM_ROOMS_STORAGE_KEY,
+        JSON.stringify(next),
+      ).catch((error) =>
+        console.warn("[Chat] No se pudieron actualizar las salas:", error),
+      );
+    }
+  }, [customRooms, room, roomSummaryById]);
+
+  useEffect(() => {
+    if (roomListPage >= totalRoomPages) {
+      setRoomListPage(Math.max(0, totalRoomPages - 1));
+    }
+  }, [roomListPage, totalRoomPages]);
 
   useEffect(() => {
     if (
@@ -888,6 +1118,88 @@ export default function ChatScreen() {
     saveAlias(next);
   }, []);
 
+  const openProfileEditor = useCallback(
+    (field) => {
+      setProfileField(field);
+      setProfileDraft(field === "alias" ? alias : selectedRoomLabel);
+      setProfileEditorVisible(true);
+    },
+    [alias, selectedRoomLabel],
+  );
+
+  const handleSaveProfileField = useCallback(() => {
+    const isAlias = profileField === "alias";
+    const label = profileDraft
+      .trim()
+      .replace(/\s+/g, " ")
+      .slice(0, isAlias ? 40 : 32);
+    if (!label) {
+      safeAlert(
+        isAlias ? "Alias" : "Nombre de sala",
+        "Escribe un valor antes de guardar.",
+      );
+      return;
+    }
+
+    if (isAlias) {
+      handleAliasChange(label);
+    } else {
+      const roomLabel = label.replace(/^#+\s*/, "").trim();
+      const slug = roomLabel
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      if (!slug) {
+        safeAlert("Nombre de sala", "Escribe un nombre válido, por ejemplo #noticias.");
+        return;
+      }
+      const builtin = ROOMS.find(
+        (item) => item.id === slug || item.label.toLowerCase() === roomLabel.toLowerCase(),
+      );
+      if (profileField === "newRoom") {
+        if (builtin) {
+          setRoom(builtin.id);
+        } else {
+          const id = `custom-${slug}`;
+          const existing = customRooms.find((item) => item.id === id);
+          if (existing) {
+            setRoom(id);
+          } else {
+            const next = [...customRooms, { id, label: roomLabel, icon: "chatbubble-ellipses-outline" }];
+            setCustomRooms(next);
+            setRoom(id);
+            AsyncStorage.setItem(CUSTOM_ROOMS_STORAGE_KEY, JSON.stringify(next)).catch((error) =>
+              console.warn("[Chat] No se pudieron guardar las salas:", error),
+            );
+          }
+        }
+        setRoomsPickerVisible(false);
+      } else if (builtin || slug === "noticias") {
+        setRoom(builtin?.id || slug);
+      } else if (slug) {
+        const id = `custom-${slug}`;
+        const existing = customRooms.find((item) => item.id === id);
+        const next = existing
+          ? customRooms.map((item) =>
+              item.id === id ? { ...item, label: roomLabel } : item,
+            )
+          : [
+              ...customRooms,
+              { id, label: roomLabel, icon: "chatbubble-ellipses-outline" },
+            ];
+        setCustomRooms(next);
+        setRoom(id);
+        AsyncStorage.setItem(CUSTOM_ROOMS_STORAGE_KEY, JSON.stringify(next)).catch((error) =>
+          console.warn("[Chat] No se pudieron guardar las salas:", error),
+        );
+      }
+    }
+    setProfileEditorVisible(false);
+    setProfileField(null);
+  }, [customRooms, handleAliasChange, profileDraft, profileField]);
+
   const handlePickImages = useCallback(async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -905,11 +1217,17 @@ export default function ChatScreen() {
         result.assets.slice(0, MAX_IMAGES).map(async (asset) => {
           if (!asset.uri) return null;
           const longest = Math.max(asset.width || 0, asset.height || 0);
-          const actions = longest > CHAT_IMAGE_MAX_DIMENSION
-            ? [{ resize: asset.width >= asset.height
-                ? { width: CHAT_IMAGE_MAX_DIMENSION }
-                : { height: CHAT_IMAGE_MAX_DIMENSION } }]
-            : [];
+          const actions =
+            longest > CHAT_IMAGE_MAX_DIMENSION
+              ? [
+                  {
+                    resize:
+                      asset.width >= asset.height
+                        ? { width: CHAT_IMAGE_MAX_DIMENSION }
+                        : { height: CHAT_IMAGE_MAX_DIMENSION },
+                  },
+                ]
+              : [];
           const prepared = await ImageManipulator.manipulateAsync(
             asset.uri,
             actions,
@@ -918,7 +1236,9 @@ export default function ChatScreen() {
           if (!prepared.uri) return null;
           const blob = await (await fetch(prepared.uri)).blob();
           if (blob.size > CHAT_IMAGE_MAX_BYTES) {
-            throw new Error(`Una imagen supera el límite de 10 MB (${Math.ceil(blob.size / 1048576)} MB).`);
+            throw new Error(
+              `Una imagen supera el límite de 10 MB (${Math.ceil(blob.size / 1048576)} MB).`,
+            );
           }
           return {
             uri: prepared.uri,
@@ -935,32 +1255,60 @@ export default function ChatScreen() {
       );
     } catch (error) {
       console.error("[Chat] No se pudieron seleccionar las imágenes:", error);
-      safeAlert("Imágenes", error?.message || "No se pudieron preparar las imágenes.");
+      safeAlert(
+        "Imágenes",
+        error?.message || "No se pudieron preparar las imágenes.",
+      );
     }
   }, []);
 
   const handlePickFiles = useCallback(async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ["application/zip", "application/x-zip-compressed", "application/json", "text/json", "application/octet-stream", "*/*"],
+        type: [
+          "application/zip",
+          "application/x-zip-compressed",
+          "application/json",
+          "text/json",
+          "application/octet-stream",
+          "*/*",
+        ],
         multiple: true,
         copyToCacheDirectory: true,
       });
       if (result.canceled || !result.assets?.length) return;
       const prepared = [];
       for (const asset of result.assets) {
-        const name = String(asset.name || "").split(/[\\/]/).pop();
+        const name = String(asset.name || "")
+          .split(/[\\/]/)
+          .pop();
         const ext = name?.split(".").pop()?.toLowerCase();
-        if (!FILE_TYPES[ext]) throw new Error("Solo se permiten archivos ZIP y JSON.");
-        if (!asset.uri) throw new Error("No se pudo leer el archivo seleccionado.");
+        if (!FILE_TYPES[ext])
+          throw new Error("Solo se permiten archivos ZIP y JSON.");
+        if (!asset.uri)
+          throw new Error("No se pudo leer el archivo seleccionado.");
         const size = asset.size ?? (await (await fetch(asset.uri)).blob()).size;
-        if (!size || size > MAX_FILE_BYTES) throw new Error(`El archivo ${name} supera el límite de 10 MB o está vacío.`);
-        prepared.push({ uri: asset.uri, name: name.slice(0, 160), mimeType: FILE_TYPES[ext], size });
+        if (!size || size > MAX_FILE_BYTES)
+          throw new Error(
+            `El archivo ${name} supera el límite de 10 MB o está vacío.`,
+          );
+        prepared.push({
+          uri: asset.uri,
+          name: name.slice(0, 160),
+          mimeType: FILE_TYPES[ext],
+          size,
+        });
       }
-      if (selectedFiles.length + prepared.length > MAX_FILES) throw new Error("Máximo 4 archivos por mensaje.");
-      setSelectedFiles((current) => [...current, ...prepared].slice(0, MAX_FILES));
+      if (selectedFiles.length + prepared.length > MAX_FILES)
+        throw new Error("Máximo 4 archivos por mensaje.");
+      setSelectedFiles((current) =>
+        [...current, ...prepared].slice(0, MAX_FILES),
+      );
     } catch (error) {
-      safeAlert("Adjuntos", error?.message || "No se pudo seleccionar el archivo.");
+      safeAlert(
+        "Adjuntos",
+        error?.message || "No se pudo seleccionar el archivo.",
+      );
     }
   }, [selectedFiles.length]);
 
@@ -1221,6 +1569,13 @@ export default function ChatScreen() {
     if (!canSend) return;
 
     setSending(true);
+    const attachmentCount = selectedImages.length + selectedFiles.length;
+    let completedAttachments = 0;
+    setSendPipeline({
+      stage: attachmentCount ? "uploading" : "publishing",
+      completed: 0,
+      total: attachmentCount,
+    });
 
     try {
       const uploadedImages = [];
@@ -1258,23 +1613,35 @@ export default function ChatScreen() {
           height: image.height || 256,
           size: image.size || blob.size || 0,
         });
+        completedAttachments += 1;
+        setSendPipeline({ stage: "uploading", completed: completedAttachments, total: attachmentCount });
       }
 
       const uploadedFiles = [];
       for (const file of selectedFiles) {
         const blob = await (await fetch(file.uri)).blob();
-        if (!blob.size || blob.size > MAX_FILE_BYTES) throw new Error(`Archivo no válido: ${file.name}`);
+        if (!blob.size || blob.size > MAX_FILE_BYTES)
+          throw new Error(`Archivo no válido: ${file.name}`);
         const uploadUrl = await generateImageUploadUrl();
         const response = await fetch(uploadUrl, {
           method: "POST",
           headers: { "Content-Type": file.mimeType },
           body: blob,
         });
-        if (!response.ok) throw new Error(`Error subiendo ${file.name} (${response.status}).`);
+        if (!response.ok)
+          throw new Error(`Error subiendo ${file.name} (${response.status}).`);
         const { storageId } = await response.json();
-        uploadedFiles.push({ storageId, name: file.name, mimeType: file.mimeType, size: blob.size });
+        uploadedFiles.push({
+          storageId,
+          name: file.name,
+          mimeType: file.mimeType,
+          size: blob.size,
+        });
+        completedAttachments += 1;
+        setSendPipeline({ stage: "uploading", completed: completedAttachments, total: attachmentCount });
       }
 
+      setSendPipeline({ stage: "publishing", completed: attachmentCount, total: attachmentCount });
       await sendMessage({
         room,
         username: cleanAlias,
@@ -1288,6 +1655,7 @@ export default function ChatScreen() {
       setInput("");
       setSelectedImages([]);
       setSelectedFiles([]);
+      setSendPipeline({ stage: "idle", completed: 0, total: 0 });
 
       if (typeof requestAnimationFrame === "function") {
         requestAnimationFrame(() =>
@@ -1296,6 +1664,7 @@ export default function ChatScreen() {
       }
     } catch (error) {
       console.error("[Chat] No se pudo enviar el mensaje:", error);
+      setSendPipeline({ stage: "error", completed: completedAttachments, total: attachmentCount });
       safeAlert("Chat", error?.message || "No se pudo enviar el mensaje.");
     } finally {
       setSending(false);
@@ -1307,6 +1676,7 @@ export default function ChatScreen() {
     room,
     chatClientId,
     selectedImages,
+    selectedFiles,
     sendMessage,
     generateImageUploadUrl,
   ]);
@@ -1365,6 +1735,71 @@ export default function ChatScreen() {
       ]);
     },
     [deletePost, deletingMessageId, language],
+  );
+
+  const deleteRoomAndMessages = useCallback(
+    async (item) => {
+      if (!isAdmin || !item?.id || deletingRoomId) return;
+      const removeRoom = !ROOMS.some((builtin) => builtin.id === item.id);
+      setDeletingRoomId(item.id);
+      try {
+        await deleteRoomMutation({
+          room: item.id,
+          removeRoom,
+          clientId: chatClientId,
+        });
+        if (removeRoom) {
+          const next = customRooms.filter((roomItem) => roomItem.id !== item.id);
+          setCustomRooms(next);
+          AsyncStorage.setItem(
+            CUSTOM_ROOMS_STORAGE_KEY,
+            JSON.stringify(next),
+          ).catch((error) =>
+            console.warn("[Chat] No se pudieron guardar las salas:", error),
+          );
+          if (room === item.id) setRoom("compras");
+        }
+      } catch (error) {
+        safeAlert(
+          "Chat",
+          error?.message || "No se pudieron borrar los mensajes de la sala.",
+        );
+      } finally {
+        setDeletingRoomId(null);
+      }
+    },
+    [
+      chatClientId,
+      customRooms,
+      deleteRoomMutation,
+      deletingRoomId,
+      isAdmin,
+      room,
+    ],
+  );
+
+  const handleDeleteRoom = useCallback(
+    (item) => {
+      if (!isAdmin || !item?.id || deletingRoomId) return;
+      const removeRoom = !ROOMS.some((builtin) => builtin.id === item.id);
+      const roomName = removeRoom
+        ? `#${item.label.replace(/^#+/, "")}`
+        : item.label;
+      const title = removeRoom ? "Borrar sala" : "Borrar mensajes";
+      const message = removeRoom
+        ? `¿Quieres borrar todos los mensajes y eliminar ${roomName} para todos los dispositivos? Esta acción no se puede deshacer.`
+        : `¿Quieres borrar todos los mensajes de ${roomName}? La sala integrada seguirá disponible.`;
+      safeAlert(title, message, [
+        { key: "cancel", text: "Cancelar", style: "cancel" },
+        {
+          key: "delete",
+          text: "Borrar",
+          style: "destructive",
+          onPress: () => void deleteRoomAndMessages(item),
+        },
+      ]);
+    },
+    [deleteRoomAndMessages, deletingRoomId, isAdmin],
   );
 
   const openAlbumEditor = useCallback((item, youtubeMedia) => {
@@ -1567,28 +2002,39 @@ export default function ChatScreen() {
         <View style={styles.header}>
           <View style={styles.titleRow}>
             <View style={styles.iconBox}>
-              <Ionicons name="chatbubbles-outline" size={21} color="#2563eb" />
+              <Ionicons name="chatbubbles-outline" size={21} color="#FFFFFF" />
             </View>
             <View style={styles.titleBlock}>
               <Text style={styles.title}>Chat de compras</Text>
-              <Text style={styles.subtitle}>
-                {language === "en"
-                  ? `Open room · #${room}`
-                  : `Sala abierta · #${room}`}
-              </Text>
+              <View style={styles.profileBadges}>
+                <Pressable
+                  onPress={() => openProfileEditor("alias")}
+                  style={styles.profileBadge}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Editar alias: ${alias || "anonymous"}`}
+                >
+                  <Ionicons name="person-outline" size={13} color="#2563eb" />
+                  <Text style={styles.profileBadgeText} numberOfLines={1}>
+                    {alias.trim() || "anonymous"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => openProfileEditor("room")}
+                  style={styles.profileBadge}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Editar sala: ${selectedRoomLabel}`}
+                >
+                  <Ionicons
+                    name="chatbubble-ellipses-outline"
+                    size={13}
+                    color="#2563eb"
+                  />
+                  <Text style={styles.profileBadgeText} numberOfLines={1}>
+                    #{selectedRoomLabel.replace(/^#+/, "")}
+                  </Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
-          <View style={styles.aliasRow}>
-            <Text style={styles.aliasLabel}>Alias</Text>
-            <TextInput
-              value={alias}
-              onChangeText={handleAliasChange}
-              placeholder="Tu alias"
-              style={styles.aliasInput}
-              maxLength={40}
-              autoCorrect={false}
-              autoCapitalize="none"
-            />
           </View>
         </View>
 
@@ -1604,7 +2050,14 @@ export default function ChatScreen() {
                 <Pressable
                   key={item.id}
                   onPress={() => setRoom(item.id)}
-                  style={[styles.roomButton, active && styles.roomButtonActive]}
+                  disabled={sending}
+                  style={[
+                    styles.roomButton,
+                    active && styles.roomButtonActive,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Sala ${item.label}`}
                 >
                   <Ionicons
                     name={item.icon}
@@ -1619,26 +2072,271 @@ export default function ChatScreen() {
                 </Pressable>
               );
             })}
+            <Pressable
+              onPress={() => setRoomsPickerVisible(true)}
+              style={styles.roomButton}
+              accessibilityRole="button"
+              accessibilityLabel="Mostrar salas de chat"
+            >
+              <Ionicons name="list-outline" size={15} color="#475569" />
+              <Text style={styles.roomText}>Salas</Text>
+            </Pressable>
           </ScrollView>
         </View>
 
+        <Modal
+          visible={roomsPickerVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setRoomsPickerVisible(false)}
+        >
+          <Pressable
+            style={styles.profileModalBackdrop}
+            onPress={() => setRoomsPickerVisible(false)}
+          >
+            <Pressable style={styles.roomsPickerCard} onPress={() => {}}>
+              <Text style={styles.profileModalTitle}>Salas de chat</Text>
+              <ScrollView style={styles.roomsPickerList}>
+                {selectableRooms.map((item) => {
+                  const active = room === item.id;
+                  const summary = roomSummaryById.get(item.id);
+                  const count = summary
+                    ? summary.hasMore
+                      ? `${summary.count}+`
+                      : summary.count
+                    : "…";
+                  const deleting =
+                    deletingRoomId === item.id || summary?.deleting === true;
+                  return (
+                    <View key={item.id} style={styles.roomsPickerRow}>
+                      <Pressable
+                        onPress={() => {
+                          setRoom(item.id);
+                          setRoomsPickerVisible(false);
+                        }}
+                        disabled={sending}
+                        style={[
+                          styles.roomsPickerSelect,
+                          active && styles.roomsPickerItemActive,
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        accessibilityLabel={`Abrir sala ${item.label}, ${count} mensajes`}
+                      >
+                        <Ionicons
+                          name={item.icon || "chatbubble-ellipses-outline"}
+                          size={17}
+                          color={active ? "#1679a6" : "#64748b"}
+                        />
+                        <Text
+                          style={[
+                            styles.roomsPickerLabel,
+                            active && styles.roomsPickerLabelActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {`#${item.label.replace(/^#+/, "")}`}
+                        </Text>
+                        <View style={styles.roomCountBadge}>
+                          <Text style={styles.roomCountText}>{count}</Text>
+                        </View>
+                        {active ? (
+                          <Ionicons
+                            name="checkmark"
+                            size={18}
+                            color="#1679a6"
+                          />
+                        ) : null}
+                      </Pressable>
+                      {isAdmin ? (
+                        <Pressable
+                          onPress={() => handleDeleteRoom(item)}
+                          disabled={deleting}
+                          style={styles.roomDeleteButton}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Borrar mensajes y sala ${item.label}`}
+                        >
+                          <Ionicons
+                            name="trash-outline"
+                            size={17}
+                            color={deleting ? "#94a3b8" : "#dc2626"}
+                          />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  );
+                })}
+                {selectableRooms.length === 0 ? (
+                  <Text style={styles.roomsPickerEmpty}>
+                    {customRoomsForList.length === 0
+                      ? "No hay salas personalizadas."
+                      : "No hay salas en esta página."}
+                  </Text>
+                ) : null}
+              </ScrollView>
+              <Pressable
+                onPress={() => {
+                  setRoomsPickerVisible(false);
+                  setProfileField("newRoom");
+                  setProfileDraft("");
+                  setProfileEditorVisible(true);
+                }}
+                style={styles.createRoomButton}
+                accessibilityRole="button"
+              >
+                <Ionicons name="add-circle-outline" size={18} color="#1679a6" />
+                <Text style={styles.createRoomButtonText}>Nueva sala</Text>
+              </Pressable>
+              {totalRoomPages > 1 ? (
+                <View style={styles.roomsPagination}>
+                  <Pressable
+                    disabled={roomListPage === 0}
+                    onPress={() =>
+                      setRoomListPage((page) => Math.max(0, page - 1))
+                    }
+                    style={[
+                      styles.roomsPaginationButton,
+                      roomListPage === 0 && styles.roomsPaginationDisabled,
+                    ]}
+                  >
+                    <Text style={styles.roomsPaginationText}>Anterior</Text>
+                  </Pressable>
+                  <Text style={styles.roomsPaginationStatus}>
+                    {roomListPage + 1}/{totalRoomPages}
+                  </Text>
+                  <Pressable
+                    disabled={roomListPage + 1 >= totalRoomPages}
+                    onPress={() =>
+                      setRoomListPage((page) =>
+                        Math.min(totalRoomPages - 1, page + 1),
+                      )
+                    }
+                    style={[
+                      styles.roomsPaginationButton,
+                      roomListPage + 1 >= totalRoomPages &&
+                        styles.roomsPaginationDisabled,
+                    ]}
+                  >
+                    <Text style={styles.roomsPaginationText}>Siguiente</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <Modal
+          visible={profileEditorVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setProfileEditorVisible(false)}
+        >
+          <Pressable
+            style={styles.profileModalBackdrop}
+            onPress={() => setProfileEditorVisible(false)}
+          >
+            <Pressable style={styles.profileModalCard} onPress={() => {}}>
+              <Text style={styles.profileModalTitle}>
+                {profileField === "alias"
+                  ? "Cambiar alias"
+                  : profileField === "newRoom"
+                    ? "Crear sala"
+                    : "Cambiar sala"}
+              </Text>
+              <TextInput
+                value={profileDraft}
+                onChangeText={(value) =>
+                  setProfileDraft(
+                    value.slice(0, profileField === "alias" ? 40 : 32),
+                  )
+                }
+                onSubmitEditing={handleSaveProfileField}
+                placeholder={
+                  profileField === "alias"
+                    ? "Tu alias"
+                    : profileField === "newRoom"
+                      ? "Nombre de la sala"
+                      : "#noticias"
+                }
+                maxLength={profileField === "alias" ? 40 : 32}
+                autoCapitalize={profileField === "alias" ? "none" : "words"}
+                autoCorrect={false}
+                returnKeyType="done"
+                style={styles.profileModalInput}
+                accessibilityLabel={
+                  profileField === "alias" ? "Alias" : "Nombre de sala"
+                }
+              />
+              <View style={styles.profileModalActions}>
+                <Pressable
+                  onPress={() => setProfileEditorVisible(false)}
+                  style={styles.profileModalCancel}
+                >
+                  <Text style={styles.profileModalCancelText}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleSaveProfileField}
+                  disabled={!profileDraft.trim()}
+                  style={[
+                    styles.profileModalSave,
+                    !profileDraft.trim() && styles.profileModalSaveDisabled,
+                  ]}
+                >
+                  <Text style={styles.profileModalSaveText}>Guardar</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
         {room === "musica" ? (
-          <View style={{padding: 8}}>
-            <Pressable onPress={openSharePicker} accessibilityRole="button" style={{padding: 11, backgroundColor: "#dbeafe", alignSelf: "flex-start", borderRadius: 7}}>
-              <Text style={{color: "#1d4ed8",fontWeight:"700"}}>Compartir playlist local</Text>
+          <View style={{ padding: 8 }}>
+            <Pressable
+              onPress={openSharePicker}
+              accessibilityRole="button"
+              style={{
+                padding: 11,
+                backgroundColor: "#dbeafe",
+                alignSelf: "flex-start",
+                borderRadius: 7,
+              }}
+            >
+              <Text style={{ color: "#1d4ed8", fontWeight: "700" }}>
+                Compartir playlist local
+              </Text>
             </Pressable>
             {sharePickerOpen ? (
-              <View style={{backgroundColor:"#fff",padding:10,maxHeight:240}}>
-                <Pressable onPress={()=>setSharePickerOpen(false)}><Text>Cancelar selección</Text></Pressable>
-                <ScrollView>{localShareChoices.map(p=>(
-                  <Pressable key={String(p.id || p._id)} disabled={shareBusy} onPress={()=>publishPlaylist(p)} style={{padding:10,borderBottomWidth:1,borderBottomColor:"#e2e8f0"}}>
-                    <Text>{p.title} · {(p.tracks||[]).length} pistas · {p.collectionType === "classical" ? "Clásica":"Música"}</Text>
-                  </Pressable>
-                ))}</ScrollView>
+              <View
+                style={{ backgroundColor: "#fff", padding: 10, maxHeight: 240 }}
+              >
+                <Pressable onPress={() => setSharePickerOpen(false)}>
+                  <Text>Cancelar selección</Text>
+                </Pressable>
+                <ScrollView>
+                  {localShareChoices.map((p) => (
+                    <Pressable
+                      key={String(p.id || p._id)}
+                      disabled={shareBusy}
+                      onPress={() => publishPlaylist(p)}
+                      style={{
+                        padding: 10,
+                        borderBottomWidth: 1,
+                        borderBottomColor: "#e2e8f0",
+                      }}
+                    >
+                      <Text>
+                        {p.title} · {(p.tracks || []).length} pistas ·{" "}
+                        {p.collectionType === "classical"
+                          ? "Clásica"
+                          : "Música"}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
               </View>
-            ):null}
+            ) : null}
           </View>
-        ):null}
+        ) : null}
         {room === "youtube" ? (
           <View style={styles.youtubeToolsBar}>
             <Pressable
@@ -1799,6 +2497,7 @@ export default function ChatScreen() {
                   />
                   <Pressable
                     onPress={() => handleRemoveImage(index)}
+                    disabled={sending}
                     style={styles.removeImageButton}
                     accessibilityLabel={`Quitar imagen ${index + 1}`}
                   >
@@ -1816,10 +2515,30 @@ export default function ChatScreen() {
         {selectedFiles.length > 0 ? (
           <View style={{ paddingHorizontal: 14, paddingVertical: 8, gap: 6 }}>
             {selectedFiles.map((file, index) => (
-              <View key={`${file.name}-${index}`} style={{ flexDirection: "row", alignItems: "center", gap: 9, padding: 8, borderRadius: 9, backgroundColor: "#eff6ff" }}>
+              <View
+                key={`${file.name}-${index}`}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 9,
+                  padding: 8,
+                  borderRadius: 9,
+                  backgroundColor: "#eff6ff",
+                }}
+              >
                 <Ionicons name="document-outline" size={19} color="#2563eb" />
-                <Text numberOfLines={1} style={{ flex: 1, color: "#1e40af" }}>{file.name}</Text>
-                <Pressable onPress={() => setSelectedFiles((current) => current.filter((_, i) => i !== index))} accessibilityLabel="Quitar archivo">
+                <Text numberOfLines={1} style={{ flex: 1, color: "#1e40af" }}>
+                  {file.name}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    setSelectedFiles((current) =>
+                      current.filter((_, i) => i !== index),
+                    )
+                  }
+                  disabled={sending}
+                  accessibilityLabel="Quitar archivo"
+                >
                   <Ionicons name="close-circle" size={22} color="#64748b" />
                 </Pressable>
               </View>
@@ -1827,19 +2546,21 @@ export default function ChatScreen() {
           </View>
         ) : null}
 
+        <View style={styles.composerFrame}>
         <View style={styles.composer}>
           <Pressable
             onPress={handlePickImages}
             disabled={sending || selectedImages.length >= MAX_IMAGES}
             style={({ pressed }) => [
               styles.imageButton,
-              (sending || selectedImages.length >= MAX_IMAGES) && styles.attachmentDisabled,
+              (sending || selectedImages.length >= MAX_IMAGES) &&
+                styles.attachmentDisabled,
               pressed && styles.attachmentPressed,
             ]}
             accessibilityRole="button"
             accessibilityLabel="Seleccionar imágenes"
           >
-            <Ionicons name="images-outline" size={25} color="#2563eb" />
+            <Ionicons name="images-outline" size={26} color="#168AC0" />
           </Pressable>
 
           <View style={styles.composerInputShell}>
@@ -1855,13 +2576,18 @@ export default function ChatScreen() {
               }
               placeholderTextColor="#94a3b8"
               style={styles.messageInput}
+              editable={!sending}
               multiline
               maxLength={messageLengthLimit}
               accessibilityLabel="Texto del mensaje"
             />
             <View style={styles.composerTools}>
               <Pressable
-                onPress={() => setInput((current) => (current + " 😊").slice(0, messageLengthLimit))}
+                onPress={() =>
+                  setInput((current) =>
+                    (current + " 😊").slice(0, messageLengthLimit),
+                  )
+                }
                 disabled={sending || input.length >= messageLengthLimit - 2}
                 style={styles.composerToolButton}
                 accessibilityRole="button"
@@ -1892,7 +2618,11 @@ export default function ChatScreen() {
               pressed && canSend && styles.sendButtonPressed,
             ]}
           >
-            <Ionicons name="send" size={23} color="#ffffff" />
+            <Ionicons
+              name="send"
+              size={24}
+              color={canSend ? "#168AC0" : "#9ecfe0"}
+            />
           </Pressable>
         </View>
 
@@ -1900,9 +2630,18 @@ export default function ChatScreen() {
           <Text style={styles.counter}>
             {input.length}/{messageLengthLimit}
           </Text>
-          <Text style={styles.footerText}>
-            Pruebas abiertas · sin login obligatorio
+          <Text style={styles.footerText} accessibilityLiveRegion="polite">
+            {sendPipeline.stage === "uploading"
+              ? `Subiendo adjuntos ${sendPipeline.completed}/${sendPipeline.total} · envío bloqueado`
+              : sendPipeline.stage === "publishing"
+                ? "Publicando mensaje · envío bloqueado"
+                : sendPipeline.stage === "error"
+                  ? `Error al enviar · ${selectedImages.length + selectedFiles.length} adjunto(s) pendiente(s)`
+                  : selectedImages.length + selectedFiles.length > 0
+                    ? `Cola lista · ${selectedImages.length + selectedFiles.length} adjunto(s) pendiente(s)`
+                    : "Pruebas abiertas · sin login obligatorio"}
           </Text>
+        </View>
         </View>
 
         <Modal
@@ -2314,64 +3053,206 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#fff" },
-  screen: { flex: 1, backgroundColor: "#f3f4f6" },
+  safeArea: { flex: 1, backgroundColor: "#2AABEE" },
+  screen: { flex: 1, backgroundColor: "#DCE8F1" },
   header: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 18,
     paddingTop: 10,
-    paddingBottom: 12,
-    backgroundColor: "#fff",
+    paddingBottom: 11,
+    backgroundColor: "#2AABEE",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#d1d5db",
+    borderBottomColor: "rgba(255,255,255,0.24)",
   },
   titleRow: { flexDirection: "row", alignItems: "center" },
   iconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#eff6ff",
-    marginRight: 10,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    marginRight: 12,
   },
   titleBlock: { flex: 1 },
-  title: { fontSize: 19, fontWeight: "800", color: "#111827" },
-  subtitle: { marginTop: 2, fontSize: 12, color: "#6b7280" },
-  aliasRow: {
-    marginTop: 10,
+  title: { fontSize: 21, lineHeight: 26, fontWeight: "800", color: "#FFFFFF" },
+  profileBadges: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 7,
+    marginTop: 5,
   },
-  aliasLabel: { fontSize: 13, fontWeight: "700", color: "#4b5563" },
-  aliasInput: {
-    flex: 1,
-    minHeight: 38,
-    paddingHorizontal: 10,
+  profileBadge: {
+    minHeight: 29,
+    maxWidth: "48%",
+    flexShrink: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 11,
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "#fff",
-    fontSize: 14,
-    color: "#111827",
+    borderColor: "rgba(255,255,255,0.48)",
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.88)",
+  },
+  profileBadgeText: {
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#1679a6",
   },
   roomsBar: {
     backgroundColor: "#fff",
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#d1d5db",
   },
-  roomsContent: { paddingHorizontal: 10, paddingVertical: 8, gap: 7 },
-  roomButton: {
-    height: 32,
-    paddingHorizontal: 11,
+  roomsContent: { paddingHorizontal: 12, paddingVertical: 9, gap: 8 },
+  profileModalBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    backgroundColor: "rgba(15,23,42,0.45)",
+  },
+  profileModalCard: {
+    width: 390,
+    maxWidth: "100%",
+    padding: 18,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+  },
+  profileModalTitle: {
+    marginBottom: 12,
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#17202a",
+  },
+  roomsPickerCard: {
+    width: 390,
+    maxWidth: "100%",
+    maxHeight: "80%",
+    padding: 18,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+  },
+  roomsPickerList: { flexGrow: 0, maxHeight: 420 },
+  createRoomButton: {
+    minHeight: 42,
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    justifyContent: "center",
+    gap: 7,
+    marginTop: 10,
+    borderRadius: 10,
+    backgroundColor: "#eaf5fb",
+  },
+  createRoomButtonText: { fontSize: 14, fontWeight: "800", color: "#1679a6" },
+  roomsPickerEmpty: {
+    paddingVertical: 22,
+    fontSize: 13,
+    textAlign: "center",
+    color: "#64748b",
+  },
+  roomsPagination: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#e2e8f0",
+  },
+  roomsPaginationButton: { paddingVertical: 8, paddingHorizontal: 10 },
+  roomsPaginationDisabled: { opacity: 0.4 },
+  roomsPaginationText: { fontSize: 12, fontWeight: "700", color: "#1679a6" },
+  roomsPaginationStatus: { fontSize: 12, fontWeight: "700", color: "#64748b" },
+  roomsPickerRow: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e2e8f0",
+  },
+  roomsPickerSelect: {
+    minHeight: 44,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  roomsPickerItemActive: {
+    backgroundColor: "#eaf5fb",
+  },
+  roomCountBadge: {
+    minWidth: 24,
+    height: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+    borderRadius: 11,
+    backgroundColor: "#eef2f7",
+  },
+  roomCountText: { fontSize: 11, fontWeight: "800", color: "#64748b" },
+  roomDeleteButton: {
+    width: 36,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+  },
+  roomsPickerLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  roomsPickerLabelActive: { color: "#1679a6" },
+  profileModalInput: {
+    height: 42,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 10,
+    color: "#17202a",
+    backgroundColor: "#f8fafc",
+  },
+  profileModalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+    marginTop: 16,
+  },
+  profileModalCancel: {
+    height: 38,
+    justifyContent: "center",
+    paddingHorizontal: 13,
+    borderRadius: 10,
+    backgroundColor: "#f1f5f9",
+  },
+  profileModalCancelText: { fontSize: 13, fontWeight: "700", color: "#475569" },
+  profileModalSave: {
+    height: 38,
+    justifyContent: "center",
+    paddingHorizontal: 13,
+    borderRadius: 10,
+    backgroundColor: "#2563eb",
+  },
+  profileModalSaveDisabled: { opacity: 0.45 },
+  profileModalSaveText: { fontSize: 13, fontWeight: "700", color: "#fff" },
+  roomButton: {
+    height: 38,
+    paddingHorizontal: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     borderWidth: 1,
     borderColor: "#cbd5e1",
     backgroundColor: "#f8fafc",
+    borderRadius: 7,
   },
-  roomButtonActive: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
-  roomText: { fontSize: 12, fontWeight: "700", color: "#475569" },
+  roomButtonActive: { backgroundColor: "#2AABEE", borderColor: "#2AABEE" },
+  roomText: { fontSize: 14, fontWeight: "700", color: "#475569" },
   roomTextActive: { color: "#fff" },
   computerModeBar: {
     flexDirection: "row",
@@ -2395,7 +3276,7 @@ const styles = StyleSheet.create({
   },
   computerModeButtonActive: {
     borderColor: "#2563eb",
-    backgroundColor: "#2563eb",
+    backgroundColor: "#2AABEE",
   },
   computerModeText: { fontSize: 12, fontWeight: "800", color: "#475569" },
   computerModeTextActive: { color: "#fff" },
@@ -2527,16 +3408,16 @@ const styles = StyleSheet.create({
   listEmpty: { flexGrow: 1, justifyContent: "center" },
   empty: { alignItems: "center", paddingHorizontal: 28 },
   emptyTitle: {
-    marginTop: 10,
-    fontSize: 16,
+    marginTop: 12,
+    fontSize: 19,
     fontWeight: "800",
     color: "#374151",
     textAlign: "center",
   },
   emptyText: {
     marginTop: 6,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 15,
+    lineHeight: 22,
     color: "#6b7280",
     textAlign: "center",
   },
@@ -3008,24 +3889,24 @@ const styles = StyleSheet.create({
   composer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 7,
-    backgroundColor: "#fff",
+    gap: 7,
+    minHeight: 48,
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    backgroundColor: "#dce8f1",
+  },
+  composerFrame: {
+    backgroundColor: "#dce8f1",
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#e2e8f0",
+    borderTopColor: "rgba(148,163,184,0.42)",
   },
   imageButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#eff6ff",
-    borderWidth: 1,
-    borderColor: "#dbeafe",
-    ...Platform.select({ web: { boxShadow: "0px 3px 12px rgba(37,99,235,0.09)" }, default: { elevation: 2 } }),
+    backgroundColor: "transparent",
   },
   attachmentDisabled: { opacity: 0.45 },
   attachmentPressed: { backgroundColor: "#dbeafe" },
@@ -3034,60 +3915,59 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: "#bfdbfe",
-    backgroundColor: "#f8fbff",
-    ...Platform.select({ web: { boxShadow: "0px 2px 9px rgba(37,99,235,0.07)" }, default: {} }),
+    height: 36,
+    borderRadius: 19,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(148,163,184,0.55)",
+    backgroundColor: "rgba(255,255,255,0.82)",
   },
   messageInput: {
     flex: 1,
     minWidth: 0,
-    minHeight: 54,
-    maxHeight: 125,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
+    height: 34,
+    lineHeight: 20,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
     fontSize: 15,
-    color: "#0f172a",
+    color: "#17202A",
     textAlignVertical: "center",
     ...Platform.select({ web: { outlineStyle: "none" }, default: {} }),
   },
   composerTools: {
     flexDirection: "row",
     alignItems: "center",
-    paddingRight: 8,
-    gap: 2,
+    paddingRight: 6,
+    gap: 0,
   },
   composerToolButton: {
-    minWidth: 34,
-    minHeight: 44,
+    width: 32,
+    height: 34,
     alignItems: "center",
     justifyContent: "center",
   },
   composerToolDivider: {
-    width: 1,
-    height: 24,
-    marginHorizontal: 3,
-    backgroundColor: "#cbd5e1",
+    display: "none",
   },
   sendButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#2563eb",
-    ...Platform.select({ web: { boxShadow: "0px 3px 12px rgba(37,99,235,0.21)" }, default: { elevation: 3 } }),
+    backgroundColor: "transparent",
   },
-  sendButtonDisabled: { backgroundColor: "#94a3b8" },
+  sendButtonDisabled: { opacity: 1 },
   sendButtonPressed: { opacity: 0.8 },
   footer: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 16,
-    paddingBottom: 10,
-    backgroundColor: "#fff",
+    paddingTop: 0,
+    paddingBottom: 2,
+    minHeight: 16,
+    backgroundColor: "#dce8f1",
   },
-  counter: { fontSize: 10, color: "#9ca3af" },
-  footerText: { fontSize: 10, color: "#9ca3af" },
+  counter: { fontSize: 12, color: "#8295a7" },
+  footerText: { fontSize: 12, color: "#8295a7" },
 });
