@@ -13,7 +13,7 @@ import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 
 
 import { Ionicons } from "@expo/vector-icons";
-import { useAuthActions } from "@convex-dev/auth/react";
+import { useShoppAuthActions } from "@/src/hooks/useShoppAuth";
 import { useMutation } from "convex/react";
 
 import { api } from "../../../convex/_generated/api";
@@ -120,7 +120,7 @@ function PasswordRequirement({ valid, children }) {
 }
 
 export default function RegisterScreen({ navigation, route }) {
-  const { signIn } = useAuthActions();
+  const { signIn } = useShoppAuthActions();
   const upsertMyProfile = useMutation(api.users.upsertMyProfile);
   const activateTesterRole = useMutation(api.users.activateTesterRole);
   const testerAccount = route?.params?.testerAccount === true;

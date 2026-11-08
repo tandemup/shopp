@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 
-import { useAuthActions } from "@convex-dev/auth/react";
+import { useShoppAuthActions } from "@/src/hooks/useShoppAuth";
 
 const STEP_EMAIL = "email";
 const STEP_CODE = "code";
@@ -81,7 +81,7 @@ function getErrorMessage(error) {
 }
 
 export default function ResetPasswordScreen({ navigation, route }) {
-  const { signIn } = useAuthActions();
+  const { signIn } = useShoppAuthActions();
 
   const initialEmail = normalizeEmail(route?.params?.email);
 

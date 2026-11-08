@@ -2,10 +2,10 @@ import React, { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
 
-import { useAuthActions } from "@convex-dev/auth/react";
+import { useShoppAuthActions } from "@/src/hooks/useShoppAuth";
 
 export default function LogoutButton() {
-  const { signOut } = useAuthActions();
+  const { signOut } = useShoppAuthActions();
 
   const [submitting, setSubmitting] = useState(false);
 
