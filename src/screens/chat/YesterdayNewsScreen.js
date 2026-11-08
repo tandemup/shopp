@@ -15,8 +15,7 @@ import { I18nText as Text, I18nTextInput as TextInput, tr, useI18n } from "@/src
 import { Audio } from "expo-av";
 import moment from "moment";
 import "moment/locale/es";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useChatMessages, useChatBasicActions } from "@/src/hooks/useChatBackend";
 
 const DEFAULT_ROOM = "general";
 const DEFAULT_USERNAME = "anonymous";
@@ -42,11 +41,11 @@ export default function ChatScreen({
   const [errorMessage, setErrorMessage] = useState("");
   const flatListRef = useRef(null);
 
-  const messages = useQuery(api.chat.listMessages, {
+  const messages = useChatMessages({
     room: activeRoom,
   });
 
-  const sendMessage = useMutation(api.chat.sendMessage);
+  const { sendMessage } = useChatBasicActions();
 
   const data = useMemo(() => {
     return Array.isArray(messages) ? messages : [];
