@@ -8,8 +8,8 @@ import {
 } from "react-native";
 import { I18nText as Text, I18nTextInput as TextInput } from "@/src/i18n";
 import { Ionicons } from "@expo/vector-icons";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useCurrentUser } from "@/src/hooks/useCurrentUser";
+import { useStoreRequests } from "@/src/hooks/useStoreRequests";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 
 function numberOrNull(value) {
@@ -18,11 +18,13 @@ function numberOrNull(value) {
 }
 
 export default function AdminStoreRequestsScreen() {
-  const currentUser = useQuery(api.users.current);
+  const currentUser = useCurrentUser();
   const isAdmin = currentUser?.isAdmin === true || currentUser?.role === "admin";
-  const requests = useQuery(api.stores.listPendingStoreRequests, isAdmin ? {} : "skip");
-  const approveRequest = useMutation(api.stores.approveStoreRequest);
-  const rejectRequest = useMutation(api.stores.rejectStoreRequest);
+  const {
+    requests,
+    approveStoreRequest: approveRequest,
+    rejectStoreRequest: rejectRequest,
+  } = useStoreRequests({ listEnabled: isAdmin });
   const [coordinates, setCoordinates] = useState({});
   const [busyId, setBusyId] = useState(null);
 

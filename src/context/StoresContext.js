@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useMemo } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useCurrentUser } from "@/src/hooks/useCurrentUser";
+import { useStoresData } from "@/src/hooks/useStoresData";
 
 const StoresContext = createContext();
 
@@ -20,21 +20,22 @@ const normalizeStores = (stores) => {
 };
 
 export const StoresProvider = ({ children }) => {
-  const currentUser = useQuery(api.users.current);
+  const currentUser = useCurrentUser();
   const isAdmin =
     currentUser?.isAdmin === true || currentUser?.role === "admin";
   // El catálogo de tiendas es una herramienta DEV. Los compradores pueden
   // seguir usando sus listas locales sin descargar toda la tabla en cada
   // inicio de sesión.
-  const convexStores = useQuery(
-    api.stores.listStoresWithMyFavorites,
-    isAdmin ? {} : "skip",
-  );
-  const toggleFavoriteMutation = useMutation(api.stores.toggleMyFavoriteStore);
+  const {
+    stores: backendStores,
+    isLoading: storesLoading,
+    toggleFavorite: toggleFavoriteInBackend,
+    importStores,
+  } = useStoresData({ enabled: isAdmin });
 
-  const stores = useMemo(() => normalizeStores(convexStores), [convexStores]);
+  const stores = useMemo(() => normalizeStores(backendStores), [backendStores]);
 
-  const ready = !isAdmin || convexStores !== undefined;
+  const ready = !storesLoading;
 
   const favoriteStores = useMemo(() => {
     return stores.filter((store) => store.favorite === true);
@@ -47,7 +48,7 @@ export const StoresProvider = ({ children }) => {
   const toggleFavorite = async (storeId) => {
     if (!storeId) return null;
 
-    return await toggleFavoriteMutation({ id: storeId });
+    return await toggleFavoriteInBackend(storeId);
   };
 
   const toggleFavoriteStore = toggleFavorite;
@@ -72,6 +73,7 @@ export const StoresProvider = ({ children }) => {
         favoriteStoreIds,
         toggleFavorite,
         toggleFavoriteStore,
+        importStores,
         isFavoriteStore,
         getStoreById,
         reloadStoresFromSeed,
