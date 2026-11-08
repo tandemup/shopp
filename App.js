@@ -12,7 +12,9 @@ import DialogHost from "@/src/components/ui/alert/DialogHost";
 import AppNavigator from "@/src/navigation/AppNavigator";
 import { I18nProvider } from "@/src/i18n";
 import PublicMusicCardScreen from "@/src/screens/playlist/PublicMusicCardScreen";
+import { getBackendConfigurationError } from "@/src/api/config";
 
+const backendError = getBackendConfigurationError();
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL?.trim();
 const hasValidConvexUrl = /^https:\/\/[^\s/]+\.convex\.cloud\/?$/.test(
   convexUrl || "",
@@ -26,21 +28,28 @@ export default function App() {
     </I18nProvider>
   );
 }
-
 function ShoppApp() {
   // Acceso público desde QR: sin sesión; las fichas Convex usan el proxy público de Netlify.
-  if (Platform.OS === "web" && typeof window !== "undefined" &&
-      new URLSearchParams(window.location.search).get("shoppCard") === "1") {
-    return <SafeAreaProvider><PublicMusicCardScreen /></SafeAreaProvider>;
+    if (
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("shoppCard") === "1"
+  ) {
+    return (
+      <SafeAreaProvider>
+        <PublicMusicCardScreen />
+      </SafeAreaProvider>
+    );
   }
-  if (!convex) {
+
+  if (backendError || !convex) {
     return (
       <SafeAreaProvider>
         <View style={styles.configurationError}>
           <Text style={styles.configurationTitle}>Configuración de Shopp</Text>
           <Text style={styles.configurationMessage}>
-            Falta EXPO_PUBLIC_CONVEX_URL o no tiene una URL válida de Convex.
-            Comprueba .env.local, reinicia Expo y verifica el deployment.
+            {backendError ||
+              "Falta EXPO_PUBLIC_CONVEX_URL o no tiene una URL válida de Convex. Comprueba .env.local, reinicia Expo y verifica el deployment."}
           </Text>
         </View>
       </SafeAreaProvider>
@@ -64,15 +73,21 @@ function ShoppApp() {
     </SafeAreaProvider>
   );
 }
-
 const styles = StyleSheet.create({
   configurationError: {
-    flex: 1, justifyContent: "center", alignItems: "center",
-    padding: 24, backgroundColor: "#f8fafc",
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+    backgroundColor: "#f8fafc",
   },
   configurationTitle: { fontSize: 22, fontWeight: "700", color: "#0f172a" },
   configurationMessage: {
-    marginTop: 12, maxWidth: 480, textAlign: "center",
-    fontSize: 16, lineHeight: 24, color: "#475569",
+    marginTop: 12,
+    maxWidth: 480,
+    textAlign: "center",
+    fontSize: 16,
+    lineHeight: 24,
+    color: "#475569",
   },
 });

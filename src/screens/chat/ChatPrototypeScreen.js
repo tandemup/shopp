@@ -20,12 +20,12 @@ import {
 } from "react-native";
 import { CARREFOUR_LOS_FRESNOS_CHAT as DEMO_STORE } from "@/convex/nearbyChatConfig";
 import { Ionicons } from "@expo/vector-icons";
-import { useMutation, useQuery } from "convex/react";
+import { useChatMessages, useChatBasicActions, useChatMediaActions } from "@/src/hooks/useChatBackend";
+import { useCurrentUser } from "@/src/hooks/useCurrentUser";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 
-import { api } from "@/convex/_generated/api";
 import {
   I18nText as Text,
   I18nTextInput as TextInput,
@@ -427,9 +427,8 @@ export default function ChatPrototypeScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  const currentUser = useQuery(api.users.current);
-  const messages = useQuery(
-    api.chat.listMessages,
+  const currentUser = useCurrentUser();
+  const messages = useChatMessages(
     location && locationState === "ready"
       ? {
           room: DEMO_STORE.id,
@@ -438,10 +437,8 @@ export default function ChatPrototypeScreen() {
         }
       : "skip",
   );
-  const sendMessage = useMutation(api.chat.sendMessage);
-  const deleteMessage = useMutation(api.chat.deleteMessage);
-  const generateImageUploadUrl = useMutation(api.chat.generateImageUploadUrl);
-  const updateYouTubeAlbum = useMutation(api.chat.updateYouTubeAlbum);
+  const { sendMessage, deleteMessage } = useChatBasicActions();
+  const { generateImageUploadUrl, updateYouTubeAlbum } = useChatMediaActions();
 
   const handleOpenPlaylistEditor = useCallback((item) => {
     setPlaylistEditor(item);

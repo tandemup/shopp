@@ -18,7 +18,8 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
-import { useAuthActions } from "@convex-dev/auth/react";
+import { useShoppAuthActions } from "@/src/hooks/useShoppAuth";
+import { useCurrentUser } from "@/src/hooks/useCurrentUser";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
@@ -787,8 +788,8 @@ async function requestWebCameraPermission() {
 export default function MenuScreen({ navigation }) {
   const { language, setLanguage } = useI18n();
   const { height: screenHeight } = useWindowDimensions();
-  const { signOut } = useAuthActions();
-  const currentUser = useQuery(api.users.current);
+  const { signOut } = useShoppAuthActions();
+  const currentUser = useCurrentUser();
   const convex = useConvex();
   const [utilityExportVisible, setUtilityExportVisible] = useState(false);
   const [utilityExportBusy, setUtilityExportBusy] = useState(null);

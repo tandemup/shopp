@@ -30,8 +30,13 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as DocumentPicker from "expo-document-picker";
-import { useAction, useMutation, useQuery, useConvex } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import {
+  useChatMessages,
+  useChatRoomSummaries,
+  useChatBasicActions,
+  useChatMediaActions,
+  useChatExtendedActions,
+} from "@/src/hooks/useChatBackend";
 import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 import YouTubePlaylistPlayer from "@/src/components/chat/YouTubePlaylistPlayer";
 import CustomYouTubePlaylistPlayer from "@/src/components/chat/CustomYouTubePlaylistPlayer";
@@ -756,8 +761,12 @@ export default function ChatScreen() {
   const listRef = useRef(null);
   const refreshedNewsDatesRef = useRef(false);
   const { language } = useI18n();
-  const convexClient = useConvex();
-  const shareLocalPlaylist = useMutation(api.chat.shareLocalPlaylist);
+  const { shareLocalPlaylist, getSharedPlaylist,
+    deleteRoomMutation, createCustomYouTubePlaylist,
+    updateCustomYouTubePlaylist, refreshNewsYouTubePublishedDates,
+  } = useChatExtendedActions();
+  const { sendMessage, deleteMessage } = useChatBasicActions();
+  const { updateYouTubeAlbum, generateImageUploadUrl } = useChatMediaActions();
   const [sharePickerOpen, setSharePickerOpen] = useState(false);
   const [localShareChoices, setLocalShareChoices] = useState([]);
   const [shareBusy, setShareBusy] = useState(false);
@@ -819,10 +828,7 @@ export default function ChatScreen() {
             text: "Importar",
             onPress: async () => {
               try {
-                const shared = await convexClient.query(
-                  api.chat.getSharedPlaylist,
-                  { messageId: message._id },
-                );
+                const shared = await getSharedPlaylist(message._id);
                 const playlist = JSON.parse(shared.payload);
                 const type =
                   shared.collectionType === "classical"
@@ -857,7 +863,7 @@ export default function ChatScreen() {
         ],
       );
     },
-    [convexClient],
+    [getSharedPlaylist],
   );
   const [room, setRoom] = useState("compras");
   const [customRooms, setCustomRooms] = useState([]);
@@ -968,8 +974,7 @@ export default function ChatScreen() {
 
   // Al mostrar la Biblioteca integrada no necesitamos mantener también la
   // suscripción reactiva al chat de esa sala.
-  const messages = useQuery(
-    api.chat.listMessages,
+  const messages = useChatMessages(
     computerMode === "library"
       ? "skip"
       : {
@@ -977,7 +982,7 @@ export default function ChatScreen() {
           clientId: chatClientId,
         },
   );
-  const roomSummaries = useQuery(api.chat.listRoomSummaries, roomSummaryArgs);
+  const roomSummaries = useChatRoomSummaries(roomSummaryArgs);
   const roomSummaryById = useMemo(
     () => new Map((roomSummaries?.rooms || []).map((item) => [item.id, item])),
     [roomSummaries],
@@ -987,20 +992,6 @@ export default function ChatScreen() {
     [roomsOnPage, roomSummaryById],
   );
   const isAdmin = roomSummaries?.isAdmin === true;
-  const sendMessage = useMutation(api.chat.sendMessage);
-  const deleteMessage = useMutation(api.chat.deleteMessage);
-  const deleteRoomMutation = useMutation(api.chat.deleteRoom);
-  const updateYouTubeAlbum = useMutation(api.chat.updateYouTubeAlbum);
-  const createCustomYouTubePlaylist = useMutation(
-    api.chat.createCustomYouTubePlaylist,
-  );
-  const updateCustomYouTubePlaylist = useMutation(
-    api.chat.updateCustomYouTubePlaylist,
-  );
-  const generateImageUploadUrl = useMutation(api.chat.generateImageUploadUrl);
-  const refreshNewsYouTubePublishedDates = useAction(
-    api.chat.refreshNewsYouTubePublishedDates,
-  );
 
   useEffect(() => {
     const selectedSummary = roomSummaryById.get(room);

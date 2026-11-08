@@ -1,0 +1,2 @@
+unzip -o ~/Downloads/Shopp_fix_App_fase1A_para_main9.zip \
+  -d ~/Developer/shopp

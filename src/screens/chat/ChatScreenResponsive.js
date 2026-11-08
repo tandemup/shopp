@@ -21,8 +21,7 @@ import { Audio } from "expo-av";
 import moment from "moment";
 import "moment/locale/es";
 
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useChatMessages, useChatBasicActions } from "@/src/hooks/useChatBackend";
 
 const COLORS = {
   bg: "#F6F8F5",
@@ -76,11 +75,11 @@ export default function ChatScreenResponsive({
   const [errorMessage, setErrorMessage] = useState("");
   const [now, setNow] = useState(Date.now());
 
-  const messages = useQuery(api.chat.listMessages, {
+  const messages = useChatMessages({
     room: activeRoom,
   });
 
-  const sendMessage = useMutation(api.chat.sendMessage);
+  const { sendMessage } = useChatBasicActions();
 
   const filteredMessages = useMemo(() => {
     return Array.isArray(messages) ? messages : [];

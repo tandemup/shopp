@@ -27,7 +27,10 @@ export function ListsProvider({ children, guestMode = false }) {
 
   const [lists, setLists] = useState([]);
   const [purchaseHistory, setPurchaseHistory] = useState([]);
-  const [isReady, setIsReady] = useState(false);
+  // La persistencia solo puede escribir en la clave cuya carga ha terminado.
+  // Al cambiar de cuenta evitamos guardar listas anteriores en otra cuenta.
+  const [loadedStorageKey, setLoadedStorageKey] = useState(null);
+  const isReady = loadedStorageKey === userStorageKey;
 
   /* -------------------------------------------------
      Rehidratación (solo listas)
@@ -36,23 +39,21 @@ export function ListsProvider({ children, guestMode = false }) {
     let cancelled = false;
 
     const init = async () => {
-      setIsReady(false);
+      setLoadedStorageKey(null);
 
       try {
         const data = await listsRepository.load(userStorageKey);
 
         if (!cancelled) {
           setLists(data);
+          setLoadedStorageKey(userStorageKey);
         }
       } catch (err) {
         console.warn("Error loading lists", err);
 
         if (!cancelled) {
           setLists([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsReady(true);
+          setLoadedStorageKey(userStorageKey);
         }
       }
     };
@@ -68,9 +69,15 @@ export function ListsProvider({ children, guestMode = false }) {
      Persistencia (solo listas)
   -------------------------------------------------- */
   useEffect(() => {
-    if (!isReady) return;
-    listsRepository.save(lists, userStorageKey);
-  }, [lists, isReady, userStorageKey]);
+    if (!isReady || loadedStorageKey !== userStorageKey) return;
+
+    Promise.resolve(listsRepository.save(lists, userStorageKey)).catch(
+      (err) => {
+        console.warn("Error saving lists", err);
+      },
+    );
+  }, [lists, isReady, loadedStorageKey, userStorageKey]);
+
 
   /* -------------------------------------------------
      Derivar purchaseHistory (NO persistido)
