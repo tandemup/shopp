@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: shopp
+      POSTGRES_USER: shopp_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en server/.env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - shopp_pgdata:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopp_app -d shopp"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATABASE_URL: postgresql://shopp_app:${POSTGRES_PASSWORD}@db:5432/shopp
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  shopp_pgdata:

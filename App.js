@@ -14,12 +14,12 @@ import { I18nProvider } from "@/src/i18n";
 import PublicMusicCardScreen from "@/src/screens/playlist/PublicMusicCardScreen";
 import { getBackendConfigurationError } from "@/src/api/config";
 
+const backendError = getBackendConfigurationError();
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL?.trim();
 const hasValidConvexUrl = /^https:\/\/[^\s/]+\.convex\.cloud\/?$/.test(
   convexUrl || "",
 );
 const convex = hasValidConvexUrl ? new ConvexReactClient(convexUrl) : null;
-const backendError = getBackendConfigurationError();
 
 export default function App() {
   return (
