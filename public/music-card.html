@@ -118,7 +118,7 @@
   <body>
     <main>
       <h1>Shopp Music</h1>
-      <p>Una canción para compartir contigo</p>
+      <p id="tagline">Una canción para compartir contigo</p>
       <div id="media" class="media" hidden>
         <img id="cover" alt="Portada del vídeo" hidden />
         <iframe
@@ -147,8 +147,7 @@
       </div>
       <p id="lyric" hidden aria-live="off"></p>
       <p id="player-note" class="player-note" hidden>
-        Si el vídeo no permite reproducción integrada, utiliza «Abrir en
-        YouTube».
+        Si la reproducción no empieza, toca ▶ en el vídeo o ábrelo en YouTube.
       </p>
       <p class="info">
         La reproducción puede requerir tocar el botón de reproducir.
@@ -203,6 +202,86 @@
           };
           $("shopp").hidden = false;
         };
+        const showCollection = (card, tracks) => {
+          const first = tracks[0];
+          show(card.title, card.author || first.author, first.videoId, "", `${tracks.length} temas · ${card.collectionType === "classical" ? "Classical Music" : "Music Playlist"}`);
+          $("tagline").textContent = "Colección musical compartida";
+          $("shopp").textContent = "Reproducir colección en Shopp";
+          const renderTrack = (index) => {
+            const track = tracks[index];
+            $("title").textContent = String(track.title || `Pista ${index + 1}`).slice(0, 120);
+            $("author").textContent = String(track.author || card.author || "").slice(0, 100);
+            $("detail").textContent = `Pista ${index + 1} de ${tracks.length}`;
+            $("youtube").href = `https://www.youtube.com/watch?v=${track.videoId}`;
+            $("youtube").textContent = "Abrir pista actual en YouTube";
+            $("cover").src = `https://i.ytimg.com/vi/${track.videoId}/hqdefault.jpg`;
+            const lines = String(track.lyrics || "").split(/\r?\n/).map(line => {
+              const match = line.match(/^\[(\d{1,3}):(\d{2})(?:[.,](\d{1,3}))?\]\s*(.*)$/);
+              if (!match || !match[4].trim()) return null;
+              const fraction = match[3] ? Number(`0.${match[3]}`) : 0;
+              return { at: Number(match[1]) * 60 + Number(match[2]) + fraction, text: match[4].trim() };
+            }).filter(Boolean).sort((a, b) => a.at - b.at);
+            const lyric = $("lyric");
+            lyric.hidden = !lines.length;
+            lyric.textContent = lines.length ? "Letra sincronizada disponible al reproducir" : "";
+            return lines;
+          };
+          let activeIndex = 0;
+          let activeLines = renderTrack(activeIndex);
+          let player = null;
+          let timer = null;
+          const advance = () => {
+            if (activeIndex + 1 >= tracks.length) {
+              if (timer) clearInterval(timer);
+              $("detail").textContent = "Colección finalizada";
+              $("lyric").textContent = "";
+              return;
+            }
+            activeIndex += 1;
+            activeLines = renderTrack(activeIndex);
+            player.loadVideoById(tracks[activeIndex].videoId);
+          };
+          $("shopp").onclick = () => {
+            $("cover").hidden = true;
+            $("media").hidden = false;
+            $("player").hidden = false;
+            $("shopp").hidden = true;
+            $("player-note").hidden = false;
+            const frame = $("player");
+            frame.src = `https://www.youtube-nocookie.com/embed/${first.videoId}?enablejsapi=1&origin=${encodeURIComponent(location.origin)}&playsinline=1&rel=0`;
+            const startPlayer = () => {
+              if (!window.YT?.Player || player) return;
+              player = new window.YT.Player(frame, { events: {
+                onReady: event => event.target.playVideo(),
+                onStateChange: event => { if (event.data === window.YT.PlayerState.ENDED) advance(); },
+                onError: () => advance(),
+              }});
+              timer = setInterval(() => {
+                if (!player || !activeLines.length) return;
+                const seconds = Number(player.getCurrentTime());
+                if (!Number.isFinite(seconds)) return;
+                let lineIndex = -1;
+                for (let i = 0; i < activeLines.length; i++) {
+                  if (activeLines[i].at <= seconds) lineIndex = i;
+                  else break;
+                }
+                $("lyric").textContent = lineIndex < 0 ? "" : activeLines[lineIndex].text;
+              }, 250);
+            };
+            if (window.YT?.Player) startPlayer();
+            else {
+              window.onYouTubeIframeAPIReady = startPlayer;
+              const existing = document.querySelector('script[data-shopp-yt-api]');
+              if (!existing) {
+                const script = document.createElement("script");
+                script.src = "https://www.youtube.com/iframe_api";
+                script.dataset.shoppYtApi = "true";
+                script.onerror = () => { $("player-note").textContent = "No se pudo cargar el reproductor. Usa «Abrir pista actual en YouTube»."; };
+                document.head.appendChild(script);
+              }
+            }
+          };
+        };
         // Fase 2: tarjetas permanentes almacenadas en Convex (sin JSON en public).
         const cardId = q.get("card");
         if (cardId !== null) {
@@ -214,6 +293,19 @@
             })
             .then(card => {
               if (card.id !== cardId || !videoRe.test(card.videoId || "")) throw new Error("Ficha inválida.");
+              const collectionTracks = Array.isArray(card.tracks)
+                ? card.tracks.filter(track => videoRe.test(track?.videoId || "") && String(track.title || "").trim()).slice(0, 100)
+                : [];
+              if (q.get("player") === "youtube") {
+                const firstVideoId = collectionTracks[0]?.videoId || card.videoId;
+                if (!videoRe.test(firstVideoId || "")) throw new Error("La primera pista no tiene un vídeo válido de YouTube.");
+                location.replace(`https://www.youtube.com/watch?v=${encodeURIComponent(firstVideoId)}`);
+                return;
+              }
+              if (collectionTracks.length > 1) {
+                showCollection(card, collectionTracks);
+                return;
+              }
               show(card.title, card.author, card.videoId, "", "");
               if (typeof card.lyrics === "string" && card.lyrics.trim()) {
                 const lines = card.lyrics.split(/\r?\n/).map(line => {

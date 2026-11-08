@@ -70,10 +70,14 @@ export function ListsProvider({ children, guestMode = false }) {
   -------------------------------------------------- */
   useEffect(() => {
     if (!isReady || loadedStorageKey !== userStorageKey) return;
-    Promise.resolve(listsRepository.save(lists, userStorageKey)).catch((err) => {
-      console.warn("Error saving lists", err);
-    });
+
+    Promise.resolve(listsRepository.save(lists, userStorageKey)).catch(
+      (err) => {
+        console.warn("Error saving lists", err);
+      },
+    );
   }, [lists, isReady, loadedStorageKey, userStorageKey]);
+
 
   /* -------------------------------------------------
      Derivar purchaseHistory (NO persistido)

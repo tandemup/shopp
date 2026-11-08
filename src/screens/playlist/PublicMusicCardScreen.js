@@ -12,9 +12,9 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-// Ruta pública /?shoppCard=1: no requiere cuenta de Shopp, Convex ni IndexedDB.
-// El contenido audiovisual se reproduce exclusivamente mediante el iframe
-// oficial de YouTube o en la aplicación/sitio web de YouTube.
+// Reproductor público Shopp /?shoppCard=1: no requiere iniciar sesión.
+// Las fichas Convex se leen por la función pública de Netlify; las antiguas
+// pueden seguir usando manifiestos JSON de music-cards/.
 const VIDEO_RE = /^[A-Za-z0-9_-]{11}$/;
 const PLAYLIST_RE = /^[A-Za-z0-9_-]{10,120}$/;
 const LRC_PATH_RE = /^\/music-cards\/lyrics\/(?:shopp-[a-z0-9-]{5,63}\/\d{3}|[A-Za-z0-9_-]{1,110})\.lrc$/;
@@ -58,6 +58,7 @@ function normalizeTrack(track) {
       title: clean(track?.title || "Vídeo de YouTube"),
       author: clean(track?.author, 100),
       lyricsUrl: LRC_PATH_RE.test(track?.lyricsUrl || "") ? track.lyricsUrl : "",
+      lyricsText: typeof track?.lyrics === "string" ? track.lyrics.slice(0, 90000) : "",
       coverUrl: safeCoverUrl(track?.coverUrl),
     };
   }
@@ -67,6 +68,7 @@ function normalizeTrack(track) {
       title: clean(track?.title || "Playlist de YouTube"),
       author: clean(track?.author, 100),
       lyricsUrl: LRC_PATH_RE.test(track?.lyricsUrl || "") ? track.lyricsUrl : "",
+      lyricsText: typeof track?.lyrics === "string" ? track.lyrics.slice(0, 90000) : "",
       coverUrl: safeCoverUrl(track?.coverUrl),
     };
   }
@@ -119,7 +121,9 @@ export default function PublicMusicCardScreen() {
   // En móviles, mostrar directamente el vídeo de YouTube (sin autoplay forzado).
   // El botón oficial de Play queda disponible y Safari/iOS no bloquea la página.
   const [player, setPlayer] = useState(() =>
-    Platform.OS === "web" && width < 620 ? "shopp" : null
+    getCardQuery()?.get("player") === "shopp" || (Platform.OS === "web" && width < 620)
+      ? "shopp"
+      : null
   );
   const [error, setError] = useState("");
   const frameRef = useRef(null);
@@ -177,8 +181,42 @@ export default function PublicMusicCardScreen() {
       return undefined;
     }
 
+    const convexCardId = query.get("card") || "";
     const publicId = query.get("p") || "";
-    if (publicId) {
+    if (convexCardId) {
+      if (!/^card-[a-z0-9-]{12,70}$/.test(convexCardId)) {
+        setError("El identificador de la ficha Convex no es válido.");
+        setStatus("error");
+        return undefined;
+      }
+      fetch(`/.netlify/functions/publicMusicCard?id=${encodeURIComponent(convexCardId)}`, { cache: "no-store" })
+        .then(async response => {
+          const card = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(card?.error || `No se pudo cargar la ficha (HTTP ${response.status}).`);
+          return card;
+        })
+        .then(card => {
+          if (card?.id !== convexCardId || !VIDEO_RE.test(card.videoId || "")) {
+            throw new Error("La ficha Convex no contiene una canción válida.");
+          }
+          const sourceTracks = Array.isArray(card.tracks) && card.tracks.length
+            ? card.tracks
+            : [{ title: card.title, author: card.author, videoId: card.videoId, lyrics: card.lyrics }];
+          const tracks = sourceTracks.slice(0, 100).map(normalizeTrack).filter(Boolean);
+          if (!tracks.length) throw new Error("La ficha no contiene pistas reproducibles.");
+          if (active) {
+            setIndex(0);
+            setData({ title: clean(card.title || "Playlist Shopp"), author: clean(card.author, 100), tracks });
+            setStatus("ready");
+          }
+        })
+        .catch(cause => {
+          if (active) {
+            setError(cause?.message || "No se pudo cargar la ficha Convex.");
+            setStatus("error");
+          }
+        });
+    } else if (publicId) {
       if (!PUBLIC_RE.test(publicId)) {
         setError("El identificador público de la playlist no es válido.");
         setStatus("error");
@@ -188,7 +226,7 @@ export default function PublicMusicCardScreen() {
         .then((response) => {
           if (!response.ok) throw new Error("Playlist no publicada. Comprueba su ficha JSON en Netlify.");
           const contentType = (response.headers.get("content-type") || "").toLowerCase();
-          if (!contentType.includes("json")) throw new Error("La dirección pública devuelve HTML, no una ficha JSON de playlist.");
+          if (!contentType.includes("json")) throw new Error("Este QR usa el formato antiguo de playlist y su ficha JSON ya no está publicada. En Shopp, abre Music Cards > Fichas publicadas en Convex y pulsa «Preparar QR multipista» para imprimir un QR nuevo.");
           return response.json();
         })
         .then((manifest) => {
@@ -267,6 +305,13 @@ export default function PublicMusicCardScreen() {
     setYoutubeClockReceived(false);
     setLrcLines([]);
     setLyricsError("");
+    const inlineLyrics = currentTrack?.lyricsText || "";
+    if (inlineLyrics) {
+      const lines = parsePublicLrc(inlineLyrics);
+      setLrcLines(lines);
+      setLyricsStatus(lines.length ? "ready" : "none");
+      return undefined;
+    }
     const url = currentTrack?.lyricsUrl;
     if (!url) {
       setLyricsStatus("none");
@@ -295,7 +340,7 @@ export default function PublicMusicCardScreen() {
         setLyricsError(cause?.message || "No se pudo descargar la letra LRC");
       });
     return () => controller.abort();
-  }, [currentTrack?.lyricsUrl]);
+  }, [currentTrack?.lyricsUrl, currentTrack?.lyricsText]);
 
   useEffect(() => {
     if (Platform.OS !== "web" || player !== "shopp") return undefined;
@@ -613,7 +658,7 @@ export default function PublicMusicCardScreen() {
                       <View style={styles.trackDescription}>
                         <Text style={[styles.trackTitle, index === i && styles.trackTitleSelected, appView && styles.appText]} numberOfLines={2}>
                           {item.title || `Tema ${i + 1}`}
-                          {item.lyricsUrl ? <Text style={[styles.trackLrcIndicator, appView && styles.appTrackLrcIndicator]} accessibilityLabel="Letras LRC disponibles">  ♪</Text> : null}
+                          {item.lyricsUrl || item.lyricsText ? <Text style={[styles.trackLrcIndicator, appView && styles.appTrackLrcIndicator]} accessibilityLabel="Letras LRC disponibles">  ♪</Text> : null}
                         </Text>
                         {item.author ? <Text style={[styles.trackAuthor, appView && styles.appMuted]} numberOfLines={1}>{item.author}</Text> : null}
                       </View>

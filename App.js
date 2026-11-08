@@ -28,10 +28,9 @@ export default function App() {
     </I18nProvider>
   );
 }
-
 function ShoppApp() {
   // Acceso público desde QR: sin sesión; las fichas Convex usan el proxy público de Netlify.
-  if (
+    if (
     Platform.OS === "web" &&
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("shoppCard") === "1"
@@ -42,6 +41,7 @@ function ShoppApp() {
       </SafeAreaProvider>
     );
   }
+
   if (backendError || !convex) {
     return (
       <SafeAreaProvider>
@@ -73,7 +73,6 @@ function ShoppApp() {
     </SafeAreaProvider>
   );
 }
-
 const styles = StyleSheet.create({
   configurationError: {
     flex: 1,

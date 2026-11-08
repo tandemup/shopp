@@ -21,6 +21,11 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], se
     item.sourcePlaylistId
       ? item.sourcePlaylistId === String(playlist._id || playlist.id || publicIdForPlaylist(playlist)) && item.sourceTrackKey === "single"
       : item.videoId === videoIdFromTrack(playlist.tracks[0]));
+  const hasPublishedCollection = (playlist) => {
+    const sourcePlaylistId = String(playlist._id || playlist.id || publicIdForPlaylist(playlist));
+    return published.some(item => item.sourcePlaylistId === sourcePlaylistId &&
+      item.sourceTrackKey?.startsWith("selection-") && Number(item.trackCount) > 1);
+  };
   const publish = async (card) => {
     const key = String(card.playlist._id || card.id);
     if (busyId) return;
@@ -64,9 +69,9 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], se
 
   const visibleCards = selectedKey == null ? cards : cards.filter(card => String(card.playlist._id || card.id) === selectedKey);
   const visiblePublished = selectedKey == null ? published : published.filter(item => visibleCards.some(card =>
-    (card.playlist.tracks || []).length === 1 && (item.sourcePlaylistId
-      ? (String(card.playlist._id || card.playlist.id || card.id) === item.sourcePlaylistId && item.sourceTrackKey === "single")
-      : videoIdFromTrack(card.playlist.tracks[0]) === item.videoId)));
+    item.sourcePlaylistId
+      ? String(card.playlist._id || card.playlist.id || card.id) === item.sourcePlaylistId
+      : (card.playlist.tracks || []).length === 1 && videoIdFromTrack(card.playlist.tracks[0]) === item.videoId));
 
   const verify = async (card) => {
     if (busyId) return;
@@ -112,24 +117,25 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], se
           </Pressable>
         </View>
         <ScrollView contentContainerStyle={styles.list}>
-          <Text style={styles.hint}>{selectedKey == null ? "Las fichas Convex se pueden imprimir sin ZIP. La verificación JSON se conserva solo para publicaciones antiguas." : "Publica la canción una sola vez; después reutiliza su QR permanente. Las playlists de varias pistas mantienen temporalmente su impresión heredada."}</Text>
+          <Text style={styles.hint}>{selectedKey == null ? "Las fichas Convex se pueden imprimir sin ZIP. Las colecciones multipista conservan su QR permanente." : "Publica una canción o una selección multipista y reutiliza su QR permanente."}</Text>
           {visibleCards.map((card, index) => {
             const key = String(card.playlist._id || card.id);
             const result = results[key];
             const checking = busyId === key;
+            const hasConvexPublication = hasPublishedCard(card.playlist) || hasPublishedCollection(card.playlist);
             return <View style={styles.item} key={`${key}-${index}`}>
               <Text style={styles.title}>{card.playlist.title || `Colección ${index + 1}`}</Text>
               <Text style={styles.hint}>{card.playlist.tracks?.length || 0} pistas · {card.id}</Text>
-              <Text style={[styles.status, result?.kind === "published" && styles.good, result?.kind === "outdated" && styles.warning]}>
-                {result?.message || "Sin comprobar"}
+              <Text style={[styles.status, (result?.kind === "published" || hasConvexPublication) && styles.good, result?.kind === "outdated" && styles.warning]}>
+                {result?.message || (publishedCards === undefined ? "Consultando fichas Convex…" : hasConvexPublication ? "Ficha publicada en Convex" : "Sin comprobar")}
               </Text>
               <View style={styles.actions}>
                 {(card.playlist.tracks || []).length !== 1 ? (
                   <>
-                    <Text style={styles.hint}>La publicación Convex de varias pistas se incorporará en una entrega posterior.</Text>
+                    <Text style={styles.hint}>Agrupa los temas en una tarjeta durante la preparación y publica allí su QR permanente.</Text>
                     <Pressable accessibilityRole="button" style={styles.button} onPress={() => onPrepare(card.playlist)}>
                       <Ionicons name="print-outline" color="#1d4ed8" size={17} />
-                      <Text style={styles.buttonText}>Impresión heredada</Text>
+                      <Text style={styles.buttonText}>Preparar tarjetas</Text>
                     </Pressable>
                   </>
                 ) : hasPublishedCard(card.playlist) ? (
@@ -162,19 +168,20 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], se
           <Text style={styles.hint}>Cada ficha conserva su ID aunque cambie la playlist local. Antes de imprimir, comprueba que el reproductor público funciona. No publiques otra copia innecesariamente.</Text>
           {publishedCards === undefined ? <ActivityIndicator size="small" color="#1d4ed8" /> : null}
           {visiblePublished.map(item => {
-            const exactMatches = visibleCards.filter(c => (c.playlist.tracks || []).length === 1 &&
-              String(c.playlist._id || c.playlist.id || c.id) === item.sourcePlaylistId && item.sourceTrackKey === "single");
+            const exactMatches = visibleCards.filter(c =>
+              String(c.playlist._id || c.playlist.id || c.id) === item.sourcePlaylistId &&
+              (item.sourceTrackKey === "single" || item.sourceTrackKey?.startsWith("selection-")));
             const match = exactMatches.length === 1 ? exactMatches[0] : null;
             const legacyCandidates = !item.sourcePlaylistId ? visibleCards.filter(c => (c.playlist.tracks || []).length === 1 &&
               videoIdFromTrack(c.playlist.tracks[0]) === item.videoId) : [];
-            const publicUrl = `${ORIGIN}/music-card.html?card=${encodeURIComponent(item.id)}`;
+            const publicUrl = `${ORIGIN}/?shoppCard=1&card=${encodeURIComponent(item.id)}&player=shopp`;
             return <View key={item.id} style={styles.item}>
               <Text style={styles.title}>{item.title}</Text>
               <Text style={styles.hint}>{item.id}</Text>
               <View style={styles.actions}>
                 <Pressable accessibilityRole="button" style={styles.button} onPress={() => Linking.openURL(publicUrl)}>
                   <Ionicons name="open-outline" color="#1d4ed8" size={17} />
-                  <Text style={styles.buttonText}>Probar reproductor</Text>
+                  <Text style={styles.buttonText}>Probar reproductor Shopp</Text>
                 </Pressable>
                 {!item.sourcePlaylistId && legacyCandidates.length === 1 ? (
                   <Pressable accessibilityRole="button" style={styles.button} onPress={async () => {
@@ -194,9 +201,12 @@ export default function MusicCardsManager({ visible, onClose, playlists = [], se
                     <Text style={styles.buttonText}>Vincular ficha antigua</Text>
                   </Pressable>
                 ) : null}
-                {match ? <Pressable accessibilityRole="button" style={styles.button} onPress={() => onPrepare(match.playlist, { id: item.id, videoId: item.videoId, origin: ORIGIN })}>
+                {match ? <Pressable accessibilityRole="button" style={styles.button} onPress={() => onPrepare(
+                  { ...match.playlist, title: item.title, tracks: item.tracks || match.playlist.tracks },
+                  { id: item.id, videoId: item.videoId, origin: ORIGIN, tracks: item.tracks, collectionType: item.collectionType },
+                )}>
                   <Ionicons name="print-outline" color="#1d4ed8" size={17} />
-                  <Text style={styles.buttonText}>Preparar QR Convex</Text>
+                  <Text style={styles.buttonText}>{item.trackCount > 1 ? "Preparar QR multipista" : "Preparar QR Convex"}</Text>
                 </Pressable> : <Text style={styles.hint}>{!item.sourcePlaylistId ? "Primero vincula explícitamente la ficha antigua a su playlist." : "La playlist original no está disponible localmente."}</Text>}
               </View>
             </View>;

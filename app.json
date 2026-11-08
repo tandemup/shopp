@@ -69,7 +69,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Shopp usa tu ubicación mientras buscas aparcamiento cerca de tu destino."
+          "locationWhenInUsePermission": "Shopp usa tu ubicación mientras consultas el chat cercano a una tienda o buscas aparcamiento. La ubicación no se guarda."
         }
       ],
       [

@@ -29,6 +29,7 @@ import type * as librarySync from "../librarySync.js";
 import type * as linkPreviews from "../linkPreviews.js";
 import type * as live from "../live.js";
 import type * as migrations from "../migrations.js";
+import type * as nearbyChatConfig from "../nearbyChatConfig.js";
 import type * as nearbyShare from "../nearbyShare.js";
 import type * as parking from "../parking.js";
 import type * as playlists from "../playlists.js";
@@ -77,6 +78,7 @@ declare const fullApi: ApiFromModules<{
   linkPreviews: typeof linkPreviews;
   live: typeof live;
   migrations: typeof migrations;
+  nearbyChatConfig: typeof nearbyChatConfig;
   nearbyShare: typeof nearbyShare;
   parking: typeof parking;
   playlists: typeof playlists;

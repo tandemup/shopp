@@ -47,10 +47,10 @@ function GuestShoppingTab() {
 
 
 const SCREEN_BACKGROUND = "#f8fafc";
-const TAB_BAR_CONTENT_HEIGHT = Platform.OS === "web" ? 78 : 70;
-const TAB_BAR_MIN_BOTTOM_PADDING = Platform.OS === "web" ? 12 : 10;
+const TAB_BAR_CONTENT_HEIGHT = Platform.OS === "web" ? 58 : 54;
+const TAB_BAR_MIN_BOTTOM_PADDING = Platform.OS === "web" ? 8 : 6;
 
-const WEB_SAFE_BOTTOM = "max(env(safe-area-inset-bottom, 0px), 12px)";
+const WEB_SAFE_BOTTOM = "max(env(safe-area-inset-bottom, 0px), 8px)";
 const WEB_TAB_BAR_HEIGHT = `calc(${TAB_BAR_CONTENT_HEIGHT}px + env(safe-area-inset-bottom, 0px))`;
 
 function GuestAccessScreen({ onExitGuest }) {
@@ -108,37 +108,37 @@ export default function MainTabs({ guestMode = false, onExitGuest }) {
           tabBarInactiveTintColor: "#9CA3AF",
           tabBarStyle: {
             height: tabBarHeight,
-            paddingTop: 9,
+            paddingTop: 4,
             paddingBottom: tabBarBottomPadding,
             backgroundColor: Platform.OS === "web" ? "rgba(255,255,255,0.94)" : "#FFFFFF",
             borderTopColor: "rgba(148,163,184,0.25)",
             borderTopWidth: StyleSheet.hairlineWidth,
           },
-          tabBarLabelStyle: { fontSize: 12.5, fontWeight: "600" },
+          tabBarLabelStyle: { fontSize: 11, lineHeight: 13, fontWeight: "600" },
         }}
       >
         {guestFeatures.compras && <Tab.Screen name="GuestShopping" component={GuestShoppingTab} options={{
           title: "Compras",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cart-outline" color={color} size={Math.min(size, 28)} />
+            <Ionicons name="cart-outline" color={color} size={Math.min(size, 22)} />
           ),
         }} />}
         {guestFeatures.alimentos && <Tab.Screen name="GuestRecipes" options={{
           title: "Recetas",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="restaurant-outline" color={color} size={Math.min(size, 28)} />
+            <Ionicons name="restaurant-outline" color={color} size={Math.min(size, 22)} />
           ),
         }}>
           {() => <RecipesScreen guestMode />}
         </Tab.Screen>}
         {guestFeatures.musica && <Tab.Screen name="GuestMusic" component={GuestMusicTab} options={{
           title: "Música",
-          tabBarIcon: ({ color, size }) => <Ionicons name="musical-notes-outline" color={color} size={Math.min(size, 28)} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="musical-notes-outline" color={color} size={Math.min(size, 22)} />,
         }} />}
         <Tab.Screen name="GuestAccess" options={{
           title: "Acceso",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" color={color} size={Math.min(size, 28)} />
+            <Ionicons name="person-outline" color={color} size={Math.min(size, 22)} />
           ),
         }}>
           {() => <GuestAccessScreen onExitGuest={onExitGuest} />}
@@ -164,7 +164,7 @@ export default function MainTabs({ guestMode = false, onExitGuest }) {
 
         tabBarStyle: {
           height: tabBarHeight,
-          paddingTop: 9,
+          paddingTop: 4,
           paddingBottom: tabBarBottomPadding,
           backgroundColor:
             Platform.OS === "web" ? "rgba(255,255,255,0.94)" : "#FFFFFF",
@@ -184,21 +184,21 @@ export default function MainTabs({ guestMode = false, onExitGuest }) {
         },
 
         tabBarItemStyle: {
-          minHeight: 60,
-          paddingTop: 3,
-          paddingBottom: 3,
+          minHeight: 44,
+          paddingTop: 0,
+          paddingBottom: 0,
         },
 
         tabBarIconStyle: {
           marginTop: 0,
-          marginBottom: 3,
+          marginBottom: 0,
         },
 
         tabBarLabelStyle: {
           marginTop: 0,
-          marginBottom: 2,
-          fontSize: 12.5,
-          lineHeight: 16,
+          marginBottom: 0,
+          fontSize: 11,
+          lineHeight: 13,
           fontWeight: "600",
         },
       }}
@@ -209,7 +209,7 @@ export default function MainTabs({ guestMode = false, onExitGuest }) {
         options={{
           title: "Shopping",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cart" color={color} size={Math.min(size, 29)} />
+            <Ionicons name="cart" color={color} size={Math.min(size, 22)} />
           ),
         }}
       />
@@ -279,7 +279,7 @@ export default function MainTabs({ guestMode = false, onExitGuest }) {
         options={{
           title: "Scanner",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="barcode" color={color} size={Math.min(size, 29)} />
+            <Ionicons name="barcode" color={color} size={Math.min(size, 22)} />
           ),
         }}
       /> : null}
