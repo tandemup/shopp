@@ -6,8 +6,7 @@ import React, {
   useState,
 } from "react";
 
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useCurrentUser } from "@/src/hooks/useCurrentUser";
 import { loadLists, saveLists } from "@/src/storage/listsStorage";
 import {
   STORAGE_KEYS,
@@ -25,7 +24,7 @@ const ListsContext = createContext(null);
    Provider
 -------------------------------------------------- */
 export function ListsProvider({ children, guestMode = false }) {
-  const currentUser = useQuery(api.users.current, guestMode ? "skip" : {});
+  const currentUser = useCurrentUser({ enabled: !guestMode });
   const userStorageKey = useMemo(() => {
     return getUserScopedStorageKey(
       guestMode ? "guest-local-v1" : (currentUser?._id || "anonymous"),
