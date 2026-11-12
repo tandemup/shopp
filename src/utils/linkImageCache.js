@@ -27,6 +27,22 @@ function canCacheWebImage(url) {
   }
 }
 
+// Google S2 permite mostrar el favicon en <img>, pero no descargarlo con
+// fetch() desde otro origen. Evitamos esas peticiones CORS y usamos la URL
+// directa, aprovechando la cache HTTP del navegador.
+function isGoogleS2Favicon(url) {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      (parsed.hostname === "www.google.com" || parsed.hostname === "google.com") &&
+      parsed.pathname === "/s2/favicons"
+    );
+  } catch {
+    return false;
+  }
+}
+
 function isFresh(entry) {
   const savedAt = Number(entry?.metadata?.savedAt || 0);
   return savedAt > 0 && Date.now() - savedAt < WEB_CACHE_MAX_AGE_MS;
@@ -66,6 +82,9 @@ async function trimWebImageCache() {
 
 async function getCachedWebImageUri(url) {
   if (!canCacheWebImage(url)) return url;
+  // Un <img> puede cargar estos favicons sin CORS; fetch() genera errores
+  // en la consola porque Google no autoriza acceder a sus bytes.
+  if (isGoogleS2Favicon(url)) return url;
 
   const key = getWebCacheKey(url);
   const existing = await storage.getFile(key);

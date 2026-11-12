@@ -2,10 +2,12 @@ import 'dotenv/config';
 import { readConfig } from './config.js';
 import { createDatabase } from './db.js';
 import { createApp } from './app.js';
+import { migrateDatabase } from './migrations.js';
 
 const config = readConfig();
 const pool = createDatabase(config.databaseUrl);
-const app = createApp({ pool });
+await migrateDatabase(pool);
+const app = createApp({ pool, config });
 const server = app.listen(config.port, config.host, () => {
   console.log(`Shopp API escuchando en http://${config.host}:${config.port}`);
 });
