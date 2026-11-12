@@ -7,10 +7,9 @@ services:
       POSTGRES_USER: shopp_app
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en server/.env}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - shopp_pgdata:/var/lib/postgresql/data
-      - ./sql:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U shopp_app -d shopp"]
       interval: 5s
@@ -26,6 +25,12 @@ services:
       NODE_ENV: development
       HOST: 0.0.0.0
       PORT: 3000
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-168}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081,https://ramworks.netlify.app,https://develop--ramworks.netlify.app}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      AUTH_RESEND_KEY: ${AUTH_RESEND_KEY:-}
+      AUTH_EMAIL_FROM: "${AUTH_EMAIL_FROM:-Shopp <auth@ramshopp.com>}"
+      AUTH_CHALLENGE_SECRET: ${AUTH_CHALLENGE_SECRET:-}
       DATABASE_URL: postgresql://shopp_app:${POSTGRES_PASSWORD}@db:5432/shopp
     ports:
       - "127.0.0.1:3000:3000"
