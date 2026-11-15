@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS items (
+  id BIGSERIAL PRIMARY KEY,
+  name TEXT NOT NULL CHECK (char_length(name) <= 200),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
