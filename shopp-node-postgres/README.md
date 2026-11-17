@@ -76,7 +76,27 @@ Todas requieren `Authorization: Bearer <token>` y están bajo `/api/v1/shopping`
 
 Las respuestas mantienen la forma de listas usada por `ListsContext` (`id`, `name`, `currency`, `items`, `createdAt`, `archived`, `archivedAt`, `storeId`). Los campos adicionales de lista y producto se conservan en columnas JSONB; las claves consultadas con frecuencia y las relaciones usuario/lista/producto quedan normalizadas. Las rutas siempre limitan las consultas al usuario de la sesión, y los productos dependen de la lista mediante una clave foránea compuesta.
 
-En `src/api/providers/node/` hay adaptadores cliente para autenticación y listas. `nodeAuthApi` ofrece registro, verificación, login, consulta de sesión, logout y recuperación de contraseña; el token devuelto debe gestionarse desde el proveedor de sesión de la app y pasarse a `nodeShoppingListsApi`. Estos adaptadores aún no reemplazan las pantallas Convex: `App.js`, las pantallas de autenticación y varias funciones principales siguen requiriendo Convex.
+En `src/api/providers/node/` hay adaptadores cliente para autenticación, listas, catálogo e historial de escaneos. `nodeAuthApi` ofrece registro, verificación, login, consulta de sesión, logout y recuperación de contraseña; el token devuelto debe gestionarse desde el proveedor de sesión de la app y pasarse a los demás adaptadores. Estos adaptadores aún no reemplazan las pantallas Convex: `App.js`, las pantallas de autenticación y varias funciones principales siguen requiriendo Convex.
+
+## Catálogo de productos e historial privado de escaneos
+
+Las rutas requieren Bearer token y están bajo `/api/v1`:
+
+| Método y ruta | Uso |
+|---|---|
+| `GET /products/:barcode` | Consulta la ficha global del catálogo. |
+| `POST /products/:barcode/access` | Registra un acceso e incrementa el contador del catálogo. |
+| `PUT /products/:barcode` | Guarda campos del producto; los datos flexibles se conservan en JSONB. |
+| `POST /products/:barcode/not-found` | Guarda un resultado negativo con vencimiento de siete días. |
+| `DELETE /products/:barcode` | Elimina del catálogo; requiere rol `admin`. |
+| `GET /scans?limit=100` | Lista el historial privado del usuario (máximo 300). |
+| `GET /scans/:barcode` | Consulta un producto del historial propio. |
+| `POST /scans` | Añade un escaneo o incrementa su contador. |
+| `PUT /scans/:barcode` | Sincroniza el registro con su contador dado, sin incrementarlo; admite reintentos. |
+| `DELETE /scans/:barcode` | Elimina un escaneo propio. |
+| `DELETE /scans` | Vacía únicamente el historial del usuario autenticado. |
+
+El catálogo es compartido entre cuentas; el historial usa una clave compuesta por usuario y código. La API no devuelve ni elimina historiales de otros usuarios.
 
 Ejemplo de creación de lista:
 
@@ -108,7 +128,7 @@ La cuenta debe existir, estar activa y tener el correo verificado. El rol y los 
 
 ## Migraciones y datos
 
-Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. `002_shopping_lists.sql` crea las tablas de listas y productos; `003_api_rate_limits.sql` crea el almacenamiento compartido del límite de solicitudes. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
+Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. `002_shopping_lists.sql` crea las tablas de listas y artículos; `003_api_rate_limits.sql` crea el almacenamiento compartido del límite de solicitudes; `004_products_scan_history.sql` crea el catálogo y el historial privado. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
 
 Para detener servicios sin eliminar datos:
 
