@@ -50,7 +50,7 @@ chatRouter.post('/messages', async (req, res, next) => {
       [req.auth.user.id, room, cleanUsername(req.body?.username, req.auth.user.name), text, keepIndefinitely],
     );
     const message = mapMessage(rows[0]);
-    publishChatEvent(room, { type: 'chat.message.created', message });
+    await publishChatEvent(room, { type: 'chat.message.created', messageId: message.id });
     res.status(201).json({ message });
   } catch (error) { next(error); }
 });
@@ -64,7 +64,7 @@ chatRouter.delete('/messages/:id', async (req, res, next) => {
       [req.params.id, req.auth.user.id, req.auth.user.role === 'admin'],
     );
     if (!rows[0]) return res.status(404).json({ error: { code: 'not_found', message: 'Mensaje no encontrado o sin permiso para borrarlo' } });
-    publishChatEvent(rows[0].room, { type: 'chat.message.deleted', messageId: String(rows[0].id) });
+    await publishChatEvent(rows[0].room, { type: 'chat.message.deleted', messageId: String(rows[0].id) });
     res.status(204).end();
   } catch (error) { next(error); }
 });

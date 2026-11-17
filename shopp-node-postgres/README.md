@@ -169,7 +169,7 @@ La API incluye persistencia inicial para mensajes de texto y entrega de novedade
 | `POST /api/v1/chat/messages` | Publica texto; caduca a las 24 horas por defecto. |
 | `DELETE /api/v1/chat/messages/:id` | El autor puede borrar su mensaje; el administrador puede borrar cualquiera. |
 
-Los mensajes admiten 280 caracteres, salvo la sala `youtube` (2048). El cliente `nodeChatApi` ofrece historial, envío, borrado y suscripción WebSocket. El transporte actual difunde avisos entre conexiones de una sola instancia; para desplegar varias réplicas habrá que añadir difusión entre procesos, por ejemplo con PostgreSQL `LISTEN/NOTIFY`. Este núcleo todavía no migra adjuntos, salas cercanas, moderación, controles administrativos, listas de reproducción ni otras funciones del chat Convex; la pantalla existente continúa usando Convex.
+Los mensajes admiten 280 caracteres, salvo la sala `youtube` (2048). El cliente `nodeChatApi` ofrece historial, envío, borrado y suscripción WebSocket. Los avisos viajan por PostgreSQL `LISTEN/NOTIFY`, por lo que las conexiones de distintas réplicas de la API pueden recibir cambios. PostgreSQL notifica tras confirmar la transacción; el mensaje completo se vuelve a leer de la tabla antes de difundirlo. Este núcleo todavía no migra adjuntos, salas cercanas, moderación, controles administrativos, listas de reproducción ni otras funciones del chat Convex; la pantalla existente continúa usando Convex.
 
 Ejemplo de creación de lista:
 
