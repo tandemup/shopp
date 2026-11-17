@@ -20,7 +20,7 @@ export function getBackendConfigurationError() {
     return `EXPO_PUBLIC_BACKEND_PROVIDER no válido: ${BACKEND_PROVIDER}. Usa convex.`;
   }
   if (isNodeBackend) {
-    return "El backend Node.js aún no está implementado. Mantén EXPO_PUBLIC_BACKEND_PROVIDER=convex durante la fase 1.";
+    return "La API Node.js ya incluye autenticación y listas de compra, pero la app aún no completa el cambio de sesión. Mantén EXPO_PUBLIC_BACKEND_PROVIDER=convex hasta integrar y validar el proveedor.";
   }
   return null;
 }

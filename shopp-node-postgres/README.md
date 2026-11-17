@@ -1,6 +1,6 @@
 # Backend Node.js + PostgreSQL de Shopp (fase de autenticación)
 
-Esta carpeta contiene un servicio Express independiente con PostgreSQL. Implementa autenticación por correo con OTP, inicio/cierre de sesión y recuperación de contraseña. La app Shopp sigue usando Convex mientras se completa y valida la integración del proveedor Node.
+Esta carpeta contiene un servicio REST con Express y PostgreSQL. Incluye autenticación por correo con OTP, inicio/cierre de sesión, recuperación de contraseña y persistencia multiusuario de listas de compra y sus productos. La app Shopp sigue usando Convex como proveedor principal mientras se completa la migración de sesión e integración de pantallas.
 
 ## Requisitos
 
@@ -59,6 +59,31 @@ Todas están bajo `/api/v1/auth`:
 | `POST /request-password-reset` | Solicita un código para restablecer la contraseña. |
 | `POST /reset-password` | Cambia la contraseña con el código recibido y revoca sesiones anteriores. |
 
+## Rutas REST de listas de compra
+
+Todas requieren `Authorization: Bearer <token>` y están bajo `/api/v1/shopping`.
+
+| Método y ruta | Uso |
+|---|---|
+| `GET /lists` | Devuelve las listas del usuario autenticado con sus productos. |
+| `POST /lists` | Crea una lista; admite un `id` del cliente y productos iniciales. |
+| `GET /lists/:listId` | Devuelve una lista propia y sus productos. |
+| `PATCH /lists/:listId` | Actualiza nombre, moneda, tienda, estado archivado o metadatos. |
+| `DELETE /lists/:listId` | Elimina la lista propia y sus productos en cascada. |
+| `POST /lists/:listId/items` | Añade un producto a una lista propia. |
+| `PATCH /lists/:listId/items/:itemId` | Actualiza nombre, estado comprado y campos adicionales del producto. |
+| `DELETE /lists/:listId/items/:itemId` | Elimina un producto de una lista propia. |
+
+Las respuestas mantienen la forma de listas usada por `ListsContext` (`id`, `name`, `currency`, `items`, `createdAt`, `archived`, `archivedAt`, `storeId`). Los campos adicionales de lista y producto se conservan en columnas JSONB; las claves consultadas con frecuencia y las relaciones usuario/lista/producto quedan normalizadas. Las rutas siempre limitan las consultas al usuario de la sesión, y los productos dependen de la lista mediante una clave foránea compuesta.
+
+Ejemplo de creación de lista:
+
+```bash
+curl -X POST http://localhost:3001/api/v1/shopping/lists \
+  -H 'Authorization: Bearer TOKEN' -H 'Content-Type: application/json' \
+  -d '{"id":"lista-1","name":"Compra semanal","currency":"EUR","items":[]}'
+```
+
 Ejemplo de registro:
 
 ```bash
@@ -81,7 +106,7 @@ La cuenta debe existir, estar activa y tener el correo verificado. El rol y los 
 
 ## Migraciones y datos
 
-Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
+Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. La migración `002_shopping_lists.sql` crea las tablas de listas y productos. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
 
 Para detener servicios sin eliminar datos:
 
@@ -95,5 +120,6 @@ No uses `docker compose down -v` salvo que quieras borrar permanentemente la bas
 
 - No activa `EXPO_PUBLIC_BACKEND_PROVIDER=node`; Convex sigue siendo el proveedor activo de Shopp.
 - No importa usuarios ni contraseñas de Convex.
-- Las rutas de Tiendas, listas y chat aún están pendientes.
+- La API de listas está disponible, pero todavía no se activa desde `ListsContext`; la app continúa guardando listas localmente y usando Convex para los módulos que ya dependían de él.
+- La migración completa de usuarios y sesiones de Convex y las rutas de Tiendas y chat siguen pendientes.
 - Antes de usarlo con usuarios reales, configura Resend, orígenes CORS de producción y HTTPS en un proxy inverso. El limitador actual vive en memoria y está pensado para una sola instancia.
