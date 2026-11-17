@@ -132,6 +132,20 @@ Las rutas están bajo `/api/v1/store-offers`:
 
 Las solicitudes comerciales requieren nombre y correo de contacto. Las ofertas permanecen pendientes hasta que un administrador las aprueba.
 
+## Revisión de fichas de producto
+
+Las rutas están bajo `/api/v1/product-reviews`:
+
+| Método y ruta | Uso |
+|---|---|
+| `POST /` | Envía una propuesta de producto; requiere sesión. Una misma cuenta solo puede mantener una propuesta pendiente por código. |
+| `GET /?status=pending_review&limit=100` | Lista propuestas para administración; requiere rol `admin`. |
+| `PATCH /:id` | Edita los campos antes de resolver la revisión; requiere administrador. |
+| `POST /:id/approve` | Aprueba la propuesta y actualiza el catálogo global dentro de una transacción. |
+| `POST /:id/reject` | Rechaza la propuesta y guarda la nota administrativa. |
+
+Si la transacción de aprobación falla, no cambia el estado de la propuesta ni el catálogo.
+
 Ejemplo de creación de lista:
 
 ```bash
@@ -162,7 +176,7 @@ La cuenta debe existir, estar activa y tener el correo verificado. El rol y los 
 
 ## Migraciones y datos
 
-Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. `002_shopping_lists.sql` crea las tablas de listas y artículos; `003_api_rate_limits.sql` crea el almacenamiento compartido del límite de solicitudes; `004_products_scan_history.sql` crea el catálogo y el historial privado; `005_stores.sql` crea tiendas, favoritos y solicitudes; `006_store_offers.sql` crea las propuestas de ofertas. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
+Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. `002_shopping_lists.sql` crea las tablas de listas y artículos; `003_api_rate_limits.sql` crea el almacenamiento compartido del límite de solicitudes; `004_products_scan_history.sql` crea el catálogo y el historial privado; `005_stores.sql` crea tiendas, favoritos y solicitudes; `006_store_offers.sql` crea propuestas de ofertas; `007_product_reviews.sql` crea la cola de revisión de productos. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
 
 Para detener servicios sin eliminar datos:
 
@@ -177,5 +191,5 @@ No uses `docker compose down -v` salvo que quieras borrar permanentemente la bas
 - No activa `EXPO_PUBLIC_BACKEND_PROVIDER=node`; Convex sigue siendo el proveedor activo de Shopp.
 - No importa usuarios ni contraseñas de Convex.
 - La API de listas está disponible, pero todavía no se activa desde `ListsContext`; la app continúa guardando listas localmente y usando Convex para los módulos que ya dependían de él.
-- La migración completa de usuarios y sesiones de Convex y las rutas de chat siguen pendientes; las pantallas de tiendas y ofertas todavía usan Convex.
+- La migración completa de usuarios y sesiones de Convex y las rutas de chat siguen pendientes; las pantallas de tiendas, ofertas y revisión de productos todavía usan Convex.
 - Antes de usarlo con usuarios reales, configura Resend, orígenes CORS de producción y HTTPS en un proxy inverso. `TRUST_PROXY=true` solo debe activarse si la API está detrás de un proxy controlado que establezca correctamente `X-Forwarded-For`.
