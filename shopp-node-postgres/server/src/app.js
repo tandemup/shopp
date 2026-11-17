@@ -8,6 +8,7 @@ import { storesRouter } from './routes/stores.js';
 import { storeOffersRouter } from './routes/storeOffers.js';
 import { productReviewsRouter } from './routes/productReviews.js';
 import { realtimeRouter } from './routes/realtime.js';
+import { chatRouter } from './routes/chat.js';
 import { config } from './config.js';
 
 const app = express();
@@ -46,6 +47,7 @@ app.use('/api/v1/stores', storesRouter);
 app.use('/api/v1/store-offers', storeOffersRouter);
 app.use('/api/v1/product-reviews', productReviewsRouter);
 app.use('/api/v1/realtime', realtimeRouter);
+app.use('/api/v1/chat', chatRouter);
 app.use((_req, res) => res.status(404).json({ error: { code: 'not_found', message: 'Ruta no encontrada' } }));
 app.use((error, _req, res, _next) => {
   if (error instanceof SyntaxError && 'body' in error) {
