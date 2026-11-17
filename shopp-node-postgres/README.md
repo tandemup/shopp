@@ -1,4 +1,4 @@
-# Backend Node.js + PostgreSQL de Shopp (fase de autenticación)
+# Backend Node.js + PostgreSQL de Shopp
 
 Esta carpeta contiene un servicio REST con Express y PostgreSQL. Incluye autenticación por correo con OTP, inicio/cierre de sesión, recuperación de contraseña y persistencia multiusuario de listas de compra y sus productos. La app Shopp sigue usando Convex como proveedor principal mientras se completa la migración de sesión e integración de pantallas.
 
@@ -146,6 +146,19 @@ Las rutas están bajo `/api/v1/product-reviews`:
 
 Si la transacción de aprobación falla, no cambia el estado de la propuesta ni el catálogo.
 
+## Conexión en tiempo real (WebSocket)
+
+La API ofrece una base autenticada para conexiones en vivo. La sesión habitual se cambia por un ticket aleatorio de un solo uso, válido durante 60 segundos:
+
+| Método y ruta | Uso |
+|---|---|
+| `POST /api/v1/realtime/ticket` | Emite el ticket; requiere `Authorization: Bearer <token>`. |
+| `GET /ws?ticket=...` | Inicia la conexión WebSocket y consume el ticket. |
+
+Tras conectar, el servidor envía un mensaje `connected` con identidad mínima. Se puede enviar `{"type":"ping"}` para recibir `pong`. Todavía no hay chat, salas, suscripciones ni difusión de eventos: este canal es la capa de transporte inicial. El servidor rechaza tickets usados, caducados o asociados a sesiones revocadas, y solo acepta orígenes incluidos en `CORS_ORIGINS` cuando el navegador envía `Origin`. El ticket de un solo uso puede aparecer brevemente en registros de URL; configura el proxy para no registrar la query del endpoint `/ws`.
+
+El cliente `nodeRealtimeApi.connect(accessToken)` obtiene un ticket con HTTPS y luego abre `ws://` o `wss://` según `EXPO_PUBLIC_API_URL`. La app aún mantiene Convex como proveedor activo hasta integrar y validar las pantallas y la sesión Node.
+
 Ejemplo de creación de lista:
 
 ```bash
@@ -176,7 +189,7 @@ La cuenta debe existir, estar activa y tener el correo verificado. El rol y los 
 
 ## Migraciones y datos
 
-Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. `002_shopping_lists.sql` crea las tablas de listas y artículos; `003_api_rate_limits.sql` crea el almacenamiento compartido del límite de solicitudes; `004_products_scan_history.sql` crea el catálogo y el historial privado; `005_stores.sql` crea tiendas, favoritos y solicitudes; `006_store_offers.sql` crea propuestas de ofertas; `007_product_reviews.sql` crea la cola de revisión de productos. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
+Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. `002_shopping_lists.sql` crea las tablas de listas y artículos; `003_api_rate_limits.sql` crea el almacenamiento compartido del límite de solicitudes; `004_products_scan_history.sql` crea el catálogo y el historial privado; `005_stores.sql` crea tiendas, favoritos y solicitudes; `006_store_offers.sql` crea propuestas de ofertas; `007_product_reviews.sql` crea la cola de revisión de productos; `008_realtime_tickets.sql` crea los tickets de corta duración para WebSocket. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
 
 Para detener servicios sin eliminar datos:
 

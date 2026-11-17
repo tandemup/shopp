@@ -7,5 +7,5 @@
     "start": "node src/index.js",
     "auth:bootstrap-admin": "node src/auth/bootstrapAdmin.js"
   },
-  "dependencies": { "express": "5.1.0", "pg": "8.16.3" }
+  "dependencies": { "express": "5.1.0", "pg": "8.16.3", "ws": "8.22.0" }
 }

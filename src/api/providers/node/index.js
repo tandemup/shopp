@@ -5,3 +5,4 @@ export { nodeScanHistoryApi } from "./scanHistory";
 export { nodeStoresApi } from "./stores";
 export { nodeStoreOffersApi } from "./storeOffers";
 export { nodeShoppingListsApi } from "./shoppingLists";
+export { nodeRealtimeApi } from "./realtime";
