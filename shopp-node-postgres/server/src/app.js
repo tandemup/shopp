@@ -2,6 +2,8 @@ import express from 'express';
 import { pool } from './db.js';
 import { authRouter } from './routes/auth.js';
 import { shoppingListsRouter } from './routes/shoppingLists.js';
+import { productsRouter } from './routes/products.js';
+import { scanHistoryRouter } from './routes/scanHistory.js';
 import { config } from './config.js';
 
 const app = express();
@@ -17,7 +19,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   }
   if (req.method === 'OPTIONS') return res.status(204).end();
   next();
@@ -34,6 +36,8 @@ app.get('/api/ready', async (_req, res, next) => {
 });
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/shopping', shoppingListsRouter);
+app.use('/api/v1/products', productsRouter);
+app.use('/api/v1/scans', scanHistoryRouter);
 app.use((_req, res) => res.status(404).json({ error: { code: 'not_found', message: 'Ruta no encontrada' } }));
 app.use((error, _req, res, _next) => {
   if (error instanceof SyntaxError && 'body' in error) {
