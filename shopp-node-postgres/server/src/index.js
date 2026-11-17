@@ -7,7 +7,7 @@ import { attachRealtime } from './realtime.js';
 
 await runMigrations();
 const server = createServer(app);
-const realtime = attachRealtime(server);
+const realtime = await attachRealtime(server);
 server.listen(config.port, '0.0.0.0', () => console.log(`API Shopp escuchando en el puerto ${config.port}`));
 const rateLimitCleanup = setInterval(() => {
   pool.query("DELETE FROM api_rate_limit_buckets WHERE window_expires_at < NOW() - INTERVAL '1 hour'")

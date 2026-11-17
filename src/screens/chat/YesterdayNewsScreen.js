@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { I18nText as Text, I18nTextInput as TextInput, tr, useI18n } from "@/src/i18n";
 
-import { Audio } from "expo-av";
+import { createAudioPlayer } from "expo-audio";
 import moment from "moment";
 import "moment/locale/es";
 import { useChatMessages, useChatBasicActions } from "@/src/hooks/useChatBackend";
@@ -80,19 +80,20 @@ export default function ChatScreen({
   }
 
   async function playMessageTone() {
+    let player;
+    let statusSubscription;
     try {
-      const { sound } = await Audio.Sound.createAsync(
-        require("@/assets/messageTone.mp3"),
-      );
-
-      await sound.playAsync();
-
-      sound.setOnPlaybackStatusUpdate((status) => {
+      player = createAudioPlayer(require("@/assets/messageTone.mp3"));
+      statusSubscription = player.addListener("playbackStatusUpdate", (status) => {
         if (status.didJustFinish) {
-          sound.unloadAsync();
+          statusSubscription?.remove();
+          player?.remove();
         }
       });
+      player.play();
     } catch (error) {
+      statusSubscription?.remove();
+      player?.remove();
       console.error("Error reproduciendo message-tone.mp3:", error);
     }
   }
