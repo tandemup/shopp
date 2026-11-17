@@ -94,7 +94,7 @@ curl -X POST http://localhost:3001/api/v1/auth/register \
   -d '{"email":"usuario@example.com","name":"Usuario","password":"UnaClaveSegura8"}'
 ```
 
-Los códigos caducan a los 15 minutos y permiten como máximo cinco intentos. Los endpoints públicos de autenticación tienen límite de solicitudes en memoria por instancia.
+Los códigos caducan a los 15 minutos y permiten como máximo cinco intentos. Los endpoints de autenticación limitan a 12 solicitudes por IP y ruta cada 15 minutos. El contador se almacena en PostgreSQL, se comparte entre instancias y conserva solo un HMAC de IP/ruta; los registros caducados se eliminan periódicamente.
 
 ## Crear el primer administrador
 
@@ -108,7 +108,7 @@ La cuenta debe existir, estar activa y tener el correo verificado. El rol y los 
 
 ## Migraciones y datos
 
-Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. La migración `002_shopping_lists.sql` crea las tablas de listas y productos. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
+Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. `002_shopping_lists.sql` crea las tablas de listas y productos; `003_api_rate_limits.sql` crea el almacenamiento compartido del límite de solicitudes. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
 
 Para detener servicios sin eliminar datos:
 
@@ -124,4 +124,4 @@ No uses `docker compose down -v` salvo que quieras borrar permanentemente la bas
 - No importa usuarios ni contraseñas de Convex.
 - La API de listas está disponible, pero todavía no se activa desde `ListsContext`; la app continúa guardando listas localmente y usando Convex para los módulos que ya dependían de él.
 - La migración completa de usuarios y sesiones de Convex y las rutas de Tiendas y chat siguen pendientes.
-- Antes de usarlo con usuarios reales, configura Resend, orígenes CORS de producción y HTTPS en un proxy inverso. El limitador actual vive en memoria y está pensado para una sola instancia.
+- Antes de usarlo con usuarios reales, configura Resend, orígenes CORS de producción y HTTPS en un proxy inverso. `TRUST_PROXY=true` solo debe activarse si la API está detrás de un proxy controlado que establezca correctamente `X-Forwarded-For`.
