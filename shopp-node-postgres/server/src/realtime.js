@@ -6,10 +6,24 @@ import { config } from './config.js';
 
 const HEARTBEAT_MS = 30_000;
 const MAX_PAYLOAD = 8 * 1024;
+let activeRealtime = null;
+
+export function publishChatEvent(room, event) {
+  activeRealtime?.publishChatEvent(room, event);
+}
 
 export function attachRealtime(server) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD, perMessageDeflate: false });
   let closing = false;
+  const realtimeApi = {
+    publishChatEvent(room, event) {
+      const payload = JSON.stringify(event);
+      for (const ws of wss.clients) {
+        if (ws.readyState === WebSocket.OPEN && ws.rooms?.has(room)) ws.send(payload);
+      }
+    },
+  };
+  activeRealtime = realtimeApi;
 
   server.on('upgrade', async (request, socket, head) => {
     const reject = (status, message) => {
@@ -52,6 +66,7 @@ export function attachRealtime(server) {
 
   wss.on('connection', (ws) => {
     ws.isAlive = true;
+    ws.rooms = new Set();
     ws.on('pong', () => { ws.isAlive = true; });
     ws.send(JSON.stringify({ type: 'connected', user: { id: ws.user.id, name: ws.user.name, role: ws.user.role } }));
     ws.on('message', (data, isBinary) => {
@@ -61,6 +76,10 @@ export function attachRealtime(server) {
       catch { return ws.close(1007, 'JSON no válido'); }
       if (message?.type === 'ping') {
         ws.send(JSON.stringify({ type: 'pong', at: new Date().toISOString() }));
+      } else if (message?.type === 'subscribe' && Array.isArray(message.rooms)) {
+        const rooms = message.rooms.filter((room) => typeof room === 'string' && /^[a-z0-9_-]{1,50}$/.test(room)).slice(0, 25);
+        ws.rooms = new Set(rooms);
+        ws.send(JSON.stringify({ type: 'subscribed', rooms }));
       } else {
         ws.send(JSON.stringify({ type: 'error', code: 'unsupported_message' }));
       }
@@ -79,6 +98,7 @@ export function attachRealtime(server) {
   return {
     async close() {
       closing = true;
+      if (activeRealtime === realtimeApi) activeRealtime = null;
       clearInterval(heartbeat);
       for (const ws of wss.clients) ws.close(1001, 'Servidor cerrándose');
       await new Promise((resolve) => wss.close(resolve));

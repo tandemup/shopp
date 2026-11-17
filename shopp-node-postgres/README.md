@@ -155,9 +155,21 @@ La API ofrece una base autenticada para conexiones en vivo. La sesión habitual 
 | `POST /api/v1/realtime/ticket` | Emite el ticket; requiere `Authorization: Bearer <token>`. |
 | `GET /ws?ticket=...` | Inicia la conexión WebSocket y consume el ticket. |
 
-Tras conectar, el servidor envía un mensaje `connected` con identidad mínima. Se puede enviar `{"type":"ping"}` para recibir `pong`. Todavía no hay chat, salas, suscripciones ni difusión de eventos: este canal es la capa de transporte inicial. El servidor rechaza tickets usados, caducados o asociados a sesiones revocadas, y solo acepta orígenes incluidos en `CORS_ORIGINS` cuando el navegador envía `Origin`. El ticket de un solo uso puede aparecer brevemente en registros de URL; configura el proxy para no registrar la query del endpoint `/ws`.
+Tras conectar, el servidor envía un mensaje `connected` con identidad mínima. Se puede enviar `{"type":"ping"}` para recibir `pong` y `{"type":"subscribe","rooms":["compras"]}` para recibir los avisos de una sala. Los avisos de chat se envían a las conexiones suscritas en esa instancia del servidor.
 
 El cliente `nodeRealtimeApi.connect(accessToken)` obtiene un ticket con HTTPS y luego abre `ws://` o `wss://` según `EXPO_PUBLIC_API_URL`. La app aún mantiene Convex como proveedor activo hasta integrar y validar las pantallas y la sesión Node.
+
+## Chat básico en PostgreSQL
+
+La API incluye persistencia inicial para mensajes de texto y entrega de novedades en vivo. Todas las rutas requieren Bearer token:
+
+| Método y ruta | Uso |
+|---|---|
+| `GET /api/v1/chat/messages?room=compras&limit=100&beforeId=...` | Historial paginado (máximo 200 mensajes). |
+| `POST /api/v1/chat/messages` | Publica texto; caduca a las 24 horas por defecto. |
+| `DELETE /api/v1/chat/messages/:id` | El autor puede borrar su mensaje; el administrador puede borrar cualquiera. |
+
+Los mensajes admiten 280 caracteres, salvo la sala `youtube` (2048). El cliente `nodeChatApi` ofrece historial, envío, borrado y suscripción WebSocket. El transporte actual difunde avisos entre conexiones de una sola instancia; para desplegar varias réplicas habrá que añadir difusión entre procesos, por ejemplo con PostgreSQL `LISTEN/NOTIFY`. Este núcleo todavía no migra adjuntos, salas cercanas, moderación, controles administrativos, listas de reproducción ni otras funciones del chat Convex; la pantalla existente continúa usando Convex.
 
 Ejemplo de creación de lista:
 
@@ -189,7 +201,7 @@ La cuenta debe existir, estar activa y tener el correo verificado. El rol y los 
 
 ## Migraciones y datos
 
-Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. `002_shopping_lists.sql` crea las tablas de listas y artículos; `003_api_rate_limits.sql` crea el almacenamiento compartido del límite de solicitudes; `004_products_scan_history.sql` crea el catálogo y el historial privado; `005_stores.sql` crea tiendas, favoritos y solicitudes; `006_store_offers.sql` crea propuestas de ofertas; `007_product_reviews.sql` crea la cola de revisión de productos; `008_realtime_tickets.sql` crea los tickets de corta duración para WebSocket. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
+Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. `002_shopping_lists.sql` crea las tablas de listas y artículos; `003_api_rate_limits.sql` crea el almacenamiento compartido del límite de solicitudes; `004_products_scan_history.sql` crea el catálogo y el historial privado; `005_stores.sql` crea tiendas, favoritos y solicitudes; `006_store_offers.sql` crea propuestas de ofertas; `007_product_reviews.sql` crea la cola de revisión de productos; `008_realtime_tickets.sql` crea tickets WebSocket de corta duración; `009_chat_messages.sql` crea el almacenamiento inicial del chat. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
 
 Para detener servicios sin eliminar datos:
 
