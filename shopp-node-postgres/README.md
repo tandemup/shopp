@@ -76,6 +76,8 @@ Todas requieren `Authorization: Bearer <token>` y están bajo `/api/v1/shopping`
 
 Las respuestas mantienen la forma de listas usada por `ListsContext` (`id`, `name`, `currency`, `items`, `createdAt`, `archived`, `archivedAt`, `storeId`). Los campos adicionales de lista y producto se conservan en columnas JSONB; las claves consultadas con frecuencia y las relaciones usuario/lista/producto quedan normalizadas. Las rutas siempre limitan las consultas al usuario de la sesión, y los productos dependen de la lista mediante una clave foránea compuesta.
 
+En `src/api/providers/node/` hay adaptadores cliente para autenticación y listas. `nodeAuthApi` ofrece registro, verificación, login, consulta de sesión, logout y recuperación de contraseña; el token devuelto debe gestionarse desde el proveedor de sesión de la app y pasarse a `nodeShoppingListsApi`. Estos adaptadores aún no reemplazan las pantallas Convex: `App.js`, las pantallas de autenticación y varias funciones principales siguen requiriendo Convex.
+
 Ejemplo de creación de lista:
 
 ```bash
