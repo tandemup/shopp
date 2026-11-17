@@ -19,6 +19,11 @@ export async function requireAuth(req, res, next) {
   } catch (error) { next(error); }
 }
 
+export function optionalAuth(req, res, next) {
+  if (!req.get('authorization')) return next();
+  return requireAuth(req, res, next);
+}
+
 export function requireAdmin(req, res, next) {
   if (req.auth?.user?.role === 'admin') return next();
   return res.status(403).json({ error: { code: 'forbidden', message: 'Se requieren permisos de administrador' } });
