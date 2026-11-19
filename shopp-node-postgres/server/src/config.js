@@ -18,6 +18,9 @@ export const config = Object.freeze({
   resendKey: process.env.AUTH_RESEND_KEY || '',
   emailFrom: process.env.AUTH_EMAIL_FROM || '',
   challengeSecret: process.env.AUTH_CHALLENGE_SECRET || '',
+  jwtSecret: process.env.AUTH_JWT_SECRET || '',
+  jwtIssuer: process.env.AUTH_JWT_ISSUER || 'shopp-api',
+  jwtAudience: process.env.AUTH_JWT_AUDIENCE || 'shopp-client',
   convexBridgeSecret: process.env.CONVEX_NODE_BRIDGE_SECRET || '',
   corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:8081,http://127.0.0.1:8081')
     .split(',').map((origin) => origin.trim()).filter(Boolean),
@@ -26,7 +29,13 @@ export const config = Object.freeze({
 
 if (config.sessionTtlHours > 720) throw new Error('SESSION_TTL_HOURS no puede superar 720');
 
+export function jwtConfigurationError() {
+  if (Buffer.byteLength(config.jwtSecret, 'utf8') < 32 || config.jwtSecret.startsWith('replace-with-')) return 'AUTH_JWT_SECRET debe tener al menos 32 bytes aleatorios';
+  return null;
+}
+
 export function authConfigurationError() {
+  if (jwtConfigurationError()) return jwtConfigurationError();
   if (config.challengeSecret.length < 32 || config.challengeSecret.startsWith('replace-with-')) return 'AUTH_CHALLENGE_SECRET debe generarse con openssl';
   if (!config.resendKey || config.resendKey.startsWith('re_replace')) return 'Falta una clave privada válida de Resend';
   if (!config.emailFrom || config.emailFrom.includes('example.com')) return 'Falta un remitente autorizado de correo';
