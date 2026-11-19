@@ -18,6 +18,7 @@ export const config = Object.freeze({
   resendKey: process.env.AUTH_RESEND_KEY || '',
   emailFrom: process.env.AUTH_EMAIL_FROM || '',
   challengeSecret: process.env.AUTH_CHALLENGE_SECRET || '',
+  convexBridgeSecret: process.env.CONVEX_NODE_BRIDGE_SECRET || '',
   corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:8081,http://127.0.0.1:8081')
     .split(',').map((origin) => origin.trim()).filter(Boolean),
   trustProxy: process.env.TRUST_PROXY === 'true',

@@ -171,6 +171,22 @@ La API incluye persistencia inicial para mensajes de texto y entrega de novedade
 
 Los mensajes admiten 280 caracteres, salvo la sala `youtube` (2048). El cliente `nodeChatApi` ofrece historial, envío, borrado y suscripción WebSocket. Los avisos viajan por PostgreSQL `LISTEN/NOTIFY`, por lo que las conexiones de distintas réplicas de la API pueden recibir cambios. PostgreSQL notifica tras confirmar la transacción; el mensaje completo se vuelve a leer de la tabla antes de difundirlo. Este núcleo todavía no migra adjuntos, salas cercanas, moderación, controles administrativos, listas de reproducción ni otras funciones del chat Convex; la pantalla existente continúa usando Convex.
 
+## Puente inicial de sesión Convex → Node
+
+La app conserva Convex como autenticación principal y solicita una sesión Node mediante una acción autenticada de Convex. **El token Convex no se envía a Express**: Convex verifica al usuario y llama al endpoint interno de Node con un secreto compartido.
+
+1. Genera un secreto separado con `openssl rand -hex 32`.
+2. Añádelo al `.env` de esta carpeta como `CONVEX_NODE_BRIDGE_SECRET`.
+3. Configura el mismo valor en Convex con `npx convex env set CONVEX_NODE_BRIDGE_SECRET "..."`.
+4. Configura la URL HTTPS de la API en Convex con `npx convex env set SHOPP_NODE_API_URL "https://api.tu-dominio"`.
+5. Reconstruye y arranca la API para aplicar `010_convex_identity_bridge.sql`.
+6. Configura esa misma URL pública como `EXPO_PUBLIC_API_URL` en `.env.local` y en el entorno de compilación de la app.
+7. Desde la raíz del proyecto, ejecuta el flujo habitual de Convex (`npx convex dev` en desarrollo o `npx convex deploy` en producción) para publicar la acción nueva y regenerar sus referencias.
+
+La cuenta Node se vincula por el ID de usuario Convex; una cuenta Node existente con el mismo correo no se enlaza automáticamente. Las cuentas creadas por el puente reciben rol `user`; el rol administrador se concede aparte con el procedimiento de bootstrap. El token Node permanece en memoria de la app y se vuelve a emitir al iniciar una sesión Convex.
+
+Este puente solo prepara identidad y sesión. **Las listas siguen guardándose localmente**; no actives `EXPO_PUBLIC_BACKEND_PROVIDER=node` todavía.
+
 Ejemplo de creación de lista:
 
 ```bash
@@ -201,7 +217,7 @@ La cuenta debe existir, estar activa y tener el correo verificado. El rol y los 
 
 ## Migraciones y datos
 
-Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. `002_shopping_lists.sql` crea las tablas de listas y artículos; `003_api_rate_limits.sql` crea el almacenamiento compartido del límite de solicitudes; `004_products_scan_history.sql` crea el catálogo y el historial privado; `005_stores.sql` crea tiendas, favoritos y solicitudes; `006_store_offers.sql` crea propuestas de ofertas; `007_product_reviews.sql` crea la cola de revisión de productos; `008_realtime_tickets.sql` crea tickets WebSocket de corta duración; `009_chat_messages.sql` crea el almacenamiento inicial del chat. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
+Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. `002_shopping_lists.sql` crea las tablas de listas y artículos; `003_api_rate_limits.sql` crea el almacenamiento compartido del límite de solicitudes; `004_products_scan_history.sql` crea el catálogo y el historial privado; `005_stores.sql` crea tiendas, favoritos y solicitudes; `006_store_offers.sql` crea propuestas de ofertas; `007_product_reviews.sql` crea la cola de revisión de productos; `008_realtime_tickets.sql` crea tickets WebSocket de corta duración; `009_chat_messages.sql` crea el almacenamiento inicial del chat; `010_convex_identity_bridge.sql` añade la relación opcional con el usuario Convex. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
 
 Para detener servicios sin eliminar datos:
 
