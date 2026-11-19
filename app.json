@@ -21,7 +21,6 @@
     "android": {
       "package": "com.ramnworksshopp.shopp",
       "versionCode": 1,
-      "edgeToEdgeEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"

@@ -31,6 +31,7 @@ import type * as live from "../live.js";
 import type * as migrations from "../migrations.js";
 import type * as nearbyChatConfig from "../nearbyChatConfig.js";
 import type * as nearbyShare from "../nearbyShare.js";
+import type * as nodeSessionBridge from "../nodeSessionBridge.js";
 import type * as parking from "../parking.js";
 import type * as playlists from "../playlists.js";
 import type * as productCache from "../productCache.js";
@@ -80,6 +81,7 @@ declare const fullApi: ApiFromModules<{
   migrations: typeof migrations;
   nearbyChatConfig: typeof nearbyChatConfig;
   nearbyShare: typeof nearbyShare;
+  nodeSessionBridge: typeof nodeSessionBridge;
   parking: typeof parking;
   playlists: typeof playlists;
   productCache: typeof productCache;
