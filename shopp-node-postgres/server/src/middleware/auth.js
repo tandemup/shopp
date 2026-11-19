@@ -1,20 +1,23 @@
 import { pool } from '../db.js';
-import { digestToken } from '../security.js';
+import { digestToken, verifySessionToken } from '../security.js';
 
 export async function requireAuth(req, res, next) {
-  const match = /^Bearer\s+([A-Za-z0-9_-]{32,})$/i.exec(req.get('authorization') || '');
+  const match = /^Bearer\s+([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/i.exec(req.get('authorization') || '');
   if (!match) return res.status(401).json({ error: { code: 'unauthorized', message: 'Sesión no válida' } });
+  const claims = verifySessionToken(match[1]);
+  if (!claims) return res.status(401).json({ error: { code: 'unauthorized', message: 'Sesión no válida' } });
   try {
     const { rows } = await pool.query(
       `SELECT s.id AS session_id, u.id, u.email, u.name, u.role, u.status, u.permissions, u.email_verified_at
        FROM auth_sessions s JOIN app_users u ON u.id = s.user_id
-       WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > NOW() LIMIT 1`,
-      [digestToken(match[1])],
+       WHERE s.token_hash = $1 AND s.user_id = $2 AND u.id = $2
+         AND s.revoked_at IS NULL AND s.expires_at > NOW() LIMIT 1`,
+      [digestToken(match[1]), claims.sub],
     );
     const user = rows[0];
     if (!user) return res.status(401).json({ error: { code: 'unauthorized', message: 'Sesión no válida' } });
     if (user.status === 'blocked') return res.status(403).json({ error: { code: 'account_blocked', message: 'La cuenta está bloqueada' } });
-    req.auth = { token: match[1], sessionId: user.session_id, user };
+    req.auth = { token: match[1], claims, sessionId: user.session_id, user };
     next();
   } catch (error) { next(error); }
 }

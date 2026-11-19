@@ -43,11 +43,12 @@ async function createChallenge(client, userId, purpose) {
 }
 
 async function issueSession(client, userId) {
-  const token = createSessionToken();
+  const expiresAt = new Date(Date.now() + config.sessionTtlHours * 60 * 60 * 1000);
+  const token = createSessionToken(userId, expiresAt);
   const { rows } = await client.query(
     `INSERT INTO auth_sessions (user_id, token_hash, expires_at)
-     VALUES ($1, $2, NOW() + ($3 * INTERVAL '1 hour')) RETURNING expires_at`,
-    [userId, digestToken(token), config.sessionTtlHours],
+     VALUES ($1, $2, $3) RETURNING expires_at`,
+    [userId, digestToken(token), expiresAt],
   );
   return { token, expiresAt: rows[0].expires_at };
 }
@@ -193,6 +194,7 @@ authRouter.post('/reset-password', async (req, res, next) => {
 });
 
 authRouter.post('/login', async (req, res, next) => {
+  if (ensureAuthConfigured(res)) return;
   const email = normalizeEmail(req.body?.email);
   const password = typeof req.body?.password === 'string' ? req.body.password : '';
   if (validateEmail(email) || !password || password.length > 128) {

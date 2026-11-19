@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { pool } from '../db.js';
-import { config } from '../config.js';
+import { config, jwtConfigurationError } from '../config.js';
 import { createSessionToken, digestToken, normalizeEmail } from '../security.js';
 import { publicUser } from '../middleware/auth.js';
 
@@ -18,6 +18,9 @@ function isTrustedBridge(req) {
 }
 
 internalAuthRouter.post('/convex-session', async (req, res, next) => {
+  if (jwtConfigurationError()) {
+    return res.status(503).json({ error: { code: 'auth_not_configured', message: 'La autenticación no está configurada en el servidor' } });
+  }
   if (!isTrustedBridge(req)) {
     return res.status(401).json({ error: { code: 'unauthorized', message: 'Solicitud no autorizada' } });
   }
@@ -56,11 +59,12 @@ internalAuthRouter.post('/convex-session', async (req, res, next) => {
       return res.status(403).json({ error: { code: 'account_unavailable', message: 'La cuenta no está disponible.' } });
     }
 
-    const token = createSessionToken();
+    const expiresAt = new Date(Date.now() + config.sessionTtlHours * 60 * 60 * 1000);
+    const token = createSessionToken(user.id, expiresAt);
     const session = await client.query(
       `INSERT INTO auth_sessions (user_id, token_hash, expires_at)
-       VALUES ($1, $2, NOW() + ($3 * INTERVAL '1 hour')) RETURNING expires_at`,
-      [user.id, digestToken(token), config.sessionTtlHours],
+       VALUES ($1, $2, $3) RETURNING expires_at`,
+      [user.id, digestToken(token), expiresAt],
     );
     await client.query('COMMIT');
     return res.json({ token, expiresAt: session.rows[0].expires_at, user: publicUser(user) });
