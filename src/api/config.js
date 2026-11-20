@@ -1,8 +1,4 @@
-/**
- * Backend selector for the gradual migration away from Convex.
- * Phase 1A supports Convex ONLY; Node.js is intentionally fail-closed.
- * Expo inlines statically referenced EXPO_PUBLIC_* variables at build time.
- */
+/** Backend selector for the gradual migration away from Convex. */
 export const BACKEND_PROVIDERS = Object.freeze({
   CONVEX: "convex",
   NODE: "node",
@@ -17,10 +13,16 @@ export const isNodeBackend = BACKEND_PROVIDER === BACKEND_PROVIDERS.NODE;
 
 export function getBackendConfigurationError() {
   if (!Object.values(BACKEND_PROVIDERS).includes(BACKEND_PROVIDER)) {
-    return `EXPO_PUBLIC_BACKEND_PROVIDER no válido: ${BACKEND_PROVIDER}. Usa convex.`;
+    return `EXPO_PUBLIC_BACKEND_PROVIDER no válido: ${BACKEND_PROVIDER}. Usa convex o node.`;
   }
   if (isNodeBackend) {
-    return "La API Node.js ya incluye autenticación y listas de compra, pero la app aún no completa el cambio de sesión. Mantén EXPO_PUBLIC_BACKEND_PROVIDER=convex hasta integrar y validar el proveedor.";
+    if (!API_BASE_URL) return "Falta EXPO_PUBLIC_API_URL para usar el backend Node.js.";
+    try {
+      const url = new URL(API_BASE_URL);
+      if (!['http:', 'https:'].includes(url.protocol) || !url.host) throw new Error('invalid');
+    } catch {
+      return "EXPO_PUBLIC_API_URL debe ser una URL HTTP o HTTPS válida.";
+    }
   }
   return null;
 }

@@ -13,7 +13,9 @@ import DialogHost from "@/src/components/ui/alert/DialogHost";
 import AppNavigator from "@/src/navigation/AppNavigator";
 import { I18nProvider } from "@/src/i18n";
 import PublicMusicCardScreen from "@/src/screens/playlist/PublicMusicCardScreen";
-import { getBackendConfigurationError } from "@/src/api/config";
+import { BACKEND_PROVIDER, getBackendConfigurationError, isNodeBackend } from "@/src/api/config";
+import { NodeAuthProvider } from "@/src/context/NodeAuthContext";
+import NodeAppNavigator from "@/src/navigation/NodeAppNavigator";
 
 const backendError = getBackendConfigurationError();
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL?.trim();
@@ -30,20 +32,23 @@ export default function App() {
   );
 }
 function ShoppApp() {
-  // Acceso público desde QR: sin sesión; las fichas Convex usan el proxy público de Netlify.
-    if (
+  const publicMusicCardRequested =
     Platform.OS === "web" &&
     typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("shoppCard") === "1"
-  ) {
+    new URLSearchParams(window.location.search).get("shoppCard") === "1";
+
+  // Acceso público desde QR: sin sesión; las fichas Convex usan el proxy público de Netlify.
+  if (publicMusicCardRequested && convex) {
     return (
       <SafeAreaProvider>
-        <PublicMusicCardScreen />
+        <ConvexAuthProvider client={convex}>
+          <PublicMusicCardScreen />
+        </ConvexAuthProvider>
       </SafeAreaProvider>
     );
   }
 
-  if (backendError || !convex) {
+  if (backendError) {
     return (
       <SafeAreaProvider>
         <View style={styles.configurationError}>
@@ -51,6 +56,31 @@ function ShoppApp() {
           <Text style={styles.configurationMessage}>
             {backendError ||
               "Falta EXPO_PUBLIC_CONVEX_URL o no tiene una URL válida de Convex. Comprueba .env.local, reinicia Expo y verifica el deployment."}
+          </Text>
+        </View>
+      </SafeAreaProvider>
+    );
+  }
+
+  if (isNodeBackend) {
+    return (
+      <SafeAreaProvider>
+        <NodeAuthProvider>
+          <NavigationContainer documentTitle={{ enabled: false }}>
+            <NodeAppNavigator />
+          </NavigationContainer>
+        </NodeAuthProvider>
+      </SafeAreaProvider>
+    );
+  }
+
+  if (!convex || BACKEND_PROVIDER !== "convex") {
+    return (
+      <SafeAreaProvider>
+        <View style={styles.configurationError}>
+          <Text style={styles.configurationTitle}>Configuración de Shopp</Text>
+          <Text style={styles.configurationMessage}>
+            Falta EXPO_PUBLIC_CONVEX_URL o no tiene una URL válida de Convex. Comprueba .env.local y reinicia Expo.
           </Text>
         </View>
       </SafeAreaProvider>
