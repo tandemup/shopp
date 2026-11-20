@@ -10,6 +10,11 @@ import ResetPasswordScreen from "@/src/screens/auth/ResetPasswordScreen";
 import DevelopmentScreen from "@/src/screens/system/DevelopmentScreen";
 import InformationScreen from "@/src/screens/system/InformationScreen";
 import ContactScreen from "@/src/screens/system/ContactScreen";
+import {
+  NodeLoginScreen,
+  NodeRegisterScreen,
+  NodeResetPasswordScreen,
+} from "@/src/screens/auth/node/NodeAuthScreens";
 
 const Stack = createNativeStackNavigator();
 
@@ -46,8 +51,12 @@ export default function AuthStack({
   isAuthenticated = false,
   onAuthenticatedContinue,
   onGuestContinue,
+  backendProvider = "convex",
 }) {
   useI18n();
+  const LoginComponent = backendProvider === "node" ? NodeLoginScreen : LoginScreen;
+  const RegisterComponent = backendProvider === "node" ? NodeRegisterScreen : RegisterScreen;
+  const ResetPasswordComponent = backendProvider === "node" ? NodeResetPasswordScreen : ResetPasswordScreen;
 
   return (
     <Stack.Navigator
@@ -74,11 +83,11 @@ export default function AuthStack({
         )}
       </Stack.Screen>
       <Stack.Screen name="WelcomeSurvey" component={WelcomeSurveyScreen} />
-      <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="Login" component={LoginComponent} />
+      <Stack.Screen name="Register" component={RegisterComponent} />
       <Stack.Screen
         name="ResetPassword"
-        component={ResetPasswordScreen}
+        component={ResetPasswordComponent}
         options={{
           title: tr("Restablecer contraseña"),
           headerShown: false,
