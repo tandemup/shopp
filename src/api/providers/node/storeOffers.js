@@ -8,6 +8,10 @@ export const nodeStoreOffersApi = Object.freeze({
     const result = await request(`api/v1/store-offers/approved?limit=${encodeURIComponent(limit)}`);
     return result.offers;
   },
+  async listMine(accessToken) {
+    const result = await request("api/v1/store-offers/mine", accessToken);
+    return Array.isArray(result.offers) ? result.offers : [];
+  },
   async create(accessToken, offer) {
     const result = await request("api/v1/store-offers", accessToken, { method: "POST", body: offer });
     return result.offer;

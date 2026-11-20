@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
 import AuthStack from "@/src/navigation/AuthStack";
-import NodeBackendHomeScreen from "@/src/screens/auth/node/NodeBackendHomeScreen";
+import NodeShoppingListsScreen from "@/src/screens/auth/node/NodeShoppingListsScreen";
+import NodeChatScreen from "@/src/screens/auth/node/NodeChatScreen";
 import { useNodeAuth } from "@/src/context/NodeAuthContext";
 
 const APP_MODE = String(process.env.EXPO_PUBLIC_APP_MODE || "development").trim().toLowerCase();
@@ -24,13 +25,17 @@ function SessionRestoreError({ error, onRetry, onSignOut }) {
 }
 
 export default function NodeAppNavigator() {
-  const { status, user, error, signOut, reloadSession } = useNodeAuth();
+  const [activeScreen, setActiveScreen] = useState("shopping");
+  const { status, user, accessToken, error, signOut, reloadSession } = useNodeAuth();
 
   if (status === "loading") {
     return <View style={styles.center}><ActivityIndicator size="large" color="#2563eb" /><Text style={styles.message}>Comprobando sesión Node…</Text></View>;
   }
   if (status === "error") return <SessionRestoreError error={error} onRetry={reloadSession} onSignOut={signOut} />;
-  if (status === "signed_in" && user) return <NodeBackendHomeScreen user={user} onSignOut={signOut} />;
+  if (status === "signed_in" && user) {
+    if (activeScreen === "chat") return <NodeChatScreen user={user} accessToken={accessToken} onBack={() => setActiveScreen("shopping")} />;
+    return <NodeShoppingListsScreen user={user} accessToken={accessToken} onSignOut={signOut} onOpenChat={() => setActiveScreen("chat")} />;
+  }
 
   return <AuthStack accessMode={APP_MODE === "development" ? "development" : ACCESS_MODE} backendProvider="node" />;
 }

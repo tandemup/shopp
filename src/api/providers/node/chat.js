@@ -2,6 +2,18 @@ import { apiClient } from '../../httpClient';
 import { nodeRealtimeApi } from './realtime';
 
 export const nodeChatApi = Object.freeze({
+  listRooms(accessToken) {
+    return apiClient.request('api/v1/chat/rooms', { accessToken });
+  },
+
+  createRoom(accessToken, label) {
+    return apiClient.request('api/v1/chat/rooms', { method: 'POST', accessToken, body: { label } });
+  },
+
+  deleteRoom(accessToken, roomId) {
+    return apiClient.request(`api/v1/chat/rooms/${encodeURIComponent(roomId)}`, { method: 'DELETE', accessToken });
+  },
+
   listMessages(accessToken, { room = 'compras', limit = 100, beforeId } = {}) {
     const params = new URLSearchParams({ room, limit: String(limit) });
     if (beforeId) params.set('beforeId', String(beforeId));
