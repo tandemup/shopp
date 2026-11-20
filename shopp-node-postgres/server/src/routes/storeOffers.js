@@ -28,6 +28,16 @@ storeOffersRouter.get('/approved',async(req,res,next)=>{
   } catch(error) { next(error); }
 });
 
+storeOffersRouter.get('/mine',requireAuth,async(req,res,next)=>{
+  try {
+    const {rows}=await pool.query(
+      'SELECT * FROM store_offer_submissions WHERE submitted_by=$1 ORDER BY created_at_ms DESC LIMIT 100',
+      [req.auth.user.id],
+    );
+    res.json({offers:rows.map(publicOffer)});
+  } catch(error) { next(error); }
+});
+
 storeOffersRouter.post('/',requireAuth,async(req,res,next)=>{
   const submissionType=req.body?.submissionType;
   const storeId=clean(req.body?.storeId,120),productName=clean(req.body?.productName,180),offerText=clean(req.body?.offerText,500);

@@ -126,6 +126,7 @@ Las rutas están bajo `/api/v1/store-offers`:
 | Método y ruta | Uso |
 |---|---|
 | `GET /approved?limit=100` | Lista ofertas aprobadas sin exponer datos de contacto ni notas privadas. |
+| `GET /mine` | Lista únicamente las solicitudes de la cuenta autenticada. |
 | `POST /` | Envía una oferta `shopper` o una propuesta comercial `owner`; requiere sesión. |
 | `GET /` | Lista ofertas para moderación, con filtro opcional `?status=pending`; requiere administrador. |
 | `PATCH /:id/status` | Cambia el estado a `pending`, `approved` o `rejected`; requiere administrador. |
@@ -157,7 +158,7 @@ La API ofrece una base autenticada para conexiones en vivo. La sesión habitual 
 
 Tras conectar, el servidor envía un mensaje `connected` con identidad mínima. Se puede enviar `{"type":"ping"}` para recibir `pong` y `{"type":"subscribe","rooms":["compras"]}` para recibir los avisos de una sala. Los avisos de chat se envían a las conexiones suscritas en esa instancia del servidor.
 
-El cliente `nodeRealtimeApi.connect(accessToken)` obtiene un ticket con HTTPS y luego abre `ws://` o `wss://` según `EXPO_PUBLIC_API_URL`. La app aún mantiene Convex como proveedor activo hasta integrar y validar las pantallas y la sesión Node.
+El cliente `nodeRealtimeApi.connect(accessToken)` obtiene un ticket con HTTPS y luego abre `ws://` o `wss://` según `EXPO_PUBLIC_API_URL`. La pantalla básica de chat Node usa este flujo con una reconexión automática.
 
 ## Chat básico en PostgreSQL
 
@@ -165,11 +166,14 @@ La API incluye persistencia inicial para mensajes de texto y entrega de novedade
 
 | Método y ruta | Uso |
 |---|---|
+| `GET /api/v1/chat/rooms` | Lista las salas compartidas y el número de mensajes visibles. |
+| `POST /api/v1/chat/rooms` | Crea una sala personalizada compartida. |
+| `DELETE /api/v1/chat/rooms/:roomId` | Borra mensajes de una sala integrada o elimina una sala personalizada; requiere administrador. |
 | `GET /api/v1/chat/messages?room=compras&limit=100&beforeId=...` | Historial paginado (máximo 200 mensajes). |
 | `POST /api/v1/chat/messages` | Publica texto; caduca a las 24 horas por defecto. |
 | `DELETE /api/v1/chat/messages/:id` | El autor puede borrar su mensaje; el administrador puede borrar cualquiera. |
 
-Los mensajes admiten 280 caracteres, salvo la sala `youtube` (2048). El cliente `nodeChatApi` ofrece historial, envío, borrado y suscripción WebSocket. Los avisos viajan por PostgreSQL `LISTEN/NOTIFY`, por lo que las conexiones de distintas réplicas de la API pueden recibir cambios. PostgreSQL notifica tras confirmar la transacción; el mensaje completo se vuelve a leer de la tabla antes de difundirlo. Este núcleo todavía no migra adjuntos, salas cercanas, moderación, controles administrativos, listas de reproducción ni otras funciones del chat Convex; la pantalla existente continúa usando Convex.
+Los mensajes admiten 280 caracteres, salvo la sala `youtube` (2048). El cliente `nodeChatApi` ofrece consulta y creación de salas, historial, envío, borrado y suscripción WebSocket. Los avisos viajan por PostgreSQL `LISTEN/NOTIFY`, por lo que las conexiones de distintas réplicas de la API pueden recibir cambios. PostgreSQL notifica tras confirmar la transacción; el mensaje completo se vuelve a leer de la tabla antes de difundirlo. La migración `011_chat_rooms.sql` registra las salas integradas y preserva las salas con mensajes anteriores. En la app Node, `NodeChatScreen` incorpora las salas Compras, Música y YouTube, salas personalizadas compartidas, alias, texto, borrado autorizado y reconexión automática. El chat Convex conserva su pantalla completa. Este tramo Node todavía no migra adjuntos, salas cercanas, listas de reproducción ni las herramientas extendidas del chat Convex.
 
 ## Puente inicial de sesión Convex → Node
 

@@ -42,6 +42,32 @@ function normalizeProductBody(body) {
   return { data, source:body.source || 'manual', status:body.status };
 }
 
+productsRouter.get('/search', async (req,res,next) => {
+  const query = String(req.query.q || '').trim();
+  if (query.length < 2) return res.json({products:[]});
+  if (query.length > 100) return fail(res,400,'invalid_query','La búsqueda no puede superar los 100 caracteres.');
+  const requestedLimit = Number.parseInt(req.query.limit,10);
+  const limit = Number.isInteger(requestedLimit) ? Math.min(50,Math.max(1,requestedLimit)) : 20;
+  const pattern = query.replace(/[\\%_]/g, (character) => `\\${character}`);
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM product_catalog
+       WHERE status='complete' AND (
+         COALESCE(data->>'name','') ILIKE '%' || $1 || '%' ESCAPE E'\\\\' OR
+         COALESCE(data->>'brand','') ILIKE '%' || $1 || '%' ESCAPE E'\\\\' OR
+         COALESCE(data->>'category','') ILIKE '%' || $1 || '%' ESCAPE E'\\\\' OR
+         COALESCE(data->>'subcategory','') ILIKE '%' || $1 || '%' ESCAPE E'\\\\' OR
+         ($2 <> '' AND barcode LIKE '%' || $2 || '%')
+       )
+       ORDER BY CASE WHEN barcode=$2 THEN 0 WHEN data->>'name' ILIKE $3 ESCAPE E'\\\\' THEN 1 ELSE 2 END,
+         last_accessed_at_ms DESC
+       LIMIT $4`,
+      [pattern,query.replace(/\D/g,''),`${pattern}%`,limit],
+    );
+    res.json({products:rows.map(productFromRow)});
+  } catch(error) { next(error); }
+});
+
 productsRouter.get('/:barcode', async (req,res,next) => {
   const barcode = barcodeOf(req.params.barcode);
   if (!validateBarcode(barcode)) return fail(res,400,'invalid_barcode','El código debe contener entre 8 y 14 dígitos.');
