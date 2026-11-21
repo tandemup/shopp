@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { pool } from '../db.js';
 import { config, authConfigurationError } from '../config.js';
 import { sendAuthCode } from '../email.js';
-import { requireAuth, publicUser } from '../middleware/auth.js';
+import { requireAuth, publicUser, accountUser } from '../middleware/auth.js';
 import { authRateLimit } from '../middleware/rateLimit.js';
 import {
   createOtp, createSessionToken, digestOtp, digestToken, hashPassword,
@@ -151,7 +151,7 @@ authRouter.post('/verify-email', async (req, res, next) => {
     res.json({
       token: session.token,
       expiresAt: session.expiresAt,
-      user: publicUser({ ...user, email_verified_at: new Date(), status: 'active' }),
+      user: accountUser({ ...user, email_verified_at: new Date(), status: 'active' }),
     });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -216,7 +216,10 @@ authRouter.post('/login', async (req, res, next) => {
     return res.status(400).json({ error: { code: 'invalid_input', message: 'Correo o contraseña no válidos' } });
   }
   try {
-    const { rows } = await pool.query('SELECT * FROM app_users WHERE email = $1', [email]);
+    const { rows } = await pool.query(
+      `SELECT u.*, p.phone, p.scan_history_sync_enabled FROM app_users u
+       LEFT JOIN user_profiles p ON p.user_id = u.id WHERE u.email = $1`, [email],
+    );
     const user = rows[0];
     const valid = user?.password_hash ? await verifyPassword(password, user.password_hash) : false;
     if (!user || !valid || !user.email_verified_at || user.status !== 'active') {
@@ -227,7 +230,7 @@ authRouter.post('/login', async (req, res, next) => {
       await client.query('BEGIN');
       const session = await issueSession(client, user.id);
       await client.query('COMMIT');
-      res.json({ token: session.token, expiresAt: session.expiresAt, user: publicUser(user) });
+      res.json({ token: session.token, expiresAt: session.expiresAt, user: accountUser(user) });
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
       throw error;
@@ -236,27 +239,74 @@ authRouter.post('/login', async (req, res, next) => {
 });
 
 authRouter.get('/me', requireAuth, (req, res) => res.json({
-  user: publicUser(req.auth.user),
+  user: accountUser(req.auth.user),
   expiresAt: new Date(req.auth.claims.exp * 1000),
 }));
 authRouter.patch('/me', requireAuth, async (req, res, next) => {
-  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : null;
   const alias = typeof req.body?.alias === 'string' ? req.body.alias.trim() : null;
-  if (!name || name.length > 120) {
+  const phoneProvided = Object.prototype.hasOwnProperty.call(req.body || {}, 'phone');
+  const phone = phoneProvided && typeof req.body.phone === 'string' ? req.body.phone.trim() : null;
+  const scanHistorySyncEnabled = req.body?.scanHistorySyncEnabled;
+  if (name !== null && (!name || name.length > 120)) {
     return res.status(400).json({ error: { code: 'invalid_input', message: 'El nombre es obligatorio y no puede superar 120 caracteres' } });
   }
   if (alias !== null && (alias.length < 2 || alias.length > 40)) {
     return res.status(400).json({ error: { code: 'invalid_input', message: 'El alias público debe tener entre 2 y 40 caracteres' } });
   }
+  if (phoneProvided && (typeof req.body.phone !== 'string' || phone.length > 30)) {
+    return res.status(400).json({ error: { code: 'invalid_input', message: 'El teléfono debe ser texto y no superar 30 caracteres' } });
+  }
+  if (scanHistorySyncEnabled !== undefined && typeof scanHistorySyncEnabled !== 'boolean') {
+    return res.status(400).json({ error: { code: 'invalid_input', message: 'La preferencia de sincronización debe ser booleana' } });
+  }
+  if (name === null && alias === null && !phoneProvided && scanHistorySyncEnabled === undefined) {
+    return res.status(400).json({ error: { code: 'invalid_input', message: 'No se recibieron cambios para guardar' } });
+  }
   try {
-    const { rows } = await pool.query(
-      `UPDATE app_users SET name = $1, public_alias = COALESCE($2, public_alias, $1), updated_at = NOW()
+    const client = await pool.connect();
+    let user;
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+      `UPDATE app_users SET
+         name = COALESCE($1, name),
+         public_alias = COALESCE($2, public_alias, $1, name),
+         updated_at = NOW()
        WHERE id = $3 AND status = 'active'
        RETURNING id, email, name, public_alias, role, status, permissions, email_verified_at`,
-      [name, alias, req.auth.user.id],
-    );
-    if (!rows[0]) return res.status(401).json({ error: { code: 'unauthorized', message: 'La sesión no está activa' } });
-    res.json({ user: publicUser(rows[0]) });
+        [name, alias, req.auth.user.id],
+      );
+      if (!rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(401).json({ error: { code: 'unauthorized', message: 'La sesión no está activa' } });
+      }
+      const timestamp = Date.now();
+      await client.query(
+        `INSERT INTO user_profiles (user_id, alias, phone, phone_visible, scan_history_sync_enabled, created_at_ms, updated_at_ms)
+         VALUES ($1, $2, NULL, FALSE, COALESCE($3, FALSE), $4, $4)
+         ON CONFLICT (user_id) DO UPDATE SET
+           alias = EXCLUDED.alias,
+           scan_history_sync_enabled = COALESCE($3, user_profiles.scan_history_sync_enabled),
+           updated_at_ms = $4`,
+        [rows[0].id, rows[0].public_alias, scanHistorySyncEnabled ?? null, timestamp],
+      );
+      if (phoneProvided) {
+        await client.query(
+          `UPDATE user_profiles SET phone = $1,
+             phone_visible = CASE WHEN $1 IS NULL THEN FALSE ELSE phone_visible END,
+             updated_at_ms = $2 WHERE user_id = $3`,
+          [phone || null, timestamp, rows[0].id],
+        );
+      }
+      const profileResult = await client.query('SELECT phone, scan_history_sync_enabled FROM user_profiles WHERE user_id = $1', [rows[0].id]);
+      user = accountUser({ ...rows[0], phone: profileResult.rows[0]?.phone, scan_history_sync_enabled: profileResult.rows[0]?.scan_history_sync_enabled });
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally { client.release(); }
+    res.json({ user });
   } catch (error) { next(error); }
 });
 authRouter.post('/me/email-change/request', requireAuth, async (req, res, next) => {
@@ -338,7 +388,7 @@ authRouter.post('/refresh', requireAuth, async (req, res, next) => {
       return res.status(401).json({ error: { code: 'unauthorized', message: 'La sesión ha caducado o ya se ha renovado' } });
     }
     await client.query('COMMIT');
-    res.json({ token: session.token, expiresAt: session.expiresAt, user: publicUser(req.auth.user) });
+    res.json({ token: session.token, expiresAt: session.expiresAt, user: accountUser(req.auth.user) });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);

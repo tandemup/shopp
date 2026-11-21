@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { nodeAuthApi } from "@/src/api/providers/node/auth";
+import { nodeScanHistoryApi } from "@/src/api/providers/node/scanHistory";
 
 const NodeAuthContext = createContext(null);
 const TOKEN_STORAGE_KEY = "@shopp/node-auth-token-v1";
@@ -136,15 +137,21 @@ export function NodeAuthProvider({ children }) {
   const requestPasswordReset = useCallback((email) => nodeAuthApi.requestPasswordReset(email), []);
   const resetPassword = useCallback((details) => nodeAuthApi.resetPassword(details), []);
 
-  const updateProfile = useCallback(async ({ name, alias }) => {
+  const updateProfile = useCallback(async ({ name, alias, phone, scanHistorySyncEnabled }) => {
     const token = activeTokenRef.current;
     if (!token) throw new Error("Inicia sesión para cambiar tu perfil.");
-    const payload = await nodeAuthApi.updateProfile(token, { name, alias });
+    const payload = await nodeAuthApi.updateProfile(token, { name, alias, phone, scanHistorySyncEnabled });
     if (!payload?.user) throw new Error("El servidor no devolvió el perfil actualizado.");
     setState((current) => current.session?.user?.id === payload.user.id
       ? { ...current, session: { ...current.session, user: payload.user } }
       : current);
     return payload.user;
+  }, []);
+
+  const clearScanHistory = useCallback(async () => {
+    const token = activeTokenRef.current;
+    if (!token) throw new Error("Inicia sesión para borrar tu historial.");
+    return nodeScanHistoryApi.clear(token);
   }, []);
 
   const requestEmailChange = useCallback((email) => {
@@ -179,11 +186,12 @@ export function NodeAuthProvider({ children }) {
     requestPasswordReset,
     resetPassword,
     updateProfile,
+    clearScanHistory,
     requestEmailChange,
     confirmEmailChange,
     signOut,
     reloadSession: restoreSession,
-  }), [state, login, register, verifyEmail, requestPasswordReset, resetPassword, updateProfile, requestEmailChange, confirmEmailChange, signOut, restoreSession]);
+  }), [state, login, register, verifyEmail, requestPasswordReset, resetPassword, updateProfile, clearScanHistory, requestEmailChange, confirmEmailChange, signOut, restoreSession]);
 
   return <NodeAuthContext.Provider value={value}>{children}</NodeAuthContext.Provider>;
 }
