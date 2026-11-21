@@ -137,10 +137,10 @@ export function NodeAuthProvider({ children }) {
   const requestPasswordReset = useCallback((email) => nodeAuthApi.requestPasswordReset(email), []);
   const resetPassword = useCallback((details) => nodeAuthApi.resetPassword(details), []);
 
-  const updateProfile = useCallback(async ({ name, alias, scanHistorySyncEnabled }) => {
+  const updateProfile = useCallback(async ({ name, alias, phone, scanHistorySyncEnabled }) => {
     const token = activeTokenRef.current;
     if (!token) throw new Error("Inicia sesión para cambiar tu perfil.");
-    const payload = await nodeAuthApi.updateProfile(token, { name, alias, scanHistorySyncEnabled });
+    const payload = await nodeAuthApi.updateProfile(token, { name, alias, phone, scanHistorySyncEnabled });
     if (!payload?.user) throw new Error("El servidor no devolvió el perfil actualizado.");
     setState((current) => current.session?.user?.id === payload.user.id
       ? { ...current, session: { ...current.session, user: payload.user } }

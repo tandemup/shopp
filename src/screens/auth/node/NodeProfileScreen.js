@@ -7,6 +7,7 @@ const ROLE_LABELS = { user: "Usuario", tester: "Tester", admin: "Administrador" 
 export default function NodeProfileScreen({ user, onBack, onUpdateProfile, onClearScanHistory, onChangePassword, onChangeEmail }) {
   const [name, setName] = useState(user?.name || "");
   const [alias, setAlias] = useState(user?.alias || user?.name || "");
+  const [phone, setPhone] = useState(user?.phone || "");
   const [scanHistorySyncEnabled, setScanHistorySyncEnabled] = useState(user?.scanHistorySyncEnabled === true);
   const [busy, setBusy] = useState(false);
   const [clearBusy, setClearBusy] = useState(false);
@@ -16,8 +17,9 @@ export default function NodeProfileScreen({ user, onBack, onUpdateProfile, onCle
   useEffect(() => {
     setName(user?.name || "");
     setAlias(user?.alias || user?.name || "");
+    setPhone(user?.phone || "");
     setScanHistorySyncEnabled(user?.scanHistorySyncEnabled === true);
-  }, [user?.name, user?.alias, user?.scanHistorySyncEnabled]);
+  }, [user?.name, user?.alias, user?.phone, user?.scanHistorySyncEnabled]);
 
   const save = async () => {
     const trimmedName = name.trim();
@@ -36,7 +38,7 @@ export default function NodeProfileScreen({ user, onBack, onUpdateProfile, onCle
     setError("");
     setMessage("");
     try {
-      await onUpdateProfile({ name: trimmedName, alias: trimmedAlias, scanHistorySyncEnabled });
+      await onUpdateProfile({ name: trimmedName, alias: trimmedAlias, phone: phone.trim(), scanHistorySyncEnabled });
       setMessage("Los cambios del perfil y la sincronización se han guardado.");
     } catch (err) {
       setError(err?.message || "No se pudo actualizar el perfil.");
@@ -84,6 +86,9 @@ export default function NodeProfileScreen({ user, onBack, onUpdateProfile, onCle
           <TextInput value={name} onChangeText={setName} maxLength={120} autoCapitalize="words" returnKeyType="done" style={styles.input} accessibilityLabel="Nombre de perfil" />
           <Text style={styles.label}>Alias público</Text>
           <TextInput value={alias} onChangeText={setAlias} maxLength={40} autoCapitalize="none" returnKeyType="done" style={styles.input} accessibilityLabel="Alias público" />
+          <Text style={styles.label}>Teléfono de contacto (privado)</Text>
+          <TextInput value={phone} onChangeText={setPhone} maxLength={30} keyboardType="phone-pad" textContentType="telephoneNumber" returnKeyType="done" style={styles.input} accessibilityLabel="Teléfono de contacto privado" />
+          <Text style={styles.fieldHelp}>Solo tú puedes consultar este número desde tu cuenta. Node no lo muestra en el chat.</Text>
           <Text style={styles.label}>Correo electrónico</Text>
           <Text style={styles.readOnly}>{user?.email || "—"}</Text>
           <Text style={styles.label}>Rol</Text>
@@ -136,6 +141,7 @@ const styles = StyleSheet.create({
   card: { padding: 20, borderRadius: 18, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#fff" },
   label: { marginTop: 14, marginBottom: 7, color: "#475569", fontSize: 13, fontWeight: "700" },
   input: { minHeight: 48, paddingHorizontal: 13, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 12, color: "#172033", fontSize: 16 },
+  fieldHelp: { marginTop: 5, color: "#64748b", fontSize: 12, lineHeight: 18 },
   readOnly: { minHeight: 44, justifyContent: "center", paddingHorizontal: 13, paddingTop: 12, borderRadius: 12, backgroundColor: "#f8fafc", color: "#334155", fontSize: 15 },
   preferenceRow: { marginTop: 18, paddingVertical: 14, paddingHorizontal: 13, borderRadius: 13, backgroundColor: "#f8fafc", flexDirection: "row", alignItems: "center", gap: 12 },
   preferenceCopy: { flex: 1 },

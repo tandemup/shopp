@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { pool } from '../db.js';
 import { config, authConfigurationError } from '../config.js';
 import { sendAuthCode } from '../email.js';
-import { requireAuth, publicUser } from '../middleware/auth.js';
+import { requireAuth, publicUser, accountUser } from '../middleware/auth.js';
 import { authRateLimit } from '../middleware/rateLimit.js';
 import {
   createOtp, createSessionToken, digestOtp, digestToken, hashPassword,
@@ -151,7 +151,7 @@ authRouter.post('/verify-email', async (req, res, next) => {
     res.json({
       token: session.token,
       expiresAt: session.expiresAt,
-      user: publicUser({ ...user, email_verified_at: new Date(), status: 'active' }),
+      user: accountUser({ ...user, email_verified_at: new Date(), status: 'active' }),
     });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -217,7 +217,7 @@ authRouter.post('/login', async (req, res, next) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT u.*, p.scan_history_sync_enabled FROM app_users u
+      `SELECT u.*, p.phone, p.scan_history_sync_enabled FROM app_users u
        LEFT JOIN user_profiles p ON p.user_id = u.id WHERE u.email = $1`, [email],
     );
     const user = rows[0];
@@ -230,7 +230,7 @@ authRouter.post('/login', async (req, res, next) => {
       await client.query('BEGIN');
       const session = await issueSession(client, user.id);
       await client.query('COMMIT');
-      res.json({ token: session.token, expiresAt: session.expiresAt, user: publicUser(user) });
+      res.json({ token: session.token, expiresAt: session.expiresAt, user: accountUser(user) });
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
       throw error;
@@ -239,12 +239,14 @@ authRouter.post('/login', async (req, res, next) => {
 });
 
 authRouter.get('/me', requireAuth, (req, res) => res.json({
-  user: publicUser(req.auth.user),
+  user: accountUser(req.auth.user),
   expiresAt: new Date(req.auth.claims.exp * 1000),
 }));
 authRouter.patch('/me', requireAuth, async (req, res, next) => {
   const name = typeof req.body?.name === 'string' ? req.body.name.trim() : null;
   const alias = typeof req.body?.alias === 'string' ? req.body.alias.trim() : null;
+  const phoneProvided = Object.prototype.hasOwnProperty.call(req.body || {}, 'phone');
+  const phone = phoneProvided && typeof req.body.phone === 'string' ? req.body.phone.trim() : null;
   const scanHistorySyncEnabled = req.body?.scanHistorySyncEnabled;
   if (name !== null && (!name || name.length > 120)) {
     return res.status(400).json({ error: { code: 'invalid_input', message: 'El nombre es obligatorio y no puede superar 120 caracteres' } });
@@ -252,10 +254,13 @@ authRouter.patch('/me', requireAuth, async (req, res, next) => {
   if (alias !== null && (alias.length < 2 || alias.length > 40)) {
     return res.status(400).json({ error: { code: 'invalid_input', message: 'El alias público debe tener entre 2 y 40 caracteres' } });
   }
+  if (phoneProvided && (typeof req.body.phone !== 'string' || phone.length > 30)) {
+    return res.status(400).json({ error: { code: 'invalid_input', message: 'El teléfono debe ser texto y no superar 30 caracteres' } });
+  }
   if (scanHistorySyncEnabled !== undefined && typeof scanHistorySyncEnabled !== 'boolean') {
     return res.status(400).json({ error: { code: 'invalid_input', message: 'La preferencia de sincronización debe ser booleana' } });
   }
-  if (name === null && alias === null && scanHistorySyncEnabled === undefined) {
+  if (name === null && alias === null && !phoneProvided && scanHistorySyncEnabled === undefined) {
     return res.status(400).json({ error: { code: 'invalid_input', message: 'No se recibieron cambios para guardar' } });
   }
   try {
@@ -286,8 +291,16 @@ authRouter.patch('/me', requireAuth, async (req, res, next) => {
            updated_at_ms = $4`,
         [rows[0].id, rows[0].public_alias, scanHistorySyncEnabled ?? null, timestamp],
       );
-      const profileResult = await client.query('SELECT scan_history_sync_enabled FROM user_profiles WHERE user_id = $1', [rows[0].id]);
-      user = publicUser({ ...rows[0], scan_history_sync_enabled: profileResult.rows[0]?.scan_history_sync_enabled });
+      if (phoneProvided) {
+        await client.query(
+          `UPDATE user_profiles SET phone = $1,
+             phone_visible = CASE WHEN $1 IS NULL THEN FALSE ELSE phone_visible END,
+             updated_at_ms = $2 WHERE user_id = $3`,
+          [phone || null, timestamp, rows[0].id],
+        );
+      }
+      const profileResult = await client.query('SELECT phone, scan_history_sync_enabled FROM user_profiles WHERE user_id = $1', [rows[0].id]);
+      user = accountUser({ ...rows[0], phone: profileResult.rows[0]?.phone, scan_history_sync_enabled: profileResult.rows[0]?.scan_history_sync_enabled });
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
@@ -375,7 +388,7 @@ authRouter.post('/refresh', requireAuth, async (req, res, next) => {
       return res.status(401).json({ error: { code: 'unauthorized', message: 'La sesión ha caducado o ya se ha renovado' } });
     }
     await client.query('COMMIT');
-    res.json({ token: session.token, expiresAt: session.expiresAt, user: publicUser(req.auth.user) });
+    res.json({ token: session.token, expiresAt: session.expiresAt, user: accountUser(req.auth.user) });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);

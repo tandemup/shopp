@@ -9,7 +9,7 @@ export async function requireAuth(req, res, next) {
   try {
     const { rows } = await pool.query(
       `SELECT s.id AS session_id, u.id, u.email, u.name, u.public_alias, u.role, u.status, u.permissions, u.email_verified_at,
-              p.scan_history_sync_enabled
+              p.phone, p.scan_history_sync_enabled
        FROM auth_sessions s JOIN app_users u ON u.id = s.user_id
        LEFT JOIN user_profiles p ON p.user_id = u.id
        WHERE s.token_hash = $1 AND s.user_id = $2 AND u.id = $2
@@ -50,4 +50,8 @@ export function publicUser(user) {
     status: user.status, permissions: user.permissions || {},
     scanHistorySyncEnabled: user.scan_history_sync_enabled === true,
   };
+}
+
+export function accountUser(user) {
+  return { ...publicUser(user), phone: user.phone || null };
 }

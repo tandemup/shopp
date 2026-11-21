@@ -218,7 +218,7 @@ curl -X POST http://localhost:3001/api/v1/auth/register \
   -d '{"email":"usuario@example.com","name":"Usuario","password":"UnaClaveSegura8"}'
 ```
 
-Las sesiones usan JWT HS256 almacenados como hash en PostgreSQL. `PATCH /api/v1/auth/me` permite actualizar el nombre autenticado; el correo, rol, permisos y estado no se aceptan desde el cliente. `POST /api/v1/auth/refresh` acepta un token vigente, rota el token de la sesión (el anterior deja de servir) y devuelve la nueva caducidad. El cliente Node renueva cinco minutos antes de expirar y persiste el token rotado.
+Las sesiones usan JWT HS256 almacenados como hash en PostgreSQL. `PATCH /api/v1/auth/me` permite actualizar el nombre, alias, teléfono privado y preferencia de sincronización; el correo, rol, permisos y estado no se aceptan desde el cliente. `POST /api/v1/auth/refresh` acepta un token vigente, rota el token de la sesión (el anterior deja de servir) y devuelve la nueva caducidad. El cliente Node renueva cinco minutos antes de expirar y persiste el token rotado.
 
 Para comprobar manualmente la rotación, usa el JWT actual:
 
@@ -258,7 +258,7 @@ No uses `docker compose down -v` salvo que quieras borrar permanentemente la bas
 - Convex sigue siendo el proveedor predeterminado; `EXPO_PUBLIC_BACKEND_PROVIDER=node` activa la navegación Node de acceso, compras, chat y administración de usuarios.
 - Node parte con cuentas nuevas; cada usuario debe registrarse y verificar su correo. No hay importación de datos desde Convex.
 - En modo Node, compras utiliza las rutas Node de listas y los módulos ya migrados; el proveedor Convex conserva sus pantallas y datos por separado.
-- El perfil Node permite cambiar el nombre, el alias público, la contraseña y el correo verificado. La sincronización del historial privado del escáner está desactivada por defecto y se puede activar o borrar desde «Mi cuenta»; teléfono y avatar siguen pendientes.
+- El perfil Node permite cambiar el nombre, el alias público, un teléfono privado, la contraseña y el correo verificado. La sincronización del historial privado del escáner está desactivada por defecto y se puede activar o borrar desde «Mi cuenta». El teléfono no se comparte en el chat; el avatar sigue pendiente.
 - Las funciones todavía alojadas en Convex se reimplementarán en fases si se decide incluirlas en Node. Las propuestas generadas en el modo Node se moderan desde el panel Node.
 - Antes de usarlo con usuarios reales, configura Resend, orígenes CORS de producción y HTTPS en un proxy inverso. `TRUST_PROXY=true` solo debe activarse si la API está detrás de un proxy controlado que establezca correctamente `X-Forwarded-For`.
 
