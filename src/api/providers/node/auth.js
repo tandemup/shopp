@@ -31,11 +31,11 @@ export const nodeAuthApi = Object.freeze({
     return apiClient.request("api/v1/auth/me", { accessToken });
   },
 
-  updateProfile(accessToken, { name, alias }) {
+  updateProfile(accessToken, { name, alias, scanHistorySyncEnabled }) {
     return apiClient.request("api/v1/auth/me", {
       method: "PATCH",
       accessToken,
-      body: { name, alias },
+      body: { name, alias, scanHistorySyncEnabled },
     });
   },
 

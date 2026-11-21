@@ -43,6 +43,9 @@ scanHistoryRouter.get('/:barcode', async (req,res,next) => {
 });
 
 async function writeScan(req,res,next,{replaceCount=false}={}) {
+  if (req.auth.user.scan_history_sync_enabled !== true) {
+    return fail(res, 403, 'scan_sync_disabled', 'Activa la sincronización del historial en Mi cuenta para guardarlo en el servidor.');
+  }
   const barcode=normalizeBarcode(req.params.barcode || req.body?.barcode);
   if (!barcode || barcode.length>64) return fail(res,400,'invalid_barcode','El código no es válido.');
   const payload=readPayload(req.body);
