@@ -136,15 +136,27 @@ export function NodeAuthProvider({ children }) {
   const requestPasswordReset = useCallback((email) => nodeAuthApi.requestPasswordReset(email), []);
   const resetPassword = useCallback((details) => nodeAuthApi.resetPassword(details), []);
 
-  const updateProfile = useCallback(async ({ name }) => {
+  const updateProfile = useCallback(async ({ name, alias }) => {
     const token = activeTokenRef.current;
     if (!token) throw new Error("Inicia sesión para cambiar tu perfil.");
-    const payload = await nodeAuthApi.updateProfile(token, { name });
+    const payload = await nodeAuthApi.updateProfile(token, { name, alias });
     if (!payload?.user) throw new Error("El servidor no devolvió el perfil actualizado.");
     setState((current) => current.session?.user?.id === payload.user.id
       ? { ...current, session: { ...current.session, user: payload.user } }
       : current);
     return payload.user;
+  }, []);
+
+  const requestEmailChange = useCallback((email) => {
+    const token = activeTokenRef.current;
+    if (!token) throw new Error("Inicia sesión para cambiar tu correo.");
+    return nodeAuthApi.requestEmailChange(token, email);
+  }, []);
+
+  const confirmEmailChange = useCallback(({ email, code }) => {
+    const token = activeTokenRef.current;
+    if (!token) throw new Error("Inicia sesión para cambiar tu correo.");
+    return nodeAuthApi.confirmEmailChange(token, { email, code });
   }, []);
 
   const signOut = useCallback(async () => {
@@ -167,9 +179,11 @@ export function NodeAuthProvider({ children }) {
     requestPasswordReset,
     resetPassword,
     updateProfile,
+    requestEmailChange,
+    confirmEmailChange,
     signOut,
     reloadSession: restoreSession,
-  }), [state, login, register, verifyEmail, requestPasswordReset, resetPassword, updateProfile, signOut, restoreSession]);
+  }), [state, login, register, verifyEmail, requestPasswordReset, resetPassword, updateProfile, requestEmailChange, confirmEmailChange, signOut, restoreSession]);
 
   return <NodeAuthContext.Provider value={value}>{children}</NodeAuthContext.Provider>;
 }

@@ -31,11 +31,27 @@ export const nodeAuthApi = Object.freeze({
     return apiClient.request("api/v1/auth/me", { accessToken });
   },
 
-  updateProfile(accessToken, { name }) {
+  updateProfile(accessToken, { name, alias }) {
     return apiClient.request("api/v1/auth/me", {
       method: "PATCH",
       accessToken,
-      body: { name },
+      body: { name, alias },
+    });
+  },
+
+  requestEmailChange(accessToken, email) {
+    return apiClient.request("api/v1/auth/me/email-change/request", {
+      method: "POST",
+      accessToken,
+      body: { email },
+    });
+  },
+
+  confirmEmailChange(accessToken, { email, code }) {
+    return apiClient.request("api/v1/auth/me/email-change/confirm", {
+      method: "POST",
+      accessToken,
+      body: { email, code },
     });
   },
 

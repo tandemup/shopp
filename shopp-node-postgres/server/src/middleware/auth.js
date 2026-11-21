@@ -8,7 +8,7 @@ export async function requireAuth(req, res, next) {
   if (!claims) return res.status(401).json({ error: { code: 'unauthorized', message: 'Sesión no válida' } });
   try {
     const { rows } = await pool.query(
-      `SELECT s.id AS session_id, u.id, u.email, u.name, u.role, u.status, u.permissions, u.email_verified_at
+      `SELECT s.id AS session_id, u.id, u.email, u.name, u.public_alias, u.role, u.status, u.permissions, u.email_verified_at
        FROM auth_sessions s JOIN app_users u ON u.id = s.user_id
        WHERE s.token_hash = $1 AND s.user_id = $2 AND u.id = $2
          AND s.revoked_at IS NULL AND s.expires_at > NOW() LIMIT 1`,
@@ -43,6 +43,7 @@ export function requireFeature(feature) {
 export function publicUser(user) {
   return {
     id: user.id, email: user.email, name: user.name,
+    alias: user.public_alias || user.alias || user.name,
     emailVerified: Boolean(user.email_verified_at), role: user.role,
     status: user.status, permissions: user.permissions || {},
   };

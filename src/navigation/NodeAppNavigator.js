@@ -8,6 +8,7 @@ import NodeAdminUsersScreen from "@/src/screens/auth/node/NodeAdminUsersScreen";
 import NodeProductReviewsScreen from "@/src/screens/auth/node/NodeProductReviewsScreen";
 import NodeProfileScreen from "@/src/screens/auth/node/NodeProfileScreen";
 import { NodeResetPasswordScreen } from "@/src/screens/auth/node/NodeAuthScreens";
+import NodeEmailChangeScreen from "@/src/screens/auth/node/NodeEmailChangeScreen";
 import { useNodeAuth } from "@/src/context/NodeAuthContext";
 
 const APP_MODE = String(process.env.EXPO_PUBLIC_APP_MODE || "development").trim().toLowerCase();
@@ -32,7 +33,7 @@ function SessionRestoreError({ error, onRetry, onSignOut }) {
 export default function NodeAppNavigator() {
   const [activeScreen, setActiveScreen] = useState("shopping");
   const [signedOutAccessMode, setSignedOutAccessMode] = useState(DEFAULT_AUTH_ACCESS_MODE);
-  const { status, user, accessToken, error, signOut, reloadSession, updateProfile } = useNodeAuth();
+  const { status, user, accessToken, error, signOut, reloadSession, updateProfile, requestEmailChange, confirmEmailChange } = useNodeAuth();
 
   if (status === "loading") {
     return <View style={styles.center}><ActivityIndicator size="large" color="#2563eb" /><Text style={styles.message}>Comprobando sesión Node…</Text></View>;
@@ -40,7 +41,8 @@ export default function NodeAppNavigator() {
   if (status === "error") return <SessionRestoreError error={error} onRetry={reloadSession} onSignOut={signOut} />;
   if (status === "signed_in" && user) {
     const canUseChat = user.role === "admin" || user.permissions?.chat === true;
-    if (activeScreen === "profile") return <NodeProfileScreen user={user} onBack={() => setActiveScreen("shopping")} onUpdateProfile={updateProfile} onChangePassword={() => setActiveScreen("password")} />;
+    if (activeScreen === "profile") return <NodeProfileScreen user={user} onBack={() => setActiveScreen("shopping")} onUpdateProfile={updateProfile} onChangePassword={() => setActiveScreen("password")} onChangeEmail={() => setActiveScreen("email")} />;
+    if (activeScreen === "email") return <NodeEmailChangeScreen user={user} onBack={() => setActiveScreen("profile")} onRequestCode={requestEmailChange} onConfirmCode={confirmEmailChange} onDone={() => { setSignedOutAccessMode("login"); signOut(); }} />;
     if (activeScreen === "password") {
       const navigation = {
         navigate: (routeName) => {
