@@ -35,4 +35,4 @@ docker compose exec api npm run auth:bootstrap-admin -- correo@dominio.com
 - Aplicar y comprobar los permisos en todos los módulos que se migren después.
 - Completar las pantallas de administración de catálogos, solicitudes y revisiones.
 
-No se requiere la sesión puente `convex/nodeSessionBridge` en el modo de acceso Node: `NodeAuthProvider` valida directamente la sesión JWT con Express. Convex sigue activo en el modo Convex y para las funciones todavía no migradas.
+No existe puente de identidad entre los proveedores: `NodeAuthProvider` valida sesiones creadas por Express y Convex conserva sus propias sesiones en el modo Convex.

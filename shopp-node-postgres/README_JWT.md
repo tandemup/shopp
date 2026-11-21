@@ -8,7 +8,7 @@ Este paquete cambia los tokens opacos de sesión por JWT firmados con **HS256**.
 - `server/src/config.js`: secreto e identificadores `issuer`/`audience`.
 - `server/src/middleware/auth.js`: valida firma, expiración, emisor, audiencia y sesión activa en PostgreSQL.
 - `server/src/routes/auth.js`: emite JWT al verificar correo e iniciar sesión.
-- `server/src/routes/internalAuth.js`: emite JWT para el puente autenticado Convex → Node.
+- `server/src/routes/auth.js`: emite y rota JWT para las cuentas registradas directamente en Node.
 - `docker-compose.yml` y `.env.example`: variables de entorno nuevas. El `.env.example` contiene solo marcadores, nunca secretos reales.
 
 ## Instalación local
@@ -43,9 +43,9 @@ Este paquete cambia los tokens opacos de sesión por JWT firmados con **HS256**.
 - `SESSION_TTL_HOURS` determina la duración del JWT y de la sesión en PostgreSQL (por defecto, 168 horas).
 - Aunque las credenciales son JWT, cada solicitud protegida consulta la sesión en PostgreSQL. Por eso el cierre de sesión, el bloqueo de cuenta y el cambio de contraseña pueden revocar el acceso inmediatamente.
 - El backend solo acepta `HS256`; comprueba firma, `iss`, `aud`, `sub`, `iat` y `exp`.
-- No se implementa un refresh token. Al expirar, el cliente debe iniciar sesión otra vez o solicitar una sesión nueva por el puente Convex.
+- `POST /api/v1/auth/refresh` rota un JWT vigente y extiende la sesión; el JWT anterior queda invalidado. El cliente intenta renovar cinco minutos antes de la expiración.
 - Los tokens opacos emitidos antes de instalar esta versión dejarán de aceptarse; inicia sesión de nuevo para recibir un JWT.
-- El puente Convex → Node requiere `AUTH_JWT_SECRET` y `CONVEX_NODE_BRIDGE_SECRET`. El registro/inicio de sesión directo por Node también requiere `AUTH_CHALLENGE_SECRET`, `AUTH_RESEND_KEY` y `AUTH_EMAIL_FROM` configurados.
+- El registro/inicio de sesión directo por Node requiere `AUTH_JWT_SECRET`, `AUTH_CHALLENGE_SECRET`, `AUTH_RESEND_KEY` y `AUTH_EMAIL_FROM` configurados. No se comparten ni enlazan cuentas Convex.
 
 ## Heroku
 

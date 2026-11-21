@@ -7,7 +7,6 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { LocationProvider } from "@/src/context/LocationContext";
 import { ListsProvider } from "@/src/context/ListsContext";
-import { NodeSessionProvider } from "@/src/context/NodeSessionContext";
 import { StoresProvider } from "@/src/context/StoresContext";
 import DialogHost from "@/src/components/ui/alert/DialogHost";
 import AppNavigator from "@/src/navigation/AppNavigator";
@@ -90,18 +89,16 @@ function ShoppApp() {
   return (
     <SafeAreaProvider>
       <ConvexAuthProvider client={convex}>
-        <NodeSessionProvider>
-          <ListsProvider>
-            <StoresProvider>
-              <LocationProvider>
-                <NavigationContainer documentTitle={{ enabled: false }}>
-                  <AppNavigator />
-                </NavigationContainer>
-                {Platform.OS === "web" ? <DialogHost /> : null}
-              </LocationProvider>
-            </StoresProvider>
-          </ListsProvider>
-        </NodeSessionProvider>
+        <ListsProvider>
+          <StoresProvider>
+            <LocationProvider>
+              <NavigationContainer documentTitle={{ enabled: false }}>
+                <AppNavigator />
+              </NavigationContainer>
+              {Platform.OS === "web" ? <DialogHost /> : null}
+            </LocationProvider>
+          </StoresProvider>
+        </ListsProvider>
       </ConvexAuthProvider>
     </SafeAreaProvider>
   );

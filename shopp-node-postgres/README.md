@@ -76,7 +76,9 @@ Todas requieren `Authorization: Bearer <token>` y están bajo `/api/v1/shopping`
 
 Las respuestas mantienen la forma de listas usada por `ListsContext` (`id`, `name`, `currency`, `items`, `createdAt`, `archived`, `archivedAt`, `storeId`). Los campos adicionales de lista y producto se conservan en columnas JSONB; las claves consultadas con frecuencia y las relaciones usuario/lista/producto quedan normalizadas. Las rutas siempre limitan las consultas al usuario de la sesión, y los productos dependen de la lista mediante una clave foránea compuesta.
 
-En `src/api/providers/node/` hay adaptadores cliente para autenticación, listas, catálogo, historial de escaneos, tiendas, ofertas, chat y administración de usuarios. `nodeAuthApi` ofrece registro, verificación, login, consulta de sesión, logout y recuperación de contraseña; `NodeAuthProvider` guarda el JWT y lo valida con Express. El modo Node ya cuenta con pantallas alternativas de acceso, compras, chat y gestión básica de usuarios. Las pantallas completas de Convex siguen disponibles al elegir `EXPO_PUBLIC_BACKEND_PROVIDER=convex`; aún quedan módulos por migrar.
+En `src/api/providers/node/` hay adaptadores cliente para autenticación, listas, catálogo, historial de escaneos, tiendas, ofertas, chat y administración de usuarios. `nodeAuthApi` ofrece registro, verificación, login, consulta de sesión, edición del nombre, logout y recuperación de contraseña; `NodeAuthProvider` guarda el JWT y lo valida con Express. El modo Node ya cuenta con pantallas alternativas de acceso, perfil, compras, chat y gestión básica de usuarios. Las pantallas completas de Convex siguen disponibles al elegir `EXPO_PUBLIC_BACKEND_PROVIDER=convex`; aún quedan módulos por migrar.
+
+La pantalla «Mi cuenta» permite actualizar el nombre visible de la cuenta Node y abrir el flujo de cambio de contraseña por código de correo. El cambio de contraseña revoca las sesiones existentes y la app vuelve al inicio de sesión Node. El correo y el rol son de solo lectura; los permisos continúan gestionándose desde el panel de administración. `PATCH /api/v1/auth/me` exige JWT y solo cambia el nombre de la identidad autenticada.
 
 ## Roles, permisos y gestión Node de usuarios
 
@@ -93,7 +95,7 @@ Todas las rutas de gestión están bajo `/api/v1/admin/users` y requieren sesió
 
 La pantalla «Usuarios» está disponible para administradores desde la pantalla de compras Node. Desde ese panel también se abre «Revisión de productos» para aprobar o rechazar propuestas pendientes. Los permisos `scanner`, `stores` y `chat` se aplican también en la API; la interfaz Node oculta sus accesos cuando el usuario no los tiene. Administradores conservan acceso completo. La compra y gestión de listas es la función básica de una cuenta.
 
-Las invitaciones temporales de testers, las reglas completas de acceso para todas las áreas futuras y la migración de usuarios/perfiles ya existentes desde Convex siguen pendientes. Cambiar `EXPO_PUBLIC_BACKEND_PROVIDER` no copia cuentas ni datos entre bases de datos.
+Las invitaciones temporales de testers y las reglas completas de acceso para todas las áreas futuras siguen pendientes. La puesta en marcha acordada usa cuentas nuevas en Node y no importa usuarios ni datos de Convex. Cambiar `EXPO_PUBLIC_BACKEND_PROVIDER` no copia cuentas ni datos entre bases de datos.
 
 ## Catálogo de productos e historial privado de escaneos
 
@@ -193,21 +195,9 @@ La API incluye persistencia inicial para mensajes de texto y entrega de novedade
 
 Los mensajes admiten 280 caracteres, salvo la sala `youtube` (2048). El cliente `nodeChatApi` ofrece consulta y creación de salas, historial, envío, borrado y suscripción WebSocket. Los avisos viajan por PostgreSQL `LISTEN/NOTIFY`, por lo que las conexiones de distintas réplicas de la API pueden recibir cambios. PostgreSQL notifica tras confirmar la transacción; el mensaje completo se vuelve a leer de la tabla antes de difundirlo. La migración `011_chat_rooms.sql` registra las salas integradas y preserva las salas con mensajes anteriores. En la app Node, `NodeChatScreen` incorpora las salas Compras, Música y YouTube, salas personalizadas compartidas, alias, texto, borrado autorizado y reconexión automática. El chat Convex conserva su pantalla completa. Este tramo Node todavía no migra adjuntos, salas cercanas, listas de reproducción ni las herramientas extendidas del chat Convex.
 
-## Puente inicial de sesión Convex → Node
+## Autenticación independiente de Convex
 
-La app conserva Convex como autenticación principal y solicita una sesión Node mediante una acción autenticada de Convex. **El token Convex no se envía a Express**: Convex verifica al usuario y llama al endpoint interno de Node con un secreto compartido.
-
-1. Genera un secreto separado con `openssl rand -hex 32`.
-2. Añádelo al `.env` de esta carpeta como `CONVEX_NODE_BRIDGE_SECRET`.
-3. Configura el mismo valor en Convex con `npx convex env set CONVEX_NODE_BRIDGE_SECRET "..."`.
-4. Configura la URL HTTPS de la API en Convex con `npx convex env set SHOPP_NODE_API_URL "https://api.tu-dominio"`.
-5. Reconstruye y arranca la API para aplicar `010_convex_identity_bridge.sql`.
-6. Configura esa misma URL pública como `EXPO_PUBLIC_API_URL` en `.env.local` y en el entorno de compilación de la app.
-7. Desde la raíz del proyecto, ejecuta el flujo habitual de Convex (`npx convex dev` en desarrollo o `npx convex deploy` en producción) para publicar la acción nueva y regenerar sus referencias.
-
-La cuenta Node se vincula por el ID de usuario Convex; una cuenta Node existente con el mismo correo no se enlaza automáticamente. Las cuentas creadas por el puente reciben rol `user`; el rol administrador se concede aparte con el procedimiento de bootstrap. El token Node permanece en memoria de la app y se vuelve a emitir al iniciar una sesión Convex.
-
-Este puente solo prepara identidad y sesión. **Las listas siguen guardándose localmente**; no actives `EXPO_PUBLIC_BACKEND_PROVIDER=node` todavía.
+Convex y Node usan sesiones y cuentas independientes. El modo Node no crea cuentas espejo a partir de usuarios Convex ni envía tokens Convex al servidor Express. Para usar Node, configura `EXPO_PUBLIC_API_URL`, selecciona `EXPO_PUBLIC_BACKEND_PROVIDER=node` y registra una cuenta nueva desde las pantallas Node. Convex conserva su flujo de autenticación y sus pantallas cuando se selecciona `convex`.
 
 Ejemplo de creación de lista:
 
@@ -225,6 +215,17 @@ curl -X POST http://localhost:3001/api/v1/auth/register \
   -d '{"email":"usuario@example.com","name":"Usuario","password":"UnaClaveSegura8"}'
 ```
 
+Las sesiones usan JWT HS256 almacenados como hash en PostgreSQL. `PATCH /api/v1/auth/me` permite actualizar el nombre autenticado; el correo, rol, permisos y estado no se aceptan desde el cliente. `POST /api/v1/auth/refresh` acepta un token vigente, rota el token de la sesión (el anterior deja de servir) y devuelve la nueva caducidad. El cliente Node renueva cinco minutos antes de expirar y persiste el token rotado.
+
+Para comprobar manualmente la rotación, usa el JWT actual:
+
+```bash
+curl -X POST http://localhost:3001/api/v1/auth/refresh \
+  -H 'Authorization: Bearer TOKEN'
+```
+
+Guarda el nuevo `token` de la respuesta. El JWT anterior debe ser rechazado desde ese momento.
+
 Los códigos caducan a los 15 minutos y permiten como máximo cinco intentos. Los endpoints de autenticación limitan a 12 solicitudes por IP y ruta cada 15 minutos. El contador se almacena en PostgreSQL, se comparte entre instancias y conserva solo un HMAC de IP/ruta; los registros caducados se eliminan periódicamente.
 
 ## Crear el primer administrador
@@ -239,7 +240,7 @@ La cuenta debe existir, estar activa y tener el correo verificado. El rol y los 
 
 ## Migraciones y datos
 
-Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. `002_shopping_lists.sql` crea las tablas de listas y artículos; `003_api_rate_limits.sql` crea el almacenamiento compartido del límite de solicitudes; `004_products_scan_history.sql` crea el catálogo y el historial privado; `005_stores.sql` crea tiendas, favoritos y solicitudes; `006_store_offers.sql` crea propuestas de ofertas; `007_product_reviews.sql` crea la cola de revisión de productos; `008_realtime_tickets.sql` crea tickets WebSocket de corta duración; `009_chat_messages.sql` crea el almacenamiento inicial del chat; `010_convex_identity_bridge.sql` añade la relación opcional con el usuario Convex. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
+Las migraciones SQL de `server/migrations/` se aplican automáticamente al iniciar la API y se anotan en `schema_migrations`. `002_shopping_lists.sql` crea las tablas de listas y artículos; `003_api_rate_limits.sql` crea el almacenamiento compartido del límite de solicitudes; `004_products_scan_history.sql` crea el catálogo y el historial privado; `005_stores.sql` crea tiendas, favoritos y solicitudes; `006_store_offers.sql` crea propuestas de ofertas; `007_product_reviews.sql` crea la cola de revisión de productos; `008_realtime_tickets.sql` crea tickets WebSocket de corta duración; `009_chat_messages.sql` crea el almacenamiento inicial del chat. `010_convex_identity_bridge.sql` es un artefacto legado que añadió una columna de ID Convex; ya no hay rutas ni sincronización que la usen. Añade una nueva migración numerada para cada cambio posterior. No borres el volumen para aplicar cambios.
 
 Para detener servicios sin eliminar datos:
 
@@ -252,7 +253,10 @@ No uses `docker compose down -v` salvo que quieras borrar permanentemente la bas
 ## Estado y límites de esta fase
 
 - Convex sigue siendo el proveedor predeterminado; `EXPO_PUBLIC_BACKEND_PROVIDER=node` activa la navegación Node de acceso, compras, chat y administración de usuarios.
-- No importa usuarios ni contraseñas de Convex.
+- Node parte con cuentas nuevas; cada usuario debe registrarse y verificar su correo. No hay importación de datos desde Convex.
 - En modo Node, compras utiliza las rutas Node de listas y los módulos ya migrados; el proveedor Convex conserva sus pantallas y datos por separado.
-- La migración de tiendas, ofertas, usuarios/perfiles existentes, invitaciones de testers y otras áreas de Convex sigue pendiente de completar en la interfaz y/o en la migración de datos. Las propuestas generadas en el modo Node se moderan desde el panel Node; no se importan automáticamente propuestas ni fichas de Convex.
+- El perfil Node permite cambiar el nombre visible y la contraseña; preferencias, avatar y cambio de correo siguen pendientes.
+- Las funciones todavía alojadas en Convex se reimplementarán en fases si se decide incluirlas en Node. Las propuestas generadas en el modo Node se moderan desde el panel Node.
 - Antes de usarlo con usuarios reales, configura Resend, orígenes CORS de producción y HTTPS en un proxy inverso. `TRUST_PROXY=true` solo debe activarse si la API está detrás de un proxy controlado que establezca correctamente `X-Forwarded-For`.
+
+El procedimiento para iniciar Node sin migrar datos está en [`docs/NODE_FASE_INICIO_LIMPIO.md`](../docs/NODE_FASE_INICIO_LIMPIO.md). Convex y Node no comparten cuentas en este modo: los usuarios se registran de nuevo en Node.

@@ -1,0 +1,9 @@
+Aplicación de Shopp Node sin importar datos de Convex
+
+1. Sobrescribe los archivos del ZIP en las mismas rutas relativas.
+2. Elimina del proyecto:
+   - shopp-node-postgres/server/src/migration/importConvexSnapshot.js
+   - shopp-node-postgres/server/migrations/012_user_profiles.sql
+3. La nueva versión de server/package.json ya no incluye el comando migration:convex.
+4. No borres volúmenes PostgreSQL con docker compose down -v: esta decisión solo descarta la importación desde Convex, no autoriza borrar datos locales.
+5. Crea cuentas nuevas desde las pantallas Node; verifica el correo antes de iniciar sesión o promover la cuenta a admin.

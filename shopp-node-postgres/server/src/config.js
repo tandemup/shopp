@@ -14,6 +14,8 @@ export const config = Object.freeze({
   dbName: process.env.POSTGRES_DB || 'shopp',
   dbUser: process.env.POSTGRES_USER || 'shopp_app',
   dbPassword: process.env.POSTGRES_PASSWORD || '',
+  databaseUrl: process.env.DATABASE_URL || '',
+  databaseSslRejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false',
   sessionTtlHours: numberFromEnv('SESSION_TTL_HOURS', 168),
   resendKey: process.env.AUTH_RESEND_KEY || '',
   emailFrom: process.env.AUTH_EMAIL_FROM || '',
@@ -21,7 +23,6 @@ export const config = Object.freeze({
   jwtSecret: process.env.AUTH_JWT_SECRET || '',
   jwtIssuer: process.env.AUTH_JWT_ISSUER || 'shopp-api',
   jwtAudience: process.env.AUTH_JWT_AUDIENCE || 'shopp-client',
-  convexBridgeSecret: process.env.CONVEX_NODE_BRIDGE_SECRET || '',
   corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:8081,http://127.0.0.1:8081')
     .split(',').map((origin) => origin.trim()).filter(Boolean),
   trustProxy: process.env.TRUST_PROXY === 'true',
