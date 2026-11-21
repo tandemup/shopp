@@ -5,6 +5,7 @@ import AuthStack from "@/src/navigation/AuthStack";
 import NodeShoppingListsScreen from "@/src/screens/auth/node/NodeShoppingListsScreen";
 import NodeChatScreen from "@/src/screens/auth/node/NodeChatScreen";
 import NodeAdminUsersScreen from "@/src/screens/auth/node/NodeAdminUsersScreen";
+import NodeProductReviewsScreen from "@/src/screens/auth/node/NodeProductReviewsScreen";
 import { useNodeAuth } from "@/src/context/NodeAuthContext";
 
 const APP_MODE = String(process.env.EXPO_PUBLIC_APP_MODE || "development").trim().toLowerCase();
@@ -36,7 +37,8 @@ export default function NodeAppNavigator() {
   if (status === "signed_in" && user) {
     const canUseChat = user.role === "admin" || user.permissions?.chat === true;
     if (activeScreen === "chat" && canUseChat) return <NodeChatScreen user={user} accessToken={accessToken} onBack={() => setActiveScreen("shopping")} />;
-    if (activeScreen === "users" && user.role === "admin") return <NodeAdminUsersScreen user={user} accessToken={accessToken} onBack={() => setActiveScreen("shopping")} />;
+    if (activeScreen === "users" && user.role === "admin") return <NodeAdminUsersScreen user={user} accessToken={accessToken} onBack={() => setActiveScreen("shopping")} onOpenProductReviews={() => setActiveScreen("productReviews")} />;
+    if (activeScreen === "productReviews" && user.role === "admin") return <NodeProductReviewsScreen accessToken={accessToken} onBack={() => setActiveScreen("users")} />;
     return <NodeShoppingListsScreen user={user} accessToken={accessToken} onSignOut={signOut} onOpenChat={canUseChat ? () => setActiveScreen("chat") : null} onOpenUsers={user.role === "admin" ? () => setActiveScreen("users") : null} />;
   }
 

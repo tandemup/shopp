@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { nodeShoppingListsApi } from "@/src/api/providers/node/shoppingLists";
 import { nodeProductsApi } from "@/src/api/providers/node/products";
+import { nodeProductReviewsApi } from "@/src/api/providers/node/productReviews";
 import { nodeScanHistoryApi } from "@/src/api/providers/node/scanHistory";
 import { nodeStoresApi } from "@/src/api/providers/node/stores";
 import { nodeStoreOffersApi } from "@/src/api/providers/node/storeOffers";
@@ -357,12 +358,11 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
         await nodeShoppingListsApi.addItem(accessToken, selectedList.id, { ...patch, checked: false });
       }
       if (/^\d{8,14}$/.test(patch.barcode)) {
-        await nodeProductsApi.saveProductData(accessToken, {
+        await nodeProductReviewsApi.submit(accessToken, {
           barcode: patch.barcode,
           name: patch.name,
           category: patch.categoryName,
-          source: "manual",
-          status: "complete",
+          source: "user_review",
         }).catch(() => {});
       }
       setItemEditorVisible(false);

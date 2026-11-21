@@ -91,7 +91,7 @@ Todas las rutas de gestión están bajo `/api/v1/admin/users` y requieren sesió
 | `PATCH /:userId/status` | Activa o bloquea la cuenta; al bloquearla revoca sus sesiones activas. |
 | `PATCH /:userId/permissions` | Reemplaza el mapa de permisos permitido; no permite editar los permisos de otro administrador. |
 
-La pantalla «Usuarios» está disponible para administradores desde la pantalla de compras Node. Los permisos `scanner`, `stores` y `chat` se aplican también en la API; la interfaz Node oculta sus accesos cuando el usuario no los tiene. Administradores conservan acceso completo. La compra y gestión de listas es la función básica de una cuenta.
+La pantalla «Usuarios» está disponible para administradores desde la pantalla de compras Node. Desde ese panel también se abre «Revisión de productos» para aprobar o rechazar propuestas pendientes. Los permisos `scanner`, `stores` y `chat` se aplican también en la API; la interfaz Node oculta sus accesos cuando el usuario no los tiene. Administradores conservan acceso completo. La compra y gestión de listas es la función básica de una cuenta.
 
 Las invitaciones temporales de testers, las reglas completas de acceso para todas las áreas futuras y la migración de usuarios/perfiles ya existentes desde Convex siguen pendientes. Cambiar `EXPO_PUBLIC_BACKEND_PROVIDER` no copia cuentas ni datos entre bases de datos.
 
@@ -102,9 +102,10 @@ Las rutas requieren Bearer token y están bajo `/api/v1`:
 | Método y ruta | Uso |
 |---|---|
 | `GET /products/:barcode` | Consulta la ficha global del catálogo. |
-| `POST /products/:barcode/access` | Registra un acceso e incrementa el contador del catálogo. |
-| `PUT /products/:barcode` | Guarda campos del producto; los datos flexibles se conservan en JSONB. |
-| `POST /products/:barcode/not-found` | Guarda un resultado negativo con vencimiento de siete días. |
+| `POST /products/:barcode/access` | Registra un acceso e incrementa el contador; requiere permiso `scanner`. |
+| `PUT /products/:barcode` | Guarda campos directamente en el catálogo; requiere rol `admin`. |
+| `POST /products/:barcode/not-found` | Guarda un resultado negativo con vencimiento de siete días; requiere permiso `scanner`. |
+| `POST /product-reviews` | Envía una ficha propuesta a revisión; no altera directamente el catálogo público. |
 | `DELETE /products/:barcode` | Elimina del catálogo; requiere rol `admin`. |
 | `GET /scans?limit=100` | Lista el historial privado del usuario (máximo 300). |
 | `GET /scans/:barcode` | Consulta un producto del historial propio. |
@@ -250,8 +251,8 @@ No uses `docker compose down -v` salvo que quieras borrar permanentemente la bas
 
 ## Estado y límites de esta fase
 
-- No activa `EXPO_PUBLIC_BACKEND_PROVIDER=node`; Convex sigue siendo el proveedor activo de Shopp.
+- Convex sigue siendo el proveedor predeterminado; `EXPO_PUBLIC_BACKEND_PROVIDER=node` activa la navegación Node de acceso, compras, chat y administración de usuarios.
 - No importa usuarios ni contraseñas de Convex.
-- La API de listas está disponible, pero todavía no se activa desde `ListsContext`; la app continúa guardando listas localmente y usando Convex para los módulos que ya dependían de él.
-- La migración completa de usuarios y sesiones de Convex y las rutas de chat siguen pendientes; las pantallas de tiendas, ofertas y revisión de productos todavía usan Convex.
+- En modo Node, compras utiliza las rutas Node de listas y los módulos ya migrados; el proveedor Convex conserva sus pantallas y datos por separado.
+- La migración de tiendas, ofertas, usuarios/perfiles existentes, invitaciones de testers y otras áreas de Convex sigue pendiente de completar en la interfaz y/o en la migración de datos. Las propuestas generadas en el modo Node se moderan desde el panel Node; no se importan automáticamente propuestas ni fichas de Convex.
 - Antes de usarlo con usuarios reales, configura Resend, orígenes CORS de producción y HTTPS en un proxy inverso. `TRUST_PROXY=true` solo debe activarse si la API está detrás de un proxy controlado que establezca correctamente `X-Forwarded-For`.
