@@ -179,7 +179,7 @@ export function NodeRegisterScreen({ navigation }) {
   );
 }
 
-export function NodeResetPasswordScreen({ navigation, route }) {
+export function NodeResetPasswordScreen({ navigation, route, onPasswordResetComplete }) {
   const { requestPasswordReset, resetPassword } = useNodeAuth();
   const [step, setStep] = useState("email");
   const [email, setEmail] = useState(String(route?.params?.email || "").trim().toLowerCase());
@@ -210,14 +210,19 @@ export function NodeResetPasswordScreen({ navigation, route }) {
     setBusy(true); setError("");
     try {
       await resetPassword({ email: normalizedEmail, code: code.trim(), password });
-      navigation.navigate("Login", { email: normalizedEmail, passwordChanged: true });
+      if (onPasswordResetComplete) {
+        setStep("success");
+        setNotice("La contraseña se ha actualizado. Por seguridad, vuelve a iniciar sesión.");
+      } else {
+        navigation.navigate("Login", { email: normalizedEmail, passwordChanged: true });
+      }
     } catch (cause) { setError(errorText(cause, "No se pudo cambiar la contraseña.")); }
     finally { setBusy(false); }
   };
 
   return (
-    <Frame title="Restablecer contraseña" subtitle={step === "email" ? "Solicita un código de recuperación para tu cuenta Node." : `Introduce el código enviado a ${normalizedEmail}.`} navigation={navigation} notice={notice} footer={<InlineLink title="Volver a entrar" onPress={() => navigation.navigate("Login", { email: normalizedEmail })} />}>
-      {step === "email" ? <>
+    <Frame title={step === "success" ? "Contraseña actualizada" : "Restablecer contraseña"} subtitle={step === "email" ? "Solicita un código de recuperación para tu cuenta Node." : step === "code" ? `Introduce el código enviado a ${normalizedEmail}.` : "Tu contraseña ya está actualizada."} navigation={navigation} notice={notice} footer={step === "success" ? null : <InlineLink title="Volver a entrar" onPress={() => navigation.navigate("Login", { email: normalizedEmail })} />}>
+      {step === "success" ? <PrimaryButton title="Volver al inicio de sesión" onPress={() => onPasswordResetComplete ? onPasswordResetComplete() : navigation.navigate("Login", { email: normalizedEmail })} /> : step === "email" ? <>
         <Field label="Correo electrónico" value={email} onChangeText={setEmail} placeholder="nombre@correo.com" keyboardType="email-address" />
         {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
         <PrimaryButton title="Enviar código" onPress={sendCode} disabled={busy} busy={busy} />

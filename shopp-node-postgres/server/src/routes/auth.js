@@ -53,6 +53,20 @@ async function issueSession(client, userId) {
   return { token, expiresAt: rows[0].expires_at };
 }
 
+async function rotateSession(client, sessionId, userId, currentToken) {
+  const expiresAt = new Date(Date.now() + config.sessionTtlHours * 60 * 60 * 1000);
+  const token = createSessionToken(userId, expiresAt);
+  const { rows } = await client.query(
+    `UPDATE auth_sessions SET token_hash = $1, expires_at = $2
+     WHERE id = $3 AND user_id = $4 AND token_hash = $5
+       AND revoked_at IS NULL AND expires_at > NOW()
+     RETURNING expires_at`,
+    [digestToken(token), expiresAt, sessionId, userId, digestToken(currentToken)],
+  );
+  if (!rows[0]) return null;
+  return { token, expiresAt: rows[0].expires_at };
+}
+
 async function consumeOtp(client, userId, purpose, code) {
   const { rows } = await client.query(
     `SELECT id, code_digest, attempts, expires_at FROM auth_challenges
@@ -220,7 +234,42 @@ authRouter.post('/login', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-authRouter.get('/me', requireAuth, (req, res) => res.json({ user: publicUser(req.auth.user) }));
+authRouter.get('/me', requireAuth, (req, res) => res.json({
+  user: publicUser(req.auth.user),
+  expiresAt: new Date(req.auth.claims.exp * 1000),
+}));
+authRouter.patch('/me', requireAuth, async (req, res, next) => {
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  if (!name || name.length > 120) {
+    return res.status(400).json({ error: { code: 'invalid_input', message: 'El nombre es obligatorio y no puede superar 120 caracteres' } });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE app_users SET name = $1, updated_at = NOW()
+       WHERE id = $2 AND status = 'active'
+       RETURNING id, email, name, role, status, permissions, email_verified_at`,
+      [name, req.auth.user.id],
+    );
+    if (!rows[0]) return res.status(401).json({ error: { code: 'unauthorized', message: 'La sesión no está activa' } });
+    res.json({ user: publicUser(rows[0]) });
+  } catch (error) { next(error); }
+});
+authRouter.post('/refresh', requireAuth, async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const session = await rotateSession(client, req.auth.sessionId, req.auth.user.id, req.auth.token);
+    if (!session) {
+      await client.query('ROLLBACK');
+      return res.status(401).json({ error: { code: 'unauthorized', message: 'La sesión ha caducado o ya se ha renovado' } });
+    }
+    await client.query('COMMIT');
+    res.json({ token: session.token, expiresAt: session.expiresAt, user: publicUser(req.auth.user) });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally { client.release(); }
+});
 authRouter.post('/logout', requireAuth, async (req, res, next) => {
   try {
     await pool.query('UPDATE auth_sessions SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL', [req.auth.sessionId]);

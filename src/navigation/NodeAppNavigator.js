@@ -6,10 +6,13 @@ import NodeShoppingListsScreen from "@/src/screens/auth/node/NodeShoppingListsSc
 import NodeChatScreen from "@/src/screens/auth/node/NodeChatScreen";
 import NodeAdminUsersScreen from "@/src/screens/auth/node/NodeAdminUsersScreen";
 import NodeProductReviewsScreen from "@/src/screens/auth/node/NodeProductReviewsScreen";
+import NodeProfileScreen from "@/src/screens/auth/node/NodeProfileScreen";
+import { NodeResetPasswordScreen } from "@/src/screens/auth/node/NodeAuthScreens";
 import { useNodeAuth } from "@/src/context/NodeAuthContext";
 
 const APP_MODE = String(process.env.EXPO_PUBLIC_APP_MODE || "development").trim().toLowerCase();
 const ACCESS_MODE = String(process.env.EXPO_PUBLIC_ACCESS_MODE || "landing").trim().toLowerCase();
+const DEFAULT_AUTH_ACCESS_MODE = APP_MODE === "development" ? "development" : ACCESS_MODE;
 
 function SessionRestoreError({ error, onRetry, onSignOut }) {
   return (
@@ -28,7 +31,8 @@ function SessionRestoreError({ error, onRetry, onSignOut }) {
 
 export default function NodeAppNavigator() {
   const [activeScreen, setActiveScreen] = useState("shopping");
-  const { status, user, accessToken, error, signOut, reloadSession } = useNodeAuth();
+  const [signedOutAccessMode, setSignedOutAccessMode] = useState(DEFAULT_AUTH_ACCESS_MODE);
+  const { status, user, accessToken, error, signOut, reloadSession, updateProfile } = useNodeAuth();
 
   if (status === "loading") {
     return <View style={styles.center}><ActivityIndicator size="large" color="#2563eb" /><Text style={styles.message}>Comprobando sesión Node…</Text></View>;
@@ -36,13 +40,26 @@ export default function NodeAppNavigator() {
   if (status === "error") return <SessionRestoreError error={error} onRetry={reloadSession} onSignOut={signOut} />;
   if (status === "signed_in" && user) {
     const canUseChat = user.role === "admin" || user.permissions?.chat === true;
+    if (activeScreen === "profile") return <NodeProfileScreen user={user} onBack={() => setActiveScreen("shopping")} onUpdateProfile={updateProfile} onChangePassword={() => setActiveScreen("password")} />;
+    if (activeScreen === "password") {
+      const navigation = {
+        navigate: (routeName) => {
+          if (routeName === "AuthHome") setActiveScreen("profile");
+          if (routeName === "Login") {
+            setSignedOutAccessMode("login");
+            signOut();
+          }
+        },
+      };
+      return <NodeResetPasswordScreen route={{ params: { email: user.email } }} navigation={navigation} onPasswordResetComplete={() => { setSignedOutAccessMode("login"); signOut(); }} />;
+    }
     if (activeScreen === "chat" && canUseChat) return <NodeChatScreen user={user} accessToken={accessToken} onBack={() => setActiveScreen("shopping")} />;
     if (activeScreen === "users" && user.role === "admin") return <NodeAdminUsersScreen user={user} accessToken={accessToken} onBack={() => setActiveScreen("shopping")} onOpenProductReviews={() => setActiveScreen("productReviews")} />;
     if (activeScreen === "productReviews" && user.role === "admin") return <NodeProductReviewsScreen accessToken={accessToken} onBack={() => setActiveScreen("users")} />;
-    return <NodeShoppingListsScreen user={user} accessToken={accessToken} onSignOut={signOut} onOpenChat={canUseChat ? () => setActiveScreen("chat") : null} onOpenUsers={user.role === "admin" ? () => setActiveScreen("users") : null} />;
+    return <NodeShoppingListsScreen user={user} accessToken={accessToken} onSignOut={signOut} onOpenProfile={() => setActiveScreen("profile")} onOpenChat={canUseChat ? () => setActiveScreen("chat") : null} onOpenUsers={user.role === "admin" ? () => setActiveScreen("users") : null} />;
   }
 
-  return <AuthStack accessMode={APP_MODE === "development" ? "development" : ACCESS_MODE} backendProvider="node" />;
+  return <AuthStack accessMode={signedOutAccessMode} backendProvider="node" />;
 }
 
 const styles = StyleSheet.create({

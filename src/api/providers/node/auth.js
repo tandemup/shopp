@@ -31,6 +31,21 @@ export const nodeAuthApi = Object.freeze({
     return apiClient.request("api/v1/auth/me", { accessToken });
   },
 
+  updateProfile(accessToken, { name }) {
+    return apiClient.request("api/v1/auth/me", {
+      method: "PATCH",
+      accessToken,
+      body: { name },
+    });
+  },
+
+  refresh(accessToken) {
+    return apiClient.request("api/v1/auth/refresh", {
+      method: "POST",
+      accessToken,
+    });
+  },
+
   logout(accessToken) {
     return apiClient.request("api/v1/auth/logout", {
       method: "POST",
