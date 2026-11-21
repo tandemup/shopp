@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
-import { requireAdmin, requireAuth } from '../middleware/auth.js';
+import { requireAdmin, requireAuth, requireFeature } from '../middleware/auth.js';
 
 export const productsRouter = Router();
 productsRouter.use(requireAuth);
@@ -78,7 +78,7 @@ productsRouter.get('/:barcode', async (req,res,next) => {
   } catch(error) { next(error); }
 });
 
-productsRouter.post('/:barcode/access', async (req,res,next) => {
+productsRouter.post('/:barcode/access', requireFeature('scanner'), async (req,res,next) => {
   const barcode = barcodeOf(req.params.barcode);
   if (!validateBarcode(barcode)) return fail(res,400,'invalid_barcode','El código debe contener entre 8 y 14 dígitos.');
   const now = Date.now();
@@ -92,7 +92,8 @@ productsRouter.post('/:barcode/access', async (req,res,next) => {
   } catch(error) { next(error); }
 });
 
-productsRouter.put('/:barcode', async (req,res,next) => {
+// Public catalog writes go through productReviews; direct writes are reserved for admins.
+productsRouter.put('/:barcode', requireAdmin, async (req,res,next) => {
   const barcode = barcodeOf(req.params.barcode);
   if (!validateBarcode(barcode)) return fail(res,400,'invalid_barcode','El código debe contener entre 8 y 14 dígitos.');
   const normalized = normalizeProductBody(req.body);
@@ -114,7 +115,7 @@ productsRouter.put('/:barcode', async (req,res,next) => {
   } catch(error) { next(error); }
 });
 
-productsRouter.post('/:barcode/not-found', async (req,res,next) => {
+productsRouter.post('/:barcode/not-found', requireFeature('scanner'), async (req,res,next) => {
   const barcode = barcodeOf(req.params.barcode);
   if (!validateBarcode(barcode)) return fail(res,400,'invalid_barcode','El código debe contener entre 8 y 14 dígitos.');
   const now = Date.now();
