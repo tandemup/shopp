@@ -4,18 +4,25 @@ import { Ionicons } from "@expo/vector-icons";
 
 const ROLE_LABELS = { user: "Usuario", tester: "Tester", admin: "Administrador" };
 
-export default function NodeProfileScreen({ user, onBack, onUpdateProfile, onChangePassword }) {
+export default function NodeProfileScreen({ user, onBack, onUpdateProfile, onChangePassword, onChangeEmail }) {
   const [name, setName] = useState(user?.name || "");
+  const [alias, setAlias] = useState(user?.alias || user?.name || "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => { setName(user?.name || ""); }, [user?.name]);
+  useEffect(() => { setName(user?.name || ""); setAlias(user?.alias || user?.name || ""); }, [user?.name, user?.alias]);
 
   const save = async () => {
     const trimmedName = name.trim();
+    const trimmedAlias = alias.trim();
     if (!trimmedName || trimmedName.length > 120) {
       setError("Escribe un nombre de entre 1 y 120 caracteres.");
+      setMessage("");
+      return;
+    }
+    if (trimmedAlias.length < 2 || trimmedAlias.length > 40) {
+      setError("El alias público debe tener entre 2 y 40 caracteres.");
       setMessage("");
       return;
     }
@@ -23,8 +30,8 @@ export default function NodeProfileScreen({ user, onBack, onUpdateProfile, onCha
     setError("");
     setMessage("");
     try {
-      await onUpdateProfile({ name: trimmedName });
-      setMessage("Tu nombre se ha actualizado.");
+      await onUpdateProfile({ name: trimmedName, alias: trimmedAlias });
+      setMessage("Tu nombre y alias público se han actualizado.");
     } catch (err) {
       setError(err?.message || "No se pudo actualizar el perfil.");
     } finally {
@@ -48,6 +55,8 @@ export default function NodeProfileScreen({ user, onBack, onUpdateProfile, onCha
         <View style={styles.card}>
           <Text style={styles.label}>Nombre</Text>
           <TextInput value={name} onChangeText={setName} maxLength={120} autoCapitalize="words" returnKeyType="done" style={styles.input} accessibilityLabel="Nombre de perfil" />
+          <Text style={styles.label}>Alias público</Text>
+          <TextInput value={alias} onChangeText={setAlias} maxLength={40} autoCapitalize="none" returnKeyType="done" style={styles.input} accessibilityLabel="Alias público" />
           <Text style={styles.label}>Correo electrónico</Text>
           <Text style={styles.readOnly}>{user?.email || "—"}</Text>
           <Text style={styles.label}>Rol</Text>
@@ -61,6 +70,9 @@ export default function NodeProfileScreen({ user, onBack, onUpdateProfile, onCha
           </Pressable>
           <Pressable accessibilityRole="button" onPress={onChangePassword} style={({ pressed }) => [styles.passwordButton, pressed && styles.pressed]}>
             <Ionicons name="key-outline" size={18} color="#2563eb" /><Text style={styles.passwordText}>Cambiar contraseña</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={onChangeEmail} style={({ pressed }) => [styles.passwordButton, pressed && styles.pressed]}>
+            <Ionicons name="mail-outline" size={18} color="#2563eb" /><Text style={styles.passwordText}>Cambiar correo</Text>
           </Pressable>
         </View>
       </ScrollView>

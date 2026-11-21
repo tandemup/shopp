@@ -28,16 +28,16 @@ function getEmailAndCode(body) {
   };
 }
 
-async function createChallenge(client, userId, purpose) {
+async function createChallenge(client, userId, purpose, targetEmail = null) {
   const code = createOtp();
   await client.query(
     `UPDATE auth_challenges SET consumed_at = NOW()
      WHERE user_id = $1 AND purpose = $2 AND consumed_at IS NULL`, [userId, purpose],
   );
   await client.query(
-    `INSERT INTO auth_challenges (user_id, purpose, code_digest, expires_at)
-     VALUES ($1, $2, $3, NOW() + INTERVAL '15 minutes')`,
-    [userId, purpose, digestOtp(purpose, userId, code)],
+    `INSERT INTO auth_challenges (user_id, purpose, code_digest, expires_at, target_email)
+     VALUES ($1, $2, $3, NOW() + INTERVAL '15 minutes', $4)`,
+    [userId, purpose, digestOtp(purpose, userId, code), targetEmail],
   );
   return code;
 }
@@ -67,11 +67,12 @@ async function rotateSession(client, sessionId, userId, currentToken) {
   return { token, expiresAt: rows[0].expires_at };
 }
 
-async function consumeOtp(client, userId, purpose, code) {
+async function consumeOtp(client, userId, purpose, code, { targetEmail } = {}) {
   const { rows } = await client.query(
     `SELECT id, code_digest, attempts, expires_at FROM auth_challenges
      WHERE user_id = $1 AND purpose = $2 AND consumed_at IS NULL
-     ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, [userId, purpose],
+       AND ($3::text IS NULL OR target_email = $3)
+     ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, [userId, purpose, targetEmail || null],
   );
   const challenge = rows[0];
   if (!challenge || new Date(challenge.expires_at).getTime() <= Date.now() || challenge.attempts >= 5) return false;
@@ -113,7 +114,7 @@ authRouter.post('/register', async (req, res, next) => {
     if (!user) {
       const passwordHash = await hashPassword(password);
       const created = await client.query(
-        'INSERT INTO app_users (id, email, name, password_hash) VALUES ($1, $2, $3, $4) RETURNING id',
+        'INSERT INTO app_users (id, email, name, public_alias, password_hash) VALUES ($1, $2, $3, $3, $4) RETURNING id',
         [`usr_${randomUUID()}`, email, name, passwordHash],
       );
       user = created.rows[0];
@@ -240,19 +241,92 @@ authRouter.get('/me', requireAuth, (req, res) => res.json({
 }));
 authRouter.patch('/me', requireAuth, async (req, res, next) => {
   const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  const alias = typeof req.body?.alias === 'string' ? req.body.alias.trim() : null;
   if (!name || name.length > 120) {
     return res.status(400).json({ error: { code: 'invalid_input', message: 'El nombre es obligatorio y no puede superar 120 caracteres' } });
   }
+  if (alias !== null && (alias.length < 2 || alias.length > 40)) {
+    return res.status(400).json({ error: { code: 'invalid_input', message: 'El alias público debe tener entre 2 y 40 caracteres' } });
+  }
   try {
     const { rows } = await pool.query(
-      `UPDATE app_users SET name = $1, updated_at = NOW()
-       WHERE id = $2 AND status = 'active'
-       RETURNING id, email, name, role, status, permissions, email_verified_at`,
-      [name, req.auth.user.id],
+      `UPDATE app_users SET name = $1, public_alias = COALESCE($2, public_alias, $1), updated_at = NOW()
+       WHERE id = $3 AND status = 'active'
+       RETURNING id, email, name, public_alias, role, status, permissions, email_verified_at`,
+      [name, alias, req.auth.user.id],
     );
     if (!rows[0]) return res.status(401).json({ error: { code: 'unauthorized', message: 'La sesión no está activa' } });
     res.json({ user: publicUser(rows[0]) });
   } catch (error) { next(error); }
+});
+authRouter.post('/me/email-change/request', requireAuth, async (req, res, next) => {
+  if (ensureAuthConfigured(res)) return;
+  const targetEmail = normalizeEmail(req.body?.email);
+  if (validateEmail(targetEmail)) return res.status(400).json({ error: { code: 'invalid_input', message: 'Correo electrónico no válido' } });
+  if (targetEmail === req.auth.user.email) return res.status(409).json({ error: { code: 'email_unchanged', message: 'La nueva dirección coincide con la actual' } });
+
+  const client = await pool.connect();
+  let mail;
+  try {
+    await client.query('BEGIN');
+    const duplicate = await client.query('SELECT 1 FROM app_users WHERE email = $1 AND id <> $2 LIMIT 1', [targetEmail, req.auth.user.id]);
+    if (duplicate.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: { code: 'email_in_use', message: 'Esa dirección ya está asociada a otra cuenta' } });
+    }
+    const code = await createChallenge(client, req.auth.user.id, 'change_email', targetEmail);
+    await client.query('COMMIT');
+    mail = { email: targetEmail, code, purpose: 'change_email' };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    return next(error);
+  } finally { client.release(); }
+  await sendChallengeWithoutLeakingDetails(mail, 'el correo de confirmación del cambio de dirección');
+  res.status(202).json({ message: 'Si la solicitud puede completarse, recibirás un código en la nueva dirección.' });
+});
+
+authRouter.post('/me/email-change/confirm', requireAuth, async (req, res, next) => {
+  if (ensureAuthConfigured(res)) return;
+  const targetEmail = normalizeEmail(req.body?.email);
+  const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+  if (validateEmail(targetEmail) || !/^\d{8}$/.test(code)) {
+    return res.status(400).json({ error: { code: 'invalid_input', message: 'Correo o código no válidos' } });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: userRows } = await client.query('SELECT id, email, status FROM app_users WHERE id = $1 FOR UPDATE', [req.auth.user.id]);
+    const user = userRows[0];
+    if (!user || user.status !== 'active') {
+      await client.query('ROLLBACK');
+      return res.status(401).json({ error: { code: 'unauthorized', message: 'La sesión no está activa' } });
+    }
+    if (targetEmail === user.email) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: { code: 'email_unchanged', message: 'La nueva dirección coincide con la actual' } });
+    }
+    const duplicate = await client.query('SELECT 1 FROM app_users WHERE email = $1 AND id <> $2 LIMIT 1', [targetEmail, user.id]);
+    if (duplicate.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: { code: 'email_in_use', message: 'Esa dirección ya está asociada a otra cuenta' } });
+    }
+    if (!(await consumeOtp(client, user.id, 'change_email', code, { targetEmail }))) {
+      await client.query('COMMIT');
+      return res.status(400).json({ error: { code: 'invalid_code', message: 'Correo o código no válido o caducado' } });
+    }
+    const { rows } = await client.query(
+      `UPDATE app_users SET email = $1, email_verified_at = NOW(), updated_at = NOW()
+       WHERE id = $2 RETURNING id, email, name, role, status, permissions, email_verified_at`,
+      [targetEmail, user.id],
+    );
+    await client.query('UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL', [user.id]);
+    await client.query('COMMIT');
+    res.json({ user: publicUser(rows[0]), message: 'Correo actualizado. Inicia sesión con la nueva dirección.' });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (error.code === '23505') return res.status(409).json({ error: { code: 'email_in_use', message: 'Esa dirección ya está asociada a otra cuenta' } });
+    next(error);
+  } finally { client.release(); }
 });
 authRouter.post('/refresh', requireAuth, async (req, res, next) => {
   const client = await pool.connect();

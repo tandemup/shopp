@@ -34,7 +34,7 @@ export default function NodeChatScreen({ user, accessToken, onBack }) {
   const [roomSaving, setRoomSaving] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [alias, setAlias] = useState(user?.name || user?.email?.split("@")[0] || "Invitado");
+  const [alias, setAlias] = useState(user?.alias || user?.name || user?.email?.split("@")[0] || "Invitado");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
