@@ -120,13 +120,15 @@ export async function attachRealtime(server) {
          WHERE t.token_hash = $1 AND t.session_id = s.id AND s.user_id = u.id
            AND t.expires_at > NOW() AND s.revoked_at IS NULL AND s.expires_at > NOW()
            AND u.status <> 'blocked'
-         RETURNING u.id, u.email, u.name, u.role`,
+           AND (u.role = 'admin' OR u.permissions->>'chat' = 'true')
+         RETURNING s.id AS session_id, u.id, u.email, u.name, u.role`,
         [digestToken(ticket)],
       );
       const user = rows[0];
       if (!user) return reject(401, 'Unauthorized');
       wss.handleUpgrade(request, socket, head, (ws) => {
         ws.user = user;
+        ws.sessionId = user.session_id;
         wss.emit('connection', ws, request);
       });
     } catch (error) {
@@ -157,11 +159,25 @@ export async function attachRealtime(server) {
     });
   });
 
-  const heartbeat = setInterval(() => {
-    for (const ws of wss.clients) {
-      if (!ws.isAlive) { ws.terminate(); continue; }
-      ws.isAlive = false;
-      ws.ping();
+  const heartbeat = setInterval(async () => {
+    const sockets = [...wss.clients].filter((ws) => ws.readyState === WebSocket.OPEN);
+    if (!sockets.length) return;
+    try {
+      const sessionIds = sockets.map((ws) => ws.sessionId);
+      const { rows } = await pool.query(
+        `SELECT s.id FROM auth_sessions s JOIN app_users u ON u.id = s.user_id
+         WHERE s.id = ANY($1::bigint[]) AND s.revoked_at IS NULL AND s.expires_at > NOW()
+           AND u.status <> 'blocked' AND (u.role = 'admin' OR u.permissions->>'chat' = 'true')`,
+        [sessionIds],
+      );
+      const valid = new Set(rows.map((row) => String(row.id)));
+      for (const ws of sockets) {
+        if (!valid.has(String(ws.sessionId)) || !ws.isAlive) { ws.terminate(); continue; }
+        ws.isAlive = false;
+        ws.ping();
+      }
+    } catch (error) {
+      console.error('No se pudieron comprobar las sesiones WebSocket:', error.message);
     }
   }, HEARTBEAT_MS);
   heartbeat.unref();

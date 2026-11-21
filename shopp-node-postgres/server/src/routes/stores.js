@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { pool } from '../db.js';
-import { optionalAuth, requireAdmin, requireAuth } from '../middleware/auth.js';
+import { optionalAuth, requireAdmin, requireAuth, requireFeature } from '../middleware/auth.js';
 
 export const storesRouter = Router();
 const fail=(res,status,code,message)=>res.status(status).json({error:{code,message}});
@@ -34,7 +34,7 @@ storesRouter.get('/',optionalAuth,async(req,res,next)=>{
   } catch(error) { next(error); }
 });
 
-storesRouter.get('/favorites',requireAuth,async(req,res,next)=>{
+storesRouter.get('/favorites',requireAuth,requireFeature('stores'),async(req,res,next)=>{
   try {
     const {rows}=await pool.query(
       `SELECT ${selectedStoreColumns},TRUE AS favorite FROM stores s JOIN user_store_favorites f ON f.store_id=s.id
@@ -71,7 +71,7 @@ storesRouter.get('/:id',optionalAuth,async(req,res,next)=>{
   } catch(error) { next(error); }
 });
 
-storesRouter.put('/:id/favorite',requireAuth,async(req,res,next)=>{
+storesRouter.put('/:id/favorite',requireAuth,requireFeature('stores'),async(req,res,next)=>{
   if (typeof req.body?.favorite!=='boolean') return fail(res,400,'invalid_input','favorite debe ser booleano.');
   try {
     const exists=await pool.query('SELECT 1 FROM stores WHERE id=$1',[req.params.id]);
@@ -123,7 +123,7 @@ storesRouter.delete('/:id',requireAuth,requireAdmin,async(req,res,next)=>{
   } catch(error) { next(error); }
 });
 
-storesRouter.post('/requests',requireAuth,async(req,res,next)=>{
+storesRouter.post('/requests',requireAuth,requireFeature('stores'),async(req,res,next)=>{
   const name=text(req.body?.name), address=text(req.body?.address), city=text(req.body?.city,'gijon')||'gijon';
   const provincia=text(req.body?.provincia,'Asturias')||'Asturias';
   const hasLat=req.body?.latitude!==undefined,hasLng=req.body?.longitude!==undefined;

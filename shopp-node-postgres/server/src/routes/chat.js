@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
-import { requireAdmin, requireAuth } from '../middleware/auth.js';
+import { requireAdmin, requireAuth, requireFeature } from '../middleware/auth.js';
 import { publishChatEvent } from '../realtime.js';
 
 export const chatRouter = Router();
-chatRouter.use(requireAuth);
+chatRouter.use(requireAuth, requireFeature('chat'));
 
 const cleanRoom = (value) => String(value || 'compras').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 50) || 'compras';
 const cleanUsername = (value, fallback) => String(value || fallback || 'anonymous').trim().slice(0, 40) || 'anonymous';

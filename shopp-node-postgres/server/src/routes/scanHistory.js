@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireFeature } from '../middleware/auth.js';
 
 export const scanHistoryRouter = Router();
-scanHistoryRouter.use(requireAuth);
+scanHistoryRouter.use(requireAuth, requireFeature('scanner'));
 
 const fields = ['name','brand','url','productUrl','imageUrl','thumbnailUri','productType','category','subcategory','notes','source','lookupSource','dataSource'];
 const fail = (res,status,code,message) => res.status(status).json({error:{code,message}});

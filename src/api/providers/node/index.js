@@ -7,3 +7,4 @@ export { nodeStoreOffersApi } from "./storeOffers";
 export { nodeShoppingListsApi } from "./shoppingLists";
 export { nodeRealtimeApi } from "./realtime";
 export { nodeChatApi } from "./chat";
+export { nodeAdminUsersApi } from "./adminUsers";

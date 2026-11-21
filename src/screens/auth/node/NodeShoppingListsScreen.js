@@ -64,7 +64,9 @@ function ActionButton({ icon, label, onPress, danger = false }) {
   );
 }
 
-export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, onOpenChat }) {
+export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, onOpenChat, onOpenUsers }) {
+  const canUseScanner = user?.role === "admin" || user?.permissions?.scanner === true;
+  const canUseStores = user?.role === "admin" || user?.permissions?.stores === true;
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scannerLockedRef = useRef(false);
   const [lists, setLists] = useState([]);
@@ -120,7 +122,7 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
   useEffect(() => { loadLists(); }, [loadLists]);
 
   const loadStores = useCallback(async () => {
-    if (!accessToken) return;
+    if (!accessToken || !canUseStores) { setStores([]); setStoreLoading(false); return; }
     setStoreLoading(true);
     setStoreError("");
     try {
@@ -131,7 +133,7 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
     } finally {
       setStoreLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, canUseStores]);
 
   useEffect(() => { loadStores(); }, [loadStores]);
 
@@ -244,6 +246,7 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
   };
 
   const openScanner = async () => {
+    if (!canUseScanner) { setScanHint("El administrador aún no ha activado el permiso de escáner para esta cuenta."); return; }
     Keyboard.dismiss();
     setScanHint("");
     try {
@@ -473,7 +476,7 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <View style={styles.brandRow}><View style={styles.logo}><Text style={styles.logoText}>S</Text></View><Text style={styles.brand}>Shopp</Text><View style={styles.mode}><Text style={styles.modeText}>NODE.JS</Text></View></View>
-        <View style={styles.headerActions}><Pressable accessibilityRole="button" accessibilityLabel="Abrir chat" onPress={onOpenChat} style={styles.chatButton}><Ionicons name="chatbubbles-outline" size={20} color="#2563eb" /></Pressable><Pressable accessibilityRole="button" onPress={onSignOut} style={styles.accountButton}>
+        <View style={styles.headerActions}>{onOpenUsers ? <Pressable accessibilityRole="button" accessibilityLabel="Gestionar usuarios" onPress={onOpenUsers} style={styles.chatButton}><Ionicons name="people-outline" size={20} color="#2563eb" /></Pressable> : null}{onOpenChat ? <Pressable accessibilityRole="button" accessibilityLabel="Abrir chat" onPress={onOpenChat} style={styles.chatButton}><Ionicons name="chatbubbles-outline" size={20} color="#2563eb" /></Pressable> : null}<Pressable accessibilityRole="button" onPress={onSignOut} style={styles.accountButton}>
           <Ionicons name="person-circle-outline" size={19} color="#475569" /><Text style={styles.accountText} numberOfLines={1}>{user?.name || user?.email || "Cuenta"}</Text><Ionicons name="log-out-outline" size={18} color="#64748b" />
         </Pressable></View>
       </View>
@@ -516,10 +519,10 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
               <View style={{ flex: 1 }}><Text style={styles.detailTitle}>{selectedList.name}</Text><Text style={styles.detailMeta}>{selectedList.items?.filter((item) => item.checked).length || 0} de {selectedList.items?.length || 0} productos marcados</Text></View>
               <Pressable accessibilityRole="button" onPress={() => setSelectedId(null)} style={styles.closeButton}><Ionicons name="close" size={20} color="#64748b" /></Pressable>
             </View>
-            <View style={styles.storeSection}>
+            {canUseStores ? <View style={styles.storeSection}>
               <View style={styles.storeInfo}><Ionicons name="storefront-outline" size={19} color="#2563eb" /><View style={styles.storeTextBlock}><Text style={styles.storeLabel}>Tienda</Text><Text style={styles.storeName}>{stores.find((store) => store.id === selectedList.storeId)?.name || (selectedList.storeId ? `Tienda ${selectedList.storeId}` : "Sin tienda asignada")}</Text></View></View>
               {!selectedList.archived ? <View style={styles.storeActions}><Pressable accessibilityRole="button" onPress={() => { setStoreError(""); setStorePickerVisible(true); if (!stores.length) loadStores(); }} style={styles.storeChoose}><Text style={styles.storeChooseText}>{selectedList.storeId ? "Cambiar" : "Asignar"}</Text></Pressable>{selectedList.storeId ? <Pressable accessibilityRole="button" onPress={openStoreOffers} style={styles.storeChoose}><Ionicons name="pricetag-outline" size={15} color="#2563eb" /><Text style={styles.storeChooseText}>Ofertas</Text></Pressable> : null}</View> : null}
-            </View>
+            </View> : null}
             {offerSubmitted ? <View style={styles.offerSubmitted}><Ionicons name="checkmark-circle-outline" size={19} color="#15803d" /><Text style={styles.offerSubmittedText}>Solicitud de oferta enviada; queda pendiente de revisión.</Text><Pressable onPress={() => setOfferSubmitted(false)}><Ionicons name="close" size={18} color="#64748b" /></Pressable></View> : null}
             {!selectedList.archived ? <Pressable accessibilityRole="button" onPress={() => openItemEditor()} style={styles.addProductButton}><Ionicons name="add-circle-outline" size={20} color="#2563eb" /><Text style={styles.addProductText}>Añadir producto</Text></Pressable> : null}
             {(() => {
@@ -560,14 +563,14 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
           {productSearchResults.length ? <View style={styles.suggestions}><Text style={styles.suggestionsTitle}>Coincidencias del catálogo</Text>{productSearchResults.map((product) => <Pressable key={product.barcode} onPress={() => chooseCatalogProduct(product)} style={styles.suggestionRow}><Ionicons name="pricetag-outline" size={17} color="#2563eb" /><View style={styles.suggestionCopy}><Text style={styles.suggestionName} numberOfLines={1}>{product.name}</Text><Text style={styles.suggestionMeta}>{product.brand ? `${product.brand} · ` : ""}{product.category || "Producto"}{product.barcode ? ` · ${product.barcode}` : ""}</Text></View></Pressable>)}</View> : null}
           <View style={styles.formRow}><View style={styles.formField}><Text style={styles.fieldLabel}>Cantidad</Text><TextInput value={itemDraft.quantity} onChangeText={(value) => setItemDraft((draft) => ({ ...draft, quantity: value }))} keyboardType="decimal-pad" style={styles.modalInput} /></View><View style={styles.formField}><Text style={styles.fieldLabel}>Unidad</Text><TextInput value={itemDraft.unit} onChangeText={(value) => setItemDraft((draft) => ({ ...draft, unit: value }))} placeholder="u, kg, l…" style={styles.modalInput} /></View></View>
           <Text style={styles.fieldLabel}>Precio por unidad (€)</Text><TextInput value={itemDraft.unitPrice} onChangeText={(value) => setItemDraft((draft) => ({ ...draft, unitPrice: value }))} keyboardType="decimal-pad" style={styles.modalInput} />
-          <Text style={styles.fieldLabel}>Código de barras (opcional)</Text><View style={styles.barcodeRow}><TextInput value={itemDraft.barcode} onChangeText={(value) => setItemDraft((draft) => ({ ...draft, barcode: value }))} keyboardType="numeric" style={[styles.modalInput, styles.barcodeInput]} /><Pressable accessibilityRole="button" accessibilityLabel="Escanear código de barras" onPress={openScanner} style={styles.scanButton}><Ionicons name="scan-outline" size={21} color="#fff" /></Pressable></View>
+          <Text style={styles.fieldLabel}>Código de barras (opcional)</Text><View style={styles.barcodeRow}><TextInput value={itemDraft.barcode} onChangeText={(value) => setItemDraft((draft) => ({ ...draft, barcode: value }))} keyboardType="numeric" style={[styles.modalInput, styles.barcodeInput]} />{canUseScanner ? <Pressable accessibilityRole="button" accessibilityLabel="Escanear código de barras" onPress={openScanner} style={styles.scanButton}><Ionicons name="scan-outline" size={21} color="#fff" /></Pressable> : null}</View>
           {scanHint ? <Text style={styles.scanHint}>{scanHint}</Text> : null}
           <Text style={styles.fieldLabel}>Categoría (opcional)</Text><TextInput value={itemDraft.categoryName} onChangeText={(value) => setItemDraft((draft) => ({ ...draft, categoryName: value }))} style={styles.modalInput} />
           <Text style={styles.formTotal}>Total estimado: {formatMoney(parseAmount(itemDraft.quantity, 1) * parseAmount(itemDraft.unitPrice, 0), typeof selectedList?.currency === "string" ? selectedList.currency : selectedList?.currency?.code || DEFAULT_CURRENCY.code)}</Text>
           <View style={styles.modalActions}><Pressable onPress={() => { setItemEditorVisible(false); setEditingItemId(null); }} style={styles.cancelButton}><Text style={styles.cancelText}>Cancelar</Text></Pressable><Pressable disabled={!itemDraft.name.trim() || parseAmount(itemDraft.quantity, 0) <= 0 || parseAmount(itemDraft.unitPrice, -1) < 0 || busy} onPress={saveItem} style={[styles.createButton, (!itemDraft.name.trim() || parseAmount(itemDraft.quantity, 0) <= 0 || parseAmount(itemDraft.unitPrice, -1) < 0 || busy) && styles.disabled]}><Text style={styles.createText}>Guardar</Text></Pressable></View>
         </View></View>
       </Modal>
-      <Modal visible={storePickerVisible} transparent animationType="fade" onRequestClose={() => setStorePickerVisible(false)}>
+      <Modal visible={canUseStores && storePickerVisible} transparent animationType="fade" onRequestClose={() => setStorePickerVisible(false)}>
         <View style={styles.modalBackdrop}><View style={styles.storeModalCard}>
           <View style={styles.storeModalHeader}><View><Text style={styles.modalTitle}>Elegir tienda</Text><Text style={styles.modalSubtitle}>Asocia esta lista a una tienda del catálogo.</Text></View><Pressable onPress={() => setStorePickerVisible(false)} style={styles.closeButton}><Ionicons name="close" size={20} color="#64748b" /></Pressable></View>
           {storeError ? <View style={styles.storeError}><Text style={styles.storeErrorText}>{storeError}</Text><Pressable onPress={loadStores}><Text style={styles.retry}>Reintentar</Text></Pressable></View> : null}
