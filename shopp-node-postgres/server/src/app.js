@@ -10,6 +10,7 @@ import { productReviewsRouter } from './routes/productReviews.js';
 import { realtimeRouter } from './routes/realtime.js';
 import { chatRouter } from './routes/chat.js';
 import { internalAuthRouter } from './routes/internalAuth.js';
+import { adminUsersRouter } from './routes/adminUsers.js';
 import { config } from './config.js';
 
 const app = express();
@@ -41,6 +42,7 @@ app.get('/api/ready', async (_req, res, next) => {
   } catch (error) { next(error); }
 });
 app.use('/api/v1/auth', authRouter);
+app.use('/api/v1/admin/users', adminUsersRouter);
 app.use('/api/v1/shopping', shoppingListsRouter);
 app.use('/api/v1/products', productsRouter);
 app.use('/api/v1/scans', scanHistoryRouter);

@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { randomBytes } from 'node:crypto';
 import { pool } from '../db.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireFeature } from '../middleware/auth.js';
 import { digestToken } from '../security.js';
 
 export const realtimeRouter = Router();
 
-realtimeRouter.post('/ticket', requireAuth, async (req, res, next) => {
+realtimeRouter.post('/ticket', requireAuth, requireFeature('chat'), async (req, res, next) => {
   try {
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + 60_000);

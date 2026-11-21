@@ -1,6 +1,6 @@
 # Backend Node.js + PostgreSQL de Shopp
 
-Esta carpeta contiene un servicio REST con Express y PostgreSQL. Incluye autenticación por correo con OTP, inicio/cierre de sesión, recuperación de contraseña y persistencia multiusuario de listas de compra y sus productos. La app Shopp sigue usando Convex como proveedor principal mientras se completa la migración de sesión e integración de pantallas.
+Esta carpeta contiene un servicio REST con Express y PostgreSQL. Incluye autenticación por correo con OTP, inicio/cierre de sesión, recuperación de contraseña y persistencia multiusuario de listas de compra y sus productos. La app mantiene Convex como proveedor predeterminado; al seleccionar `EXPO_PUBLIC_BACKEND_PROVIDER=node`, la navegación Node usa autenticación JWT propia y las pantallas Node migradas, sin requerir Convex para iniciar sesión, comprar o chatear.
 
 ## Requisitos
 
@@ -76,7 +76,24 @@ Todas requieren `Authorization: Bearer <token>` y están bajo `/api/v1/shopping`
 
 Las respuestas mantienen la forma de listas usada por `ListsContext` (`id`, `name`, `currency`, `items`, `createdAt`, `archived`, `archivedAt`, `storeId`). Los campos adicionales de lista y producto se conservan en columnas JSONB; las claves consultadas con frecuencia y las relaciones usuario/lista/producto quedan normalizadas. Las rutas siempre limitan las consultas al usuario de la sesión, y los productos dependen de la lista mediante una clave foránea compuesta.
 
-En `src/api/providers/node/` hay adaptadores cliente para autenticación, listas, catálogo, historial de escaneos y tiendas. `nodeAuthApi` ofrece registro, verificación, login, consulta de sesión, logout y recuperación de contraseña; el token devuelto debe gestionarse desde el proveedor de sesión de la app y pasarse a los demás adaptadores. Estos adaptadores aún no reemplazan las pantallas Convex: `App.js`, las pantallas de autenticación y varias funciones principales siguen requiriendo Convex.
+En `src/api/providers/node/` hay adaptadores cliente para autenticación, listas, catálogo, historial de escaneos, tiendas, ofertas, chat y administración de usuarios. `nodeAuthApi` ofrece registro, verificación, login, consulta de sesión, logout y recuperación de contraseña; `NodeAuthProvider` guarda el JWT y lo valida con Express. El modo Node ya cuenta con pantallas alternativas de acceso, compras, chat y gestión básica de usuarios. Las pantallas completas de Convex siguen disponibles al elegir `EXPO_PUBLIC_BACKEND_PROVIDER=convex`; aún quedan módulos por migrar.
+
+## Roles, permisos y gestión Node de usuarios
+
+La identidad Node incluye `role` (`user`, `tester`, `admin`), `status` (`active`, `blocked`) y un objeto JSONB `permissions`. La autenticación consulta estos valores en PostgreSQL para cada petición; los roles o permisos nunca se aceptan desde el cliente.
+
+Todas las rutas de gestión están bajo `/api/v1/admin/users` y requieren sesión JWT más rol administrador:
+
+| Método y ruta | Uso |
+|---|---|
+| `GET /` | Lista hasta 500 cuentas ordenadas por correo. |
+| `PATCH /:userId/role` | Asigna `user`, `tester` o `admin`; impide que el administrador se quite su propio rol. |
+| `PATCH /:userId/status` | Activa o bloquea la cuenta; al bloquearla revoca sus sesiones activas. |
+| `PATCH /:userId/permissions` | Reemplaza el mapa de permisos permitido; no permite editar los permisos de otro administrador. |
+
+La pantalla «Usuarios» está disponible para administradores desde la pantalla de compras Node. Los permisos `scanner`, `stores` y `chat` se aplican también en la API; la interfaz Node oculta sus accesos cuando el usuario no los tiene. Administradores conservan acceso completo. La compra y gestión de listas es la función básica de una cuenta.
+
+Las invitaciones temporales de testers, las reglas completas de acceso para todas las áreas futuras y la migración de usuarios/perfiles ya existentes desde Convex siguen pendientes. Cambiar `EXPO_PUBLIC_BACKEND_PROVIDER` no copia cuentas ni datos entre bases de datos.
 
 ## Catálogo de productos e historial privado de escaneos
 

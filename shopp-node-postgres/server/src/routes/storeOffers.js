@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { pool } from '../db.js';
-import { requireAdmin, requireAuth } from '../middleware/auth.js';
+import { requireAdmin, requireAuth, requireFeature } from '../middleware/auth.js';
 
 export const storeOffersRouter=Router();
 const statuses=new Set(['pending','approved','rejected']);
@@ -28,7 +28,7 @@ storeOffersRouter.get('/approved',async(req,res,next)=>{
   } catch(error) { next(error); }
 });
 
-storeOffersRouter.get('/mine',requireAuth,async(req,res,next)=>{
+storeOffersRouter.get('/mine',requireAuth,requireFeature('stores'),async(req,res,next)=>{
   try {
     const {rows}=await pool.query(
       'SELECT * FROM store_offer_submissions WHERE submitted_by=$1 ORDER BY created_at_ms DESC LIMIT 100',
@@ -38,7 +38,7 @@ storeOffersRouter.get('/mine',requireAuth,async(req,res,next)=>{
   } catch(error) { next(error); }
 });
 
-storeOffersRouter.post('/',requireAuth,async(req,res,next)=>{
+storeOffersRouter.post('/',requireAuth,requireFeature('stores'),async(req,res,next)=>{
   const submissionType=req.body?.submissionType;
   const storeId=clean(req.body?.storeId,120),productName=clean(req.body?.productName,180),offerText=clean(req.body?.offerText,500);
   const barcode=clean(req.body?.barcode,32)||null,contactName=clean(req.body?.contactName,120)||null;
