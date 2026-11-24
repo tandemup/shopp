@@ -83,16 +83,7 @@ musicPlaylistsRouter.post('/sync', async (req, res, next) => {
   const conflicts = [];
   try {
     await client.query('BEGIN');
-    await client.query('SELECT id FROM app_users WHERE id=$1 FOR UPDATE', [ownerId]);
-    const deletedResult = await client.query(
-      'SELECT playlist_id FROM music_playlist_deletions WHERE owner_id=$1',
-      [ownerId],
-    );
-    const deletedIds = new Set(deletedResult.rows.map(row => row.playlist_id));
     for (const item of incoming) {
-      // A server tombstone prevents an old offline copy from resurrecting a
-      // playlist deleted on another device.
-      if (deletedIds.has(item.id)) continue;
       const { rows } = await client.query(
         'SELECT * FROM music_playlists WHERE owner_id = $1 AND playlist_id = $2 FOR UPDATE',
         [ownerId, item.id],
@@ -137,7 +128,7 @@ musicPlaylistsRouter.post('/sync', async (req, res, next) => {
       [ownerId],
     );
     await client.query('COMMIT');
-    res.json({ playlists: rows.map(fromRow), conflicts, deletedIds: [...deletedIds] });
+    res.json({ playlists: rows.map(fromRow), conflicts });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);
@@ -147,31 +138,9 @@ musicPlaylistsRouter.post('/sync', async (req, res, next) => {
 musicPlaylistsRouter.delete('/:playlistId', async (req, res, next) => {
   const playlistId = req.params.playlistId;
   if (!idPattern.test(playlistId)) return fail(res, 400, 'invalid_id', 'El identificador de playlist no es válido.');
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-    await client.query('SELECT id FROM app_users WHERE id=$1 FOR UPDATE', [req.auth.user.id]);
-    const result = await client.query('DELETE FROM music_playlists WHERE owner_id=$1 AND playlist_id=$2', [req.auth.user.id, playlistId]);
-    if (!result.rowCount) {
-      const tombstone = await client.query(
-        'SELECT 1 FROM music_playlist_deletions WHERE owner_id=$1 AND playlist_id=$2',
-        [req.auth.user.id, playlistId],
-      );
-      if (!tombstone.rowCount) {
-        await client.query('ROLLBACK');
-        return fail(res, 404, 'not_found', 'No se encontró la playlist.');
-      }
-    }
-    await client.query(
-      `INSERT INTO music_playlist_deletions (owner_id, playlist_id, deleted_at_ms)
-       VALUES ($1,$2,$3)
-       ON CONFLICT (owner_id, playlist_id) DO UPDATE SET deleted_at_ms=GREATEST(music_playlist_deletions.deleted_at_ms, EXCLUDED.deleted_at_ms)`,
-      [req.auth.user.id, playlistId, Date.now()],
-    );
-    await client.query('COMMIT');
+    const result = await pool.query('DELETE FROM music_playlists WHERE owner_id=$1 AND playlist_id=$2', [req.auth.user.id, playlistId]);
+    if (!result.rowCount) return fail(res, 404, 'not_found', 'No se encontró la playlist.');
     res.status(204).end();
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
-    next(error);
-  } finally { client.release(); }
+  } catch (error) { next(error); }
 });
