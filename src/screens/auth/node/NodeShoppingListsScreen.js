@@ -65,7 +65,7 @@ function ActionButton({ icon, label, onPress, danger = false }) {
   );
 }
 
-export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, onOpenProfile, onOpenChat, onOpenUsers }) {
+export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, onOpenProfile, onOpenMusic, onOpenChat, onOpenUsers }) {
   const canUseScanner = user?.role === "admin" || user?.permissions?.scanner === true;
   const canUseStores = user?.role === "admin" || user?.permissions?.stores === true;
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -476,7 +476,7 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <View style={styles.brandRow}><View style={styles.logo}><Text style={styles.logoText}>S</Text></View><Text style={styles.brand}>Shopp</Text><View style={styles.mode}><Text style={styles.modeText}>NODE.JS</Text></View></View>
-        <View style={styles.headerActions}>{onOpenUsers ? <Pressable accessibilityRole="button" accessibilityLabel="Gestionar usuarios" onPress={onOpenUsers} style={styles.chatButton}><Ionicons name="people-outline" size={20} color="#2563eb" /></Pressable> : null}{onOpenChat ? <Pressable accessibilityRole="button" accessibilityLabel="Abrir chat" onPress={onOpenChat} style={styles.chatButton}><Ionicons name="chatbubbles-outline" size={20} color="#2563eb" /></Pressable> : null}<Pressable accessibilityRole="button" accessibilityLabel="Abrir mi perfil" onPress={onOpenProfile} style={styles.accountButton}>
+        <View style={styles.headerActions}>{onOpenUsers ? <Pressable accessibilityRole="button" accessibilityLabel="Gestionar usuarios" onPress={onOpenUsers} style={styles.chatButton}><Ionicons name="people-outline" size={20} color="#2563eb" /></Pressable> : null}{onOpenMusic ? <Pressable accessibilityRole="button" accessibilityLabel="Abrir playlists musicales" onPress={onOpenMusic} style={styles.chatButton}><Ionicons name="musical-notes-outline" size={20} color="#2563eb" /></Pressable> : null}{onOpenChat ? <Pressable accessibilityRole="button" accessibilityLabel="Abrir chat" onPress={onOpenChat} style={styles.chatButton}><Ionicons name="chatbubbles-outline" size={20} color="#2563eb" /></Pressable> : null}<Pressable accessibilityRole="button" accessibilityLabel="Abrir mi perfil" onPress={onOpenProfile} style={styles.accountButton}>
           <Ionicons name="person-circle-outline" size={19} color="#475569" /><Text style={styles.accountText} numberOfLines={1}>{user?.name || user?.email || "Cuenta"}</Text><Ionicons name="chevron-forward" size={16} color="#64748b" />
         </Pressable><Pressable accessibilityRole="button" accessibilityLabel="Cerrar sesión" onPress={onSignOut} style={styles.chatButton}><Ionicons name="log-out-outline" size={19} color="#64748b" /></Pressable></View>
       </View>
