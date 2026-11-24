@@ -483,18 +483,26 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.hero}>
-          <View style={styles.heroIcon}><Ionicons name="bag-handle-outline" size={22} color="#fff" /></View>
-          <Text style={styles.eyebrow}>TU ASISTENTE DE COMPRAS</Text>
-          <Text style={styles.heroTitle}>Organiza mejor tus compras</Text>
-          <Text style={styles.heroSubtitle}>Tus listas se guardan en PostgreSQL y se gestionan con tu sesión Node.</Text>
-          <Pressable accessibilityRole="button" onPress={() => { setEditingListId(null); setNewListName(""); setCreateVisible(true); }} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
-            <Ionicons name="add-circle-outline" size={22} color="#2563eb" /><Text style={styles.primaryButtonText}>Nueva lista</Text>
-          </Pressable>
+          <View pointerEvents="none" style={styles.heroDecorativeCircleOne} />
+          <View pointerEvents="none" style={styles.heroDecorativeCircleTwo} />
+          <View style={styles.heroContent}>
+            <View style={styles.heroLabelRow}>
+              <View style={styles.heroIcon}><Ionicons name="basket" size={22} color="#fff" /></View>
+              <Text style={styles.eyebrow}>Tu asistente de compras</Text>
+            </View>
+            <Text style={styles.heroTitle}>Organiza mejor tus compras</Text>
+            <Text style={styles.heroSubtitle}>Crea listas, consulta productos y accede rápidamente a las principales herramientas.</Text>
+            <Pressable accessibilityRole="button" onPress={() => { setEditingListId(null); setNewListName(""); setCreateVisible(true); }} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
+              <View style={styles.primaryButtonIcon}><Ionicons name="add" size={22} color="#2563eb" /></View>
+              <Text style={styles.primaryButtonText}>Nueva lista</Text>
+              <Ionicons name="arrow-forward" size={19} color="#fff" />
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.statsRow}>
-          <View style={styles.statCard}><Text style={styles.statNumber}>{activeLists.length}</Text><Text style={styles.statLabel}>Listas activas</Text></View>
-          <View style={styles.statCard}><Text style={styles.statNumber}>{archivedLists.length}</Text><Text style={styles.statLabel}>Archivadas</Text></View>
+          <View style={styles.statCard}><View style={[styles.statIcon, styles.statIconBlue]}><Ionicons name="list-outline" size={20} color="#2563eb" /></View><View style={styles.statCopy}><Text style={styles.statNumber}>{activeLists.length}</Text><Text style={styles.statLabel}>Listas activas</Text></View></View>
+          <View style={styles.statCard}><View style={[styles.statIcon, styles.statIconGreen]}><Ionicons name="archive-outline" size={20} color="#15803d" /></View><View style={styles.statCopy}><Text style={styles.statNumber}>{archivedLists.length}</Text><Text style={styles.statLabel}>Archivadas</Text></View></View>
         </View>
 
         <View style={styles.sectionHeader}>
@@ -632,9 +640,9 @@ const styles = StyleSheet.create({
   header: { minHeight: 66, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
   brandRow: { flexDirection: "row", alignItems: "center" }, logo: { width: 36, height: 36, borderRadius: 11, backgroundColor: "#2563eb", alignItems: "center", justifyContent: "center" }, logoText: { color: "#fff", fontSize: 21, fontWeight: "900" }, brand: { marginLeft: 10, color: "#0f172a", fontSize: 22, fontWeight: "800" }, mode: { marginLeft: 11, borderRadius: 999, backgroundColor: "#eff6ff", paddingHorizontal: 10, paddingVertical: 6 }, modeText: { color: "#1d4ed8", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 2 }, chatButton: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 11, backgroundColor: "#eff6ff" }, accountButton: { flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 8, paddingLeft: 8 }, accountText: { maxWidth: 100, color: "#475569", fontSize: 12, fontWeight: "600" },
-  content: { width: "100%", maxWidth: 900, alignSelf: "center", padding: 22, paddingBottom: 40 },
-  hero: { overflow: "hidden", borderRadius: 24, padding: 27, backgroundColor: "#2563eb" }, heroIcon: { width: 46, height: 46, borderRadius: 15, backgroundColor: "#ffffff33", alignItems: "center", justifyContent: "center" }, eyebrow: { marginTop: 15, color: "#dbeafe", fontSize: 11, fontWeight: "800", letterSpacing: 1 }, heroTitle: { marginTop: 9, color: "#fff", fontSize: 30, fontWeight: "800" }, heroSubtitle: { marginTop: 7, color: "#dbeafe", fontSize: 15, lineHeight: 22, maxWidth: 610 }, primaryButton: { marginTop: 20, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 14, paddingHorizontal: 17, minHeight: 50, backgroundColor: "#fff" }, primaryButtonText: { color: "#1d4ed8", fontSize: 15, fontWeight: "800" },
-  statsRow: { flexDirection: "row", gap: 13, marginTop: 14 }, statCard: { flex: 1, borderRadius: 17, padding: 18, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0" }, statNumber: { color: "#0f172a", fontSize: 25, fontWeight: "800" }, statLabel: { marginTop: 3, color: "#64748b", fontSize: 13, fontWeight: "600" },
+  content: { width: "100%", maxWidth: 920, alignSelf: "center", padding: 22, paddingBottom: 40 },
+  hero: { minHeight: 260, overflow: "hidden", borderRadius: 24, backgroundColor: "#2563eb" }, heroContent: { zIndex: 2, padding: 22 }, heroDecorativeCircleOne: { position: "absolute", top: -80, right: -55, width: 210, height: 210, borderRadius: 105, backgroundColor: "rgba(255,255,255,0.10)" }, heroDecorativeCircleTwo: { position: "absolute", right: 35, bottom: -105, width: 190, height: 190, borderRadius: 95, backgroundColor: "rgba(255,255,255,0.08)" }, heroLabelRow: { flexDirection: "row", alignItems: "center", marginBottom: 18 }, heroIcon: { width: 40, height: 40, marginRight: 11, borderRadius: 13, borderWidth: 1, borderColor: "rgba(255,255,255,0.24)", backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" }, eyebrow: { color: "rgba(255,255,255,0.88)", fontSize: 14, fontWeight: "700" }, heroTitle: { maxWidth: 400, color: "#fff", fontSize: 28, fontWeight: "800", lineHeight: 34, letterSpacing: -0.5 }, heroSubtitle: { marginTop: 10, maxWidth: 500, color: "rgba(255,255,255,0.82)", fontSize: 15, lineHeight: 22 }, primaryButton: { minHeight: 50, marginTop: 22, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", borderRadius: 15, borderWidth: 1, borderColor: "rgba(255,255,255,0.20)", paddingHorizontal: 14, backgroundColor: "#1d4ed8" }, primaryButtonIcon: { width: 30, height: 30, marginRight: 10, borderRadius: 10, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" }, primaryButtonText: { marginRight: 18, color: "#fff", fontSize: 15, fontWeight: "800" },
+  statsRow: { flexDirection: "row", gap: 10, marginTop: 12 }, statCard: { flex: 1, minWidth: 0, minHeight: 80, paddingHorizontal: 13, paddingVertical: 13, flexDirection: "row", alignItems: "center", borderRadius: 18, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e4e7ec" }, statIcon: { width: 42, height: 42, marginRight: 11, borderRadius: 13, alignItems: "center", justifyContent: "center" }, statIconBlue: { backgroundColor: "#eaf2ff" }, statIconGreen: { backgroundColor: "#ecfdf3" }, statCopy: { flex: 1 }, statNumber: { color: "#172033", fontSize: 25, fontWeight: "800" }, statLabel: { marginTop: 3, color: "#667085", fontSize: 13, fontWeight: "600" },
   sectionHeader: { marginTop: 30, marginBottom: 13, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, sectionActions: { flexDirection: "row", gap: 7 }, sectionTitle: { color: "#172033", fontSize: 23, fontWeight: "800" }, sectionSubtitle: { color: "#64748b", fontSize: 13, marginTop: 3 }, switchButton: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 12, backgroundColor: "#eaf1ff" }, switchText: { color: "#2563eb", fontSize: 13, fontWeight: "700" },
   listCard: { flexDirection: "row", alignItems: "center", borderRadius: 17, padding: 15, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 10 }, listCardSelected: { borderColor: "#93b4ff", backgroundColor: "#f8fbff" }, listIcon: { width: 48, height: 48, borderRadius: 15, backgroundColor: "#eaf1ff", alignItems: "center", justifyContent: "center" }, listCopy: { flex: 1, marginLeft: 13 }, listName: { color: "#172033", fontSize: 17, fontWeight: "700" }, listMeta: { color: "#64748b", fontSize: 13, marginTop: 4 },
   historyCard: { flexDirection: "row", alignItems: "center", borderRadius: 15, padding: 13, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 9 }, historyIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: "#f3e8ff", alignItems: "center", justifyContent: "center" }, historyCopy: { flex: 1, marginLeft: 12 },
