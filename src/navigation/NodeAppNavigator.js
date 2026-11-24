@@ -9,6 +9,8 @@ import NodeProductReviewsScreen from "@/src/screens/auth/node/NodeProductReviews
 import NodeProfileScreen from "@/src/screens/auth/node/NodeProfileScreen";
 import { NodeResetPasswordScreen } from "@/src/screens/auth/node/NodeAuthScreens";
 import NodeEmailChangeScreen from "@/src/screens/auth/node/NodeEmailChangeScreen";
+import NodeMusicPlaylistsScreen from "@/src/screens/auth/node/NodeMusicPlaylistsScreen";
+import PlaybackProvider from "@/src/components/playback/PlaybackProvider";
 import { useNodeAuth } from "@/src/context/NodeAuthContext";
 
 const APP_MODE = String(process.env.EXPO_PUBLIC_APP_MODE || "development").trim().toLowerCase();
@@ -43,6 +45,7 @@ export default function NodeAppNavigator() {
     const canUseChat = user.role === "admin" || user.permissions?.chat === true;
     if (activeScreen === "profile") return <NodeProfileScreen user={user} onBack={() => setActiveScreen("shopping")} onUpdateProfile={updateProfile} onClearScanHistory={clearScanHistory} onChangePassword={() => setActiveScreen("password")} onChangeEmail={() => setActiveScreen("email")} />;
     if (activeScreen === "email") return <NodeEmailChangeScreen user={user} onBack={() => setActiveScreen("profile")} onRequestCode={requestEmailChange} onConfirmCode={confirmEmailChange} onDone={() => { setSignedOutAccessMode("login"); signOut(); }} />;
+    if (activeScreen === "music") return <PlaybackProvider><NodeMusicPlaylistsScreen accessToken={accessToken} onBack={() => setActiveScreen("shopping")} /></PlaybackProvider>;
     if (activeScreen === "password") {
       const navigation = {
         navigate: (routeName) => {
@@ -58,7 +61,7 @@ export default function NodeAppNavigator() {
     if (activeScreen === "chat" && canUseChat) return <NodeChatScreen user={user} accessToken={accessToken} onBack={() => setActiveScreen("shopping")} />;
     if (activeScreen === "users" && user.role === "admin") return <NodeAdminUsersScreen user={user} accessToken={accessToken} onBack={() => setActiveScreen("shopping")} onOpenProductReviews={() => setActiveScreen("productReviews")} />;
     if (activeScreen === "productReviews" && user.role === "admin") return <NodeProductReviewsScreen accessToken={accessToken} onBack={() => setActiveScreen("users")} />;
-    return <NodeShoppingListsScreen user={user} accessToken={accessToken} onSignOut={signOut} onOpenProfile={() => setActiveScreen("profile")} onOpenChat={canUseChat ? () => setActiveScreen("chat") : null} onOpenUsers={user.role === "admin" ? () => setActiveScreen("users") : null} />;
+    return <NodeShoppingListsScreen user={user} accessToken={accessToken} onSignOut={signOut} onOpenProfile={() => setActiveScreen("profile")} onOpenMusic={() => setActiveScreen("music")} onOpenChat={canUseChat ? () => setActiveScreen("chat") : null} onOpenUsers={user.role === "admin" ? () => setActiveScreen("users") : null} />;
   }
 
   return <AuthStack accessMode={signedOutAccessMode} backendProvider="node" />;

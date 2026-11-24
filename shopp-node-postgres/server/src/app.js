@@ -10,6 +10,7 @@ import { productReviewsRouter } from './routes/productReviews.js';
 import { realtimeRouter } from './routes/realtime.js';
 import { chatRouter } from './routes/chat.js';
 import { adminUsersRouter } from './routes/adminUsers.js';
+import { musicPlaylistsRouter } from './routes/musicPlaylists.js';
 import { config } from './config.js';
 
 const app = express();
@@ -30,6 +31,8 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.status(204).end();
   next();
 });
+// Music backups can include up to 20 LRC files of 512 KB each.
+app.use('/api/v1/music-playlists', express.json({ limit: '12mb' }));
 app.use(express.json({ limit: '64kb' }));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
@@ -50,6 +53,7 @@ app.use('/api/v1/store-offers', storeOffersRouter);
 app.use('/api/v1/product-reviews', productReviewsRouter);
 app.use('/api/v1/realtime', realtimeRouter);
 app.use('/api/v1/chat', chatRouter);
+app.use('/api/v1/music-playlists', musicPlaylistsRouter);
 app.use((_req, res) => res.status(404).json({ error: { code: 'not_found', message: 'Ruta no encontrada' } }));
 app.use((error, _req, res, _next) => {
   if (error instanceof SyntaxError && 'body' in error) {
