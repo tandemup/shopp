@@ -10,6 +10,24 @@ const videoPattern = /^[A-Za-z0-9_-]{11}$/;
 const playlistPattern = /^[A-Za-z0-9_-]{10,80}$/;
 const fail = (res, status, code, message) => res.status(status).json({ error: { code, message } });
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const MAX_COVER_BYTES = 2 * 1024 * 1024;
+const MAX_COVER_BASE64_LENGTH = 4 * Math.ceil(MAX_COVER_BYTES / 3);
+
+function isValidArtwork(value) {
+  if (value == null || value === '') return true;
+  if (typeof value !== 'string' || value.length > MAX_COVER_BASE64_LENGTH + 23) return false;
+  if (/^https:\/\/[^\s]+$/i.test(value) && value.length <= 2048) {
+    try {
+      const url = new URL(value);
+      return Boolean(url.hostname) && !url.username && !url.password;
+    } catch { return false; }
+  }
+  const image = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(value);
+  if (!image || image[2].length % 4 !== 0) return false;
+  const encoded = image[2];
+  const padding = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0;
+  return (encoded.length * 3) / 4 - padding <= MAX_COVER_BYTES;
+}
 
 function validatePlaylist(value) {
   if (!isObject(value)) return 'La playlist debe ser un objeto JSON.';
@@ -24,6 +42,7 @@ function validatePlaylist(value) {
       return `El enlace del elemento ${index + 1} no es válido.`;
     }
     if (typeof track.title !== 'string' || track.title.length > 120) return `El título del elemento ${index + 1} no es válido.`;
+    if (!isValidArtwork(track.artworkUrl)) return `La carátula del elemento ${index + 1} no es válida o supera 2 MB.`;
     if (track.lyricsText !== undefined && track.lyricsText !== null) {
       if (typeof track.lyricsText !== 'string' || !String(track.lyricsFileName || '').toLowerCase().endsWith('.lrc')) return `La letra LRC del elemento ${index + 1} no es válida.`;
       const size = Buffer.byteLength(track.lyricsText, 'utf8');
@@ -55,6 +74,25 @@ function stableJson(value) {
     return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
   }
   return JSON.stringify(value);
+}
+
+function comparableTracks(tracks) {
+  return tracks.map(({ lyricsKey, ...track }) => track);
+}
+
+function repairsClippedArtwork(previousTracks, incomingTracks) {
+  if (previousTracks.length !== incomingTracks.length) return false;
+  let repaired = false;
+  const adjusted = previousTracks.map((previous, index) => {
+    const cover = incomingTracks[index].artworkUrl;
+    if (cover.startsWith('data:image/') && cover.length > 2048 &&
+        previous.artworkUrl === cover.slice(0, 2048)) {
+      repaired = true;
+      return { ...previous, artworkUrl: cover };
+    }
+    return previous;
+  });
+  return repaired && stableJson(comparableTracks(adjusted)) === stableJson(comparableTracks(incomingTracks));
 }
 
 musicPlaylistsRouter.get('/', async (req, res, next) => {
@@ -109,7 +147,7 @@ musicPlaylistsRouter.post('/sync', async (req, res, next) => {
         lyricsDisabled: track.lyricsDisabled === true,
         lyricsFileName: track.lyricsFileName || null,
         lyricsText: track.lyricsText ?? null,
-        artworkUrl: typeof track.artworkUrl === 'string' ? track.artworkUrl.slice(0, 2048) : '',
+        artworkUrl: track.artworkUrl || '',
       }));
       const serialized = JSON.stringify(tracks);
       if (!existing) {
@@ -120,19 +158,23 @@ musicPlaylistsRouter.post('/sync', async (req, res, next) => {
         );
       } else {
         const existingUpdatedAt = Number(existing.updated_at_ms);
-        const sameContent = existing.title === item.title.trim() && stableJson(existing.tracks) === stableJson(tracks);
-        if (incomingUpdatedAt > existingUpdatedAt) {
+        const sameTitle = existing.title === item.title.trim();
+        const repairArtwork = incomingUpdatedAt === existingUpdatedAt && sameTitle &&
+          repairsClippedArtwork(existing.tracks, tracks);
+        const sameContent = sameTitle &&
+          stableJson(comparableTracks(existing.tracks)) === stableJson(comparableTracks(tracks));
+        if (incomingUpdatedAt > existingUpdatedAt || repairArtwork) {
           await client.query(
             `UPDATE music_playlists SET title=$3, tracks=$4::jsonb, created_at_ms=$5, updated_at_ms=$6, updated_at=NOW()
              WHERE owner_id=$1 AND playlist_id=$2`,
-            [ownerId, item.id, item.title.trim(), serialized, createdAt, incomingUpdatedAt],
+            [ownerId, item.id, item.title.trim(), serialized, createdAt, repairArtwork ? existingUpdatedAt + 1 : incomingUpdatedAt],
           );
         } else if (!sameContent && incomingUpdatedAt === existingUpdatedAt) {
           conflicts.push(item.id);
         }
       }
     }
-    const { rows } = await client.query(
+    const { rows } = req.body.returnPlaylists === false ? { rows: [] } : await client.query(
       'SELECT * FROM music_playlists WHERE owner_id = $1 ORDER BY updated_at_ms DESC, playlist_id',
       [ownerId],
     );

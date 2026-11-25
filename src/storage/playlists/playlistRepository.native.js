@@ -7,34 +7,43 @@ const read=async()=>JSON.parse((await AsyncStorage.getItem(KEY)) || '{"items":[]
 const write=async data=>AsyncStorage.setItem(KEY,JSON.stringify(data));
 // A serialized queue avoids lost updates from simultaneous writes within this JS runtime.
 let queue=Promise.resolve();
-const modify=fn=>{ const next=queue.then(async()=>{ const data=await read(); const result=await fn(data); await write(data); return result; }); queue=next.catch(()=>{}); return next; };
+const modify=(fn, afterWrite)=>{ const next=queue.then(async()=>{ const data=await read(); const result=await fn(data); await write(data); await afterWrite?.(); return result; }); queue=next.catch(()=>{}); return next; };
 export async function list(type){assertType(type); return (await read()).items.filter(x=>x.collectionType===type).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));}
 export async function get(id){return (await read()).items.find(x=>x.id===id)||null;}
 export async function create(item){assertType(item.collectionType); return modify(data=>{const id=item.id||uid(),now=Date.now();if(data.items.some(x=>x.id===id))throw new Error('ID duplicado');data.items.push({...item,id,_id:id,createdAt:item.createdAt||now,updatedAt:item.updatedAt||now});return id;});}
 export async function update(id,changes){return modify(data=>{const i=data.items.findIndex(x=>x.id===id);if(i<0)throw new Error('Playlist inexistente');const old=data.items[i];data.items[i]={...old,...changes,id,_id:id,collectionType:old.collectionType,updatedAt:Date.now()};return data.items[i];});}
 // Native equivalent of the web transaction API. LRC values stay in
 // AsyncStorage and playlist metadata retains the same shape as IndexedDB.
-export async function saveWithLyrics(id,item,lyricsChanges=[]){
+export async function saveWithLyrics(id,item,lyricsChanges=[],{ preserveTimestamps = false } = {}){
   assertType(item.collectionType);
   if(!Array.isArray(item.tracks)||!Array.isArray(lyricsChanges))throw new Error('Datos de playlist inválidos');
+  const scopedKey = /^@shopping\/playlist-lyrics\/track:[A-Za-z0-9_-]+$/;
+  const obsoleteKeys = new Set();
   return modify(async data=>{
     const index=id?data.items.findIndex(x=>x.id===id):-1;
     if(id&&index<0)throw new Error('Playlist inexistente');
     const old=index>=0?data.items[index]:null;
     if(old&&old.collectionType!==item.collectionType)throw new Error('Colección incorrecta');
     const nextId=id||item.id||uid(), now=Date.now();
-    const record={...old,...item,id:nextId,_id:nextId,collectionType:item.collectionType,createdAt:old?.createdAt||now,updatedAt:now};
+    const record={...old,...item,id:nextId,_id:nextId,collectionType:item.collectionType,
+      createdAt:(preserveTimestamps && item.createdAt) || old?.createdAt || now,
+      updatedAt:preserveTimestamps ? item.updatedAt : now};
     const other=data.items.filter(x=>x.id!==nextId);
     const inUse=new Set([...other,...[record]].flatMap(p=>(p.tracks||[]).filter(t=>!t.lyricsDisabled&&typeof t.lyricsKey==='string').map(t=>t.lyricsKey)));
     for(const change of lyricsChanges){
-      if(typeof change?.key!=='string'||!/^@shopping\/playlist-lyrics\/track:[A-Za-z0-9_-]+$/.test(change.key))throw new Error('Clave LRC individual no válida');
-      if(change.remove){if(!inUse.has(change.key))await AsyncStorage.removeItem(change.key);continue;}
+      if(typeof change?.key!=='string'||!scopedKey.test(change.key))throw new Error('Clave LRC individual no válida');
+      if(change.remove){if(!inUse.has(change.key))obsoleteKeys.add(change.key);continue;}
       if(typeof change?.record?.text!=='string'||new TextEncoder().encode(change.record.text).length>512*1024||!String(change.record.fileName||'').toLowerCase().endsWith('.lrc'))throw new Error('Contenido LRC inválido');
       await AsyncStorage.setItem(change.key,JSON.stringify(change.record));
     }
     if(old){data.items[index]=record;}else{data.items.push(record);}
-    if(old)for(const track of old.tracks||[]){if(track.lyricsKey&&!inUse.has(track.lyricsKey))await AsyncStorage.removeItem(track.lyricsKey);}
+    if(old)for(const track of old.tracks||[]){
+      if(scopedKey.test(track.lyricsKey)&&!inUse.has(track.lyricsKey))obsoleteKeys.add(track.lyricsKey);
+    }
     return nextId;
+  }, async () => {
+    // A failed playlist write must leave the old lyrics attached and readable.
+    for (const key of obsoleteKeys) await AsyncStorage.removeItem(key).catch(() => {});
   });
 }
 export async function remove(id){return modify(async data=>{const removed=data.items.find(x=>x.id===id);if(!removed)return false;data.items=data.items.filter(x=>x.id!==id);const inUse=new Set(data.items.flatMap(p=>(p.tracks||[]).filter(t=>!t.lyricsDisabled&&typeof t.lyricsKey==='string').map(t=>t.lyricsKey)));for(const track of removed.tracks||[])if(track.lyricsKey&&!inUse.has(track.lyricsKey))await AsyncStorage.removeItem(track.lyricsKey);return true;});}
