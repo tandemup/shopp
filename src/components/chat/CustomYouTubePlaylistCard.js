@@ -19,11 +19,14 @@ function splitAuthorAndSingle(value) {
     : { author: "", single: text };
 }
 
-export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, onCreateCard, shareable = false, onToggleShareable, isTutorial = false, isNews = false, isClassical = false, onOpenCatalog, worksCount = 0 }) {
+export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, onCreateCard, shareable = false, onToggleShareable, isTutorial = false, isNews = false, isClassical = false, onOpenCatalog, worksCount = 0, squareArtwork = false, showItemCount = false, style }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { width: viewportWidth } = useWindowDimensions();
   const compactCard = viewportWidth < 520;
   const coverWidth = viewportWidth < 375 ? 112 : 136;
+  const coverSide = compactCard ? 100 : CARD_HEIGHT;
+  const coverLayout = squareArtwork ? { width: coverSide, height: coverSide, flexShrink: 0 }
+    : [compactCard && styles.coverPhone, compactCard && { width: coverWidth }, isClassical && styles.classicalCover];
   const playback = usePlayback();
   const displayName = String(playlist?.title || "").trim() || userName || "Mi playlist";
   const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
@@ -65,7 +68,7 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
   const coverUri = playlist?.artworkUrl || playlist?.coverImage || playlist?.imageUrl || activeTrack?.artworkUrl || (activeTrack?.videoId ? `https://i.ytimg.com/vi/${activeTrack.videoId}/mqdefault.jpg` : "");
   if (!activeTrack) return null;
   return (
-    <View style={[styles.card, isNews && styles.newsCard, isClassical && styles.classicalCard]}>
+    <View style={[styles.card, isNews && styles.newsCard, isClassical && styles.classicalCard, style]}>
       <Pressable onPress={() => playback.open(playlist, { isTutorial })} style={[styles.summary, compactCard && styles.summaryPhone, isClassical && styles.classicalSummary]}>
         {(isClassical ? coverUri : (activeTrack.artworkUrl || activeTrack.videoId)) ? (
           <Image
@@ -74,11 +77,11 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
                 ? (isClassical ? coverUri : activeTrack.artworkUrl)
                 : `https://i.ytimg.com/vi/${activeTrack.videoId}/mqdefault.jpg`,
             }}
-            style={[styles.cover, compactCard && styles.coverPhone, compactCard && { width: coverWidth }, isClassical && styles.classicalCover]}
-            resizeMode="contain"
+            style={[styles.cover, coverLayout]}
+            resizeMode={squareArtwork ? "cover" : "contain"}
           />
         ) : (
-          <View style={[styles.coverFallback, compactCard && styles.coverPhone, compactCard && { width: coverWidth }, isClassical && styles.classicalCover]}>
+          <View style={[styles.coverFallback, coverLayout]}>
             <Ionicons name="albums" size={36} color="#fff" />
           </View>
         )}
@@ -135,6 +138,11 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
                 <Text style={styles.shareLabel}>Compartir</Text>
               </Pressable>
             </View>
+          ) : null}
+          {showItemCount && !onToggleShareable ? (
+            <Text style={[styles.itemCount, styles.standaloneItemCount]}>
+              {tracks.length === 1 ? "1 elemento" : `${tracks.length} elementos`}
+            </Text>
           ) : null}
         </View>
       </Pressable>
@@ -239,6 +247,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   itemCount: { fontSize: 12, lineHeight: 16, color: "#64748b", fontWeight: "600" },
+  standaloneItemCount: { marginTop: "auto", marginBottom: 3 },
   shareControl: {
     flexDirection: "row",
     alignItems: "center",

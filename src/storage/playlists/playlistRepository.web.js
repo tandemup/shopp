@@ -200,7 +200,7 @@ export async function importBatch(type, items, lyrics, { replace = false } = {})
 
 // Persistir una colección y sus cambios LRC en la MISMA transacción.
 // No se aplica ningún cambio si la playlist no existe o falla una escritura.
-export async function saveWithLyrics(id, item, lyricsChanges = []) {
+export async function saveWithLyrics(id, item, lyricsChanges = [], { preserveTimestamps = false } = {}) {
   assertType(item.collectionType);
   if (!Array.isArray(item.tracks) || !Array.isArray(lyricsChanges)) throw new Error('Datos de playlist inválidos');
   const prepared = lyricsChanges.map(change => {
@@ -240,7 +240,8 @@ export async function saveWithLyrics(id, item, lyricsChanges = []) {
       if (existing && existing.collectionType !== item.collectionType) { tx.abort(); return; }
       const record = { ...existing, ...item, id: nextId, _id: nextId,
         collectionType: item.collectionType,
-        createdAt: existing?.createdAt || now, updatedAt: now };
+        createdAt: (preserveTimestamps && item.createdAt) || existing?.createdAt || now,
+        updatedAt: preserveTimestamps ? item.updatedAt : now };
       // Include ALL collections and the new state of this playlist before
       // deleting any scoped key. Shared/legacy video keys are never removed.
       const inUse = referencedLyrics([...all.filter(p => p.id !== nextId), record]);

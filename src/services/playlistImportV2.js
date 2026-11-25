@@ -1,10 +1,11 @@
 // Importación conservadora de respaldos v2. Nunca elimina datos de Convex.
 import { parseYouTubeUrl } from '@/src/services/urlSafety';
 import { getLocalLyrics, saveLocalLyrics } from '@/src/storage/lyricsStorage';
+import { isPlaylistArtwork } from '@/src/services/playlistArtwork';
 const MAX_LRC_BYTES = 512 * 1024;
 const utf8Size = (str) => new TextEncoder().encode(str).length;
 
-export function validatePlaylistBackupV2(payload, expectedType, { minimumTracks = 1, maximumTracks = 1000 } = {}) {
+export function validatePlaylistBackupV2(payload, expectedType, { minimumTracks = 1, maximumTracks = 1000, preserveArtwork = false } = {}) {
   if (!payload || payload.app !== 'Shopp' || payload.version !== 2 || payload.backupStatus !== 'complete')
     throw new Error('El archivo no es un respaldo Shopp v2 completo.');
   if (payload.type !== expectedType) throw new Error('El tipo del respaldo no corresponde a esta utilidad.');
@@ -32,6 +33,7 @@ export function validatePlaylistBackupV2(payload, expectedType, { minimumTracks 
         videoId: parsedUrl.videoId || undefined,
         playlistId: parsedUrl.playlistId || undefined,
         title: String(track.title || '').trim() || `Elemento ${i+1}`,
+        ...(preserveArtwork && isPlaylistArtwork(track.artworkUrl) ? { artworkUrl: track.artworkUrl } : {}),
         lyricsBackup: backup || null,
         lyricsDisabled: !backup && track.lyricsDisabled === true,
       };

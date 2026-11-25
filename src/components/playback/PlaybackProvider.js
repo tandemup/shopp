@@ -1759,12 +1759,19 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "49%",
     maxWidth: "49%",
+    minHeight: 0,
+    alignSelf: "stretch",
   },
   tabletTrackList: {
+    flexGrow: 1,
+    minHeight: 0,
     width: "100%",
     alignSelf: "center",
+    alignItems: "stretch",
+    alignContent: "flex-start",
+    justifyContent: "flex-start",
     paddingHorizontal: 0,
-    paddingTop: 8,
+    paddingTop: 12,
     paddingBottom: 12,
     gap: 9,
   },
@@ -1827,6 +1834,8 @@ const styles = StyleSheet.create({
     minWidth: 400,
     minHeight: 0,
     alignSelf: "stretch",
+    alignItems: "stretch",
+    justifyContent: "flex-start",
     overflow: "hidden",
   },
   lyricStripBelowVideo: {
@@ -2007,7 +2016,11 @@ const styles = StyleSheet.create({
   desktopTrackListTwoColumns: {
     maxWidth: "100%",
     minHeight: 0,
-    paddingTop: 10,
+    // Restore full height in the horizontal body after desktopTrackList centers the pane.
+    alignSelf: "stretch",
+    alignItems: "stretch",
+    justifyContent: "flex-start",
+    paddingTop: 18,
     paddingBottom: 10,
   },
   desktopTrackPaneNativeScroll: {
