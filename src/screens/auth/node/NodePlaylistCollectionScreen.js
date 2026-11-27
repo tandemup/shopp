@@ -4,6 +4,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { safeConfirm } from '@/src/components/ui/alert/safeAlert';
+import DialogHost from '@/src/components/ui/alert/DialogHost';
 import CustomYouTubePlaylistPlayer from '@/src/components/chat/CustomYouTubePlaylistPlayer';
 import { MusicCardPrintEditor } from '@/src/screens/playlist/PrintMusicCardScreen';
 import { parseYouTubeUrl } from '@/src/services/urlSafety';
@@ -953,6 +954,7 @@ export default function NodePlaylistCollectionScreen({ accessToken, onBack, coll
         <View style={styles.modalActions}><Pressable disabled={editorBusy} onPress={() => setEditorVisible(false)} style={styles.secondary}><Text style={styles.secondaryText}>Cancelar</Text></Pressable><Pressable disabled={editorBusy} onPress={savePlaylist} style={[styles.primary, styles.collectionCreate, editorBusy && styles.disabled]}><Ionicons name="checkmark" size={18} color="#fff" /><Text style={styles.primaryText}>{busy ? 'Guardando…' : 'Guardar cambios'}</Text></Pressable></View>
       </View></View>
     </Modal>
+    <DialogHost />
   </SafeAreaView>;
 }
 
