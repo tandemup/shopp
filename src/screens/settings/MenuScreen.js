@@ -15,7 +15,7 @@ import { I18nText as Text, useI18n } from "@/src/i18n";
 import { useFocusEffect } from "@react-navigation/native";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 
 import { useShoppAuthActions } from "@/src/hooks/useShoppAuth";
@@ -339,6 +339,7 @@ async function exportUserDataToJsonFile({
   getScannedHistory,
   filename: requestedFilename,
   destination,
+  nodeMode,
 }) {
   const scanHistory = await getScannedHistory();
   const profile = currentUser?.profile ?? null;
@@ -368,11 +369,11 @@ async function exportUserDataToJsonFile({
     meta: {
       platform: Platform.OS,
       sources: {
-        user: "Convex Auth y perfil",
-        shoppingLists: "ListsContext (almacenamiento local por usuario)",
-        archivedLists: "ListsContext (almacenamiento local por usuario)",
+        user: nodeMode ? "Cuenta Node.js" : "Convex Auth y perfil",
+        shoppingLists: nodeMode ? "PostgreSQL" : "ListsContext (almacenamiento local por usuario)",
+        archivedLists: nodeMode ? "PostgreSQL" : "ListsContext (almacenamiento local por usuario)",
         purchaseHistory: "Derivado de las listas archivadas",
-        scanHistory: "Historial local con sincronización opcional",
+        scanHistory: nodeMode ? "PostgreSQL" : "Historial local con sincronización opcional",
       },
     },
   };
@@ -786,18 +787,57 @@ async function requestWebCameraPermission() {
 }
 
 export default function MenuScreen({ navigation }) {
-  const { language, setLanguage } = useI18n();
-  const { height: screenHeight } = useWindowDimensions();
   const { signOut } = useShoppAuthActions();
   const currentUser = useCurrentUser();
   const convex = useConvex();
-  const [utilityExportVisible, setUtilityExportVisible] = useState(false);
-  const [utilityExportBusy, setUtilityExportBusy] = useState(null);
   const importItemsFromAsyncStorage = useMutation(
     api.shoppingImport.importItemsFromAsyncStorage,
   );
   const scanHistoryStorage = useScannedHistoryStorage();
 
+  const {
+    activeLists,
+    archivedLists,
+    purchaseHistory,
+    reloadLists,
+    importUserLists,
+    clearActiveListsState,
+    clearArchivedListsState,
+    clearAllListsState,
+  } = useLists();
+
+  const tabBarHeight = useBottomTabBarHeight();
+  const { reloadStoresFromSeed } = useStores();
+  return (
+    <SettingsContent
+      navigation={navigation}
+      currentUser={currentUser}
+      convex={convex}
+      signOut={signOut}
+      importItemsFromAsyncStorage={importItemsFromAsyncStorage}
+      scanHistoryStorage={scanHistoryStorage}
+      lists={{ activeLists, archivedLists, purchaseHistory }}
+      reloadLists={reloadLists}
+      importUserLists={importUserLists}
+      clearActiveListsState={clearActiveListsState}
+      clearArchivedListsState={clearArchivedListsState}
+      clearAllListsState={clearAllListsState}
+      reloadStoresFromSeed={reloadStoresFromSeed}
+      tabBarHeight={tabBarHeight}
+    />
+  );
+}
+
+export function SettingsContent({
+  navigation, currentUser, convex, signOut, importItemsFromAsyncStorage,
+  scanHistoryStorage, lists, reloadLists, importUserLists, clearActiveListsState,
+  clearArchivedListsState, clearAllListsState, reloadStoresFromSeed,
+  tabBarHeight = 0, node,
+}) {
+  const { language, setLanguage } = useI18n();
+  const { height: screenHeight } = useWindowDimensions();
+  const [utilityExportVisible, setUtilityExportVisible] = useState(false);
+  const [utilityExportBusy, setUtilityExportBusy] = useState(null);
   const [nativeCameraPermission, requestNativeCameraPermission] =
     useCameraPermissions();
   const [nativeMicrophonePermission, requestNativeMicrophonePermission] =
@@ -814,19 +854,6 @@ export default function MenuScreen({ navigation }) {
   const [productSearchEngineSubtitle, setProductSearchEngineSubtitle] =
     useState("Motor activo: Google");
 
-  const {
-    activeLists,
-    archivedLists,
-    purchaseHistory,
-    reloadLists,
-    importUserLists,
-    clearActiveListsState,
-    clearArchivedListsState,
-    clearAllListsState,
-  } = useLists();
-
-  const tabBarHeight = useBottomTabBarHeight();
-  const { reloadStoresFromSeed } = useStores();
   const isAdmin =
     currentUser?.isAdmin === true || currentUser?.role === "admin";
 
@@ -923,7 +950,7 @@ export default function MenuScreen({ navigation }) {
   );
 
   useEffect(() => {
-    navigation.setOptions(headerConfig.navigationOptions);
+    navigation?.setOptions?.(headerConfig.navigationOptions);
   }, [navigation, headerConfig]);
 
   useEffect(() => {
@@ -1100,10 +1127,12 @@ export default function MenuScreen({ navigation }) {
   };
 
   const goToBarcodeSettings = () => {
+    if (node) return node.openBarcodeSettings();
     navigation.navigate(ROUTES.BARCODE_SETTINGS);
   };
 
   const goToProductSearchEngines = () => {
+    if (node) return node.openSearchEngines();
     navigation.navigate(ROUTES.SEARCH_ENGINES, { type: "product" });
   };
 
@@ -1129,16 +1158,18 @@ export default function MenuScreen({ navigation }) {
     if (utilityExportBusy) return;
     setUtilityExportBusy(id);
     try {
+      const snapshot = node && ["listas-compra", "listas-archivadas", "historial-compras"].includes(id)
+        ? await node.getLists() : lists;
       await saveUtilityJson(id, {
         convex,
+        getNodePlaylists: node?.getPlaylists,
         getScannedHistory: scanHistoryStorage.getScannedHistory,
-        activeLists,
-        archivedLists,
-        purchaseHistory,
+        ...snapshot,
       });
     } catch (error) {
       if (String(error?.name || "") !== "AbortError") {
         console.warn("[MenuScreen] utility export error", error);
+        if (node) setUtilityExportVisible(false);
         safeAlert("Error al exportar", String(error?.message || error));
       }
     } finally {
@@ -1157,12 +1188,12 @@ export default function MenuScreen({ navigation }) {
       if (destination?.cancelled) return;
       setExportingUserData(true);
 
+      const snapshot = node ? await node.getLists() : lists;
       const result = await exportUserDataToJsonFile({
         currentUser,
-        activeLists,
-        archivedLists,
-        purchaseHistory,
-        getScannedHistory: scanHistoryStorage.getScannedHistory,
+        ...snapshot,
+        nodeMode: Boolean(node),
+        getScannedHistory: node ? async () => snapshot.scanHistory : scanHistoryStorage.getScannedHistory,
         filename,
         destination,
       });
@@ -1221,7 +1252,7 @@ export default function MenuScreen({ navigation }) {
       if (data.scanHistory.some((item) => !item || typeof item !== "object")) {
         throw new Error("El historial de escaneos no es válido.");
       }
-      const summary = `${data.shoppingLists.length} listas activas, ${data.archivedLists.length} archivadas y ${data.scanHistory.length} escaneos. El historial de compras se reconstruirá desde las listas archivadas. No se modifica la cuenta ni el perfil de Convex.`;
+      const summary = `${data.shoppingLists.length} listas activas, ${data.archivedLists.length} archivadas y ${data.scanHistory.length} escaneos. El historial de compras se reconstruirá desde las listas archivadas. ${node ? "Se actualizarán los datos de tu cuenta en PostgreSQL." : "No se modifica la cuenta ni el perfil de Convex."}`;
       safeAlert("Importar datos de Shopp", `${asset.name || "Archivo JSON"}\n${summary}\n\nElige cómo importarlos:`, [
         { text: "Cancelar", style: "cancel" },
         { text: "Combinar", onPress: () => applyUserDataImport(incomingLists, data.scanHistory, "merge") },
@@ -1236,6 +1267,13 @@ export default function MenuScreen({ navigation }) {
     if (importingUserData) return;
     setImportingUserData(true);
     try {
+      if (node) {
+        const result = await node.importData(incomingLists, incomingScans, mode);
+        safeAlert("Datos importados", result.scanHistoryUpdated
+          ? "Las listas y el historial de escaneos se han actualizado."
+          : "Las listas se han actualizado.");
+        return;
+      }
       const previousScans = mode === "merge" ? await readLocalScans() : [];
       const mergedScans = [...previousScans];
       const positions = new Map(mergedScans.map((item, index) => [String(item.barcode || item.id || item._id || index), index]));
@@ -1284,7 +1322,7 @@ export default function MenuScreen({ navigation }) {
           email: currentUser?.email ?? null,
           profile: currentUser?.profile ?? null,
         },
-        scanHistory: await scanHistoryStorage.getScannedHistory(),
+        scanHistory: await (node ? readLocalScans() : scanHistoryStorage.getScannedHistory()),
         filename,
         destination,
       });
@@ -1326,13 +1364,17 @@ export default function MenuScreen({ navigation }) {
       // Los datos ya se han escrito en el almacenamiento por restoreCompleteBackup.
       // Si no hay método de recarga, es necesario reiniciar la vista/aplicación.
       let refreshed = false;
-      if (typeof reloadLists === "function") {
+      if (!node && typeof reloadLists === "function") {
         try {
           await reloadLists();
           refreshed = true;
         } catch (refreshError) {
           console.warn("[MenuScreen] Backup restored, but UI refresh failed", refreshError);
         }
+      }
+      if (node) {
+        safeAlert("Restauración completada", `Se han restaurado ${result.recordCount} grupos de datos locales y ${result.mediaCount} imágenes.`);
+        return;
       }
       safeAlert(
         "Restauración completada",
@@ -1393,6 +1435,13 @@ export default function MenuScreen({ navigation }) {
 
   const handleImportItemsToConvex = async () => {
     if (importingItems) return;
+    if (node) {
+      safeAlert(
+        "Subir items locales a Convex",
+        "Abre Shopp con el proveedor Convex, inicia sesión como administrador y vuelve a Ajustes → Migración temporal para subir los items de AsyncStorage.",
+      );
+      return;
+    }
 
     if (!isAdmin) {
       safeAlert(
@@ -1630,109 +1679,8 @@ export default function MenuScreen({ navigation }) {
     );
   }
 
-  return (
-    <View style={styles.screen}>
-      <StatusBar {...headerConfig.statusBar} />
-
-      <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
-        <ScrollView
-          style={styles.container}
-          contentContainerStyle={[
-            styles.content,
-            {
-              paddingBottom: tabBarHeight + 24,
-            },
-          ]}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.headerEyebrow}>Shopp</Text>
-              <Text style={styles.headerTitle}>Ajustes</Text>
-            </View>
-
-            <View style={styles.headerIconBox}>
-              <Ionicons name="settings-outline" size={26} color="#0f172a" />
-            </View>
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Cuenta</Text>
-
-            <UserAccountCard user={currentUser} />
-
-            <SettingsCard
-              icon="person-circle-outline"
-              title="Mi perfil"
-              subtitle="Editar alias público, teléfono y privacidad de Parking"
-              onPress={goToProfile}
-            />
-
-            {isAdmin ? (
-              <>
-                <SettingsCard
-                  icon="shield-checkmark-outline"
-                  title="Administrar usuarios"
-                  subtitle="Asignar roles, bloquear cuentas y conceder utilidades"
-                  badge="ADMIN"
-                  onPress={goToAdminUsers}
-                />
-
-                <SettingsCard
-                  icon="options-outline"
-                  title="Funcionalidades del invitado"
-                  subtitle="Elegir las herramientas visibles sin iniciar sesión en este dispositivo"
-                  badge="ADMIN"
-                  onPress={goToAdminGuestFeatures}
-                />
-
-                <SettingsCard
-                  icon="storefront-outline"
-                  title="Peticiones de creación de tiendas"
-                  subtitle="Revisar, aprobar o rechazar solicitudes"
-                  badge="ADMIN"
-                  onPress={goToAdminStoreRequests}
-                />
-
-                <SettingsCard
-                  icon="document-text-outline"
-                  title="Catálogo de supermercados"
-                  subtitle="Importar y exportar supermercados en JSON"
-                  badge="ADMIN"
-                  onPress={goToAdminStoreCatalog}
-                />
-
-                <SettingsCard
-                  icon="pricetags-outline"
-                  title="Ofertas recibidas"
-                  subtitle="Revisar sugerencias y solicitudes comerciales"
-                  badge="ADMIN"
-                  onPress={goToAdminStoreOffers}
-                />
-              </>
-            ) : null}
-
-            <SettingsCard
-              icon="log-out-outline"
-              title="Cerrar sesión"
-              subtitle="Salir de tu cuenta de Shopp en este dispositivo"
-              danger
-              onPress={handleSignOut}
-            />
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Idioma</Text>
-
-            <SettingsCard
-              icon="language-outline"
-              title="Idioma de la aplicación"
-              subtitle={language === "en" ? "English" : "Español"}
-              badge={language.toUpperCase()}
-              onPress={handleLanguagePress}
-            />
-          </View>
-
+  const settingsSections = (
+    <>
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Escáner</Text>
 
@@ -1761,8 +1709,8 @@ export default function MenuScreen({ navigation }) {
               <View style={[styles.utilityExportModal, { maxHeight: screenHeight * 0.85 }]}>
                 <Text style={styles.utilityExportTitle}>Copias JSON independientes</Text>
                 <Text style={styles.utilityExportDescription}>
-                  Pulsa el icono de exportación de una utilidad para generar y guardar su JSON.
-                  Se incluyen todos los registros, no solo los visibles.
+                  Pulsa el icono de exportación de una utilidad para guardar sus registros.
+                  {node ? " Tutoriales y Noticias requieren una sesión de Convex." : ""}
                 </Text>
                 <ScrollView
                   style={[styles.utilityExportScroll, { maxHeight: Math.max(160, screenHeight * 0.48) }]}
@@ -1970,6 +1918,115 @@ export default function MenuScreen({ navigation }) {
               )}
             </View>
           </View>
+    </>
+  );
+
+  if (node) return settingsSections;
+
+  return (
+    <View style={styles.screen}>
+      <StatusBar {...headerConfig.statusBar} />
+
+      <SafeAreaView style={styles.safeArea} edges={["left", "right"]}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={[
+            styles.content,
+            {
+              paddingBottom: tabBarHeight + 24,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.headerEyebrow}>Shopp</Text>
+              <Text style={styles.headerTitle}>Ajustes</Text>
+            </View>
+
+            <View style={styles.headerIconBox}>
+              <Ionicons name="settings-outline" size={26} color="#0f172a" />
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Cuenta</Text>
+
+            <UserAccountCard user={currentUser} />
+
+            <SettingsCard
+              icon="person-circle-outline"
+              title="Mi perfil"
+              subtitle="Editar alias público, teléfono y privacidad de Parking"
+              onPress={goToProfile}
+            />
+
+            {isAdmin ? (
+              <>
+                <SettingsCard
+                  icon="shield-checkmark-outline"
+                  title="Administrar usuarios"
+                  subtitle="Asignar roles, bloquear cuentas y conceder utilidades"
+                  badge="ADMIN"
+                  onPress={goToAdminUsers}
+                />
+
+                <SettingsCard
+                  icon="options-outline"
+                  title="Funcionalidades del invitado"
+                  subtitle="Elegir las herramientas visibles sin iniciar sesión en este dispositivo"
+                  badge="ADMIN"
+                  onPress={goToAdminGuestFeatures}
+                />
+
+                <SettingsCard
+                  icon="storefront-outline"
+                  title="Peticiones de creación de tiendas"
+                  subtitle="Revisar, aprobar o rechazar solicitudes"
+                  badge="ADMIN"
+                  onPress={goToAdminStoreRequests}
+                />
+
+                <SettingsCard
+                  icon="document-text-outline"
+                  title="Catálogo de supermercados"
+                  subtitle="Importar y exportar supermercados en JSON"
+                  badge="ADMIN"
+                  onPress={goToAdminStoreCatalog}
+                />
+
+                <SettingsCard
+                  icon="pricetags-outline"
+                  title="Ofertas recibidas"
+                  subtitle="Revisar sugerencias y solicitudes comerciales"
+                  badge="ADMIN"
+                  onPress={goToAdminStoreOffers}
+                />
+              </>
+            ) : null}
+
+            <SettingsCard
+              icon="log-out-outline"
+              title="Cerrar sesión"
+              subtitle="Salir de tu cuenta de Shopp en este dispositivo"
+              danger
+              onPress={handleSignOut}
+            />
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Idioma</Text>
+
+            <SettingsCard
+              icon="language-outline"
+              title="Idioma de la aplicación"
+              subtitle={language === "en" ? "English" : "Español"}
+              badge={language.toUpperCase()}
+              onPress={handleLanguagePress}
+            />
+          </View>
+
+          {settingsSections}
           {/* <DangerZone /> */}
 
           <View style={styles.appInfo}>

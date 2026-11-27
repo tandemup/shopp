@@ -538,6 +538,7 @@ export default function ShoppingListsScreen() {
     archiveList,
   } = useLists();
   const currentUser = useCurrentUser({ enabled: !guestMode });
+  const isAdmin = !guestMode && (currentUser?.isAdmin === true || currentUser?.role === "admin");
   const [editingList, setEditingList] = useState(undefined);
   const [editName, setEditName] = useState("");
 
@@ -745,6 +746,22 @@ export default function ShoppingListsScreen() {
     [handleOpenList, openListMenu],
   );
 
+  const openStoreManagement = () => {
+    const destinations = [
+      { text: "Peticiones de creación de tiendas", screen: ROUTES.ADMIN_STORE_REQUESTS },
+      { text: "Catálogo de supermercados", screen: ROUTES.ADMIN_STORE_CATALOG },
+      { text: "Ofertas recibidas", screen: ROUTES.ADMIN_STORE_OFFERS },
+    ];
+
+    safeMenu("Gestión de tiendas", "", [
+      ...destinations.map(({ text, screen }) => ({
+        text,
+        onPress: () => navigation.navigate(ROUTES.MENU_TAB, { screen }),
+      })),
+      { text: "Cancelar", style: "cancel" },
+    ]);
+  };
+
   const listHeader = (
     <View>
       <View style={styles.heroCard}>
@@ -785,6 +802,18 @@ export default function ShoppingListsScreen() {
           </Pressable>
         </View>
       </View>
+
+      {isAdmin && (
+        <QuickAction
+          width="100%"
+          icon="storefront-outline"
+          iconColor={COLORS.primary}
+          iconBackground={COLORS.primarySoft}
+          label="Gestión de tiendas"
+          description="Peticiones, catálogo y ofertas"
+          onPress={openStoreManagement}
+        />
+      )}
 
       <View style={styles.summaryRow}>
         <SummaryCard

@@ -54,7 +54,7 @@ function playlistItem(item) {
   };
 }
 
-export async function readUtilityExport(id, { convex, getScannedHistory, activeLists, archivedLists, purchaseHistory } = {}) {
+export async function readUtilityExport(id, { convex, getNodePlaylists, getScannedHistory, activeLists, archivedLists, purchaseHistory } = {}) {
   if (!formats[id]) throw new Error("Utilidad desconocida.");
   let data;
   if (id === "listas-compra") {
@@ -85,12 +85,14 @@ export async function readUtilityExport(id, { convex, getScannedHistory, activeL
     if (!Array.isArray(data)) throw new Error("El historial de escaneos no es válido.");
   } else {
     const type = id === "classic" ? "classical" : "playlist";
-    if ((id === "music" || id === "classic") && getPlaylistSource(type) === "local") {
+    if ((id === "music" || id === "classic") && getNodePlaylists) {
+      data = await getNodePlaylists(type);
+    } else if ((id === "music" || id === "classic") && getPlaylistSource(type) === "local") {
       data = await localRepo.list(type);
       // Empty collections are valid; their v2 backup contains zero playlists.
       // No Convex fallback is allowed on the PWA.
     } else {
-      if (!convex) throw new Error("No está disponible la conexión a Convex.");
+      if (!convex) throw new Error("Abre Shopp con Convex e inicia sesión para exportar esta utilidad.");
       const clientId = await playlistClientId();
       if (id === "music" || id === "classic") {
         data = await convex.query(api.playlists.listMine, {

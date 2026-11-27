@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, FlatList, Image, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, BackHandler, FlatList, Image, Modal, Platform, Pressable, SafeAreaView, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { safeConfirm } from '@/src/components/ui/alert/safeAlert';
 import CustomYouTubePlaylistPlayer from '@/src/components/chat/CustomYouTubePlaylistPlayer';
 import { MusicCardPrintEditor } from '@/src/screens/playlist/PrintMusicCardScreen';
 import { parseYouTubeUrl } from '@/src/services/urlSafety';
@@ -15,6 +16,36 @@ import { makePlaylistBackupV2 } from '@/src/services/playlistBackupV2';
 import { savePlaylistArchive } from '@/src/services/playlistArchiveZip';
 import * as localRepo from '@/src/storage/playlists/playlistRepository';
 import { getLocalLyrics, newLyricsStorageKey } from '@/src/storage/lyricsStorage';
+
+async function savePlaylistJson(name, data) {
+  const filename = name.replace(/[^\p{L}\p{N} _-]/gu, '_').trim() + '.json';
+  const json = JSON.stringify(data, null, 2);
+  if (Platform.OS === 'web') {
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return;
+  }
+  const FileSystem = await import('expo-file-system/legacy');
+  if (Platform.OS === 'android') {
+    const folder = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+    if (!folder.granted) return;
+    const uri = await FileSystem.StorageAccessFramework.createFileAsync(folder.directoryUri, filename, 'application/json');
+    await FileSystem.writeAsStringAsync(uri, json);
+    return;
+  }
+  const uri = FileSystem.cacheDirectory + filename;
+  await FileSystem.writeAsStringAsync(uri, json);
+  await Share.share({ title: filename, url: uri });
+}
+
+const trackKey = track => String(track.kind === 'album' ? track.playlistId || '' : track.videoId || '').trim();
+const emptyWork = { title: '', trackKeys: [] };
 
 const MAX_LRC_BYTES = 512 * 1024;
 const CLASSICAL_FIELDS = [
@@ -82,9 +113,10 @@ function lyricsFileSize(fileName, text) {
 }
 
 let draftSequence = 0;
-function makeDraft(track = null) {
+function makeDraft(track = null, kind = track?.kind || 'single') {
   return {
     key: ++draftSequence,
+    kind,
     title: track?.title || '',
     url: track ? urlFor(track) : '',
     artworkUrl: track?.artworkUrl || '',
@@ -93,17 +125,17 @@ function makeDraft(track = null) {
   };
 }
 
-function draftMedia(url) {
+function draftMedia(url, kind) {
   const parsed = parseYouTubeUrl(url.trim());
-  if (!parsed.isValid) return null;
+  if (!parsed.isValid || (kind === 'album' ? !parsed.playlistId : !parsed.videoId)) return null;
   return {
-    kind: parsed.videoId ? 'single' : 'album',
-    videoId: parsed.videoId || undefined,
+    kind,
+    videoId: kind === 'single' ? parsed.videoId : undefined,
     playlistId: parsed.playlistId || undefined,
   };
 }
 
-function originalTrackFor(draft, media = draftMedia(draft.url)) {
+function originalTrackFor(draft, media = draftMedia(draft.url, draft.kind)) {
   return media && draft.original && identity(draft.original) === identity(media)
     ? draft.original : null;
 }
@@ -115,7 +147,7 @@ function parseDraft(title, drafts, collection, classicalDetails) {
   if (elements.length < 1 || elements.length > 20) throw new Error('Añade entre 1 y 20 elementos de YouTube.');
   const lyricsChanges = [];
   const tracks = elements.map((draft, index) => {
-    const media = draftMedia(draft.url);
+    const media = draftMedia(draft.url, draft.kind);
     if (!media) throw new Error(`Introduce un enlace válido para el elemento ${index + 1}.`);
     const originalTrack = originalTrackFor(draft, media);
     const artworkUrl = draft.artworkUrl.trim();
@@ -160,9 +192,9 @@ function parseDraft(title, drafts, collection, classicalDetails) {
 
 export default function NodePlaylistCollectionScreen({ accessToken, onBack, collection, playlistsApi }) {
   const isClassical = collection === 'classical';
-  const screenTitle = isClassical ? 'Música clásica · Node' : 'Music Playlist · Node';
+  const screenTitle = isClassical ? 'Música clásica' : 'Play List';
   const backupType = isClassical ? 'shopp-youtube-classical-playlist' : 'shopp-youtube-playlist';
-  const searchLabel = isClassical ? 'Buscar colecciones u obras' : 'Buscar playlists o canciones';
+  const searchLabel = isClassical ? 'Buscar música clásica' : 'Buscar playlists';
   const [local, setLocal] = useState([]);
   const [remoteCount, setRemoteCount] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -180,9 +212,14 @@ export default function NodePlaylistCollectionScreen({ accessToken, onBack, coll
   const [searchText, setSearchText] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [printPlaylist, setPrintPlaylist] = useState(null);
+  const [choosingCard, setChoosingCard] = useState(false);
   const [classicalDetails, setClassicalDetails] = useState({});
+  const [collectionDetailsOpen, setCollectionDetailsOpen] = useState(false);
+  const [catalogId, setCatalogId] = useState(null);
+  const [workDraft, setWorkDraft] = useState(null);
   const [worksCount, setWorksCount] = useState(0);
   const editorBusy = busy || picking;
+  const catalog = local.find(item => String(item.id || item._id) === catalogId);
 
   const searchIndex = useMemo(() => local.map(item => ({ item, text: playlistSearchText(item) })), [local]);
   const searchTerms = useMemo(() => normalizeSearch(searchText).split(/\s+/).filter(Boolean), [searchText]);
@@ -305,6 +342,7 @@ export default function NodePlaylistCollectionScreen({ accessToken, onBack, coll
     setTracksDraft([makeDraft()]);
     setClassicalDetails({});
     setWorksCount(0);
+    setCollectionDetailsOpen(true);
     setEditorError('');
     setLyricsEditor(null);
     setEditorVisible(true);
@@ -312,11 +350,12 @@ export default function NodePlaylistCollectionScreen({ accessToken, onBack, coll
   const openEdit = playlist => {
     setEditingId(String(playlist.id || playlist._id));
     setTitle(playlist.title || '');
-    setTracksDraft(playlist.tracks?.length ? playlist.tracks.map(makeDraft) : [makeDraft()]);
+    setTracksDraft(playlist.tracks?.length ? playlist.tracks.map(track => makeDraft(track)) : [makeDraft()]);
     setClassicalDetails(isClassical
       ? Object.fromEntries(CLASSICAL_FIELDS.map(([key]) => [key, String(playlist[key] || '')]))
       : {});
     setWorksCount(playlist.works?.length || 0);
+    setCollectionDetailsOpen(false);
     setEditorError('');
     setLyricsEditor(null);
     setEditorVisible(true);
@@ -465,7 +504,7 @@ export default function NodePlaylistCollectionScreen({ accessToken, onBack, coll
   const exportPlaylist = async item => {
     try {
       const backup = await makePlaylistBackupV2([item], backupType, { single: true, allowRemoteLyrics: false });
-      await savePlaylistArchive(backup, item.title || screenTitle);
+      await savePlaylistJson(item.title || screenTitle, backup);
     } catch (cause) { setError(explain(cause)); }
   };
 
@@ -480,11 +519,48 @@ export default function NodePlaylistCollectionScreen({ accessToken, onBack, coll
       } catch (cause) { setError(explain(cause)); }
       finally { setBusy(false); }
     };
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm(`¿Borrar «${item.title}» de Node y de este dispositivo?`)) await remove();
-    } else Alert.alert('Borrar playlist', `¿Borrar «${item.title}» de Node y de este dispositivo?`, [
-      { text: 'Cancelar', style: 'cancel' }, { text: 'Borrar', style: 'destructive', onPress: remove },
-    ]);
+    safeConfirm('Borrar playlist', `¿Borrar «${item.title}» de Node y de este dispositivo?`, remove, {
+      confirmText: 'Borrar', destructive: true,
+    });
+  };
+
+  const trackKinds = isClassical
+    ? [['single', 'Obra', 'Una obra, movimiento o interpretación individual.'], ['album', 'Concierto', 'Una playlist de YouTube con varios movimientos u obras.']]
+    : [['single', 'Single', 'Una canción o vídeo individual de YouTube.'], ['album', 'Álbum', 'Una playlist de YouTube con varias canciones.']];
+  const addTrack = kind => setTracksDraft(current => {
+    const last = current[current.length - 1];
+    if (last && !last.original && !last.title.trim() && !last.url.trim() && !last.artworkUrl.trim() && !last.lyrics) {
+      return [...current.slice(0, -1), { ...last, kind }];
+    }
+    return current.length < 20 ? [...current, makeDraft(null, kind)] : current;
+  });
+
+  const updateCard = async (item, changes) => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const saved = await localRepo.update(String(item.id || item._id), changes);
+      setLocal(current => current.map(entry => (entry.id || entry._id) === (saved.id || saved._id) ? saved : entry));
+      setWorkDraft(null);
+      await synchronize();
+    } catch (cause) {
+      setError(explain(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveWork = () => {
+    if (!catalog || !workDraft?.title.trim() || !workDraft.trackKeys.length) return;
+    const works = catalog.works || [];
+    if (!workDraft.id && works.length >= 100) return;
+    const saved = {
+      ...workDraft, title: workDraft.title.trim(),
+      id: workDraft.id || `work-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    };
+    const next = workDraft.id ? works.map(work => work.id === saved.id ? saved : work) : [...works, saved];
+    return updateCard(catalog, { works: next });
   };
 
   const renderItem = ({ item }) => (
@@ -493,13 +569,19 @@ export default function NodePlaylistCollectionScreen({ accessToken, onBack, coll
       style={styles.playlistCard}
       userName={item.title}
       dateLabel={new Date(item.updatedAt || Date.now()).toLocaleDateString('es-ES')}
-      squareArtwork
+      referenceLayout
       isClassical={isClassical}
       showItemCount
       canEdit
       canDelete
       onEdit={() => openEdit(item)}
       onDelete={() => deletePlaylist(item)}
+      deleting={busy}
+      shareable={item.shareable === true}
+      shareDescription="Marca la lista para compartirla. La sincronización de Node es privada."
+      onToggleShareable={shareable => updateCard(item, { shareable })}
+      worksCount={item.works?.length || 0}
+      onOpenCatalog={isClassical ? () => { setCatalogId(String(item.id || item._id)); setWorkDraft(null); setError(''); } : undefined}
       onExport={() => exportPlaylist(item)}
       onCreateCard={() => setPrintPlaylist(playablePlaylists.get(item))}
     />
@@ -528,11 +610,15 @@ export default function NodePlaylistCollectionScreen({ accessToken, onBack, coll
           </Pressable>
         ) : <View style={styles.searchIcon} />}
       </View>
-      {!loading && searchTerms.length > 0 ? (
+      <Text style={styles.searchHelp}>
+        {isClassical ? 'Busca por obra, compositor, intérprete, director, orquesta o periodo.' : 'Busca en el título de la lista y de sus elementos.'}
+      </Text>
+      {!loading && (
         <Text style={styles.searchCount} accessibilityLiveRegion="polite">
-          {visiblePlaylists.length} de {local.length} {isClassical ? 'colecciones' : 'playlists'}
+          {visiblePlaylists.length}{searchTerms.length > 0 ? ` de ${local.length}` : ''}{' '}
+          {isClassical ? (visiblePlaylists.length === 1 ? 'colección' : 'colecciones') : (visiblePlaylists.length === 1 ? 'playlist' : 'playlists')}
         </Text>
-      ) : null}
+      )}
     </View>
   );
 
@@ -545,13 +631,40 @@ export default function NodePlaylistCollectionScreen({ accessToken, onBack, coll
   }
 
   return <SafeAreaView style={styles.root}>
-    <View style={styles.header}><Pressable onPress={onBack} style={styles.back}><Ionicons name="arrow-back" size={22} color="#0f172a" /></Pressable><View style={styles.heading}><Text style={styles.title}>{screenTitle}</Text><Text style={styles.subtitle}>Sincronización privada y uso local</Text></View></View>
-    <View style={styles.summary}><Text style={styles.summaryText}>Este dispositivo: {local.length} · Node: {remoteCount ?? '—'}</Text><Text style={styles.offlineText}>IndexedDB/almacenamiento local sigue disponible sin conexión.</Text></View>
-    <View style={styles.actions}>
-      <Pressable disabled={busy} onPress={synchronize} style={[styles.primary, busy && styles.disabled]}><Ionicons name="sync-outline" size={18} color="#fff" /><Text style={styles.primaryText}>{busy ? 'Sincronizando…' : 'Sincronizar'}</Text></Pressable>
-      <Pressable disabled={busy} onPress={openCreate} style={styles.secondary}><Ionicons name="add" size={19} color="#1d4ed8" /><Text style={styles.secondaryText}>Nueva</Text></Pressable>
-      <Pressable disabled={busy} onPress={exportBackup} style={styles.secondary}><Ionicons name="download-outline" size={18} color="#1d4ed8" /><Text style={styles.secondaryText}>Exportar ZIP</Text></Pressable>
-      <Pressable disabled={busy} onPress={pickBackup} style={styles.secondary}><Ionicons name="archive-outline" size={18} color="#1d4ed8" /><Text style={styles.secondaryText}>Importar ZIP/JSON</Text></Pressable>
+    <View style={styles.collectionHeader}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Volver a Compras" onPress={onBack} style={styles.collectionHeaderAction}>
+        <Ionicons name="arrow-back" size={22} color="#0f172a" />
+      </Pressable>
+      <Text style={styles.collectionHeaderTitle}>{screenTitle}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Sincronizar con Node" disabled={busy} onPress={synchronize} style={styles.collectionHeaderAction}>
+        {busy ? <ActivityIndicator color="#2563eb" /> : <Ionicons name="sync-outline" size={21} color="#2563eb" />}
+      </Pressable>
+    </View>
+    <View style={styles.collectionToolbar}>
+      <View style={styles.collectionHeading}>
+        <Text style={styles.collectionTitle}>{isClassical ? 'Mis playlists clásicas' : 'Mis playlists'}</Text>
+        <Text style={styles.collectionDescription}>
+          {isClassical ? 'Organiza obras, conciertos, intérpretes y grabaciones de YouTube.' : 'Combina canciones individuales y álbumes de YouTube.'}
+        </Text>
+      </View>
+      <View style={styles.collectionActions}>
+        <Pressable accessibilityRole="button" disabled={busy || local.length === 0} onPress={() => setChoosingCard(true)} style={[styles.collectionButton, local.length === 0 && styles.disabled]}>
+          <Ionicons name="albums-outline" size={19} color="#2563eb" /><Text style={styles.secondaryText}>Music Cards</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" disabled={busy} onPress={pickBackup} style={styles.collectionButton}>
+          <Ionicons name="download-outline" size={18} color="#2563eb" /><Text style={styles.secondaryText}>Importar</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" disabled={busy} onPress={exportBackup} style={styles.collectionButton}>
+          <Ionicons name="share-outline" size={18} color="#2563eb" /><Text style={styles.secondaryText}>Exportar todo</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" disabled={busy} onPress={openCreate} style={[styles.collectionButton, styles.collectionCreate]}>
+          <Ionicons name="add-circle-outline" size={19} color="#fff" /><Text style={styles.primaryText}>{isClassical ? 'Nueva colección' : 'Nueva playlist'}</Text>
+        </Pressable>
+      </View>
+    </View>
+    <View style={styles.collectionStatus}>
+      <Ionicons name="information-circle-outline" size={17} color="#92400e" />
+      <Text style={styles.collectionStatusText}>Este dispositivo: {local.length} · Node: {remoteCount ?? '—'} · Almacenamiento local disponible sin conexión.</Text>
     </View>
     {message ? <Text style={styles.notice}>{message}</Text> : null}
     {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -559,7 +672,7 @@ export default function NodePlaylistCollectionScreen({ accessToken, onBack, coll
       data={visiblePlaylists}
       keyExtractor={item => String(item.id || item._id)}
       renderItem={renderItem}
-      contentContainerStyle={styles.list}
+      contentContainerStyle={[styles.list, isClassical && styles.classicalList]}
       keyboardShouldPersistTaps="handled"
       ListHeaderComponent={searchHeader}
       ListEmptyComponent={loading ? (
@@ -574,6 +687,84 @@ export default function NodePlaylistCollectionScreen({ accessToken, onBack, coll
       refreshing={loading}
       onRefresh={refresh}
     />
+    {catalog && (
+      <Modal visible transparent animationType="fade" onRequestClose={() => !busy && setCatalogId(null)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modal, styles.importDialog]}>
+            <Text style={styles.modalTitle}>Catálogo de obras</Text>
+            <Text style={styles.modalSubtitle}>{catalog.title}</Text>
+            {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+            <ScrollView style={styles.cardPicker} keyboardShouldPersistTaps="handled">
+              {(catalog.works || []).map(work => (
+                <Pressable key={work.id} accessibilityRole="button" disabled={busy} onPress={() => setWorkDraft(work)} style={[styles.secondary, styles.cardChoice]}>
+                  <Text style={styles.secondaryText}>{work.title}</Text>
+                </Pressable>
+              ))}
+              {!workDraft && (catalog.works?.length || 0) < 100 && (
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => setWorkDraft(emptyWork)} style={styles.secondary}>
+                  <Text style={styles.secondaryText}>Nueva obra</Text>
+                </Pressable>
+              )}
+              {workDraft && (
+                <>
+                  <TextInput accessibilityLabel="Título de la obra" placeholder="Título de la obra" style={styles.input} maxLength={300}
+                    value={workDraft.title} editable={!busy} onChangeText={title => setWorkDraft(current => ({ ...current, title }))} />
+                  {catalog.tracks.filter(track => trackKey(track)).map((track, index) => {
+                    const key = trackKey(track);
+                    const selected = workDraft.trackKeys.includes(key);
+                    return (
+                      <Pressable key={key + ':' + index} accessibilityRole="checkbox" accessibilityState={{ checked: selected }}
+                        disabled={busy} style={[styles.secondary, styles.cardChoice]}
+                        onPress={() => setWorkDraft(current => ({ ...current, trackKeys: selected
+                          ? current.trackKeys.filter(id => id !== key) : [...current.trackKeys, key] }))}>
+                        <Ionicons name={selected ? 'checkbox' : 'square-outline'} size={19} color="#2563eb" />
+                        <Text style={styles.secondaryText}>{track.title || key}</Text>
+                      </Pressable>
+                    );
+                  })}
+                  <Pressable accessibilityRole="button" disabled={busy || !workDraft.title.trim() || !workDraft.trackKeys.length}
+                    onPress={saveWork} style={styles.primary}><Text style={styles.primaryText}>Guardar obra</Text></Pressable>
+                  {workDraft.id && (
+                    <Pressable accessibilityRole="button" disabled={busy} style={styles.secondary}
+                      onPress={() => safeConfirm('Quitar obra del catálogo', `¿Quitar «${workDraft.title}»?`,
+                        () => updateCard(catalog, { works: catalog.works.filter(work => work.id !== workDraft.id) }),
+                        { confirmText: 'Quitar', destructive: true })}>
+                      <Text style={styles.removeMediaText}>Quitar obra</Text>
+                    </Pressable>
+                  )}
+                </>
+              )}
+            </ScrollView>
+            <Pressable accessibilityRole="button" disabled={busy} onPress={() => setCatalogId(null)} style={styles.secondary}>
+              <Text style={styles.secondaryText}>Cerrar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    )}
+    {choosingCard && (
+      <Modal visible transparent animationType="fade" onRequestClose={() => setChoosingCard(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modal, styles.importDialog]}>
+            <Text style={styles.modalTitle}>Music Cards</Text>
+            <Text style={styles.modalSubtitle}>Elige una lista para preparar su tarjeta.</Text>
+            <ScrollView style={styles.cardPicker}>
+              {local.map(item => (
+                <Pressable key={String(item.id || item._id)} accessibilityRole="button" style={[styles.secondary, styles.cardChoice]} onPress={() => {
+                  setChoosingCard(false);
+                  setPrintPlaylist(playablePlaylists.get(item));
+                }}>
+                  <Text style={styles.secondaryText}>{item.title}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <Pressable accessibilityRole="button" onPress={() => setChoosingCard(false)} style={styles.secondary}>
+              <Text style={styles.secondaryText}>Cancelar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    )}
     {pendingImport ? (
       <Modal visible transparent animationType="fade" onRequestClose={() => setPendingImport(null)}>
         <View style={styles.modalBackdrop}>
@@ -615,18 +806,38 @@ export default function NodePlaylistCollectionScreen({ accessToken, onBack, coll
       </Modal>
     ) : null}
     <Modal visible={editorVisible} transparent animationType="fade" onRequestClose={() => !editorBusy && setEditorVisible(false)}>
-      <View style={styles.modalBackdrop}><View style={styles.modal}>
+      <View style={styles.modalBackdrop}><View style={[styles.modal, styles.collectionEditor]}>
         <View style={styles.modalHeader}>
           <View style={styles.modalHeading}>
             <Text style={styles.modalTitle}>{isClassical
               ? (editingId ? 'Editar colección clásica' : 'Nueva colección clásica')
               : (editingId ? 'Editar playlist' : 'Nueva playlist')}</Text>
+            <Text style={styles.modalSubtitle}>{isClassical ? 'Añade obras o conciertos mediante sus enlaces de YouTube.' : 'Añade singles o álbumes mediante sus enlaces de YouTube.'}</Text>
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel="Cerrar editor" disabled={editorBusy} onPress={() => setEditorVisible(false)} style={styles.closeButton}><Ionicons name="close" size={22} color="#475569" /></Pressable>
         </View>
         {editorError ? <Text accessibilityRole="alert" style={styles.error}>{editorError}</Text> : null}
         <ScrollView style={styles.editorScroll} contentContainerStyle={styles.editorContent} keyboardShouldPersistTaps="handled">
-          <View style={styles.playlistTitleSection}>
+          <View style={styles.kindRow}>
+            {trackKinds.map(([kind, label, hint]) => (
+              <Pressable key={kind} accessibilityRole="button" accessibilityLabel={`Añadir ${label}`}
+                onPress={() => addTrack(kind)} disabled={editorBusy} style={styles.kindCard}>
+                <Ionicons name={kind === 'single' ? 'musical-note-outline' : 'albums-outline'} size={22} color="#2563eb" />
+                <View style={styles.modalHeading}><Text style={styles.secondaryText}>{label}</Text><Text style={styles.hint}>{hint}</Text></View>
+              </Pressable>
+            ))}
+          </View>
+          {isClassical && (
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: collectionDetailsOpen }}
+              onPress={() => setCollectionDetailsOpen(value => !value)} style={styles.detailsToggle}>
+              <View style={styles.modalHeading}>
+                <Text style={styles.fieldLabel}>Datos de la colección</Text>
+                <Text numberOfLines={2} style={styles.hint}>{[title, ...CLASSICAL_FIELDS.map(([key]) => classicalDetails[key])].filter(Boolean).join(' · ')}</Text>
+              </View>
+              <Ionicons name={collectionDetailsOpen ? 'chevron-up' : 'chevron-down'} size={19} color="#2563eb" />
+            </Pressable>
+          )}
+          <View style={[styles.playlistTitleSection, isClassical && !collectionDetailsOpen && { display: 'none' }]}>
             <Text style={styles.fieldLabel}>{isClassical ? 'Nombre de la colección' : 'Nombre de la playlist'}</Text>
             <TextInput value={title} onChangeText={setTitle} placeholder={isClassical ? 'Ej.: Conciertos para piano' : 'Ej.: Mis canciones favoritas'} style={styles.input} maxLength={120} editable={!editorBusy} />
             {isClassical ? (
@@ -659,13 +870,48 @@ export default function NodePlaylistCollectionScreen({ accessToken, onBack, coll
             const validArtwork = isPlaylistArtwork(artwork);
             const localArtwork = artwork.startsWith('data:');
             return <View key={track.key} style={styles.trackEditorCard}>
-              <View style={styles.trackEditorTop}><View style={styles.trackNumberBadge}><Text style={styles.trackNumberText}>{index + 1}</Text></View><Text style={styles.trackEditorLabel}>ELEMENTO {index + 1}</Text><View style={styles.trackOrderActions}>
+              <View style={styles.trackEditorTop}><Text style={styles.trackEditorLabel}>ELEMENTO {index + 1}</Text><View style={styles.trackOrderActions}>
                 <Pressable accessibilityRole="button" accessibilityLabel="Subir elemento" onPress={() => moveDraftTrack(index, -1)} disabled={editorBusy || index === 0} style={styles.orderButton}><Ionicons name="chevron-up" size={19} color={index === 0 ? '#cbd5e1' : '#2563eb'} /></Pressable>
                 <Pressable accessibilityRole="button" accessibilityLabel="Bajar elemento" onPress={() => moveDraftTrack(index, 1)} disabled={editorBusy || index === tracksDraft.length - 1} style={styles.orderButton}><Ionicons name="chevron-down" size={19} color={index === tracksDraft.length - 1 ? '#cbd5e1' : '#2563eb'} /></Pressable>
                 {tracksDraft.length > 1 ? <Pressable accessibilityRole="button" accessibilityLabel="Quitar elemento" onPress={() => removeDraftTrack(index)} disabled={editorBusy} style={styles.removeButton}><Ionicons name="trash-outline" size={18} color="#dc2626" /></Pressable> : null}
               </View></View>
+              <View style={styles.kindRow}>
+                {trackKinds.map(([kind, label]) => (
+                  <Pressable key={kind} accessibilityRole="button" accessibilityState={{ selected: track.kind === kind }}
+                    disabled={editorBusy} onPress={() => updateDraftTrack(track.key, 'kind', kind)}
+                    style={[styles.kindOption, track.kind === kind && styles.collectionCreate]}>
+                    <Ionicons name={kind === 'single' ? 'musical-note-outline' : 'albums-outline'} size={17} color={track.kind === kind ? '#fff' : '#475569'} />
+                    <Text style={track.kind === kind ? styles.primaryText : styles.secondaryText}>{label}</Text>
+                  </Pressable>
+                ))}
+              </View>
               <TextInput value={track.title} onChangeText={value => updateDraftTrack(track.key, 'title', value)} placeholder="Título de la canción o álbum" style={styles.input} maxLength={120} editable={!editorBusy} />
-              <TextInput value={track.url} onChangeText={value => updateDraftTrack(track.key, 'url', value)} placeholder="https://www.youtube.com/watch?v=…" style={[styles.input, styles.urlInput]} autoCapitalize="none" autoCorrect={false} keyboardType="url" editable={!editorBusy} />
+              <TextInput value={track.url} onChangeText={value => updateDraftTrack(track.key, 'url', value)} placeholder={track.kind === 'album' ? 'https://www.youtube.com/playlist?list=…' : 'https://www.youtube.com/watch?v=…'} style={[styles.input, styles.urlInput]} autoCapitalize="none" autoCorrect={false} keyboardType="url" editable={!editorBusy} />
+              <View style={styles.mediaSection}>
+                <Text style={styles.fieldLabel}>Carátula (opcional)</Text>
+                {!localArtwork ? <TextInput
+                  accessibilityLabel="URL HTTPS de la carátula"
+                  value={track.artworkUrl}
+                  onChangeText={value => updateDraftTrack(track.key, 'artworkUrl', value)}
+                  placeholder="https://…/caratula.jpg"
+                  style={styles.input}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  editable={!editorBusy}
+                /> : null}
+                {validArtwork ? <CoverPreview uri={artwork} /> : null}
+                {artwork && !validArtwork ? <Text style={styles.coverHint}>Sustituye o quita la carátula dañada.</Text> : null}
+                <View style={styles.mediaActions}>
+                  <Pressable accessibilityRole="button" disabled={editorBusy} onPress={() => pickTrackArtwork(track.key)} style={styles.secondary}>
+                    <Ionicons name="image-outline" size={17} color="#1d4ed8" />
+                    <Text style={styles.secondaryText}>Añadir carátula desde el dispositivo</Text>
+                  </Pressable>
+                  {artwork ? <Pressable accessibilityRole="button" disabled={editorBusy} onPress={() => updateDraftTrack(track.key, 'artworkUrl', '')} style={styles.secondary}>
+                    <Text style={styles.removeMediaText}>Quitar carátula</Text>
+                  </Pressable> : null}
+                </View>
+              </View>
               <View style={styles.mediaSection}>
                 <Text style={styles.fieldLabel}>Letra (.lrc)</Text>
                 {lyricsName ? <Text style={styles.mediaFileName} numberOfLines={1}>{lyricsName}</Text> : null}
@@ -700,49 +946,29 @@ export default function NodePlaylistCollectionScreen({ accessToken, onBack, coll
                   style={[styles.input, styles.lyricsTextInput]}
                 /> : null}
               </View>
-              <View style={styles.mediaSection}>
-                <Text style={styles.fieldLabel}>Carátula</Text>
-                {!localArtwork ? <TextInput
-                  accessibilityLabel="URL HTTPS de la carátula"
-                  value={track.artworkUrl}
-                  onChangeText={value => updateDraftTrack(track.key, 'artworkUrl', value)}
-                  placeholder="https://…/caratula.jpg"
-                  style={styles.input}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="url"
-                  editable={!editorBusy}
-                /> : null}
-                {validArtwork ? <CoverPreview uri={artwork} /> : null}
-                {artwork && !validArtwork ? <Text style={styles.coverHint}>Sustituye o quita la carátula dañada.</Text> : null}
-                <View style={styles.mediaActions}>
-                  <Pressable accessibilityRole="button" disabled={editorBusy} onPress={() => pickTrackArtwork(track.key)} style={styles.secondary}>
-                    <Ionicons name="image-outline" size={17} color="#1d4ed8" />
-                    <Text style={styles.secondaryText}>Elegir imagen</Text>
-                  </Pressable>
-                  {artwork ? <Pressable accessibilityRole="button" disabled={editorBusy} onPress={() => updateDraftTrack(track.key, 'artworkUrl', '')} style={styles.secondary}>
-                    <Text style={styles.removeMediaText}>Quitar carátula</Text>
-                  </Pressable> : null}
-                </View>
-              </View>
             </View>;
           })}
           {tracksDraft.length < 20 ? <Pressable accessibilityRole="button" onPress={() => setTracksDraft(current => [...current, makeDraft()])} disabled={editorBusy} style={styles.addTrackButton}><Ionicons name="add-circle-outline" size={20} color="#2563eb" /><Text style={styles.addTrackText}>Añadir elemento</Text></Pressable> : null}
         </ScrollView>
-        <View style={styles.modalActions}><Pressable disabled={editorBusy} onPress={() => setEditorVisible(false)} style={styles.secondary}><Text style={styles.secondaryText}>Cancelar</Text></Pressable><Pressable disabled={editorBusy} onPress={savePlaylist} style={[styles.primary, editorBusy && styles.disabled]}><Ionicons name="checkmark" size={18} color="#fff" /><Text style={styles.primaryText}>{busy ? 'Guardando…' : 'Guardar y sincronizar'}</Text></Pressable></View>
+        <View style={styles.modalActions}><Pressable disabled={editorBusy} onPress={() => setEditorVisible(false)} style={styles.secondary}><Text style={styles.secondaryText}>Cancelar</Text></Pressable><Pressable disabled={editorBusy} onPress={savePlaylist} style={[styles.primary, styles.collectionCreate, editorBusy && styles.disabled]}><Ionicons name="checkmark" size={18} color="#fff" /><Text style={styles.primaryText}>{busy ? 'Guardando…' : 'Guardar cambios'}</Text></Pressable></View>
       </View></View>
     </Modal>
   </SafeAreaView>;
 }
 
 const styles = StyleSheet.create({
+  collectionEditor: { borderRadius: 0 },
+  kindRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  kindCard: { flexGrow: 1, flexBasis: 220, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: '#bfdbfe', backgroundColor: '#eff6ff', padding: 10 },
+  detailsToggle: { marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: '#cbd5e1', backgroundColor: '#f4f7fa', padding: 10 },
+  kindOption: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, borderWidth: 1, borderColor: '#cbd5e1', backgroundColor: '#fff' },
   importDialog: { maxWidth: 520 },
   importOption: { justifyContent: 'flex-start', alignItems: 'flex-start', paddingVertical: 10, gap: 9, marginTop: 8 },
   importReplace: { borderColor: '#fecaca' },
   importReplaceTitle: { color: '#b91c1c', fontWeight: '700' },
   classicalDetails: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   classicalField: { flexBasis: 210, flexGrow: 1, minWidth: 0 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#cbd5e1', backgroundColor: '#fff' },
+  searchBar: { width: '100%', maxWidth: 440, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#cbd5e1', backgroundColor: '#fff' },
   searchBarFocused: { borderColor: '#475569' },
   searchInput: {
     flex: 1,
@@ -754,8 +980,24 @@ const styles = StyleSheet.create({
   },
   searchIcon: { width: 44, minHeight: 46, alignItems: 'center', justifyContent: 'center' },
   searchCount: { marginTop: 6, color: '#475569', fontSize: 12, fontWeight: '700', textAlign: 'center' },
-  list: { width: '100%', maxWidth: 704, alignSelf: 'center', paddingHorizontal: 12, paddingBottom: 12, gap: 8 },
-  playlistCard: { width: '100%' },
+  list: { width: '100%', maxWidth: 464, alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 15, gap: 12 },
+  classicalList: { maxWidth: 584 },
+  searchHelp: { color: '#64748b', fontSize: 12, textAlign: 'center', marginTop: 7 },
+  collectionHeader: { minHeight: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fcf8ef', paddingHorizontal: 10 },
+  collectionHeaderAction: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  collectionHeaderTitle: { flexShrink: 1, color: '#172033', fontSize: 18, fontWeight: '800' },
+  collectionToolbar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: 16, backgroundColor: '#fff' },
+  collectionHeading: { flexGrow: 1, flexShrink: 1, flexBasis: 240 },
+  collectionTitle: { color: '#172033', fontSize: 22, fontWeight: '800' },
+  collectionDescription: { color: '#64748b', fontSize: 12, marginTop: 3, maxWidth: 310 },
+  collectionActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, flexShrink: 1 },
+  collectionButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#bfdbfe', backgroundColor: '#eff6ff', paddingHorizontal: 10 },
+  collectionCreate: { borderColor: '#dc2626', backgroundColor: '#dc2626' },
+  collectionStatus: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fffbeb', paddingHorizontal: 16, paddingVertical: 8 },
+  collectionStatusText: { flex: 1, color: '#92400e', fontSize: 12 },
+  cardPicker: { maxHeight: 320, marginVertical: 12 },
+  cardChoice: { justifyContent: 'flex-start', marginBottom: 7, paddingVertical: 8 },
+  playlistCard: { width: '100%', borderRadius: 0 },
   loadingIndicator: { marginTop: 20 },
   mediaSection: { marginTop: 14 },
   mediaActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -771,5 +1013,5 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', web: 'monospace' }),
   },
   removeMediaText: { color: '#b91c1c', fontWeight: '700' },
-  root: { flex: 1, backgroundColor: '#f8fafc' }, header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', backgroundColor: '#fff' }, back: { padding: 8 }, heading: { flex: 1 }, title: { color: '#0f172a', fontSize: 20, fontWeight: '800' }, subtitle: { color: '#64748b', marginTop: 3, fontSize: 12 }, summary: { padding: 14, backgroundColor: '#eff6ff', borderBottomWidth: 1, borderBottomColor: '#dbeafe' }, summaryText: { color: '#1e3a8a', fontWeight: '800' }, offlineText: { marginTop: 4, color: '#475569', fontSize: 12 }, actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 12 }, primary: { minHeight: 42, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: '#2563eb', borderRadius: 10, paddingHorizontal: 14 }, primaryText: { color: '#fff', fontWeight: '800' }, secondary: { minHeight: 42, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: '#bfdbfe', backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12 }, secondaryText: { color: '#1d4ed8', fontWeight: '700' }, disabled: { opacity: .55 }, notice: { marginHorizontal: 12, marginBottom: 8, color: '#166534', backgroundColor: '#f0fdf4', padding: 10, borderRadius: 8, lineHeight: 19 }, error: { marginHorizontal: 12, marginBottom: 8, color: '#991b1b', backgroundColor: '#fef2f2', padding: 10, borderRadius: 8, lineHeight: 19 }, card: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 12, borderRadius: 13, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0' }, cardText: { flex: 1 }, cardTitle: { color: '#0f172a', fontSize: 15, fontWeight: '800' }, cardMeta: { color: '#64748b', fontSize: 12, marginTop: 4 }, iconButton: { padding: 8 }, empty: { textAlign: 'center', color: '#64748b', lineHeight: 22, padding: 24 }, modalBackdrop: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f172a88', padding: 16 }, modal: { width: '100%', maxWidth: 880, maxHeight: '90%', backgroundColor: '#fff', borderRadius: 18, padding: 20, overflow: 'hidden' }, modalHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', paddingBottom: 14, marginBottom: 16 }, modalHeading: { flex: 1 }, modalTitle: { color: '#0f172a', fontSize: 22, fontWeight: '800' }, modalSubtitle: { color: '#64748b', fontSize: 13, lineHeight: 19, marginTop: 4 }, closeButton: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center' }, editorScroll: { flexShrink: 1, minHeight: 100 }, editorContent: { paddingBottom: 4 }, playlistTitleSection: { marginBottom: 16 }, fieldLabel: { color: '#334155', fontSize: 14, fontWeight: '800', marginBottom: 7 }, trackSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }, trackCount: { color: '#64748b', fontSize: 12, fontWeight: '700' }, trackEditorCard: { backgroundColor: '#f8fafc', borderColor: '#e2e8f0', borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 10 }, trackEditorTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }, trackNumberBadge: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#dbeafe', alignItems: 'center', justifyContent: 'center' }, trackNumberText: { color: '#1d4ed8', fontSize: 12, fontWeight: '800' }, trackEditorLabel: { color: '#64748b', fontSize: 11, fontWeight: '800', flex: 1, letterSpacing: .4 }, trackOrderActions: { flexDirection: 'row', alignItems: 'center', gap: 2 }, orderButton: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, removeButton: { width: 34, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, addTrackButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: '#93c5fd', backgroundColor: '#eff6ff', borderRadius: 11 }, addTrackText: { color: '#1d4ed8', fontWeight: '800' }, input: { minHeight: 44, borderWidth: 1, borderColor: '#cbd5e1', backgroundColor: '#fff', borderRadius: 9, paddingHorizontal: 12, paddingVertical: 9, color: '#0f172a', marginBottom: 9, fontSize: 14 }, urlInput: { marginBottom: 0 }, hint: { color: '#64748b', fontSize: 12, lineHeight: 18 }, modalActions: { flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 14, marginTop: 14 },
+  root: { flex: 1, backgroundColor: '#f2f5fa' }, primary: { minHeight: 42, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: '#2563eb', borderRadius: 10, paddingHorizontal: 14 }, primaryText: { color: '#fff', fontWeight: '800' }, secondary: { minHeight: 42, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: '#bfdbfe', backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12 }, secondaryText: { color: '#1d4ed8', fontWeight: '700' }, disabled: { opacity: .55 }, notice: { marginHorizontal: 12, marginBottom: 8, color: '#166534', backgroundColor: '#f0fdf4', padding: 10, borderRadius: 8, lineHeight: 19 }, error: { marginHorizontal: 12, marginBottom: 8, color: '#991b1b', backgroundColor: '#fef2f2', padding: 10, borderRadius: 8, lineHeight: 19 }, card: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 12, borderRadius: 13, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0' }, cardText: { flex: 1 }, cardTitle: { color: '#0f172a', fontSize: 15, fontWeight: '800' }, cardMeta: { color: '#64748b', fontSize: 12, marginTop: 4 }, iconButton: { padding: 8 }, empty: { textAlign: 'center', color: '#64748b', lineHeight: 22, padding: 24 }, modalBackdrop: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f172a88', padding: 16 }, modal: { width: '100%', maxWidth: 880, maxHeight: '90%', backgroundColor: '#fff', borderRadius: 18, padding: 20, overflow: 'hidden' }, modalHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', paddingBottom: 14, marginBottom: 16 }, modalHeading: { flex: 1 }, modalTitle: { color: '#0f172a', fontSize: 22, fontWeight: '800' }, modalSubtitle: { color: '#64748b', fontSize: 13, lineHeight: 19, marginTop: 4 }, closeButton: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center' }, editorScroll: { flexShrink: 1, minHeight: 100 }, editorContent: { paddingBottom: 4 }, playlistTitleSection: { marginBottom: 16 }, fieldLabel: { color: '#334155', fontSize: 14, fontWeight: '800', marginBottom: 7 }, trackSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }, trackCount: { color: '#64748b', fontSize: 12, fontWeight: '700' }, trackEditorCard: { backgroundColor: '#f8fafc', borderColor: '#e2e8f0', borderWidth: 1, borderRadius: 0, padding: 12, marginBottom: 10 }, trackEditorTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }, trackNumberBadge: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#dbeafe', alignItems: 'center', justifyContent: 'center' }, trackNumberText: { color: '#1d4ed8', fontSize: 12, fontWeight: '800' }, trackEditorLabel: { color: '#dc2626', fontSize: 11, fontWeight: '800', flex: 1, letterSpacing: .4 }, trackOrderActions: { flexDirection: 'row', alignItems: 'center', gap: 2 }, orderButton: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, removeButton: { width: 34, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, addTrackButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: '#93c5fd', backgroundColor: '#eff6ff', borderRadius: 11 }, addTrackText: { color: '#1d4ed8', fontWeight: '800' }, input: { minHeight: 44, borderWidth: 1, borderColor: '#cbd5e1', backgroundColor: '#fff', borderRadius: 9, paddingHorizontal: 12, paddingVertical: 9, color: '#0f172a', marginBottom: 9, fontSize: 14 }, urlInput: { marginBottom: 0 }, hint: { color: '#64748b', fontSize: 12, lineHeight: 18 }, modalActions: { flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 14, marginTop: 14 },
 });

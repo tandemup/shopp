@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Keyboard,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -16,6 +17,11 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { NodeScannerUtility, NodeStoresUtility } from "./NodeUtilityScreens";
+import { parseYouTubeUrl } from "@/src/services/urlSafety";
+import { API_BASE_URL } from "@/src/api/config";
+import { safeAlert } from "@/src/components/ui/alert/safeAlert";
+import { getEnabledBarcodeFormats } from "@/src/storage/barcodeSettingsStorage";
 import { nodeShoppingListsApi } from "@/src/api/providers/node/shoppingLists";
 import { nodeProductsApi } from "@/src/api/providers/node/products";
 import { nodeProductReviewsApi } from "@/src/api/providers/node/productReviews";
@@ -65,11 +71,30 @@ function ActionButton({ icon, label, onPress, danger = false }) {
   );
 }
 
-export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, onOpenProfile, onOpenMusic, onOpenClassical, onOpenChat, onOpenUsers }) {
+export const openNodeDashboard = async (user) => {
+    if (user?.role !== "admin") return;
+
+    try {
+      const url = new URL("/dashboard/", API_BASE_URL);
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        throw new Error("Protocolo no válido");
+      }
+      await Linking.openURL(url.origin + url.pathname);
+    } catch {
+      safeAlert("Panel del servidor", "No se pudo abrir el panel. Revisa la URL del servidor Node.");
+    }
+  };
+
+export default function NodeShoppingListsScreen({ section = "shopping", storePage, onBackFromStores, user, accessToken, onSignOut, onOpenProfile, onOpenMusic, onOpenClassical, onOpenChat }) {
+  const isDashboardAdmin = user?.role === "admin";
+  const openDashboard = () => openNodeDashboard(user);
   const canUseScanner = user?.role === "admin" || user?.permissions?.scanner === true;
   const canUseStores = user?.role === "admin" || user?.permissions?.stores === true;
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scannerLockedRef = useRef(false);
+  const [barcodeTypes, setBarcodeTypes] = useState([]);
+  const [searchCode, setSearchCode] = useState("");
+  const [scannerMode, setScannerMode] = useState("barcode");
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -87,6 +112,7 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
   const [scannerLocked, setScannerLocked] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [scanHint, setScanHint] = useState("");
+  const [scannerTabHint, setScannerTabHint] = useState("");
   const [stores, setStores] = useState([]);
   const [storePickerVisible, setStorePickerVisible] = useState(false);
   const [storeLoading, setStoreLoading] = useState(false);
@@ -246,40 +272,53 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
     setProductSearchResults([]);
   };
 
-  const openScanner = async () => {
-    if (!canUseScanner) { setScanHint("El administrador aún no ha activado el permiso de escáner para esta cuenta."); return; }
+  const showScanHint = section === "scanner" ? setScannerTabHint : setScanHint;
+
+  const openScanner = async (mode = "barcode") => {
+    if (!canUseScanner) { showScanHint("El administrador aún no ha activado el permiso de escáner para esta cuenta."); return; }
     Keyboard.dismiss();
-    setScanHint("");
+    showScanHint("");
     try {
       if (!cameraPermission?.granted) {
         const permission = await requestCameraPermission();
         if (!permission?.granted) {
-          setScanHint("Hace falta conceder permiso de cámara para escanear.");
+          showScanHint("Hace falta conceder permiso de cámara para escanear.");
           return;
         }
       }
     } catch {
-      setScanHint("No se pudo solicitar el permiso de cámara.");
+      showScanHint("No se pudo solicitar el permiso de cámara.");
       return;
     }
     scannerLockedRef.current = false;
     setScannerLocked(false);
     setTorchEnabled(false);
+    if (mode !== "music") {
+      const formats = (await getEnabledBarcodeFormats()).filter((format) => format !== "qr");
+      if (!formats.length) {
+        showScanHint("Activa un formato de código de barras en Ajustes para escanear productos.");
+        return;
+      }
+      setBarcodeTypes(formats);
+      setSearchCode("");
+    }
+    setScannerMode(mode === "music" ? "music" : "barcode");
     setScannerVisible(true);
   };
 
-  const handleBarcodeScanned = async ({ data }) => {
+  const handleBarcodeScanned = async ({ data, productType, notes }) => {
     if (scannerLockedRef.current) return;
     const barcode = normalizeBarcode(data);
     if (!isSupportedRetailBarcode(barcode)) return;
     scannerLockedRef.current = true;
+    setSearchCode(barcode);
     setScannerLocked(true);
     setScannerVisible(false);
     setTorchEnabled(false);
     setProductSearchResults([]);
     setProductSearchError("");
-    setItemDraft((draft) => ({ ...draft, name: "", barcode }));
-    setScanHint(`Código ${barcode} leído. Consultando catálogo…`);
+    if (section !== "scanner") setItemDraft((draft) => ({ ...draft, name: "", barcode }));
+    showScanHint(`Código ${barcode} leído. Consultando catálogo…`);
 
     try {
       let product = null;
@@ -294,7 +333,7 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
           catalogAvailable = true;
         } catch { product = null; }
       }
-      if (product) {
+      if (product && section !== "scanner") {
         setItemDraft((draft) => ({
           ...draft,
           name: product.name || "",
@@ -302,16 +341,25 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
           categoryName: product.category || product.subcategory || draft.categoryName,
         }));
       }
+      let historyError = false;
       await nodeScanHistoryApi.save(accessToken, {
         barcode,
         name: product?.name || null,
         brand: product?.brand || null,
         category: product?.category || null,
         subcategory: product?.subcategory || null,
-        source: "scanner",
+        productType: productType || product?.productType || null,
+        ...(notes ? { notes } : {}),
+        source: productType ? "manual" : "scanner",
         scannedAt: new Date().toISOString(),
-      }).catch(() => {});
-      setScanHint(product?.name
+      }).catch(() => { historyError = true; });
+      if (section === "scanner" && historyError) {
+        showScanHint(`Código ${barcode} leído. No se pudo guardar en el historial.`);
+        return;
+      }
+      showScanHint(section === "scanner"
+        ? product?.name ? `${product.name} · ${barcode}` : (catalogAvailable ? `Código ${barcode} sin ficha en el catálogo.` : `Código ${barcode} leído. No se pudo consultar el catálogo.`)
+        : product?.name
         ? `Producto encontrado: ${product.name}. Revisa sus datos.`
         : catalogAvailable
           ? `Código ${barcode} registrado. Añade el nombre y los datos del producto.`
@@ -319,6 +367,23 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
     } finally {
       setScannerLocked(false);
       scannerLockedRef.current = false;
+    }
+  };
+
+  const handleMusicQr = async ({ data }) => {
+    if (scannerLockedRef.current) return;
+    scannerLockedRef.current = true;
+    setScannerVisible(false);
+    setTorchEnabled(false);
+    const link = parseYouTubeUrl(String(data || "").trim());
+    if (!link.isValid) {
+      showScanHint("El QR no contiene un enlace musical de YouTube compatible.");
+      return;
+    }
+    try {
+      await Linking.openURL(link.playableUrl);
+    } catch {
+      showScanHint("No se pudo abrir el enlace de la tarjeta musical.");
     }
   };
 
@@ -476,12 +541,36 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <View style={styles.brandRow}><View style={styles.logo}><Text style={styles.logoText}>S</Text></View><Text style={styles.brand}>Shopp</Text><View style={styles.mode}><Text style={styles.modeText}>NODE.JS</Text></View></View>
-        <View style={styles.headerActions}>{onOpenUsers ? <Pressable accessibilityRole="button" accessibilityLabel="Gestionar usuarios" onPress={onOpenUsers} style={styles.chatButton}><Ionicons name="people-outline" size={20} color="#2563eb" /></Pressable> : null}{onOpenChat ? <Pressable accessibilityRole="button" accessibilityLabel="Abrir chat" onPress={onOpenChat} style={styles.chatButton}><Ionicons name="chatbubbles-outline" size={20} color="#2563eb" /></Pressable> : null}<Pressable accessibilityRole="button" accessibilityLabel="Abrir mi perfil" onPress={onOpenProfile} style={styles.accountButton}>
+        <View style={styles.headerActions}>
+          {isDashboardAdmin && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Abrir panel del servidor"
+              onPress={openDashboard}
+              style={styles.chatButton}
+            >
+              <Ionicons name="speedometer-outline" size={20} color="#2563eb" />
+            </Pressable>
+          )}
+          {onOpenChat ? <Pressable accessibilityRole="button" accessibilityLabel="Abrir chat" onPress={onOpenChat} style={styles.chatButton}><Ionicons name="chatbubbles-outline" size={20} color="#2563eb" /></Pressable> : null}<Pressable accessibilityRole="button" accessibilityLabel="Abrir mi perfil" onPress={onOpenProfile} style={styles.accountButton}>
           <Ionicons name="person-circle-outline" size={19} color="#475569" /><Text style={styles.accountText} numberOfLines={1}>{user?.name || user?.email || "Cuenta"}</Text><Ionicons name="chevron-forward" size={16} color="#64748b" />
         </Pressable><Pressable accessibilityRole="button" accessibilityLabel="Cerrar sesión" onPress={onSignOut} style={styles.chatButton}><Ionicons name="log-out-outline" size={19} color="#64748b" /></Pressable></View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {section === "stores" ? (
+          <NodeStoresUtility key={storePage || "home"} initialPage={storePage} onBackFromEntry={onBackFromStores} accessToken={accessToken} stores={stores}
+            storeLoading={storeLoading} storeError={storeError} loadStores={loadStores}
+            toggleFavorite={toggleStoreFavorite} isAdmin={isDashboardAdmin} />
+        ) : section === "scanner" ? (
+          <NodeScannerUtility accessToken={accessToken} onCamera={openScanner} hint={scannerTabHint} searchCode={searchCode}
+            isAdmin={isDashboardAdmin && __DEV__}
+            onLookup={input => {
+              if (!isSupportedRetailBarcode(normalizeBarcode(input.data))) throw new Error("Introduce un código de barras válido.");
+              return handleBarcodeScanned(input);
+            }} />
+        ) : (
+          <>
         <View style={styles.hero}>
           <View pointerEvents="none" style={styles.heroDecorativeCircleOne} />
           <View pointerEvents="none" style={styles.heroDecorativeCircleTwo} />
@@ -586,6 +675,8 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
         ) : null}
         {busy ? <View style={styles.busy}><ActivityIndicator size="small" color="#2563eb" /><Text style={styles.busyText}>Guardando cambios…</Text></View> : null}
         <Text style={styles.footer}>Listas Node · sesión protegida con JWT</Text>
+          </>
+        )}
       </ScrollView>
 
       <Modal visible={createVisible} transparent animationType="fade" onRequestClose={() => { setCreateVisible(false); setNewListName(""); setEditingListId(null); }}>
@@ -651,10 +742,10 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
       </Modal>
       <Modal visible={scannerVisible} animationType="slide" onRequestClose={() => { setScannerVisible(false); setTorchEnabled(false); scannerLockedRef.current = false; }}>
         <SafeAreaView style={styles.scannerSafe}>
-          <CameraView style={styles.scannerCamera} facing="back" enableTorch={torchEnabled} barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128"] }} onBarcodeScanned={scannerLocked ? undefined : handleBarcodeScanned} />
+          <CameraView style={styles.scannerCamera} facing="back" enableTorch={torchEnabled} barcodeScannerSettings={{ barcodeTypes: scannerMode === "music" ? ["qr"] : barcodeTypes }} onBarcodeScanned={scannerLocked ? undefined : scannerMode === "music" ? handleMusicQr : handleBarcodeScanned} />
           <View style={styles.scannerOverlay}>
-            <View style={styles.scannerTop}><Text style={styles.scannerTitle}>Escanear producto</Text><Pressable accessibilityRole="button" onPress={() => { setScannerVisible(false); setTorchEnabled(false); scannerLockedRef.current = false; }} style={styles.scannerClose}><Ionicons name="close" size={23} color="#fff" /></Pressable></View>
-            <View style={styles.scannerMiddle}><View style={styles.scanFrame} /><Text style={styles.scannerInstruction}>{scannerLocked ? "Leyendo código…" : "Centra el código de barras en el marco"}</Text></View>
+            <View style={styles.scannerTop}><Text style={styles.scannerTitle}>{scannerMode === "music" ? "Escanear QR de música" : "Escanear producto"}</Text><Pressable accessibilityRole="button" onPress={() => { setScannerVisible(false); setTorchEnabled(false); scannerLockedRef.current = false; }} style={styles.scannerClose}><Ionicons name="close" size={23} color="#fff" /></Pressable></View>
+            <View style={styles.scannerMiddle}><View style={styles.scanFrame} /><Text style={styles.scannerInstruction}>{scannerLocked ? "Leyendo código…" : scannerMode === "music" ? "Centra el QR musical en el marco" : "Centra el código de barras en el marco"}</Text></View>
             <View style={styles.scannerBottom}><Pressable accessibilityRole="button" onPress={() => setTorchEnabled((value) => !value)} style={styles.torchButton}><Ionicons name={torchEnabled ? "flashlight" : "flashlight-outline"} size={19} color="#fff" /><Text style={styles.torchText}>{torchEnabled ? "Apagar luz" : "Linterna"}</Text></Pressable></View>
           </View>
         </SafeAreaView>
@@ -670,7 +761,7 @@ const styles = StyleSheet.create({
   utilityName: { color: "#1d4ed8", fontSize: 14, fontWeight: "700" },
   utilityStatus: { color: "#64748b", fontSize: 12 },
   safe: { flex: 1, backgroundColor: "#f4f7fc" },
-  header: { minHeight: 66, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
+  header: { minHeight: 66, paddingHorizontal: 20, paddingVertical: 8, flexDirection: "row", flexWrap: "wrap", rowGap: 6, alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
   brandRow: { flexDirection: "row", alignItems: "center" }, logo: { width: 36, height: 36, borderRadius: 11, backgroundColor: "#2563eb", alignItems: "center", justifyContent: "center" }, logoText: { color: "#fff", fontSize: 21, fontWeight: "900" }, brand: { marginLeft: 10, color: "#0f172a", fontSize: 22, fontWeight: "800" }, mode: { marginLeft: 11, borderRadius: 999, backgroundColor: "#eff6ff", paddingHorizontal: 10, paddingVertical: 6 }, modeText: { color: "#1d4ed8", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 2 }, chatButton: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 11, backgroundColor: "#eff6ff" }, accountButton: { flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 8, paddingLeft: 8 }, accountText: { maxWidth: 100, color: "#475569", fontSize: 12, fontWeight: "600" },
   content: { width: "100%", maxWidth: 920, alignSelf: "center", padding: 22, paddingBottom: 40 },

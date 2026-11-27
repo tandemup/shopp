@@ -36,7 +36,7 @@ function buildSingleSelectionMap(engines, selectedId) {
   }, {});
 }
 
-export default function SearchEngines() {
+export default function SearchEngines({ embedded = false }) {
   const navigation = useNavigation();
   const [settings, setSettings] = useState(DEFAULT_SEARCH_SETTINGS);
   const [isReady, setIsReady] = useState(false);
@@ -60,8 +60,8 @@ export default function SearchEngines() {
   );
 
   useEffect(() => {
-    navigation.setOptions(headerConfig.navigationOptions);
-  }, [navigation, headerConfig]);
+    if (!embedded) navigation.setOptions(headerConfig.navigationOptions);
+  }, [navigation, headerConfig, embedded]);
 
   useEffect(() => {
     const init = async () => {

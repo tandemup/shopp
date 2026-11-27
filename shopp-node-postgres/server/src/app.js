@@ -39,6 +39,7 @@ app.use((req, res, next) => {
 app.use(['/api/v1/music-playlists', '/api/v1/classical-playlists'], express.json({ limit: '12mb' }));
 app.use('/api/v1/chat/media', chatMediaRouter);
 app.use('/api/v1/chat/shared-playlists', express.json({ limit: '512kb' }));
+app.post('/api/v1/shopping/user-data', express.json({ limit: '12mb' }));
 app.use(express.json({ limit: '64kb' }));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
@@ -67,6 +68,9 @@ app.use((_req, res) => res.status(404).json({ error: { code: 'not_found', messag
 app.use((error, _req, res, _next) => {
   if (error instanceof SyntaxError && 'body' in error) {
     return res.status(400).json({ error: { code: 'invalid_json', message: 'El cuerpo JSON no es válido' } });
+  }
+  if (error.type === 'entity.too.large') {
+    return res.status(413).json({ error: { code: 'payload_too_large', message: 'El archivo supera el tamaño admitido.' } });
   }
   console.error('Error API:', error.message);
   res.status(500).json({ error: { code: 'internal_error', message: 'Error interno del servidor' } });

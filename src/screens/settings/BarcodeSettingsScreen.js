@@ -21,7 +21,7 @@ import {
 
 import { buildHeaderConfig } from "@/src/utils/layout/headerStyles";
 
-export default function BarcodeSettingsScreen() {
+export default function BarcodeSettingsScreen({ embedded = false }) {
   const navigation = useNavigation();
 
   const [settings, setSettings] = useState(DEFAULT_BARCODE_SETTINGS);
@@ -37,8 +37,8 @@ export default function BarcodeSettingsScreen() {
   );
 
   useEffect(() => {
-    navigation.setOptions(headerConfig.navigationOptions);
-  }, [navigation, headerConfig]);
+    if (!embedded) navigation.setOptions(headerConfig.navigationOptions);
+  }, [navigation, headerConfig, embedded]);
 
   useEffect(() => {
     const init = async () => {
