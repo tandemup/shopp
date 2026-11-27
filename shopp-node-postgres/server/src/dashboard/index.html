@@ -10,10 +10,12 @@
 <body>
   <header class="masthead">
     <div class="masthead-inner">
-      <div class="brand"><span class="brand-mark" aria-hidden="true">S</span><span>Shopp</span></div>
+      <div class="masthead-start">
+        <a id="back-to-shopp" class="button button-secondary back-to-shopp" aria-label="Volver a Ajustes" title="Volver a Ajustes" hidden><span aria-hidden="true">←</span></a>
+        <div class="brand"><span class="brand-mark" aria-hidden="true">S</span><span>Shopp</span></div>
+      </div>
       <div class="user-actions">
-        <a id="back-to-shopp" class="button button-secondary back-to-shopp" hidden>Volver a Ajustes</a>
-      <button id="sign-out" class="button button-secondary" type="button" hidden>Cerrar sesión</button>
+        <button id="sign-out" class="button button-secondary" type="button" hidden>Cerrar sesión</button>
       </div>
     </div>
   </header>
@@ -33,7 +35,6 @@
         </fieldset>
         <p class="feedback" id="login-feedback" role="status" hidden></p>
       </form>
-      <a id="login-back-to-shopp" class="button button-secondary back-to-shopp login-back-to-shopp" href="http://localhost:8081/?shoppScreen=settings">← Volver a Ajustes</a>
     </section>
 
     <section class="login-card" id="password-reset" hidden aria-labelledby="reset-title">

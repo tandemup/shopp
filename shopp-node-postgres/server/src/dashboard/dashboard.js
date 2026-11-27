@@ -17,7 +17,6 @@ if (['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)) {
   shopp.port = '8081';
   shopp.searchParams.set('shoppScreen', 'settings');
   backToShopp.href = shopp.href;
-  byId('login-back-to-shopp').href = shopp.href;
   backToShopp.hidden = false;
 }
 const refreshButton = byId('refresh');

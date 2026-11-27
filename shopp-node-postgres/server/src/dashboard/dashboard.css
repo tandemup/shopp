@@ -21,6 +21,7 @@ button, input { font: inherit; }
 :focus-visible { outline: 3px solid #238b79; outline-offset: 3px; }
 
 .masthead {
+  position: relative;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
@@ -148,6 +149,20 @@ main {
 #confirm-review { width: min(28rem, calc(100% - 2rem)); border: 1px solid var(--border); border-radius: .85rem; padding: 1.25rem; }
 #confirm-review-copy { margin-top: .65rem; overflow-wrap: anywhere; }
 
-.back-to-shopp { display: inline-flex; align-items: center; text-decoration: none; }
+.masthead-start { display: flex; align-items: center; gap: .65rem; }
 
-.login-back-to-shopp { display: flex; justify-content: center; margin-top: .75rem; }
+.back-to-shopp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  font-size: 1.4rem;
+  text-decoration: none;
+}
+
+@media (min-width: 81rem) {
+  .back-to-shopp { position: absolute; inset-inline-start: 1rem; }
+}
