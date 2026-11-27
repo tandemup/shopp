@@ -85,7 +85,7 @@ export const openNodeDashboard = async (user) => {
     }
   };
 
-export default function NodeShoppingListsScreen({ section = "shopping", storePage, onBackFromStores, user, accessToken, onSignOut, onOpenProfile, onOpenMusic, onOpenClassical, onOpenChat }) {
+export default function NodeShoppingListsScreen({ section = "shopping", storePage, onBackFromStores, user, accessToken, onSignOut, onOpenProfile, onOpenMusic, onOpenClassical, onOpenChat, onOpenLibrary }) {
   const isDashboardAdmin = user?.role === "admin";
   const openDashboard = () => openNodeDashboard(user);
   const canUseScanner = user?.role === "admin" || user?.permissions?.scanner === true;
@@ -589,7 +589,7 @@ export default function NodeShoppingListsScreen({ section = "shopping", storePag
           </View>
         </View>
 
-        {onOpenMusic || onOpenClassical ? (
+        {onOpenMusic || onOpenClassical || onOpenLibrary ? (
           <View style={styles.utilityLinks}>
             {onOpenMusic ? (
               <Pressable accessibilityRole="button" onPress={onOpenMusic} style={styles.utilityLink}>
@@ -614,6 +614,15 @@ export default function NodeShoppingListsScreen({ section = "shopping", storePag
               </View>
               <Ionicons name={onOpenClassical ? "chevron-forward" : "lock-closed-outline"} size={16} color="#64748b" />
             </Pressable>
+            {onOpenLibrary ? (
+              <Pressable accessibilityRole="button" onPress={onOpenLibrary} style={styles.utilityLink}>
+                <Ionicons name="link-outline" size={20} color="#2563eb" />
+                <View style={styles.utilityCopy}>
+                  <Text style={styles.utilityName}>Biblioteca de enlaces</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#64748b" />
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
 

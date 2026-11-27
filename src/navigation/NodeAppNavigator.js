@@ -4,6 +4,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { I18nText as Text } from "@/src/i18n";
 import AuthStack from "@/src/navigation/AuthStack";
+import DialogHost from "@/src/components/ui/alert/DialogHost";
+import { LocalLibraryScreen } from "@/src/screens/library/LibraryScreen";
 import BarcodeSettingsScreen from "@/src/screens/settings/BarcodeSettingsScreen";
 import SearchEngines from "@/src/screens/settings/SearchEngines";
 import NodeSettingsSections from "@/src/screens/auth/node/NodeSettingsSections";
@@ -83,6 +85,7 @@ export default function NodeAppNavigator() {
   const [activeScreen, setActiveScreen] = useState(() => Platform.OS === "web" && typeof window !== "undefined"
     && new URLSearchParams(window.location.search).get("shoppScreen") === "settings"
     ? "settings" : "shopping");
+  const [libraryOrigin, setLibraryOrigin] = useState("settings");
   const [profileOrigin, setProfileOrigin] = useState("shopping");
   const [showChatAccessDialog, setShowChatAccessDialog] = useState(false);
   const [signedOutAccessMode, setSignedOutAccessMode] = useState(DEFAULT_AUTH_ACCESS_MODE);
@@ -113,15 +116,31 @@ export default function NodeAppNavigator() {
       setProfileOrigin(origin);
       setActiveScreen("profile");
     };
+    const openLibrary = (origin) => {
+      setLibraryOrigin(origin);
+      setActiveScreen("library");
+    };
     const backToSettings = () => setActiveScreen("settings");
     if (activeScreen === "settings") {
       return withTabs(<NodeSettingsUtility user={user} onProfile={() => openProfile("settings")}
         onDashboard={() => openNodeDashboard(user)} onSignOut={() => { setActiveScreen("shopping"); signOut(); }}
         onStoreRequests={() => setActiveScreen("storeRequests")} onStoreCatalog={() => setActiveScreen("storeCatalog")}>
+        <UtilityCard icon="library-outline" title="Biblioteca de enlaces"
+          subtitle="Guarda y organiza enlaces en este dispositivo"
+          onPress={() => openLibrary("settings")} />
         <NodeSettingsSections user={user} accessToken={accessToken}
           openBarcodeSettings={() => setActiveScreen("barcodeSettings")}
           openSearchEngines={() => setActiveScreen("searchEngines")} />
       </NodeSettingsUtility>);
+    }
+    if (activeScreen === "library") {
+      return withTabs(
+        <>
+          <LocalLibraryScreen onBack={() => setActiveScreen(libraryOrigin)} />
+          <DialogHost />
+        </>,
+        libraryOrigin,
+      );
     }
     if (activeScreen === "barcodeSettings" || activeScreen === "searchEngines") {
       return withTabs(
@@ -164,7 +183,7 @@ export default function NodeAppNavigator() {
     ) ? activeScreen : storePage ? "stores" : "shopping";
     return withTabs(
       <>
-        <NodeShoppingListsScreen section={section} storePage={storePage} onBackFromStores={storePage ? backToSettings : undefined} user={user} accessToken={accessToken} onSignOut={signOut} onOpenProfile={() => openProfile(activeScreen)} onOpenMusic={() => setActiveScreen("music")} onOpenClassical={canUseClassical ? () => setActiveScreen("classical") : null} onOpenChat={openChat} />
+        <NodeShoppingListsScreen section={section} storePage={storePage} onBackFromStores={storePage ? backToSettings : undefined} user={user} accessToken={accessToken} onSignOut={signOut} onOpenProfile={() => openProfile(activeScreen)} onOpenMusic={() => setActiveScreen("music")} onOpenClassical={canUseClassical ? () => setActiveScreen("classical") : null} onOpenChat={openChat} onOpenLibrary={() => openLibrary("shopping")} />
         {showChatAccessDialog && !canUseChat && (
           <WebAlertModal
             dialog={CHAT_ACCESS_DIALOG}

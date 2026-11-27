@@ -21,7 +21,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused } from "@react-navigation/native";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import * as Clipboard from "expo-clipboard";
 import { useAction } from "convex/react";
@@ -1425,8 +1425,7 @@ function ImportCheckbox({
   );
 }
 
-function MinimalLinkTitle({ item, previewMode = "default" }) {
-  const getLinkPreview = useAction(api.linkPreviews.get);
+function MinimalLinkTitle({ item, getLinkPreview, previewMode = "default" }) {
   // `bind` crea una función nueva en cada render. Al estar incluida en las
   // dependencias del efecto de vista previa, eso provocaba un bucle de
   // actualizaciones de React. Se mantiene una única referencia estable.
@@ -1460,6 +1459,7 @@ function MinimalLinkTitle({ item, previewMode = "default" }) {
     setPreviewSubtitle("");
 
     if (
+      !getLinkPreview ||
       (hasUsefulStoredTitle &&
         previewMode !== "document" &&
         !shouldRefreshArticleMetadata) ||
@@ -1587,6 +1587,15 @@ function HashtagCatalogLoader({ onLoaded }) {
 
 export default function LibraryScreen({ navigation, route }) {
   const isFocused = useIsFocused();
+  const getLinkPreview = useAction(api.linkPreviews.get);
+  return <LibraryContent navigation={navigation} route={route} isFocused={isFocused} getLinkPreview={getLinkPreview} />;
+}
+
+export function LocalLibraryScreen({ onBack }) {
+  return <LibraryContent onBack={onBack} isFocused />;
+}
+
+function LibraryContent({ navigation, route, isFocused, getLinkPreview, onBack }) {
   const { width: screenWidth } = useWindowDimensions();
   const [clientId] = useState(getClientId);
   const [urlInput, setUrlInput] = useState("");
@@ -2133,7 +2142,6 @@ export default function LibraryScreen({ navigation, route }) {
     setActiveImportJob(null);
     return { ok: true };
   }, []);
-  const getLinkPreview = useAction(api.linkPreviews.get);
   const refreshPreviewMetadata = updateMetadata;
   useEffect(() => {
     if (!backupMode) return;
@@ -2429,6 +2437,7 @@ export default function LibraryScreen({ navigation, route }) {
       // título/fecha, incluso si el enlace ya existía con metadatos antiguos.
       // Nunca guardamos un título de fallback ni usamos la descripción como título.
       if (
+        getLinkPreview &&
         !customTitle &&
         result?.linkId &&
         (result.existing || isCatalogFolder)
@@ -3208,7 +3217,7 @@ export default function LibraryScreen({ navigation, route }) {
           ? selectedData.links
           : [];
         const shouldEnrich =
-          enrichNewsOnImport && selectedLinks.length <= IMPORT_ENRICH_LIMIT;
+          Boolean(getLinkPreview) && enrichNewsOnImport && selectedLinks.length <= IMPORT_ENRICH_LIMIT;
         const enriched = shouldEnrich
           ? await enrichImportedNewsMetadata(
               selectedData,
@@ -3235,7 +3244,7 @@ export default function LibraryScreen({ navigation, route }) {
         const backupMeta = { ...importReview.parsed };
         delete backupMeta.data;
 
-        if (enrichNewsOnImport && !shouldEnrich && links.length > 0) {
+        if (getLinkPreview && enrichNewsOnImport && !shouldEnrich && links.length > 0) {
           setSlowTask({
             kind: "import",
             title: "Preparando importación",
@@ -3614,7 +3623,7 @@ export default function LibraryScreen({ navigation, route }) {
       <View style={styles.screen}>
         <View style={styles.compactTopBar}>
           <Pressable
-            onPress={() => navigation?.goBack()}
+            onPress={onBack || (() => navigation?.goBack())}
             style={styles.compactTopButton}
             accessibilityLabel="Volver"
           >
@@ -4794,6 +4803,7 @@ export default function LibraryScreen({ navigation, route }) {
                         </Text>
                         <MinimalLinkTitle
                           item={item}
+                          getLinkPreview={getLinkPreview}
                           previewMode={
                             isInformaticaFolder(folder) ? "document" : "default"
                           }
@@ -4866,7 +4876,21 @@ export default function LibraryScreen({ navigation, route }) {
             }
             return (
               <View style={styles.linkCard}>
-                <WebPreviewCard url={item.normalizedUrl} compact dense />
+                {getLinkPreview ? (
+                  <WebPreviewCard url={item.normalizedUrl} compact dense />
+                ) : (
+                  <Pressable
+                    accessibilityRole="link"
+                    onPress={() => openSourceUrl(item.normalizedUrl)}
+                    style={styles.minimalLinkOpenArea}
+                  >
+                    <DomainFavicon hostname={getLinkDomain(item)} />
+                    <View style={styles.minimalLinkText}>
+                      <Text style={styles.minimalLinkDomain} numberOfLines={1}>{getLinkDomain(item)}</Text>
+                      <MinimalLinkTitle item={item} />
+                    </View>
+                  </Pressable>
+                )}
                 {["newsSource", "bookStore"].includes(item.linkType) &&
                 item.customTitle ? (
                   <Text style={styles.sourceCustomTitle}>
@@ -5487,24 +5511,28 @@ export default function LibraryScreen({ navigation, route }) {
                     : "Se combinarán los elementos seleccionados. Los datos actuales se conservarán y las URL repetidas se actualizarán."}
                 </Text>
 
-                <Text style={styles.fieldLabel}>Noticias</Text>
-                <View style={styles.importCategoryList}>
-                  <ImportCheckbox
-                    checked={
-                      enrichNewsOnImport && !importMetadataEnrichmentDisabled
-                    }
-                    label="Actualizar título y fecha"
-                    detail={
-                      importMetadataEnrichmentDisabled
-                        ? `Desactivado para importaciones de más de ${IMPORT_ENRICH_LIMIT.toLocaleString("es-ES")} enlaces. Evita miles de consultas web y hace la importación mucho más estable.`
-                        : "Lee metadatos HTML de cada noticia seleccionada antes de guardarla."
-                    }
-                    icon="sparkles-outline"
-                    color="#dc2626"
-                    disabled={importMetadataEnrichmentDisabled}
-                    onPress={() => setEnrichNewsOnImport((value) => !value)}
-                  />
-                </View>
+                {getLinkPreview ? (
+                  <>
+                    <Text style={styles.fieldLabel}>Noticias</Text>
+                    <View style={styles.importCategoryList}>
+                      <ImportCheckbox
+                        checked={
+                          enrichNewsOnImport && !importMetadataEnrichmentDisabled
+                        }
+                        label="Actualizar título y fecha"
+                        detail={
+                          importMetadataEnrichmentDisabled
+                            ? `Desactivado para importaciones de más de ${IMPORT_ENRICH_LIMIT.toLocaleString("es-ES")} enlaces. Evita miles de consultas web y hace la importación mucho más estable.`
+                            : "Lee metadatos HTML de cada noticia seleccionada antes de guardarla."
+                        }
+                        icon="sparkles-outline"
+                        color="#dc2626"
+                        disabled={importMetadataEnrichmentDisabled}
+                        onPress={() => setEnrichNewsOnImport((value) => !value)}
+                      />
+                    </View>
+                  </>
+                ) : null}
 
                 <Text style={styles.fieldLabel}>Modo de importación</Text>
                 <View style={styles.importModeList}>
