@@ -14,6 +14,12 @@ export const nodeShoppingListsApi = Object.freeze({
     const result = await request("api/v1/shopping/lists", accessToken);
     return result.lists;
   },
+  async exportData(accessToken) {
+    return request("api/v1/shopping/user-data", accessToken);
+  },
+  importData(accessToken, data) {
+    return request("api/v1/shopping/user-data", accessToken, { method: "POST", body: data });
+  },
   async get(accessToken, listId) {
     const result = await request(`api/v1/shopping/lists/${encodeURIComponent(listId)}`, accessToken);
     return result.list;

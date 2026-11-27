@@ -7,12 +7,12 @@ scanHistoryRouter.use(requireAuth, requireFeature('scanner'));
 
 const fields = ['name','brand','url','productUrl','imageUrl','thumbnailUri','productType','category','subcategory','notes','source','lookupSource','dataSource'];
 const fail = (res,status,code,message) => res.status(status).json({error:{code,message}});
-const normalizeBarcode = (value) => String(value || '').replace(/\D/g,'').trim();
-function scanFromRow(row) {
+export const normalizeBarcode = (value) => String(value || '').replace(/\D/g,'').trim();
+export function scanFromRow(row) {
   return { ...row.data,id:row.barcode,barcode:row.barcode,scannedAt:row.scanned_at,updatedAt:row.updated_at,
     scanCount:row.scan_count,createdAt:Number(row.created_at_ms),updatedAtMs:Number(row.updated_at_ms) };
 }
-function readPayload(body) {
+export function readPayload(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return {error:'El cuerpo debe ser un objeto JSON.'};
   const data={};
   for (const field of fields) {

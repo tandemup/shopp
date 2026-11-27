@@ -2032,7 +2032,7 @@ export default function PlayListScreen({ guestMode = false }) {
                   ? "Buscar música clásica…"
                   : "Buscar playlists…"
           }
-          placeholderTextColor={placeholderTextColor}
+          placeholderTextColor="#94a3b8"
           accessibilityLabel={
             isNews
               ? "Buscar noticias"

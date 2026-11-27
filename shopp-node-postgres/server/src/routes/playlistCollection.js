@@ -94,7 +94,7 @@ function validatePlaylist(value, collectionType) {
 
 function fromRow(row) {
   return {
-    ...(row.collection_type === 'classical' ? row.details : {}),
+    ...(row.collection_type === 'classical' ? row.details : { shareable: row.details?.shareable === true }),
     id: row.playlist_id,
     _id: row.playlist_id,
     title: row.title,
@@ -199,7 +199,13 @@ export function createPlaylistRouter(collectionType, accessMiddleware) {
           lyricsText: track.lyricsText ?? null,
           artworkUrl: track.artworkUrl || '',
         }));
-        const details = collectionType === 'classical' ? normalizeClassicalDetails(item) : {};
+        const details = collectionType === 'classical'
+          ? normalizeClassicalDetails(item)
+          : { ...existing?.details };
+        if (collectionType === 'music' && typeof item.shareable === 'boolean') {
+          if (item.shareable) details.shareable = true;
+          else delete details.shareable;
+        }
         const serialized = JSON.stringify(tracks);
         if (!existing) {
           await client.query(

@@ -30,7 +30,7 @@
     "@zxing/browser": "0.2.0",
     "@zxing/library": "0.22.0",
     "convex": "^1.49.0",
-    "expo": "^58.0.0",
+    "expo": "~58.1.0",
     "expo-asset": "~58.0.21",
     "expo-camera": "~58.0.14",
     "expo-clipboard": "~58.0.4",

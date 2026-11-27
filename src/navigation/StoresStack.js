@@ -12,6 +12,8 @@ import StoresNearbyScreen from "@/src/screens/stores/StoresNearbyScreen";
 import StoreDetailScreen from "@/src/screens/stores/StoreDetailScreen";
 import StoreCreationRequestScreen from "@/src/screens/stores/StoreCreationRequestScreen";
 import AdminStoreRequestsScreen from "@/src/screens/stores/AdminStoreRequestsScreen";
+import AdminStoreCatalogScreen from "@/src/screens/admin/AdminStoreCatalogScreen";
+import AdminStoreOffersScreen from "@/src/screens/admin/AdminStoreOffersScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -41,6 +43,18 @@ export default function StoresStack() {
         name={ROUTES.ADMIN_STORE_REQUESTS}
         component={AdminStoreRequestsScreen}
         options={{ title: "Validar tiendas" }}
+      />
+
+      <Stack.Screen
+        name={ROUTES.ADMIN_STORE_CATALOG}
+        component={AdminStoreCatalogScreen}
+        options={{ title: tr("Catálogo de supermercados") }}
+      />
+
+      <Stack.Screen
+        name={ROUTES.ADMIN_STORE_OFFERS}
+        component={AdminStoreOffersScreen}
+        options={{ title: tr("Ofertas recibidas") }}
       />
 
       <Stack.Screen

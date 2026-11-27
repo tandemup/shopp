@@ -19,7 +19,7 @@ function splitAuthorAndSingle(value) {
     : { author: "", single: text };
 }
 
-export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, onCreateCard, shareable = false, onToggleShareable, isTutorial = false, isNews = false, isClassical = false, onOpenCatalog, worksCount = 0, squareArtwork = false, showItemCount = false, style }) {
+export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabel, canDelete, canEdit, deleting, onDelete, onEdit, onExport, onCreateCard, shareable = false, onToggleShareable, shareDescription, isTutorial = false, isNews = false, isClassical = false, onOpenCatalog, worksCount = 0, squareArtwork = false, showItemCount = false, exportLabel = "Exportar JSON", referenceLayout = false, style }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { width: viewportWidth } = useWindowDimensions();
   const compactCard = viewportWidth < 520;
@@ -72,7 +72,9 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
     : thumbnailUri;
   const wideThumbnail = squareArtwork && YOUTUBE_VIDEO_THUMBNAIL.test(coverUri);
   const coverSide = isClassical ? 128 : compactCard ? 100 : CARD_HEIGHT;
-  const coverLayout = squareArtwork
+  const referenceHeight = isClassical ? 128 : compactCard ? 104 : 90;
+  const referenceCover = { width: isClassical ? 150 : 160, maxWidth: compactCard ? "34%" : "42%", height: referenceHeight, flexShrink: 0 };
+  const coverLayout = referenceLayout ? referenceCover : squareArtwork
     ? [
       { width: coverSide, height: coverSide, flexShrink: 0 },
       wideThumbnail && { width: Math.round(coverSide * 16 / 9), maxWidth: "42%" },
@@ -80,24 +82,24 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
     : [compactCard && styles.coverPhone, compactCard && { width: coverWidth }, isClassical && styles.classicalCover];
   return (
     <View style={[styles.card, isNews && styles.newsCard, isClassical && styles.classicalCard, style]}>
-      <Pressable onPress={() => playback.open(playlist, { isTutorial })} style={[styles.summary, compactCard && styles.summaryPhone, isClassical && styles.classicalSummary]}>
+      <Pressable onPress={() => playback.open(playlist, { isTutorial })} style={[styles.summary, compactCard && styles.summaryPhone, isClassical && styles.classicalSummary, referenceLayout && { height: referenceHeight }]}>
         {coverUri ? (
           <Image
             source={{ uri: coverUri }}
             style={[styles.cover, coverLayout]}
-            resizeMode={squareArtwork && !wideThumbnail ? "cover" : "contain"}
+            resizeMode={squareArtwork && !wideThumbnail && !referenceLayout ? "cover" : "contain"}
           />
         ) : (
           <View style={[styles.coverFallback, coverLayout]}>
             <Ionicons name="albums" size={36} color="#fff" />
           </View>
         )}
-        <View style={[styles.summaryText, compactCard && styles.summaryTextPhone, isClassical && styles.classicalText]}>
+        <View style={[styles.summaryText, compactCard && styles.summaryTextPhone, isClassical && styles.classicalText, referenceLayout && { height: referenceHeight }]}>
           <View style={styles.metaRow}>
             <Text style={styles.user} numberOfLines={1} ellipsizeMode="tail">
               {isClassical ? (composer || "Compositor no especificado") : displayName}
             </Text>
-            {(canEdit || canDelete || onExport || onCreateCard) ? (
+            {(canEdit || canDelete || onExport || onCreateCard || onOpenCatalog) ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Opciones de ${playlist.title}`}
@@ -128,6 +130,7 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
               <Pressable
                 accessibilityRole="checkbox"
                 accessibilityLabel={`Compartir ${displayName}`}
+                accessibilityHint={shareDescription}
                 accessibilityState={{ checked: shareable, disabled: deleting }}
                 disabled={deleting}
                 onPress={(event) => {
@@ -154,7 +157,7 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
         </View>
       </Pressable>
       {menuOpen ? (
-        <View style={styles.menu}>
+        <View style={[styles.menu, referenceLayout && styles.referenceMenu]}>
           {canEdit ? (
             <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setMenuOpen(false); onEdit?.(); }}>
               <Ionicons name="create-outline" size={18} color="#334155" />
@@ -172,7 +175,7 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
           {onExport ? (
             <Pressable accessibilityRole="button" style={styles.menuItem} onPress={() => { setMenuOpen(false); onExport(); }}>
               <Ionicons name="share-outline" size={18} color="#334155" />
-              <Text style={styles.menuText}>Exportar JSON</Text>
+              <Text style={styles.menuText}>{exportLabel}</Text>
             </Pressable>
           ) : null}
           {onCreateCard ? (
@@ -270,6 +273,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   menu: { borderTopWidth: 1, borderTopColor: "#e2e8f0", paddingVertical: 4 },
+  referenceMenu: { paddingVertical: 3 },
   menuItem: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
   menuText: { fontSize: 14, color: "#334155", fontWeight: "600" },
   deleteText: { fontSize: 14, color: "#dc2626", fontWeight: "600" },

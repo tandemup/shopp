@@ -10,8 +10,13 @@
 <body>
   <header class="masthead">
     <div class="masthead-inner">
-      <div class="brand"><span class="brand-mark" aria-hidden="true">S</span><span>Shopp</span></div>
-      <button id="sign-out" class="button button-secondary" type="button" hidden>Cerrar sesión</button>
+      <div class="masthead-start">
+        <a id="back-to-shopp" class="button button-secondary back-to-shopp" aria-label="Volver a Ajustes" title="Volver a Ajustes" hidden><span aria-hidden="true">←</span></a>
+        <div class="brand"><span class="brand-mark" aria-hidden="true">S</span><span>Shopp</span></div>
+      </div>
+      <div class="user-actions">
+        <button id="sign-out" class="button button-secondary" type="button" hidden>Cerrar sesión</button>
+      </div>
     </div>
   </header>
 
@@ -26,9 +31,38 @@
           <label for="password">Contraseña</label>
           <input id="password" name="password" type="password" autocomplete="current-password" maxlength="128" required>
           <button class="button button-primary" id="login-button" type="submit">Entrar</button>
+          <button class="button button-secondary" id="open-reset" type="button">Cambiar contraseña</button>
         </fieldset>
         <p class="feedback" id="login-feedback" role="status" hidden></p>
       </form>
+    </section>
+
+    <section class="login-card" id="password-reset" hidden aria-labelledby="reset-title">
+      <h1 id="reset-title">Cambiar contraseña</h1>
+      <form id="request-reset" action="/api/v1/auth/request-password-reset" method="post">
+        <p>Solicita un código de verificación por correo.</p>
+        <fieldset id="request-reset-fields">
+          <label for="reset-email">Correo electrónico</label>
+          <input id="reset-email" name="email" type="email" autocomplete="username" maxlength="254" required>
+          <button class="button button-primary" type="submit">Enviar código</button>
+          <button class="button button-secondary" id="cancel-reset" type="button">Volver al inicio de sesión</button>
+        </fieldset>
+      </form>
+      <form id="confirm-reset" action="/api/v1/auth/reset-password" method="post" hidden>
+        <p id="reset-instructions"></p>
+        <fieldset id="confirm-reset-fields">
+          <label for="reset-code">Código de 8 dígitos</label>
+          <input id="reset-code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" required>
+          <label for="reset-password">Nueva contraseña</label>
+          <input id="reset-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" aria-describedby="password-rules" required>
+          <p id="password-rules">Entre 8 y 128 caracteres, con mayúsculas, minúsculas y números.</p>
+          <label for="confirm-password">Repite la nueva contraseña</label>
+          <input id="confirm-password" type="password" autocomplete="new-password" maxlength="128" required>
+          <button class="button button-primary" type="submit">Guardar contraseña</button>
+          <button class="button button-secondary" id="request-another-code" type="button">Volver a solicitar un código</button>
+        </fieldset>
+      </form>
+      <p class="feedback" id="reset-feedback" role="status" hidden></p>
     </section>
 
     <section id="dashboard" hidden aria-labelledby="dashboard-title">
@@ -37,9 +71,66 @@
           <h1 id="dashboard-title">Panel del servidor</h1>
           <p id="updated-at">Esperando datos</p>
         </div>
-        <button id="refresh" class="button button-secondary" type="button">Actualizar</button>
+        <div class="user-actions">
+          <button id="open-users" class="button button-secondary" type="button">Gestión de usuarios</button>
+          <button id="open-reviews" class="button button-secondary" type="button">Revisión de productos</button>
+          <button id="refresh" class="button button-secondary" type="button">Actualizar</button>
+        </div>
       </div>
       <p class="feedback" id="dashboard-feedback" role="status" hidden></p>
+
+      <section id="user-management" class="panel module" hidden aria-labelledby="user-management-title">
+        <div class="section-header">
+          <h2 id="user-management-title">Gestión de usuarios</h2>
+          <button id="reload-users" class="button button-secondary" type="button">Recargar usuarios</button>
+        </div>
+        <p id="users-feedback" class="feedback" role="status" hidden></p>
+        <fieldset id="user-picker" class="user-fields" disabled>
+          <label for="user-search">Buscar por nombre o correo</label>
+          <input id="user-search" type="search">
+          <label for="user-select">Cuenta</label>
+          <select id="user-select"></select>
+        </fieldset>
+        <form id="edit-user" hidden>
+          <fieldset id="user-fields" class="user-fields">
+            <p id="user-status" class="muted"></p>
+            <label for="user-role">Rol</label>
+            <select id="user-role">
+              <option value="user">Usuario</option>
+              <option value="tester">Tester</option>
+              <option value="admin">Administrador</option>
+            </select>
+            <div class="user-actions">
+              <button id="save-role" class="button button-secondary" type="button">Guardar rol</button>
+              <button id="toggle-user-status" class="button button-secondary" type="button"></button>
+            </div>
+            <fieldset id="user-permissions" class="user-fields">
+              <legend>Permisos por utilidad</legend>
+              <div id="permission-options" class="permission-options"></div>
+              <button class="button button-primary" type="submit">Guardar permisos</button>
+            </fieldset>
+          </fieldset>
+        </form>
+      </section>
+
+      <section id="product-reviews" class="panel module" hidden aria-labelledby="review-heading">
+        <div class="section-header">
+          <h2 id="review-heading">Revisión de productos</h2>
+          <button id="reload-reviews" class="button button-secondary" type="button">Recargar propuestas</button>
+        </div>
+        <p id="reviews-feedback" class="feedback" role="status" hidden></p>
+        <div id="review-list"></div>
+        <dialog id="confirm-review" aria-labelledby="confirm-review-title">
+          <form method="dialog">
+            <h2 id="confirm-review-title"></h2>
+            <p id="confirm-review-copy"></p>
+            <div class="user-actions">
+              <button class="button button-secondary" value="cancel" autofocus>Cancelar</button>
+              <button class="button button-primary" id="confirm-review-action" value="confirm"></button>
+            </div>
+          </form>
+        </dialog>
+      </section>
 
       <div class="status-grid">
         <article class="panel">

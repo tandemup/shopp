@@ -368,12 +368,26 @@ export default function StoresHomeScreen() {
             />
 
             {isAdmin ? (
-              <MenuItem
-                icon="shield-checkmark-outline"
-                title="Validar tiendas"
-                subtitle="Revisar y publicar las tiendas propuestas"
-                onPress={() => navigation.navigate(ROUTES.ADMIN_STORE_REQUESTS)}
-              />
+              <>
+                <MenuItem
+                  icon="shield-checkmark-outline"
+                  title="Validar tiendas"
+                  subtitle="Revisar y publicar las tiendas propuestas"
+                  onPress={() => navigation.navigate(ROUTES.ADMIN_STORE_REQUESTS)}
+                />
+                <MenuItem
+                  icon="document-text-outline"
+                  title="Catálogo de supermercados"
+                  subtitle="Importar y exportar el catálogo en JSON"
+                  onPress={() => navigation.navigate(ROUTES.ADMIN_STORE_CATALOG)}
+                />
+                <MenuItem
+                  icon="pricetags-outline"
+                  title="Ofertas recibidas"
+                  subtitle="Revisar las ofertas enviadas"
+                  onPress={() => navigation.navigate(ROUTES.ADMIN_STORE_OFFERS)}
+                />
+              </>
             ) : null}
           </View>
         </ScrollView>
