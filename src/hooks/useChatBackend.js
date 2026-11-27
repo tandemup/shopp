@@ -1,14 +1,12 @@
-import {
-  useChatMessagesBackend,
-  useChatRoomSummariesBackend,
-  useChatBasicActionsBackend,
-  useChatMediaActionsBackend,
-  useChatExtendedActionsBackend,
-} from "@/src/api/providers/convex/useChatBackend";
+import { isNodeBackend } from '@/src/api/config';
+import * as convex from '@/src/api/providers/convex/useChatBackend';
+import * as node from '@/src/api/providers/node/useChatBackend';
 
-// Contratos públicos de Shopp: las pantallas no conocen Convex.
-export const useChatMessages = useChatMessagesBackend;
-export const useChatRoomSummaries = useChatRoomSummariesBackend;
-export const useChatBasicActions = useChatBasicActionsBackend;
-export const useChatMediaActions = useChatMediaActionsBackend;
-export const useChatExtendedActions = useChatExtendedActionsBackend;
+const provider = isNodeBackend ? node : convex;
+
+export const useChatMessages = provider.useChatMessagesBackend;
+export const useChatRoomSummaries = provider.useChatRoomSummariesBackend;
+export const useChatBasicActions = provider.useChatBasicActionsBackend;
+export const useChatMediaActions = provider.useChatMediaActionsBackend;
+export const useChatExtendedActions = provider.useChatExtendedActionsBackend;
+export const useChatReadError = isNodeBackend ? node.useChatReadErrorBackend : () => null;

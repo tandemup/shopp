@@ -9,8 +9,11 @@ import { storeOffersRouter } from './routes/storeOffers.js';
 import { productReviewsRouter } from './routes/productReviews.js';
 import { realtimeRouter } from './routes/realtime.js';
 import { chatRouter } from './routes/chat.js';
+import { chatMediaRouter } from './routes/chatMedia.js';
+import { dashboardApiRouter, dashboardPages } from './routes/dashboard.js';
 import { adminUsersRouter } from './routes/adminUsers.js';
 import { musicPlaylistsRouter } from './routes/musicPlaylists.js';
+import { classicalPlaylistsRouter } from './routes/classicalPlaylists.js';
 import { config } from './config.js';
 
 const app = express();
@@ -20,7 +23,8 @@ if (config.trustProxy) app.set('trust proxy', 1);
 app.use((req, res, next) => {
   const origin = req.get('origin');
   if (origin) {
-    if (!config.corsOrigins.includes(origin)) {
+    const sameOrigin = origin === `${req.protocol}://${req.get('host')}`;
+    if (!sameOrigin && !config.corsOrigins.includes(origin)) {
       return res.status(403).json({ error: { code: 'origin_not_allowed', message: 'Origen no permitido' } });
     }
     res.setHeader('Access-Control-Allow-Origin', origin);
@@ -32,7 +36,9 @@ app.use((req, res, next) => {
   next();
 });
 // Music backups can include up to 20 LRC files of 512 KB each.
-app.use('/api/v1/music-playlists', express.json({ limit: '12mb' }));
+app.use(['/api/v1/music-playlists', '/api/v1/classical-playlists'], express.json({ limit: '12mb' }));
+app.use('/api/v1/chat/media', chatMediaRouter);
+app.use('/api/v1/chat/shared-playlists', express.json({ limit: '512kb' }));
 app.use(express.json({ limit: '64kb' }));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
@@ -45,6 +51,8 @@ app.get('/api/ready', async (_req, res, next) => {
 });
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/admin/users', adminUsersRouter);
+app.use('/api/v1/admin/dashboard', dashboardApiRouter);
+app.use('/dashboard', dashboardPages);
 app.use('/api/v1/shopping', shoppingListsRouter);
 app.use('/api/v1/products', productsRouter);
 app.use('/api/v1/scans', scanHistoryRouter);
@@ -54,6 +62,7 @@ app.use('/api/v1/product-reviews', productReviewsRouter);
 app.use('/api/v1/realtime', realtimeRouter);
 app.use('/api/v1/chat', chatRouter);
 app.use('/api/v1/music-playlists', musicPlaylistsRouter);
+app.use('/api/v1/classical-playlists', classicalPlaylistsRouter);
 app.use((_req, res) => res.status(404).json({ error: { code: 'not_found', message: 'Ruta no encontrada' } }));
 app.use((error, _req, res, _next) => {
   if (error instanceof SyntaxError && 'body' in error) {

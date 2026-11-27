@@ -8,7 +8,7 @@ import { usePlayback } from "@/src/components/playback/PlaybackProvider";
 const CARD_WIDTH = 560;
 const CARD_HEIGHT = 90;
 const VIDEO_THUMBNAIL_WIDTH = 160;
-
+const YOUTUBE_VIDEO_THUMBNAIL = /^https:\/\/(?:(?:[\w-]+\.)?ytimg\.com|img\.youtube\.com)\/vi(?:_webp)?\//i;
 
 function splitAuthorAndSingle(value) {
   const text = String(value || "").trim();
@@ -24,9 +24,6 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
   const { width: viewportWidth } = useWindowDimensions();
   const compactCard = viewportWidth < 520;
   const coverWidth = viewportWidth < 375 ? 112 : 136;
-  const coverSide = compactCard ? 100 : CARD_HEIGHT;
-  const coverLayout = squareArtwork ? { width: coverSide, height: coverSide, flexShrink: 0 }
-    : [compactCard && styles.coverPhone, compactCard && { width: coverWidth }, isClassical && styles.classicalCover];
   const playback = usePlayback();
   const displayName = String(playlist?.title || "").trim() || userName || "Mi playlist";
   const tracks = Array.isArray(playlist?.tracks) ? playlist.tracks : [];
@@ -65,20 +62,30 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
   const classicalTitle = titlePrefix
     ? rawClassicalTitle.slice(titlePrefix.length).replace(/^\s*[-–—:]\s*/, "").trim()
     : rawClassicalTitle;
-  const coverUri = playlist?.artworkUrl || playlist?.coverImage || playlist?.imageUrl || activeTrack?.artworkUrl || (activeTrack?.videoId ? `https://i.ytimg.com/vi/${activeTrack.videoId}/mqdefault.jpg` : "");
   if (!activeTrack) return null;
+  const artworkUri = isClassical
+    ? playlist?.artworkUrl || playlist?.coverImage || playlist?.imageUrl || activeTrack.artworkUrl
+    : activeTrack.artworkUrl;
+  const thumbnailUri = activeTrack.videoId ? `https://i.ytimg.com/vi/${activeTrack.videoId}/mqdefault.jpg` : "";
+  const coverUri = /^(https:\/\/[^\s]+|data:image\/(?:jpeg|png|webp);base64,)/i.test(artworkUri || "")
+    ? artworkUri
+    : thumbnailUri;
+  const wideThumbnail = squareArtwork && YOUTUBE_VIDEO_THUMBNAIL.test(coverUri);
+  const coverSide = isClassical ? 128 : compactCard ? 100 : CARD_HEIGHT;
+  const coverLayout = squareArtwork
+    ? [
+      { width: coverSide, height: coverSide, flexShrink: 0 },
+      wideThumbnail && { width: Math.round(coverSide * 16 / 9), maxWidth: "42%" },
+    ]
+    : [compactCard && styles.coverPhone, compactCard && { width: coverWidth }, isClassical && styles.classicalCover];
   return (
     <View style={[styles.card, isNews && styles.newsCard, isClassical && styles.classicalCard, style]}>
       <Pressable onPress={() => playback.open(playlist, { isTutorial })} style={[styles.summary, compactCard && styles.summaryPhone, isClassical && styles.classicalSummary]}>
-        {(isClassical ? coverUri : (activeTrack.artworkUrl || activeTrack.videoId)) ? (
+        {coverUri ? (
           <Image
-            source={{
-              uri: /^(https:\/\/[^\s]+|data:image\/(?:jpeg|png|webp);base64,)/i.test(isClassical ? coverUri : (activeTrack.artworkUrl || ""))
-                ? (isClassical ? coverUri : activeTrack.artworkUrl)
-                : `https://i.ytimg.com/vi/${activeTrack.videoId}/mqdefault.jpg`,
-            }}
+            source={{ uri: coverUri }}
             style={[styles.cover, coverLayout]}
-            resizeMode={squareArtwork ? "cover" : "contain"}
+            resizeMode={squareArtwork && !wideThumbnail ? "cover" : "contain"}
           />
         ) : (
           <View style={[styles.coverFallback, coverLayout]}>
@@ -107,7 +114,7 @@ export default function CustomYouTubePlaylistCard({ playlist, userName, dateLabe
           {isClassical ? (
             <>
               <Text style={styles.classicalWork} numberOfLines={2} ellipsizeMode="tail">{classicalTitle}</Text>
-              <Text style={styles.classicalPerformer} numberOfLines={2} ellipsizeMode="tail">{performer || "Intérprete no especificado"}</Text>
+              <Text style={styles.classicalPerformer} numberOfLines={showItemCount ? 1 : 2} ellipsizeMode="tail">{performer || "Intérprete no especificado"}</Text>
             </>
           ) : (
             <>

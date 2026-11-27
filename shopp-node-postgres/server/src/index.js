@@ -16,6 +16,8 @@ const rateLimitCleanup = setInterval(() => {
     .catch((error) => console.error('No se pudieron limpiar los tickets WebSocket:', error.message));
   pool.query("DELETE FROM chat_messages WHERE expires_at IS NOT NULL AND expires_at < NOW()")
     .catch((error) => console.error('No se pudieron limpiar mensajes de chat caducados:', error.message));
+  pool.query("DELETE FROM chat_attachments WHERE message_id IS NULL AND created_at < NOW() - INTERVAL '1 hour'")
+    .catch((error) => console.error('No se pudieron limpiar los adjuntos caducados:', error.message));
 }, 60 * 60 * 1000);
 rateLimitCleanup.unref();
 

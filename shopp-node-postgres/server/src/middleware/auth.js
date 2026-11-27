@@ -34,10 +34,10 @@ export function requireAdmin(req, res, next) {
   return res.status(403).json({ error: { code: 'forbidden', message: 'Se requieren permisos de administrador' } });
 }
 
-export function requireFeature(feature) {
+export function requireFeature(feature, { defaultEnabled = false } = {}) {
   return (req, res, next) => {
     const user = req.auth?.user;
-    if (user?.role === 'admin' || user?.permissions?.[feature] === true) return next();
+    if (user && (user.role === 'admin' || (user.permissions?.[feature] ?? defaultEnabled) === true)) return next();
     return res.status(403).json({ error: { code: 'forbidden', message: 'No tienes permiso para esta función' } });
   };
 }

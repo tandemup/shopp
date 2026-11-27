@@ -12,7 +12,7 @@ const FEATURES = [
   ['fireAlarm', 'Alarma de incendios'], ['investments', 'Inversiones'],
 ];
 const TESTER_DEFAULTS = { scanner: true, stores: true, musicPlaylist: true, classicalMusic: true, tutorials: true, p2pPlaylistExchange: true };
-const blankPermissions = () => Object.fromEntries(FEATURES.map(([key]) => [key, false]));
+const defaultPermissions = () => Object.fromEntries(FEATURES.map(([key]) => [key, key === 'classicalMusic']));
 
 function confirmAction(title, message, action) {
   Alert.alert(title, message, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Confirmar', onPress: action }]);
@@ -24,7 +24,7 @@ export default function NodeAdminUsersScreen({ user, accessToken, onBack, onOpen
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(null);
-  const [permissions, setPermissions] = useState(blankPermissions());
+  const [permissions, setPermissions] = useState(defaultPermissions);
 
   const loadUsers = useCallback(async () => {
     setLoading(true); setError('');
@@ -55,9 +55,9 @@ export default function NodeAdminUsersScreen({ user, accessToken, onBack, onOpen
   };
   const openPermissions = (target) => {
     setEditing(target);
-    setPermissions({ ...blankPermissions(), ...(target.permissions || {}) });
+    setPermissions({ ...defaultPermissions(), ...(target.permissions || {}) });
   };
-  const applyTesterDefaults = () => setPermissions({ ...blankPermissions(), ...TESTER_DEFAULTS });
+  const applyTesterDefaults = () => setPermissions({ ...defaultPermissions(), ...TESTER_DEFAULTS });
   const savePermissions = async () => {
     if (!editing) return;
     await run(editing, async () => {

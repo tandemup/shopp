@@ -33,6 +33,7 @@ import * as DocumentPicker from "expo-document-picker";
 import {
   useChatMessages,
   useChatRoomSummaries,
+  useChatReadError,
   useChatBasicActions,
   useChatMediaActions,
   useChatExtendedActions,
@@ -84,10 +85,11 @@ function getOrCreateChatClientId() {
   }
   return createChatClientId();
 }
-function createDefaultAlias() {
+function createDefaultAlias(initialAlias) {
   if (Platform.OS === "web" && typeof window !== "undefined") {
     const saved = window.localStorage?.getItem("shopp-chat-alias");
     if (saved?.trim()) return saved.trim();
+    if (initialAlias?.trim()) return initialAlias.trim();
     const ua = window.navigator?.userAgent || "";
     if (/iPhone/i.test(ua)) return "iPhone";
     if (/iPad/i.test(ua)) return "iPad";
@@ -95,6 +97,7 @@ function createDefaultAlias() {
     if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) return "Safari";
     if (/Chrome/i.test(ua)) return "Chrome";
   }
+  if (initialAlias?.trim()) return initialAlias.trim();
   return Platform.OS === "ios"
     ? "iPhone"
     : Platform.OS === "android"
@@ -757,12 +760,12 @@ function ComputerLinkLibrary({ clientId, language }) {
   );
 }
 
-export default function ChatScreen() {
+export default function ChatScreen({ onBack, initialAlias } = {}) {
   const listRef = useRef(null);
   const refreshedNewsDatesRef = useRef(false);
   const { language } = useI18n();
   const { shareLocalPlaylist, getSharedPlaylist,
-    deleteRoomMutation, createCustomYouTubePlaylist,
+    createRoom, deleteRoomMutation, createCustomYouTubePlaylist,
     updateCustomYouTubePlaylist, refreshNewsYouTubePublishedDates,
   } = useChatExtendedActions();
   const { sendMessage, deleteMessage } = useChatBasicActions();
@@ -770,7 +773,9 @@ export default function ChatScreen() {
   const [sharePickerOpen, setSharePickerOpen] = useState(false);
   const [localShareChoices, setLocalShareChoices] = useState([]);
   const [shareBusy, setShareBusy] = useState(false);
-  const [alias, setAlias] = useState(createDefaultAlias);
+  const [alias, setAlias] = useState(() => createDefaultAlias(initialAlias));
+  const historyError = useChatReadError();
+  const nodeMode = Boolean(createRoom);
   const openSharePicker = useCallback(async () => {
     try {
       const [music, classical] = await Promise.all([
@@ -794,15 +799,23 @@ export default function ChatScreen() {
             ? "shopp-youtube-classical-playlists"
             : "shopp-youtube-playlists",
         );
+        if (nodeMode) {
+          for (const track of backup.playlists[0].tracks) {
+            if (track.kind !== "album" && track.videoId) {
+              track.url = `https://www.youtube.com/watch?v=${track.videoId}`;
+            }
+          }
+        }
         const clean = validatePlaylistBackupV2(backup, backup.type, {
-          maximumTracks: 150,
+          maximumTracks: nodeMode ? 20 : 150,
+          preserveArtwork: nodeMode,
         })[0];
         // Los datos se validan de nuevo en el servidor; aquí conservamos el respaldo portable con LRC.
         await shareLocalPlaylist({
           title: clean.title,
           collectionType: clean.collectionType,
           username: alias,
-          payload: JSON.stringify(backup.playlists[0]),
+          payload: JSON.stringify(nodeMode ? clean : backup.playlists[0]),
         });
         setSharePickerOpen(false);
         safeAlert(
@@ -815,7 +828,7 @@ export default function ChatScreen() {
         setShareBusy(false);
       }
     },
-    [alias, shareBusy, shareLocalPlaylist],
+    [alias, nodeMode, shareBusy, shareLocalPlaylist],
   );
   const importSharedPlaylist = useCallback(
     (message) => {
@@ -845,7 +858,7 @@ export default function ChatScreen() {
                       .length,
                   },
                   type,
-                  { maximumTracks: 150 },
+                  { maximumTracks: nodeMode ? 20 : 150, preserveArtwork: nodeMode },
                 );
                 const result = await importPlaylistsLocally({
                   playlists: validated,
@@ -863,7 +876,7 @@ export default function ChatScreen() {
         ],
       );
     },
-    [getSharedPlaylist],
+    [getSharedPlaylist, nodeMode],
   );
   const [room, setRoom] = useState("compras");
   const [customRooms, setCustomRooms] = useState([]);
@@ -885,6 +898,7 @@ export default function ChatScreen() {
   const [profileField, setProfileField] = useState(null);
   const [profileDraft, setProfileDraft] = useState("");
   useEffect(() => {
+    if (nodeMode) return;
     let mounted = true;
     AsyncStorage.getItem(CUSTOM_ROOMS_STORAGE_KEY)
       .then((raw) => {
@@ -917,7 +931,7 @@ export default function ChatScreen() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [nodeMode]);
   const selectedRoomLabel =
     allRooms.find((item) => item.id === room)?.label || room;
   const customRoomsForList = useMemo(
@@ -975,7 +989,7 @@ export default function ChatScreen() {
   // Al mostrar la Biblioteca integrada no necesitamos mantener también la
   // suscripción reactiva al chat de esa sala.
   const messages = useChatMessages(
-    computerMode === "library"
+    room === "informatica" && computerMode === "library"
       ? "skip"
       : {
           room,
@@ -994,6 +1008,14 @@ export default function ChatScreen() {
   const isAdmin = roomSummaries?.isAdmin === true;
 
   useEffect(() => {
+    if (!nodeMode || !roomSummaries) return;
+    const items = roomSummaries.rooms;
+    setCustomRooms(items.filter(item => !ROOMS.some(builtin => builtin.id === item.id)));
+    setRoom(current => items.some(item => item.id === current) ? current : "compras");
+  }, [nodeMode, roomSummaries]);
+
+  useEffect(() => {
+    if (nodeMode) return;
     const selectedSummary = roomSummaryById.get(room);
     if (selectedSummary?.deleted || selectedSummary?.deleting) {
       setRoom("compras");
@@ -1014,7 +1036,7 @@ export default function ChatScreen() {
         console.warn("[Chat] No se pudieron actualizar las salas:", error),
       );
     }
-  }, [customRooms, room, roomSummaryById]);
+  }, [customRooms, nodeMode, room, roomSummaryById]);
 
   useEffect(() => {
     if (roomListPage >= totalRoomPages) {
@@ -1127,7 +1149,9 @@ export default function ChatScreen() {
     [alias, selectedRoomLabel],
   );
 
-  const handleSaveProfileField = useCallback(() => {
+  const [savingRoom, setSavingRoom] = useState(false);
+  const handleSaveProfileField = useCallback(async () => {
+    if (savingRoom) return;
     const isAlias = profileField === "alias";
     const label = profileDraft
       .trim()
@@ -1158,7 +1182,25 @@ export default function ChatScreen() {
       const builtin = ROOMS.find(
         (item) => item.id === slug || item.label.toLowerCase() === roomLabel.toLowerCase(),
       );
-      if (profileField === "newRoom") {
+      if (createRoom) {
+        const known = builtin || customRooms.find(item => item.id === slug || item.id === `custom-${slug}`);
+        if (known) {
+          setRoom(known.id);
+        } else {
+          setSavingRoom(true);
+          try {
+            const { room: created } = await createRoom(roomLabel);
+            setCustomRooms(items => items.some(item => item.id === created.id) ? items : [...items, created]);
+            setRoom(created.id);
+          } catch (error) {
+            safeAlert("Chat", error?.message || "No se pudo abrir la sala.");
+            return;
+          } finally {
+            setSavingRoom(false);
+          }
+        }
+        setRoomsPickerVisible(false);
+      } else if (profileField === "newRoom") {
         if (builtin) {
           setRoom(builtin.id);
         } else {
@@ -1198,7 +1240,7 @@ export default function ChatScreen() {
     }
     setProfileEditorVisible(false);
     setProfileField(null);
-  }, [customRooms, handleAliasChange, profileDraft, profileField]);
+  }, [createRoom, customRooms, handleAliasChange, profileDraft, profileField, savingRoom]);
 
   const handlePickImages = useCallback(async () => {
     try {
@@ -1354,7 +1396,7 @@ export default function ChatScreen() {
         updatePlaylistTrack(index, "lyrics", {
           uri: asset.uri,
           fileName,
-          mimeType: asset.mimeType || "text/plain",
+          mimeType: "text/plain",
           size: asset.size || 0,
         });
       } catch (error) {
@@ -1501,7 +1543,7 @@ export default function ChatScreen() {
             storageId,
             fileName: track.lyrics.fileName,
             mimeType: track.lyrics.mimeType || "text/plain",
-            size: track.lyrics.size || blob.size || 0,
+            size: blob.size,
           };
         }
         tracks.push({
@@ -1611,7 +1653,7 @@ export default function ChatScreen() {
           mimeType: image.mimeType || "image/jpeg",
           width: image.width || 256,
           height: image.height || 256,
-          size: image.size || blob.size || 0,
+          size: blob.size,
         });
         completedAttachments += 1;
         setSendPipeline({ stage: "uploading", completed: completedAttachments, total: attachmentCount });
@@ -1740,7 +1782,7 @@ export default function ChatScreen() {
   const deleteRoomAndMessages = useCallback(
     async (item) => {
       if (!isAdmin || !item?.id || deletingRoomId) return;
-      const removeRoom = !ROOMS.some((builtin) => builtin.id === item.id);
+      const removeRoom = !item.builtin && !ROOMS.some((builtin) => builtin.id === item.id);
       setDeletingRoomId(item.id);
       try {
         await deleteRoomMutation({
@@ -1748,7 +1790,10 @@ export default function ChatScreen() {
           removeRoom,
           clientId: chatClientId,
         });
-        if (removeRoom) {
+        if (removeRoom && nodeMode) {
+          setCustomRooms(items => items.filter(roomItem => roomItem.id !== item.id));
+          if (room === item.id) setRoom("compras");
+        } else if (removeRoom) {
           const next = customRooms.filter((roomItem) => roomItem.id !== item.id);
           setCustomRooms(next);
           AsyncStorage.setItem(
@@ -1774,6 +1819,7 @@ export default function ChatScreen() {
       deleteRoomMutation,
       deletingRoomId,
       isAdmin,
+      nodeMode,
       room,
     ],
   );
@@ -1781,7 +1827,7 @@ export default function ChatScreen() {
   const handleDeleteRoom = useCallback(
     (item) => {
       if (!isAdmin || !item?.id || deletingRoomId) return;
-      const removeRoom = !ROOMS.some((builtin) => builtin.id === item.id);
+      const removeRoom = !item.builtin && !ROOMS.some((builtin) => builtin.id === item.id);
       const roomName = removeRoom
         ? `#${item.label.replace(/^#+/, "")}`
         : item.label;
@@ -1893,7 +1939,7 @@ export default function ChatScreen() {
       setAlbumLyrics({
         uri: asset.uri,
         fileName,
-        mimeType: asset.mimeType || "text/plain",
+        mimeType: "text/plain",
         size: asset.size || 0,
       });
     } catch (error) {
@@ -1928,7 +1974,7 @@ export default function ChatScreen() {
           mimeType: albumCover.mimeType,
           width: albumCover.width,
           height: albumCover.height,
-          size: albumCover.size || blob.size || 0,
+          size: blob.size,
         };
       }
 
@@ -1954,7 +2000,7 @@ export default function ChatScreen() {
           storageId,
           fileName: albumLyrics.fileName,
           mimeType: albumLyrics.mimeType || "text/plain",
-          size: albumLyrics.size || blob.size || 0,
+          size: blob.size,
         };
       }
 
@@ -2001,9 +2047,15 @@ export default function ChatScreen() {
       >
         <View style={styles.header}>
           <View style={styles.titleRow}>
-            <View style={styles.iconBox}>
-              <Ionicons name="chatbubbles-outline" size={21} color="#FFFFFF" />
-            </View>
+            {onBack ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="Volver al inicio" onPress={onBack} style={styles.iconBox}>
+                <Ionicons name="arrow-back" size={21} color="#FFFFFF" />
+              </Pressable>
+            ) : (
+              <View style={styles.iconBox}>
+                <Ionicons name="chatbubbles-outline" size={21} color="#FFFFFF" />
+              </View>
+            )}
             <View style={styles.titleBlock}>
               <Text style={styles.title}>Chat de compras</Text>
               <View style={styles.profileBadges}>
@@ -2275,6 +2327,7 @@ export default function ChatScreen() {
                   <Text style={styles.profileModalCancelText}>Cancelar</Text>
                 </Pressable>
                 <Pressable
+                  disabled={savingRoom}
                   onPress={handleSaveProfileField}
                   disabled={!profileDraft.trim()}
                   style={[
@@ -2462,11 +2515,11 @@ export default function ChatScreen() {
                   color={room === "youtube" ? "#dc2626" : "#94a3b8"}
                 />
                 <Text style={styles.emptyTitle}>
-                  {messages === undefined
-                    ? "Conectando con Convex…"
+                  {historyError || (messages === undefined
+                    ? "Cargando mensajes…"
                     : room === "youtube"
                       ? "Comparte el primer vídeo o playlist"
-                      : "Todavía no hay mensajes"}
+                      : "Todavía no hay mensajes")}
                 </Text>
                 <Text style={styles.emptyText}>
                   {room === "youtube"

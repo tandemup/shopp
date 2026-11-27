@@ -65,7 +65,7 @@ function ActionButton({ icon, label, onPress, danger = false }) {
   );
 }
 
-export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, onOpenProfile, onOpenMusic, onOpenChat, onOpenUsers }) {
+export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, onOpenProfile, onOpenMusic, onOpenClassical, onOpenChat, onOpenUsers }) {
   const canUseScanner = user?.role === "admin" || user?.permissions?.scanner === true;
   const canUseStores = user?.role === "admin" || user?.permissions?.stores === true;
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -476,7 +476,7 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <View style={styles.brandRow}><View style={styles.logo}><Text style={styles.logoText}>S</Text></View><Text style={styles.brand}>Shopp</Text><View style={styles.mode}><Text style={styles.modeText}>NODE.JS</Text></View></View>
-        <View style={styles.headerActions}>{onOpenUsers ? <Pressable accessibilityRole="button" accessibilityLabel="Gestionar usuarios" onPress={onOpenUsers} style={styles.chatButton}><Ionicons name="people-outline" size={20} color="#2563eb" /></Pressable> : null}{onOpenMusic ? <Pressable accessibilityRole="button" accessibilityLabel="Abrir playlists musicales" onPress={onOpenMusic} style={styles.chatButton}><Ionicons name="musical-notes-outline" size={20} color="#2563eb" /></Pressable> : null}{onOpenChat ? <Pressable accessibilityRole="button" accessibilityLabel="Abrir chat" onPress={onOpenChat} style={styles.chatButton}><Ionicons name="chatbubbles-outline" size={20} color="#2563eb" /></Pressable> : null}<Pressable accessibilityRole="button" accessibilityLabel="Abrir mi perfil" onPress={onOpenProfile} style={styles.accountButton}>
+        <View style={styles.headerActions}>{onOpenUsers ? <Pressable accessibilityRole="button" accessibilityLabel="Gestionar usuarios" onPress={onOpenUsers} style={styles.chatButton}><Ionicons name="people-outline" size={20} color="#2563eb" /></Pressable> : null}{onOpenChat ? <Pressable accessibilityRole="button" accessibilityLabel="Abrir chat" onPress={onOpenChat} style={styles.chatButton}><Ionicons name="chatbubbles-outline" size={20} color="#2563eb" /></Pressable> : null}<Pressable accessibilityRole="button" accessibilityLabel="Abrir mi perfil" onPress={onOpenProfile} style={styles.accountButton}>
           <Ionicons name="person-circle-outline" size={19} color="#475569" /><Text style={styles.accountText} numberOfLines={1}>{user?.name || user?.email || "Cuenta"}</Text><Ionicons name="chevron-forward" size={16} color="#64748b" />
         </Pressable><Pressable accessibilityRole="button" accessibilityLabel="Cerrar sesión" onPress={onSignOut} style={styles.chatButton}><Ionicons name="log-out-outline" size={19} color="#64748b" /></Pressable></View>
       </View>
@@ -499,6 +499,34 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
             </Pressable>
           </View>
         </View>
+
+        {onOpenMusic || onOpenClassical ? (
+          <View style={styles.utilityLinks}>
+            {onOpenMusic ? (
+              <Pressable accessibilityRole="button" onPress={onOpenMusic} style={styles.utilityLink}>
+                <Ionicons name="musical-notes-outline" size={20} color="#2563eb" />
+                <View style={styles.utilityCopy}>
+                  <Text style={styles.utilityName}>Música</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#64748b" />
+              </Pressable>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !onOpenClassical }}
+              disabled={!onOpenClassical}
+              onPress={onOpenClassical}
+              style={styles.utilityLink}
+            >
+              <Ionicons name="library-outline" size={20} color={onOpenClassical ? "#2563eb" : "#64748b"} />
+              <View style={styles.utilityCopy}>
+                <Text style={styles.utilityName}>Música clásica</Text>
+                {!onOpenClassical ? <Text style={styles.utilityStatus}>Acceso desactivado</Text> : null}
+              </View>
+              <Ionicons name={onOpenClassical ? "chevron-forward" : "lock-closed-outline"} size={16} color="#64748b" />
+            </Pressable>
+          </View>
+        ) : null}
 
         <View style={styles.statsRow}>
           <View style={styles.statCard}><View style={[styles.statIcon, styles.statIconBlue]}><Ionicons name="list-outline" size={20} color="#2563eb" /></View><View style={styles.statCopy}><Text style={styles.statNumber}>{activeLists.length}</Text><Text style={styles.statLabel}>Listas activas</Text></View></View>
@@ -636,6 +664,11 @@ export default function NodeShoppingListsScreen({ user, accessToken, onSignOut, 
 }
 
 const styles = StyleSheet.create({
+  utilityLinks: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 12 },
+  utilityLink: { flexGrow: 1, flexBasis: 140, minHeight: 48, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12, backgroundColor: "#fff" },
+  utilityCopy: { flex: 1, minWidth: 0 },
+  utilityName: { color: "#1d4ed8", fontSize: 14, fontWeight: "700" },
+  utilityStatus: { color: "#64748b", fontSize: 12 },
   safe: { flex: 1, backgroundColor: "#f4f7fc" },
   header: { minHeight: 66, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
   brandRow: { flexDirection: "row", alignItems: "center" }, logo: { width: 36, height: 36, borderRadius: 11, backgroundColor: "#2563eb", alignItems: "center", justifyContent: "center" }, logoText: { color: "#fff", fontSize: 21, fontWeight: "900" }, brand: { marginLeft: 10, color: "#0f172a", fontSize: 22, fontWeight: "800" }, mode: { marginLeft: 11, borderRadius: 999, backgroundColor: "#eff6ff", paddingHorizontal: 10, paddingVertical: 6 }, modeText: { color: "#1d4ed8", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },

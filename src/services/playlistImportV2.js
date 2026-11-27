@@ -5,6 +5,35 @@ import { isPlaylistArtwork } from '@/src/services/playlistArtwork';
 const MAX_LRC_BYTES = 512 * 1024;
 const utf8Size = (str) => new TextEncoder().encode(str).length;
 
+export function validatePlaylistImport(payload, itemType, options) {
+  const listType = `${itemType}s`;
+  const expectedType = payload?.type === itemType ? itemType : listType;
+  if (payload?.version !== 1) return validatePlaylistBackupV2(payload, expectedType, options);
+  if (payload.type !== expectedType) throw new Error('El tipo del respaldo no corresponde a esta utilidad.');
+
+  // El JSON v1 guardaba referencias a las letras, pero no el contenido LRC.
+  const fromLegacy = playlist => {
+    if (playlist?.type !== itemType || !Array.isArray(playlist.tracks)) return null;
+    return {
+      ...playlist,
+      tracks: playlist.tracks.map(track => track && typeof track === 'object' ? {
+        kind: track.kind,
+        title: track.title,
+        url: track.url,
+        videoId: track.videoId,
+        playlistId: track.playlistId,
+        artworkUrl: track.artworkUrl,
+        lyricsDisabled: true,
+      } : track),
+    };
+  };
+  const legacy = expectedType === itemType
+    ? fromLegacy(payload)
+    : { playlists: Array.isArray(payload.playlists) ? payload.playlists.map(fromLegacy) : null };
+  const normalized = { ...legacy, type: expectedType, app: 'Shopp', version: 2, backupStatus: 'complete', lyricsEntries: 0 };
+  return validatePlaylistBackupV2(normalized, expectedType, options);
+}
+
 export function validatePlaylistBackupV2(payload, expectedType, { minimumTracks = 1, maximumTracks = 1000, preserveArtwork = false } = {}) {
   if (!payload || payload.app !== 'Shopp' || payload.version !== 2 || payload.backupStatus !== 'complete')
     throw new Error('El archivo no es un respaldo Shopp v2 completo.');
@@ -43,12 +72,15 @@ export function validatePlaylistBackupV2(payload, expectedType, { minimumTracks 
     if (!Array.isArray(works) || works.length > 100 || works.some(work =>
       !work || typeof work.id !== "string" || work.id.length > 100 ||
       typeof work.title !== "string" || work.title.length > 300 ||
-      !Array.isArray(work.trackKeys) || work.trackKeys.length < 2 ||
+        !Array.isArray(work.trackKeys) || work.trackKeys.length < 1 ||
       work.trackKeys.length > 100 || work.trackKeys.some(key =>
         typeof key !== "string" || key.length > 160))) {
       throw new Error(`Catálogo de obras inválido en «${playlist.title}».`);
     }
     return {
+      ...(preserveArtwork && expectedType.includes('classical') ? {
+        artworkUrl: [playlist.artworkUrl, playlist.coverImage, playlist.imageUrl].find(isPlaylistArtwork) || '',
+      } : {}),
       ...(expectedType.includes('classical') ? { works: works.map(work => ({
         id: work.id, title: work.title,
         subtitle: String(work.subtitle || "").slice(0, 300),

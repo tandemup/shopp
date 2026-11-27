@@ -204,7 +204,11 @@ La pantalla «Music Playlist · Node» permite crear, editar, reproducir, import
 
 La API ofrece `GET /api/v1/music-playlists`, `POST /api/v1/music-playlists/sync` y `DELETE /api/v1/music-playlists/:playlistId`. La sincronización mezcla las playlists locales con las del servidor por identificador: se conserva la versión más reciente según `updatedAt`. Si dos versiones distintas tienen la misma marca de tiempo, el servidor registra un conflicto y conserva su copia; el cliente conserva la copia local en ese caso y avisa para que se resuelva después de exportar un ZIP v2. Las eliminaciones se guardan como tombstones por usuario para impedir que una copia antigua offline vuelva a crear una playlist borrada. La sincronización incluye el texto de los archivos LRC (máximo 512 KB por pista y 10 MB por playlist). Si una playlist declara una letra que ya no está en el dispositivo, la sincronización se detiene para evitar perderla.
 
-Para trasladar playlists guardadas previamente en Convex, exporta desde Music Playlist un archivo JSON v2 o ZIP completo, selecciona el proveedor Node y, en «Music Playlist · Node», pulsa «Importar ZIP/JSON» y luego «Sincronizar». El proceso no borra los documentos originales de Convex. Las playlists se pueden seguir editando localmente sin conexión y sincronizar cuando vuelva la conexión. Esta primera integración cubre solo la colección Music; Música clásica, Tutoriales y Noticias conservan sus flujos anteriores.
+Para trasladar playlists guardadas previamente en Convex, exporta desde la colección original un JSON v2 o ZIP completo. Selecciona el proveedor Node y usa «Importar ZIP/JSON» y después «Sincronizar» en la colección correspondiente. El proceso conserva los documentos originales en Convex. Las playlists se pueden editar localmente sin conexión y sincronizar cuando vuelva la conexión.
+
+El inicio de Shopp ofrece dos accesos independientes, «Música» y «Música clásica». «Música clásica · Node» está disponible para administradores y cuentas con el permiso `classicalMusic`. Tiene buscador por título, compositor, intérprete, obra o movimiento. Usa `/api/v1/classical-playlists` para sincronizar sus datos, carátulas, letras y referencias del catálogo de obras. La migración `018_independent_classical_playlists.sql` mueve las colecciones clásicas y sus registros de borrado a `classical_playlists` y `classical_playlist_deletions`. Cada pantalla consulta su propia colección local y utiliza su formato de respaldo.
+
+Para validar la sincronización entre dos dispositivos, usa la misma cuenta Node y una URL de la API accesible desde ambos. Si accedes desde una PWA servida en otro origen, inclúyelo en `CORS_ORIGINS`.
 
 ## Autenticación independiente de Convex
 
@@ -264,8 +268,8 @@ No uses `docker compose down -v` salvo que quieras borrar permanentemente la bas
 ## Estado y límites de esta fase
 
 - Convex sigue siendo el proveedor predeterminado; `EXPO_PUBLIC_BACKEND_PROVIDER=node` activa la navegación Node de acceso, compras, Music Playlist, chat y administración de usuarios.
-- El modo Node incluye ahora Music Playlist y sincronización local de playlists/LRC; las colecciones clásicas y de contenido (Tutoriales y Noticias) siguen pendientes.
-- Node parte con cuentas nuevas; cada usuario debe registrarse y verificar su correo. No hay importación de datos desde Convex.
+- El modo Node incluye Music Playlist y Música clásica con sincronización local de playlists, letras y carátulas. Tutoriales y Noticias siguen pendientes.
+- Node parte con cuentas nuevas; cada usuario debe registrarse y verificar su correo. Las playlists se pueden trasladar mediante sus archivos de respaldo.
 - En modo Node, compras utiliza las rutas Node de listas y los módulos ya migrados; el proveedor Convex conserva sus pantallas y datos por separado.
 - El perfil Node permite cambiar el nombre, el alias público, un teléfono privado, la contraseña y el correo verificado. La sincronización del historial privado del escáner está desactivada por defecto y se puede activar o borrar desde «Mi cuenta». El teléfono no se comparte en el chat; el avatar sigue pendiente.
 - Las funciones todavía alojadas en Convex se reimplementarán en fases si se decide incluirlas en Node. Las propuestas generadas en el modo Node se moderan desde el panel Node.

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Panel del servidor · Shopp</title>
+  <link rel="stylesheet" href="/dashboard/dashboard.css">
+  <script src="/dashboard/dashboard.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">S</span><span>Shopp</span></div>
+      <button id="sign-out" class="button button-secondary" type="button" hidden>Cerrar sesión</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="login-card" id="sign-in" aria-labelledby="login-title">
+      <h1 id="login-title">Panel del servidor</h1>
+      <p>Entra con tu cuenta de administrador de Shopp.</p>
+      <form id="login" action="/api/v1/auth/login" method="post">
+        <fieldset id="login-fields" disabled>
+          <label for="email">Correo electrónico</label>
+          <input id="email" name="email" type="email" autocomplete="username" maxlength="254" required>
+          <label for="password">Contraseña</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" maxlength="128" required>
+          <button class="button button-primary" id="login-button" type="submit">Entrar</button>
+        </fieldset>
+        <p class="feedback" id="login-feedback" role="status" hidden></p>
+      </form>
+    </section>
+
+    <section id="dashboard" hidden aria-labelledby="dashboard-title">
+      <div class="section-header">
+        <div>
+          <h1 id="dashboard-title">Panel del servidor</h1>
+          <p id="updated-at">Esperando datos</p>
+        </div>
+        <button id="refresh" class="button button-secondary" type="button">Actualizar</button>
+      </div>
+      <p class="feedback" id="dashboard-feedback" role="status" hidden></p>
+
+      <div class="status-grid">
+        <article class="panel">
+          <div class="panel-title">
+            <h2>API de Shopp</h2><span class="badge" id="api-status">Disponible</span>
+          </div>
+          <dl class="details">
+            <div><dt>Node.js</dt><dd id="node-version"></dd></div>
+            <div><dt>Tiempo en marcha</dt><dd id="uptime"></dd></div>
+            <div><dt>Memoria del proceso</dt><dd id="memory"></dd></div>
+          </dl>
+        </article>
+        <article class="panel">
+          <div class="panel-title">
+            <h2>PostgreSQL</h2><span class="badge" id="db-status">Conectado</span>
+          </div>
+          <dl class="details">
+            <div><dt>Versión</dt><dd id="db-version"></dd></div>
+            <div><dt>Consulta de prueba</dt><dd id="db-ping"></dd></div>
+            <div><dt>Conexiones abiertas</dt><dd id="db-pool"></dd></div>
+            <div><dt>Migraciones aplicadas</dt><dd id="migration-count"></dd></div>
+            <div><dt>Última migración</dt><dd id="latest-migration"></dd></div>
+          </dl>
+        </article>
+      </div>
+
+      <section aria-labelledby="usage-title" class="module">
+        <h2 id="usage-title">Uso de Shopp</h2>
+        <dl class="metric-grid">
+          <div class="metric"><dt>Usuarios activos</dt><dd id="users"></dd></div>
+          <div class="metric"><dt>Sesiones vigentes</dt><dd id="sessions"></dd></div>
+          <div class="metric"><dt>Listas sin archivar</dt><dd id="lists"></dd></div>
+          <div class="metric"><dt>Playlists</dt><dd><span id="playlists"></span><span id="playlist-detail" class="metric-detail"></span></dd></div>
+          <div class="metric"><dt>Salas de chat</dt><dd id="rooms"></dd></div>
+          <div class="metric"><dt>Mensajes visibles en las últimas 24 h</dt><dd id="messages"></dd></div>
+        </dl>
+      </section>
+
+      <div class="insights-grid module">
+        <article class="panel" aria-labelledby="activity-title">
+          <h2 id="activity-title">Listas creadas</h2>
+          <p class="muted">Últimos 7 días en UTC</p>
+          <ul id="activity" class="activity"></ul>
+        </article>
+        <article class="panel" aria-labelledby="pending-title">
+          <h2 id="pending-title">Pendientes de revisión</h2>
+          <dl class="details pending">
+            <div><dt>Solicitudes de tiendas</dt><dd id="pending-stores"></dd></div>
+            <div><dt>Revisiones de productos</dt><dd id="pending-products"></dd></div>
+          </dl>
+        </article>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

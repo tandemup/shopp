@@ -13,7 +13,10 @@ export async function importPlaylistsLocally({ playlists, collection, replace = 
       title: playlist.title,
       collectionType: collection,
       shareable: playlist.shareable === true,
-      ...(collection === 'classical' ? { works: playlist.works || [] } : {}),
+      ...(collection === 'classical' ? {
+        works: playlist.works || [],
+        ...(playlist.artworkUrl ? { artworkUrl: playlist.artworkUrl } : {}),
+      } : {}),
       ...(collection === 'classical'
         ? Object.fromEntries(['composer', 'performer', 'conductor', 'orchestra', 'period', 'year'].map(k => [k, playlist[k] || '']))
         : {}),
