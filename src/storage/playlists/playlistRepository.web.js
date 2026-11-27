@@ -235,8 +235,8 @@ export async function saveWithLyrics(id, item, lyricsChanges = [], { preserveTim
     const request = store.getAll();
     request.onsuccess = () => {
       const all = request.result || [];
-      const existing = id ? all.find(p => p.id === id) : null;
-      if (id && !existing) { tx.abort(); return; }
+      const existing = all.find(p => p.id === nextId);
+      if (Boolean(id) !== Boolean(existing)) { tx.abort(); return; }
       if (existing && existing.collectionType !== item.collectionType) { tx.abort(); return; }
       const record = { ...existing, ...item, id: nextId, _id: nextId,
         collectionType: item.collectionType,

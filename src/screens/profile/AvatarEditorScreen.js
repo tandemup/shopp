@@ -11,6 +11,7 @@ import {
 import { I18nText as Text } from "@/src/i18n";
 
 import { Ionicons } from "@expo/vector-icons";
+import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 import * as ImageManipulator from "expo-image-manipulator";
 
 const EDITOR_SIZE = 320;
@@ -42,11 +43,12 @@ const OUTPUT_FORMATS = [
   },
 ].filter((format) => format.saveFormat);
 
-export default function AvatarEditorScreen({ asset, onCancel, onConfirm }) {
+export default function AvatarEditorScreen({ asset, onCancel, onConfirm, includeBase64 = false }) {
   const width = asset?.width || 1;
   const height = asset?.height || 1;
   const baseScale = Math.max(EDITOR_SIZE / width, EDITOR_SIZE / height);
   const [zoom, setZoom] = useState(1);
+  const [processing, setProcessing] = useState(false);
   const [outputSize, setOutputSize] = useState(128);
   const outputFormat = "jpeg";
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -145,45 +147,56 @@ export default function AvatarEditorScreen({ asset, onCancel, onConfirm }) {
   ).current;
 
   const confirm = async () => {
-    const selectedFormat =
-      OUTPUT_FORMATS.find((format) => format.key === outputFormat) ||
-      OUTPUT_FORMATS[0];
-    const scale = baseScale * zoom;
-    const imageLeft = (EDITOR_SIZE - displayed.width) / 2 + offset.x;
-    const imageTop = (EDITOR_SIZE - displayed.height) / 2 + offset.y;
-    const crop = {
-      originX: Math.max(0, Math.round(-imageLeft / scale)),
-      originY: Math.max(0, Math.round(-imageTop / scale)),
-      width: Math.min(width, Math.round(EDITOR_SIZE / scale)),
-      height: Math.min(height, Math.round(EDITOR_SIZE / scale)),
-    };
-    const result = await ImageManipulator.manipulateAsync(
-      asset.uri,
-      [{ crop }, { resize: { width: outputSize, height: outputSize } }],
-      { compress: selectedFormat.compress, format: selectedFormat.saveFormat },
-    );
-    onConfirm({
-      ...asset,
-      uri: result.uri,
-      mimeType: selectedFormat.mimeType,
-      fileName: `avatar.${selectedFormat.extension}`,
-      width: outputSize,
-      height: outputSize,
-      outputSize,
-      outputFormat: selectedFormat.label,
-    });
+    if (processing) return;
+    setProcessing(true);
+    try {
+      const selectedFormat =
+        OUTPUT_FORMATS.find((format) => format.key === outputFormat) ||
+        OUTPUT_FORMATS[0];
+      const scale = baseScale * zoom;
+      const imageLeft = (EDITOR_SIZE - displayed.width) / 2 + offset.x;
+      const imageTop = (EDITOR_SIZE - displayed.height) / 2 + offset.y;
+      const originX = Math.min(width - 1, Math.max(0, Math.round(-imageLeft / scale)));
+      const originY = Math.min(height - 1, Math.max(0, Math.round(-imageTop / scale)));
+      const crop = {
+        originX,
+        originY,
+        width: Math.max(1, Math.min(width - originX, Math.round(EDITOR_SIZE / scale))),
+        height: Math.max(1, Math.min(height - originY, Math.round(EDITOR_SIZE / scale))),
+      };
+      const result = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        [{ crop }, { resize: { width: outputSize, height: outputSize } }],
+        { compress: selectedFormat.compress, format: selectedFormat.saveFormat, base64: includeBase64 },
+      );
+      await onConfirm({
+        ...asset,
+        uri: result.uri,
+        base64: result.base64,
+        mimeType: selectedFormat.mimeType,
+        fileName: `avatar.${selectedFormat.extension}`,
+        width: outputSize,
+        height: outputSize,
+        outputSize,
+        outputFormat: selectedFormat.label,
+      });
+    } catch (error) {
+      safeAlert("No se pudo preparar el avatar", error?.message || "Elige otra imagen e inténtalo de nuevo.");
+    } finally {
+      setProcessing(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={onCancel} style={styles.topButton}>
+        <TouchableOpacity onPress={onCancel} disabled={processing} style={styles.topButton}>
           <Ionicons name="close" size={25} color="#fff" />
           <Text style={styles.topText}>Cancelar</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Editar avatar</Text>
-        <TouchableOpacity onPress={confirm} style={styles.topButton}>
-          <Text style={styles.topText}>Usar</Text>
+        <TouchableOpacity onPress={confirm} disabled={processing} style={styles.topButton}>
+          <Text style={styles.topText}>{processing ? "Procesando…" : "Usar"}</Text>
           <Ionicons name="checkmark" size={25} color="#fff" />
         </TouchableOpacity>
       </View>

@@ -5,6 +5,7 @@ import { config, authConfigurationError } from '../config.js';
 import { sendAuthCode } from '../email.js';
 import { requireAuth, publicUser, accountUser } from '../middleware/auth.js';
 import { authRateLimit } from '../middleware/rateLimit.js';
+import { profileAvatarRouter } from './profileAvatar.js';
 import {
   createOtp, createSessionToken, digestOtp, digestToken, hashPassword,
   normalizeEmail, safeEqualHex, validateEmail, validatePassword, verifyPassword,
@@ -14,6 +15,7 @@ export const authRouter = Router();
 const genericMessage = 'Si la solicitud puede completarse, recibirás un correo con instrucciones.';
 authRouter.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 authRouter.use(authRateLimit());
+authRouter.use('/me/avatar', profileAvatarRouter);
 
 function ensureAuthConfigured(res) {
   if (!authConfigurationError()) return false;
@@ -293,8 +295,8 @@ authRouter.patch('/me', requireAuth, async (req, res, next) => {
       );
       if (phoneProvided) {
         await client.query(
-          `UPDATE user_profiles SET phone = $1,
-             phone_visible = CASE WHEN $1 IS NULL THEN FALSE ELSE phone_visible END,
+          `UPDATE user_profiles SET phone = $1::text,
+             phone_visible = CASE WHEN $1::text IS NULL THEN FALSE ELSE phone_visible END,
              updated_at_ms = $2 WHERE user_id = $3`,
           [phone || null, timestamp, rows[0].id],
         );

@@ -39,6 +39,23 @@ export const nodeAuthApi = Object.freeze({
     });
   },
 
+  getAvatar(accessToken, signal) {
+    return apiClient.request("api/v1/auth/me/avatar", { accessToken, signal });
+  },
+
+  saveAvatar(accessToken, base64) {
+    return apiClient.request("api/v1/auth/me/avatar", {
+      method: "PUT",
+      accessToken,
+      headers: { "Content-Type": "text/plain" },
+      body: base64,
+    });
+  },
+
+  removeAvatar(accessToken) {
+    return apiClient.request("api/v1/auth/me/avatar", { method: "DELETE", accessToken });
+  },
+
   requestEmailChange(accessToken, email) {
     return apiClient.request("api/v1/auth/me/email-change/request", {
       method: "POST",

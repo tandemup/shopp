@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from "react-native";
 import { I18nText as Text } from "@/src/i18n";
 import AuthStack from "@/src/navigation/AuthStack";
 import NodeShoppingListsScreen from "@/src/screens/auth/node/NodeShoppingListsScreen";
@@ -10,12 +10,20 @@ import NodeProfileScreen from "@/src/screens/auth/node/NodeProfileScreen";
 import { NodeResetPasswordScreen } from "@/src/screens/auth/node/NodeAuthScreens";
 import NodeEmailChangeScreen from "@/src/screens/auth/node/NodeEmailChangeScreen";
 import NodeMusicPlaylistsScreen from "@/src/screens/auth/node/NodeMusicPlaylistsScreen";
+import NodeClassicalPlaylistsScreen from "@/src/screens/auth/node/NodeClassicalPlaylistsScreen";
 import PlaybackProvider from "@/src/components/playback/PlaybackProvider";
+import WebAlertModal from "@/src/components/ui/alert/WebAlertModal";
+import { safeAlert } from "@/src/components/ui/alert/safeAlert";
 import { useNodeAuth } from "@/src/context/NodeAuthContext";
 
 const APP_MODE = String(process.env.EXPO_PUBLIC_APP_MODE || "development").trim().toLowerCase();
 const ACCESS_MODE = String(process.env.EXPO_PUBLIC_ACCESS_MODE || "landing").trim().toLowerCase();
 const DEFAULT_AUTH_ACCESS_MODE = APP_MODE === "development" ? "development" : ACCESS_MODE;
+const CHAT_ACCESS_DIALOG = {
+  type: "alert",
+  title: "Acceso al chat",
+  message: "Un administrador puede activar el permiso Chat de tu cuenta en Gestionar usuarios.",
+};
 
 function SessionRestoreError({ error, onRetry, onSignOut }) {
   return (
@@ -34,6 +42,7 @@ function SessionRestoreError({ error, onRetry, onSignOut }) {
 
 export default function NodeAppNavigator() {
   const [activeScreen, setActiveScreen] = useState("shopping");
+  const [showChatAccessDialog, setShowChatAccessDialog] = useState(false);
   const [signedOutAccessMode, setSignedOutAccessMode] = useState(DEFAULT_AUTH_ACCESS_MODE);
   const { status, user, accessToken, error, signOut, reloadSession, updateProfile, clearScanHistory, requestEmailChange, confirmEmailChange } = useNodeAuth();
 
@@ -43,9 +52,28 @@ export default function NodeAppNavigator() {
   if (status === "error") return <SessionRestoreError error={error} onRetry={reloadSession} onSignOut={signOut} />;
   if (status === "signed_in" && user) {
     const canUseChat = user.role === "admin" || user.permissions?.chat === true;
-    if (activeScreen === "profile") return <NodeProfileScreen user={user} onBack={() => setActiveScreen("shopping")} onUpdateProfile={updateProfile} onClearScanHistory={clearScanHistory} onChangePassword={() => setActiveScreen("password")} onChangeEmail={() => setActiveScreen("email")} />;
+    const canUseClassical = user.role === "admin" || (user.permissions?.classicalMusic ?? true) === true;
+    const openChat = () => {
+      if (canUseChat) {
+        setActiveScreen("chat");
+        return;
+      }
+      if (Platform.OS === "web") {
+        setShowChatAccessDialog(true);
+        return;
+      }
+      safeAlert(CHAT_ACCESS_DIALOG.title, CHAT_ACCESS_DIALOG.message);
+    };
+    if (activeScreen === "profile") return <NodeProfileScreen key={user.id} user={user} accessToken={accessToken} onBack={() => setActiveScreen("shopping")} onUpdateProfile={updateProfile} onClearScanHistory={clearScanHistory} onChangePassword={() => setActiveScreen("password")} onChangeEmail={() => setActiveScreen("email")} />;
     if (activeScreen === "email") return <NodeEmailChangeScreen user={user} onBack={() => setActiveScreen("profile")} onRequestCode={requestEmailChange} onConfirmCode={confirmEmailChange} onDone={() => { setSignedOutAccessMode("login"); signOut(); }} />;
-    if (activeScreen === "music") return <PlaybackProvider><NodeMusicPlaylistsScreen accessToken={accessToken} onBack={() => setActiveScreen("shopping")} /></PlaybackProvider>;
+    if (activeScreen === "music") return <PlaybackProvider key="music"><NodeMusicPlaylistsScreen accessToken={accessToken} onBack={() => setActiveScreen("shopping")} /></PlaybackProvider>;
+    if (activeScreen === "classical" && canUseClassical) {
+      return (
+        <PlaybackProvider key="classical">
+          <NodeClassicalPlaylistsScreen accessToken={accessToken} onBack={() => setActiveScreen("shopping")} />
+        </PlaybackProvider>
+      );
+    }
     if (activeScreen === "password") {
       const navigation = {
         navigate: (routeName) => {
@@ -61,7 +89,19 @@ export default function NodeAppNavigator() {
     if (activeScreen === "chat" && canUseChat) return <NodeChatScreen user={user} accessToken={accessToken} onBack={() => setActiveScreen("shopping")} />;
     if (activeScreen === "users" && user.role === "admin") return <NodeAdminUsersScreen user={user} accessToken={accessToken} onBack={() => setActiveScreen("shopping")} onOpenProductReviews={() => setActiveScreen("productReviews")} />;
     if (activeScreen === "productReviews" && user.role === "admin") return <NodeProductReviewsScreen accessToken={accessToken} onBack={() => setActiveScreen("users")} />;
-    return <NodeShoppingListsScreen user={user} accessToken={accessToken} onSignOut={signOut} onOpenProfile={() => setActiveScreen("profile")} onOpenMusic={() => setActiveScreen("music")} onOpenChat={canUseChat ? () => setActiveScreen("chat") : null} onOpenUsers={user.role === "admin" ? () => setActiveScreen("users") : null} />;
+    const closeChatAccessDialog = () => setShowChatAccessDialog(false);
+    return (
+      <>
+        <NodeShoppingListsScreen user={user} accessToken={accessToken} onSignOut={signOut} onOpenProfile={() => setActiveScreen("profile")} onOpenMusic={() => setActiveScreen("music")} onOpenClassical={canUseClassical ? () => setActiveScreen("classical") : null} onOpenChat={openChat} onOpenUsers={user.role === "admin" ? () => setActiveScreen("users") : null} />
+        {showChatAccessDialog && !canUseChat && (
+          <WebAlertModal
+            dialog={CHAT_ACCESS_DIALOG}
+            onSelect={closeChatAccessDialog}
+            onClose={closeChatAccessDialog}
+          />
+        )}
+      </>
+    );
   }
 
   return <AuthStack accessMode={signedOutAccessMode} backendProvider="node" />;
